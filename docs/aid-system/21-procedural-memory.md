@@ -1,6 +1,6 @@
 # D21 — Agent-authored skill modules and procedural memory
 
-**Purpose:** let an agent retain successful procedures without turning the native runtime into a fixed catalogue of tasks. **Cozea seam:** the existing local `/projects/skills` library and `docs/agent-skills.md`; provider-native folders remain execution authority for existing provider skills. **Research:** code-execution/helper reuse [S44](29-research-register.md#s44), policy-code generation [S46](29-research-register.md#s46). Neither source demonstrates automatic safe GUI generalization.
+**Purpose:** let an agent retain successful procedures without turning the native runtime into a fixed catalogue of tasks. **Cozea seam:** the existing local `/projects/skills` library and `docs/agent-skills.md`; provider-native folders remain execution authority for existing provider skills. **Research:** code-execution/helper reuse [S41](29-research-register.md#s41), policy-code generation [S53](29-research-register.md#s53). Neither source demonstrates automatic safe GUI generalization.
 
 ## 1. Skill artifact
 
@@ -12,7 +12,7 @@ General helpers such as geometry need no desktop authority. A task procedure may
 
 States: draft, tested-in-fixture, tested-live-profile, approved-local, shared, deprecated and revoked. One successful run is evidence, not universal qualification. Promotion requires explicit host/user policy and a privacy review that strips private content, paths, tokens and native IDs. Sharing to another project/organization is an export and cannot happen merely because the model called a save helper.
 
-`aid.workspace.saveModule` stores source in the current workspace with declared metadata. Publishing to Cozea's skill library is a host-mediated operation requiring approval. The existing managed-copy rules remain: do not overwrite an unmarked provider skill folder or silently replace external content. AID skills can be referenced by the existing library UI through a distinct runtime-kind field, not disguised as a provider-native skill format.
+`aid.workspace.saveModule(name, revision)` retains an admitted pure module revision in the current workspace. Its source hash and profile assumptions come from the host-owned module manifest; richer skill metadata is authored through the separate host-mediated publishing flow. Publishing to Cozea's skill library is a host-mediated operation requiring approval. The existing managed-copy rules remain: do not overwrite an unmarked provider skill folder or silently replace external content. AID skills can be referenced by the existing library UI through a distinct runtime-kind field, not disguised as a provider-native skill format.
 
 ## 3. Reuse and adaptation
 

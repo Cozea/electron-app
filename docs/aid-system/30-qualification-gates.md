@@ -1,6 +1,6 @@
 # D30 — Qualification gates and evidence contracts
 
-**Revision:** 1.1. **Status:** prescribed experiments, not passed experiments. **Applies to:** the programmable AID environment, not merely a compiling SDK. Read [D20](20-evaluation.md), [D28](28-implementation-roadmap.md), [D31](31-cross-system-review.md), and the [contract artifacts](contracts/README.md).
+**Revision:** 1.1. **Status:** prescribed experiments, not passed experiments. **Applies to:** the programmable AID environment, not merely a compiling SDK. Read [D20](20-evaluation.md), [D28](28-implementation-roadmap.md), [D31](31-design-reconciliation.md), and the [contract artifacts](contracts/README.md).
 
 This document completes a missing deliverable from the recovered corpus. It does not claim to recover its previous wording. Its purpose is to prevent an implementation agent from inventing what counts as success, treating private/API availability as functional proof, or silently weakening a failed experiment.
 
@@ -17,7 +17,7 @@ A lower level is not a substitute for a higher one. A passing JSON schema is not
 
 Start with a reproducible **macOS 26 / Apple silicon** profile. This is a selected first profile, not an assertion about the latest available OS or a guarantee that every point release works. Record exact OS build, hardware, architecture, display identities/scales/refresh rates, login-seat generation, Xcode/Swift/engine versions, signing identity and app versions. Intel, other OS versions, remote seats and additional input devices are separate profiles.
 
-Every run produces a machine-readable manifest with: gate ID/revision; start/end timestamps; implementation commit and IDL/source/artifact hashes; profile; commands/procedure; prerequisite reports; each test's expected and actual result; sample count; failures/skips; redacted artifact digests; and final `passed`, `failed` or `blocked`. `not-run` is the only initial state. A stale report does not qualify a new binary.
+Every run produces a machine-readable manifest with: gate ID/revision; start/end timestamps; implementation commit and IDL/source/artifact hashes; profile; commands/procedure; prerequisite reports; each test's expected and actual result; sample count; failures/skips; redacted artifact digests; and final `passed`, `failed` or `blocked`. `not_run` is the only initial state. A stale report does not qualify a new binary.
 
 Evidence artifacts remain local/access-controlled by default. Public repository documents contain redacted summaries and digests, never private screen captures, typed secrets or clipboard contents. An audit log must distinguish automatic assertions from a human's visual adjudication and from model-generated judgments.
 
@@ -135,7 +135,7 @@ Use independent AppKit/WKWebView/Electron input oracles and visible contact mark
 
 Repeat on 1x/2x/mixed displays, negative desktop origins, different refresh rates and display removal. Inject CPU/GPU load, AX stalls, window movement and cancellation. Verify that endpoint/button transitions survive coalescing, that backpressure obeys declared tolerance and that no high-frequency sample crosses MCP/model inference.
 
-Test Unicode, combining marks, emoji, selection/caret edits, non-US layouts, IME, physical key codes, repeats and cancelled chords. Optional clipboard paste must be explicit and compare-and-swap restoration must preserve later user changes.
+Test Unicode, combining marks, emoji, selection/caret edits, non-US layouts, IME, physical key codes, repeats and cancelled chords. Optional clipboard paste must be explicit. Default restoration is off; opt-in best-effort restoration skips detected foreign writes and reports its race limitation. Test an intervening write between check and restore; never describe this non-atomic sequence as guaranteed preservation.
 
 ### Pass criteria
 
@@ -284,4 +284,4 @@ The implementation agent must attach evidence before changing a capability's `qu
 
 ## 16. Documentation-stage validation
 
-The documentation handoff validates declaration/schema syntax, positive and negative examples, reference resolution, work-package dependencies, authority/state-model vectors, requirement coverage and exported-file hashes. It does not run the signed macOS gates above. The accompanying `qualification-status.json` starts every platform gate at `not-run`, so no future agent can mistake the design review for platform evidence.
+The documentation handoff validates declaration/schema syntax, positive and negative examples, reference resolution, work-package dependencies, authority/state-model vectors, requirement coverage and exported-file hashes. It does not run the signed macOS gates above. The accompanying `qualification-status.json` starts every platform gate at `not_run`, so no future agent can mistake the design review for platform evidence.

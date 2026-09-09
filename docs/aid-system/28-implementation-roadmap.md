@@ -2,7 +2,7 @@
 
 **Status:** implementation instructions, not completed implementation. **Design revision:** 1.1. **Repository:** `Cozea/electron-app`. **Design branch:** `feat/programmable-aids-runtime`. **Recovered documentation checkpoint:** `bcb6a07061f5ed8f9c832dd99af6fe3bc4400e6f`.
 
-This document is newly completed from the preserved subsystem specifications. It is not described as a recovered previous version. Read [MASTER](MASTER.md), [D01](01-baseline-decisions.md), [D02](02-contracts-sdk.md), [D05](05-lifecycle-authority.md), [D30](30-qualification-gates.md), and the contract artifacts before implementing a work package. [D31](31-cross-system-review.md) settles cross-subsystem interpretations; it does not silently discard the preserved designs.
+This document is newly completed from the preserved subsystem specifications. It is not described as a recovered previous version. Read [MASTER](MASTER.md), [D01](01-baseline-decisions.md), [D02](02-contracts-sdk.md), [D05](05-lifecycle-authority.md), [D30](30-qualification-gates.md), and the contract artifacts before implementing a work package. [D31](31-design-reconciliation.md) settles cross-subsystem interpretations; it does not silently discard the preserved designs.
 
 ## 1. Execution rules for an implementation agent
 
@@ -112,7 +112,7 @@ Add an urgent native stop path independent of the renderer and guest event loop.
 
 Implement intent and phase records keyed by owner, execution/operation ID and canonical payload hash. Persist the potentially-effectful boundary before the first event of an admitted operation/timeline; do not perform an fsync for every path sample. Separate durable intent, possible submission, acknowledgement and later outcome evidence.
 
-Repeated identical execution keys attach to the existing execution/result. Different content conflicts. After crash, any operation crossing the possible-submission boundary without a terminal receipt stays uncertain. Do not reconstruct the JS heap by replaying GUI effects. Keep bounded tombstones long enough for the declared retry window.
+Repeated identical execution keys attach to the existing execution/result. Different content conflicts. After crash, any operation crossing the possible-submission boundary without a terminal receipt stays uncertain. Do not reconstruct the JS heap by replaying GUI effects. Retain a compact admission index until the workspace generation closes; response bodies can expire separately. At quota, reject new admissions before effects instead of evicting accepted retry keys. Closed generations reject old requests without recreating their workspace.
 
 **Exit:** disk-full, lost reply, duplicate ID, crash-before-submit and crash-after-submit fixtures produce the specified receipts without an extra effect. Schema/state-model tests pass before live integration.
 
@@ -152,7 +152,7 @@ Choose the backend before effects. Only a definitely not-submitted unsupported r
 
 Implement Unicode text, logical chords and physical key events as distinct contracts. A root keyboard facade is bound only by an explicit successful target preparation; it does not follow arbitrary user focus. Preserve caret/selection and diagnose IME/secure-input limitations honestly.
 
-Clipboard operations require their own grant and explicit mode. A restore is compare-and-swap against the change count/value written by Cozea; do not overwrite an intervening user clipboard change. Password/secure fields and clipboard reads have privacy-specific tests.
+Clipboard operations require their own grant and explicit mode. Restoration defaults off. An explicitly requested best-effort restore checks change count/owned marker and skips detected foreign writes; NSPasteboard offers no atomic compare-and-swap guarantee. Strict noninterference requires leaving restoration to the user. Password/secure fields and clipboard reads have privacy-specific tests.
 
 **Exit:** non-US layouts, emoji, combining characters, selection, repeats, cancel-between-down/up and changed focus pass qualified fixtures. Unsupported IME paths stay unqualified rather than silently appending text through AX.
 
@@ -324,7 +324,7 @@ Default telemetry records IDs/counters/timing, not screen text, code payloads, i
 
 ### W29 — Signed end-to-end fixture qualification
 
-**Dependencies:** W13, W19, W22, W24, W27, W28.
+**Dependencies:** W13, W19, W22, W24, W27, W28, W32.
 
 Run the signed app through the independent AppKit/WKWebView/Electron oracles. Exercise G01–G08 together so cross-layer races are tested rather than only mocked away. Record actual source/toolchain signatures, permission decisions and all skipped/failed cases.
 

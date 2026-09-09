@@ -1,6 +1,6 @@
 # D11 — Coordinate frames, target dependencies and stable surfaces
 
-**Purpose:** remove v2's observe/stroke/observe lockstep without making stale screenshots universally authoritative. **Baseline:** `CoordinateLeaseGuard` requires equal observed and input versions; any input invalidates all subsequent screenshot coordinates. **Source substrate:** [S11–S15](29-research-register.md#s11), coordinate conversion [S19](29-research-register.md#s19). The dependency system itself is a Cozea design.
+**Purpose:** remove v2's observe/stroke/observe lockstep without making stale screenshots universally authoritative. **Baseline:** `CoordinateLeaseGuard` requires equal observed and input versions; any input invalidates all subsequent screenshot coordinates. **Source substrate:** [S12](29-research-register.md#s12), [S13](29-research-register.md#s13), [S14](29-research-register.md#s14), [S15](29-research-register.md#s15), [S16](29-research-register.md#s16), coordinate conversion [S21](29-research-register.md#s21). The dependency system itself is a Cozea design.
 
 ## 1. Typed coordinate spaces
 
@@ -32,7 +32,7 @@ The system must not classify every event occurring after our action as self-gene
 
 ## 4. Surface acquisition
 
-`Observation.bindSurface({region, anchors, intent, verification})` takes an actually observed region, not invented future pixels. Bind the region to exact source identities and transforms. Anchors may include a retained AX container, stable application geometry, authorized read-only layout instrumentation, or qualified visual landmarks. Record which evidence sources are available and their uncertainty/notification coverage.
+`Observation.bindSurface({region, anchors, intent, requiredCoverage})` takes an actually observed region, not invented future pixels. Bind the region to exact source identities and transforms. Anchors may include a retained AX container, stable application geometry, authorized read-only layout instrumentation, or qualified visual landmarks. Record which evidence sources are available and their uncertainty/notification coverage.
 
 A `surfaceId` is scoped to a live control epoch. Default age limit is 30 seconds and 20 completed gestures before a **local contract revalidation**, not necessarily a new image export or model turn. The trusted host can renew limits after revalidation; callers can request stronger initial profiles for longer work. Do not make twenty gestures an arbitrary permanent product restriction.
 

@@ -1,6 +1,6 @@
 # D17 — Cozea host, provider adapters and stateless protocol integration
 
-**Purpose:** preserve the native AID contract across T3, model providers, MCP revisions and asynchronous task lifecycles. **Baseline:** `ComputerUseRuntimeService.ts`, pinned T3 `computerUse.ts` at `be4668f7b439499f39a659055d0f6ec34ac666b2`, and Cozea's catalogue patch. **Sources:** [S01–S02](29-research-register.md#s01), [S32–S34](29-research-register.md#s32), trace [S28](29-research-register.md#s28).
+**Purpose:** preserve the native AID contract across T3, model providers, MCP revisions and asynchronous task lifecycles. **Baseline:** `ComputerUseRuntimeService.ts`, pinned T3 `computerUse.ts` at `be4668f7b439499f39a659055d0f6ec34ac666b2`, and Cozea's catalogue patch. **Sources:** [S01](29-research-register.md#s01), [S02](29-research-register.md#s02), [S48](29-research-register.md#s48), [S49](29-research-register.md#s49), [S50](29-research-register.md#s50), trace [S28](29-research-register.md#s28).
 
 ## 1. Protocol-neutral authority
 
@@ -36,7 +36,7 @@ A resumed input answer resolves a stored checkpoint once. It never retries `comp
 
 The same `EvidencePacket` is converted into the actual provider protocol, preserving tool-call IDs and provenance. An image artifact ID or base64 text embedded in a JSON string is not automatically a visual input. Each qualified provider must receive a real supported image content part and have a test showing the model can inspect it.
 
-OpenAI Responses supports tool output that may be text or supported multimodal content; use its exact pinned shape and preserve `call_id`. Anthropic tool results use their specified message/content structure and matching tool-use IDs. Google's Gemini APIs have different surfaces: Interactions function-result content is not interchangeable with `generateContent` function-response parts. Select the adapter for the actual provider API/SDK in use, not the model marketing name. [S32–S34](29-research-register.md#s32).
+OpenAI Responses supports tool output that may be text or supported multimodal content; use its exact pinned shape and preserve `call_id`. Anthropic tool results use their specified message/content structure and matching tool-use IDs. Google's Gemini APIs have different surfaces: Interactions function-result content is not interchangeable with `generateContent` function-response parts. Select the adapter for the actual provider API/SDK in use, not the model marketing name. [S48](29-research-register.md#s48), [S49](29-research-register.md#s49), [S50](29-research-register.md#s50).
 
 The user's Gemini model may be reached through an existing Cozea provider kind. Do not invent a new provider type solely for a model identifier. Test the real chain, including T3's result handling and any intermediate CLI. A wrapper that strips images must report a capability limitation rather than claiming screenshot support because native PNG generation works.
 
@@ -59,3 +59,6 @@ Host UI receives a bounded typed event stream: execution state, target, operatio
 Keep `ComputerUseRuntimeService.ts` as a thin compatibility/lifecycle facade during development, routing to `packages/aid-host`. Replace the effective tool catalogue through a source-controlled integration module or deterministic reviewed patch, not by editing generated installed files ad hoc. Changes in vendored T3 require a deliberate source commit/gitlink or an exact documented patch manifest and validation; do not repin Effect packages to solve unrelated types.
 
 **HOST-01:** six tools match generated contracts and policy. **HOST-02:** execution outlives reply window but not lost-host authority. **HOST-03:** explicit tool result images reach each provider. **HOST-04:** same-context checkpoint resumes once. **HOST-05:** duplicate task/response delivery does not replay effects. **HOST-06:** terminal turn hooks respect epoch/task bindings. **HOST-07:** unsupported extension negotiates the explicit-envelope adapter honestly. **HOST-08:** scheduled denial cannot be bypassed through `exec` or nested devices. **HOST-09:** cancelled task shows stopping until native quiescence. **HOST-10:** old nine-tool catalogue cannot accidentally coexist as an unguarded alternate path after cutover. Gate G03 includes real pinned T3 bundle tests, not mocked schemas alone.
+
+
+Provider-path qualification must distinguish ordinary Anthropic client tool results (which can contain supported image blocks) from its programmatic-tool-call answers (text-only). Keep AID image-bearing checkpoints on the former or another explicitly qualified image pathway. No descriptor-to-text fallback may be reported as image delivery. [S49](29-research-register.md#s49).

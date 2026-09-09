@@ -1,0 +1,157 @@
+{
+  "revision": "1.1",
+  "execution": {
+    "initial": "queued",
+    "terminal": [
+      "completed",
+      "failed",
+      "cancelled",
+      "lost",
+      "interrupted-after-possible-effect"
+    ],
+    "transitions": {
+      "queued": [
+        "running",
+        "stopping",
+        "failed",
+        "lost"
+      ],
+      "running": [
+        "waiting-for-condition",
+        "waiting-for-model",
+        "waiting-for-user",
+        "paused",
+        "stopping",
+        "completed",
+        "failed",
+        "lost",
+        "interrupted-after-possible-effect"
+      ],
+      "waiting-for-condition": [
+        "running",
+        "stopping",
+        "failed",
+        "lost",
+        "interrupted-after-possible-effect"
+      ],
+      "waiting-for-model": [
+        "running",
+        "stopping",
+        "failed",
+        "lost",
+        "interrupted-after-possible-effect"
+      ],
+      "waiting-for-user": [
+        "running",
+        "stopping",
+        "failed",
+        "lost",
+        "interrupted-after-possible-effect"
+      ],
+      "paused": [
+        "running",
+        "stopping",
+        "failed",
+        "lost"
+      ],
+      "stopping": [
+        "cancelled",
+        "failed",
+        "lost",
+        "interrupted-after-possible-effect"
+      ],
+      "completed": [],
+      "failed": [],
+      "cancelled": [],
+      "lost": [],
+      "interrupted-after-possible-effect": []
+    }
+  },
+  "control": {
+    "initial": "pending",
+    "terminal": [
+      "closed"
+    ],
+    "transitions": {
+      "pending": [
+        "active",
+        "expired",
+        "closed"
+      ],
+      "active": [
+        "revoking",
+        "expired"
+      ],
+      "revoking": [
+        "quiescent",
+        "expired"
+      ],
+      "quiescent": [
+        "closed"
+      ],
+      "expired": [
+        "quiescent",
+        "closed"
+      ],
+      "closed": []
+    }
+  },
+  "checkpoint": {
+    "initial": "pending",
+    "terminal": [
+      "settled",
+      "expired",
+      "rejected",
+      "lost"
+    ],
+    "transitions": {
+      "pending": [
+        "accepted",
+        "expired",
+        "rejected",
+        "lost"
+      ],
+      "accepted": [
+        "settled",
+        "rejected",
+        "lost"
+      ],
+      "settled": [],
+      "expired": [],
+      "rejected": [],
+      "lost": []
+    }
+  },
+  "invariants": [
+    "Only active control with current epoch may admit a new effect.",
+    "Checkpoint publication, paused, completed and cancelled require confirmed input quiescence. Lost/failed/interrupted can report quiescent:false until the independent supervisor confirms cleanup; they never admit more input.",
+    "Control expired forbids admission but does not by itself confirm physical quiescence.",
+    "Checkpoint answer accepted at most once; exact duplicate attaches; changed duplicate conflicts.",
+    "Possible submission never permits automatic effect retry.",
+    "A lost guest does not replay a prefix to restore its heap."
+  ],
+  "capture": {
+    "initial": "starting",
+    "terminal": [
+      "stopped",
+      "failed"
+    ],
+    "transitions": {
+      "starting": [
+        "warm",
+        "retiring",
+        "failed"
+      ],
+      "warm": [
+        "retiring",
+        "failed"
+      ],
+      "retiring": [
+        "stopped",
+        "failed"
+      ],
+      "stopped": [],
+      "failed": []
+    }
+  }
+}

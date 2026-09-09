@@ -1,6 +1,6 @@
 # D19 — Threat model, authority confinement and evidence privacy
 
-**Purpose:** allow expressive generated programs without ambient host privilege or misleading security claims. **Sources:** Wasmtime [S04–S05](29-research-register.md#s04), NodeVM/Electron [S08–S09](29-research-register.md#s08), Apple sandbox/signing [S23–S26](29-research-register.md#s23).
+**Purpose:** allow expressive generated programs without ambient host privilege or misleading security claims. **Sources:** Wasmtime [S04](29-research-register.md#s04), [S06](29-research-register.md#s06), NodeVM/Electron [S46](29-research-register.md#s46), [S25](29-research-register.md#s25), Apple sandbox/signing [S09](29-research-register.md#s09), [S10](29-research-register.md#s10), [S23](29-research-register.md#s23), [S24](29-research-register.md#s24).
 
 ## 1. Threat model
 

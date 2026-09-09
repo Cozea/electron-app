@@ -1,0 +1,79 @@
+{
+  "revision": "1.1",
+  "runtimeImplemented": false,
+  "profile": "macOS26-apple-silicon-initial",
+  "gates": [
+    {
+      "id": "G01",
+      "title": "Signed topology, IPC and permission attribution",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G02",
+      "title": "Resident JavaScript semantics and isolation",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G03",
+      "title": "T3/provider/protocol/image/checkpoint delivery",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G04",
+      "title": "Authority, liveness, input ownership and native stop",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G05",
+      "title": "Devices, timelines and truthful cursor",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G06",
+      "title": "Semantic and spatial dependency validity",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G07",
+      "title": "Capture ownership, freshness and artifact races",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G08",
+      "title": "Security, privacy and human approval",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G09",
+      "title": "Verified task outcomes and measured infrastructure overhead",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G10",
+      "title": "Optional memory/debug/demonstration/planning",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G11",
+      "title": "Independent seats",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "G12",
+      "title": "Extended devices",
+      "status": "not_run",
+      "evidence": []
+    }
+  ]
+}

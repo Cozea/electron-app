@@ -1,0 +1,1009 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cozea.invalid/aid-design/1.1/values.schema.json",
+  "title": "Transferable AID values; native method args additionally require generated method validation",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/point"
+    },
+    {
+      "$ref": "#/$defs/frame"
+    },
+    {
+      "$ref": "#/$defs/failure"
+    },
+    {
+      "$ref": "#/$defs/receipt"
+    },
+    {
+      "$ref": "#/$defs/checkpoint"
+    },
+    {
+      "$ref": "#/$defs/nativeRequest"
+    },
+    {
+      "$ref": "#/$defs/observation"
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:~-]*$"
+    },
+    "counter": {
+      "type": "string",
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "rect": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "point": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "point"
+        },
+        "frameId": {
+          "$ref": "#/$defs/id"
+        },
+        "transformGeneration": {
+          "$ref": "#/$defs/counter"
+        },
+        "units": {
+          "enum": [
+            "normalized",
+            "image-pixels",
+            "window-points",
+            "display-points",
+            "desktop-points"
+          ]
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "frameId",
+        "transformGeneration",
+        "units",
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "units": {
+                "const": "normalized"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "x": {
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "frame": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "generation": {
+          "$ref": "#/$defs/counter"
+        },
+        "parentId": {
+          "$ref": "#/$defs/id"
+        },
+        "units": {
+          "enum": [
+            "normalized",
+            "image-pixels",
+            "window-points",
+            "display-points",
+            "desktop-points"
+          ]
+        },
+        "bounds": {
+          "$ref": "#/$defs/rect"
+        },
+        "toParent": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "generation",
+        "units",
+        "bounds",
+        "toParent"
+      ],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "AMBIGUOUS_TARGET",
+            "BASE_EXPIRED",
+            "CANCELLED",
+            "CAPTURE_CAPACITY",
+            "CHECKPOINT_EXPIRED",
+            "CLEANUP_FAILED",
+            "CONTROL_EXPIRED",
+            "DEADLINE_EXCEEDED",
+            "DELIVERY_UNCERTAIN",
+            "DEPENDENCY_CHANGED",
+            "DRIVER_LOST",
+            "FOCUS_CHANGED",
+            "INCOMPLETE_EVIDENCE",
+            "INTERNAL",
+            "INVALID_ARGUMENT",
+            "NO_USABLE_WINDOW",
+            "PREDICATE_BUDGET",
+            "REQUEST_CONFLICT",
+            "RESOURCE_EXPIRED",
+            "RESOURCE_LIMIT",
+            "RESOURCE_NOT_FOUND",
+            "SEAT_BUSY",
+            "STALE_TARGET",
+            "UNAUTHORIZED",
+            "UNQUALIFIED_CAPABILITY",
+            "UNSAFE_CHECKPOINT",
+            "UNSUPPORTED_CAPABILITY",
+            "USER_TAKEOVER",
+            "WORKSPACE_BUSY",
+            "WORKSPACE_LOST"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "phase": {
+          "enum": [
+            "admission",
+            "validation",
+            "approach",
+            "dispatch",
+            "observation",
+            "checkpoint",
+            "cleanup",
+            "transport",
+            "guest"
+          ]
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "submission": {
+          "enum": [
+            "not_submitted",
+            "submitted",
+            "submission_uncertain"
+          ]
+        },
+        "canRetryAutomatically": {
+          "type": "boolean"
+        },
+        "details": {
+          "$ref": "#/$defs/json"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "phase",
+        "submission",
+        "canRetryAutomatically"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "submission": {
+                "enum": [
+                  "submitted",
+                  "submission_uncertain"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "canRetryAutomatically": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "receipt": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/counter"
+        },
+        "phase": {
+          "enum": [
+            "admission",
+            "validation",
+            "approach",
+            "dispatch",
+            "observation",
+            "checkpoint",
+            "cleanup",
+            "transport",
+            "guest"
+          ]
+        },
+        "route": {
+          "enum": [
+            "foreground-event",
+            "semantic-ax",
+            "targeted-event",
+            "sky",
+            "window-control",
+            "clipboard",
+            "none"
+          ]
+        },
+        "submission": {
+          "enum": [
+            "not_submitted",
+            "submitted",
+            "submission_uncertain"
+          ]
+        },
+        "evidence": {
+          "enum": [
+            "not_checked",
+            "change_observed",
+            "no_change_observed",
+            "inconclusive"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "unverified",
+            "verified",
+            "failed"
+          ]
+        },
+        "canRetryAutomatically": {
+          "type": "boolean"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "$ref": "#/$defs/id"
+            },
+            "windowId": {
+              "$ref": "#/$defs/id"
+            },
+            "elementId": {
+              "$ref": "#/$defs/id"
+            },
+            "surfaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "generation": {
+              "$ref": "#/$defs/counter"
+            }
+          },
+          "required": [
+            "generation"
+          ],
+          "additionalProperties": false
+        },
+        "after": {
+          "$ref": "#/$defs/barrier"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "uniqueItems": true,
+          "maxItems": 256
+        },
+        "verification": {
+          "type": "object",
+          "properties": {
+            "predicate": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "evidenceIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "predicate",
+            "evidenceIds"
+          ],
+          "additionalProperties": false
+        },
+        "failure": {
+          "$ref": "#/$defs/failure"
+        },
+        "timingsMs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "operationId",
+        "executionId",
+        "sequence",
+        "phase",
+        "route",
+        "submission",
+        "evidence",
+        "outcome",
+        "canRetryAutomatically",
+        "after",
+        "evidenceIds",
+        "timingsMs",
+        "warnings"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "submission": {
+                "enum": [
+                  "submitted",
+                  "submission_uncertain"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "canRetryAutomatically": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "verified",
+                  "failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "verification"
+            ],
+            "properties": {
+              "evidenceIds": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "model-decision",
+            "human-approval"
+          ]
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "schema": {
+          "type": "object"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "maxItems": 256
+        },
+        "dependencyDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "executionId",
+        "question",
+        "schema",
+        "evidenceIds",
+        "dependencyDigest",
+        "expiresAtMs"
+      ],
+      "additionalProperties": false
+    },
+    "nativeRequest": {
+      "type": "object",
+      "properties": {
+        "apiRevision": {
+          "const": "1.1"
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "controlId": {
+          "$ref": "#/$defs/id"
+        },
+        "controlEpoch": {
+          "$ref": "#/$defs/counter"
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "apiRevision",
+        "requestId",
+        "runtimeGeneration",
+        "controlId",
+        "controlEpoch",
+        "executionId",
+        "operationId",
+        "method",
+        "arguments"
+      ],
+      "additionalProperties": false
+    },
+    "json": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/json"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/json"
+          }
+        }
+      ]
+    },
+    "barrier": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/counter"
+        }
+      },
+      "required": [
+        "operationId",
+        "sequence"
+      ],
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "artifact"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1073741824
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pixelWidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixelHeight": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observationId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "runtimeGeneration",
+        "mimeType",
+        "byteLength",
+        "sha256",
+        "expiresAtMs"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "pixelWidth": [
+          "pixelHeight"
+        ],
+        "pixelHeight": [
+          "pixelWidth"
+        ]
+      }
+    },
+    "imageArtifact": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "artifact"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "mimeType": {
+          "enum": [
+            "image/png",
+            "image/jpeg"
+          ]
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1073741824
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pixelWidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixelHeight": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observationId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "runtimeGeneration",
+        "mimeType",
+        "byteLength",
+        "sha256",
+        "expiresAtMs",
+        "pixelWidth",
+        "pixelHeight",
+        "observationId"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "pixelWidth": [
+          "pixelHeight"
+        ],
+        "pixelHeight": [
+          "pixelWidth"
+        ]
+      }
+    },
+    "framedRect": {
+      "type": "object",
+      "properties": {
+        "frameId": {
+          "$ref": "#/$defs/id"
+        },
+        "transformGeneration": {
+          "$ref": "#/$defs/counter"
+        },
+        "rect": {
+          "$ref": "#/$defs/rect"
+        }
+      },
+      "required": [
+        "frameId",
+        "transformGeneration",
+        "rect"
+      ],
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "node-budget",
+              "depth-budget",
+              "time-budget",
+              "text-budget",
+              "unsupported",
+              "stale",
+              "permission",
+              "missing-base"
+            ]
+          },
+          "maxItems": 4096
+        },
+        "nodesRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "continuation": {
+          "type": "string",
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "complete",
+        "reasons",
+        "nodesRead"
+      ],
+      "additionalProperties": false
+    },
+    "observationTiming": {
+      "type": "object",
+      "properties": {
+        "captureMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "axStartedMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "axEndedMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "emittedMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "clockDomain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clockUncertaintyMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "after": {
+          "$ref": "#/$defs/barrier"
+        }
+      },
+      "required": [
+        "clockDomain",
+        "clockUncertaintyMs"
+      ],
+      "additionalProperties": false
+    },
+    "imageEvidence": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/imageArtifact"
+        },
+        "frameId": {
+          "$ref": "#/$defs/id"
+        },
+        "source": {
+          "enum": [
+            "stream",
+            "one-shot",
+            "recorded-fixture"
+          ]
+        },
+        "sourceFrameId": {
+          "$ref": "#/$defs/id"
+        },
+        "captureGeneration": {
+          "$ref": "#/$defs/counter"
+        },
+        "crop": {
+          "$ref": "#/$defs/framedRect"
+        }
+      },
+      "required": [
+        "artifact",
+        "frameId",
+        "source",
+        "sourceFrameId",
+        "captureGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "elementEvidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "windowId": {
+          "$ref": "#/$defs/id"
+        },
+        "parentId": {
+          "$ref": "#/$defs/id"
+        },
+        "role": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/json"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "selected": {
+          "type": "boolean"
+        },
+        "focused": {
+          "type": "boolean"
+        },
+        "frame": {
+          "$ref": "#/$defs/framedRect"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4096
+        },
+        "settable": {
+          "type": "boolean"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "provenance": {
+          "enum": [
+            "accessibility",
+            "pixels",
+            "model-annotation"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "windowId",
+        "role",
+        "label",
+        "actions",
+        "settable",
+        "coverage",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "observation": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "observation"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeInstanceId": {
+          "$ref": "#/$defs/id"
+        },
+        "generation": {
+          "$ref": "#/$defs/counter"
+        },
+        "windowId": {
+          "$ref": "#/$defs/id"
+        },
+        "timing": {
+          "$ref": "#/$defs/observationTiming"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "consistency": {
+          "enum": [
+            "consistent",
+            "changed-during-collection",
+            "partial"
+          ]
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/frame"
+          },
+          "maxItems": 4096
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/imageEvidence"
+          },
+          "maxItems": 4096
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/elementEvidence"
+          },
+          "maxItems": 4096
+        },
+        "baseObservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/json"
+          },
+          "maxItems": 4096
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "runtimeInstanceId",
+        "generation",
+        "timing",
+        "coverage",
+        "consistency",
+        "frames",
+        "images",
+        "elements",
+        "changes"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "x-contract-sha256": "78d10d3812d51e15a06593ef8139c115777bad7aa526e410a4c0bc788fb309ca",
+  "x-generator": "design.py/1.1"
+}

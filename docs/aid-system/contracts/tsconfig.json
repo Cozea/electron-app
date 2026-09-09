@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+    "strict": true, "noEmit": true, "skipLibCheck": false,
+    "allowJs": true, "checkJs": true, "lib": ["ES2022"],
+    "baseUrl": ".",
+    "paths": {"aid:runtime": ["./aid-sdk.d.ts"], "workspace:/geometry": ["./examples/geometry.mjs"]}
+  },
+  "include": ["aid-sdk.d.ts", "examples/*.ts", "examples/geometry.mjs"]
+}

@@ -1,0 +1,506 @@
+[
+  {
+    "document": "02-contracts-sdk.md",
+    "oldLabel": "S31",
+    "sources": [
+      "S31"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "02-contracts-sdk.md",
+    "oldLabel": "S30",
+    "sources": [
+      "S30"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "03-javascript-workspaces.md",
+    "oldLabel": "S03",
+    "sources": [
+      "S03"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "03-javascript-workspaces.md",
+    "oldLabel": "S29",
+    "sources": [
+      "S29"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "04-isolation-processes.md",
+    "oldLabel": "S03\u2013S07",
+    "sources": [
+      "S03",
+      "S04",
+      "S06",
+      "S07",
+      "S08"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "04-isolation-processes.md",
+    "oldLabel": "S08",
+    "sources": [
+      "S46"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "04-isolation-processes.md",
+    "oldLabel": "S09",
+    "sources": [
+      "S25"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "04-isolation-processes.md",
+    "oldLabel": "S23",
+    "sources": [
+      "S09"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "04-isolation-processes.md",
+    "oldLabel": "S24",
+    "sources": [
+      "S10"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "04-isolation-processes.md",
+    "oldLabel": "S05",
+    "sources": [
+      "S06"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "04-isolation-processes.md",
+    "oldLabel": "S21",
+    "sources": [
+      "S40"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "05-lifecycle-authority.md",
+    "oldLabel": "S01",
+    "sources": [
+      "S01"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "05-lifecycle-authority.md",
+    "oldLabel": "S21",
+    "sources": [
+      "S40"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "06-continuations-checkpoints.md",
+    "oldLabel": "S01\u2013S02",
+    "sources": [
+      "S01",
+      "S02"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "07-evidence-scene.md",
+    "oldLabel": "S11\u2013S15",
+    "sources": [
+      "S12",
+      "S13",
+      "S14",
+      "S15",
+      "S16"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "08-accessibility.md",
+    "oldLabel": "S11\u2013S12",
+    "sources": [
+      "S12",
+      "S13"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "08-accessibility.md",
+    "oldLabel": "S48",
+    "sources": [
+      "S37"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "09-capture-artifacts.md",
+    "oldLabel": "S13\u2013S15",
+    "sources": [
+      "S14",
+      "S15",
+      "S16"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "09-capture-artifacts.md",
+    "oldLabel": "S42\u2013S43",
+    "sources": [
+      "S16"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "09-capture-artifacts.md",
+    "oldLabel": "S14",
+    "sources": [
+      "S14"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "10-watches-servo.md",
+    "oldLabel": "S11\u2013S15",
+    "sources": [
+      "S12",
+      "S13",
+      "S14",
+      "S15",
+      "S16"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "10-watches-servo.md",
+    "oldLabel": "S35",
+    "sources": [
+      "S38"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "11-spatial-validity.md",
+    "oldLabel": "S11\u2013S15",
+    "sources": [
+      "S12",
+      "S13",
+      "S14",
+      "S15",
+      "S16"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "11-spatial-validity.md",
+    "oldLabel": "S19",
+    "sources": [
+      "S21"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "12-motor-timelines.md",
+    "oldLabel": "S17\u2013S18",
+    "sources": [
+      "S17",
+      "S18"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "12-motor-timelines.md",
+    "oldLabel": "S20",
+    "sources": [
+      "S20"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "13-keyboard-clipboard.md",
+    "oldLabel": "S17\u2013S18",
+    "sources": [
+      "S17",
+      "S18"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "13-keyboard-clipboard.md",
+    "oldLabel": "S39",
+    "sources": [
+      "S51"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "14-cursor-presentation.md",
+    "oldLabel": "S19",
+    "sources": [
+      "S21"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "14-cursor-presentation.md",
+    "oldLabel": "S20",
+    "sources": [
+      "S20"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "15-apps-windows-backends.md",
+    "oldLabel": "S16",
+    "sources": [
+      "S11"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "15-apps-windows-backends.md",
+    "oldLabel": "S11",
+    "sources": [
+      "S12"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "15-apps-windows-backends.md",
+    "oldLabel": "S17",
+    "sources": [
+      "S17"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "16-journal-recovery.md",
+    "oldLabel": "S27",
+    "sources": [
+      "S27"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "16-journal-recovery.md",
+    "oldLabel": "S30",
+    "sources": [
+      "S30"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "16-journal-recovery.md",
+    "oldLabel": "S02",
+    "sources": [
+      "S02"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "17-host-provider-protocol.md",
+    "oldLabel": "S01\u2013S02",
+    "sources": [
+      "S01",
+      "S02"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "17-host-provider-protocol.md",
+    "oldLabel": "S32\u2013S34",
+    "sources": [
+      "S48",
+      "S49",
+      "S50"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "17-host-provider-protocol.md",
+    "oldLabel": "S28",
+    "sources": [
+      "S28"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "17-host-provider-protocol.md",
+    "oldLabel": "S32\u2013S34",
+    "sources": [
+      "S48",
+      "S49",
+      "S50"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "18-human-supervision.md",
+    "oldLabel": "S09\u2013S10",
+    "sources": [
+      "S25",
+      "S47"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "18-human-supervision.md",
+    "oldLabel": "S40",
+    "sources": [
+      "S52"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "19-security-privacy.md",
+    "oldLabel": "S04\u2013S05",
+    "sources": [
+      "S04",
+      "S06"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "19-security-privacy.md",
+    "oldLabel": "S08\u2013S09",
+    "sources": [
+      "S46",
+      "S25"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "19-security-privacy.md",
+    "oldLabel": "S23\u2013S26",
+    "sources": [
+      "S09",
+      "S10",
+      "S23",
+      "S24"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "20-evaluation.md",
+    "oldLabel": "S28",
+    "sources": [
+      "S28"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "20-evaluation.md",
+    "oldLabel": "S45",
+    "sources": [
+      "S45"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "21-procedural-memory.md",
+    "oldLabel": "S44",
+    "sources": [
+      "S41"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "21-procedural-memory.md",
+    "oldLabel": "S46",
+    "sources": [
+      "S53"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "22-pipelined-planning.md",
+    "oldLabel": "S44",
+    "sources": [
+      "S41"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "23-debugger-replay.md",
+    "oldLabel": "S29",
+    "sources": [
+      "S29"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "23-debugger-replay.md",
+    "oldLabel": "S03\u2013S05",
+    "sources": [
+      "S03",
+      "S04",
+      "S06"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "24-demonstrations.md",
+    "oldLabel": "S46",
+    "sources": [
+      "S53"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "25-separate-seats.md",
+    "oldLabel": "S36",
+    "sources": [
+      "S42"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "26-extended-devices.md",
+    "oldLabel": "S37",
+    "sources": [
+      "S44"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "26-extended-devices.md",
+    "oldLabel": "S38",
+    "sources": [
+      "S43"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "27-integration-packaging.md",
+    "oldLabel": "S09\u2013S10",
+    "sources": [
+      "S25",
+      "S47"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  },
+  {
+    "document": "27-integration-packaging.md",
+    "oldLabel": "S22\u2013S26",
+    "sources": [
+      "S22",
+      "S09",
+      "S10",
+      "S23",
+      "S24"
+    ],
+    "basis": "Named API/topic in the owning sentence; original missing register numbering is not presumed recovered."
+  }
+]

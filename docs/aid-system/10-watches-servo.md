@@ -1,12 +1,12 @@
 # D10 — Programmable conditions, event-driven attention and visual servo
 
-**Purpose:** let code react to already-defined conditions at local speed, while reserving genuinely new interpretation for the model. **Sources:** AX and capture [S11–S15](29-research-register.md#s11); Apple Vision tracking [S35](29-research-register.md#s35). **Not claimed:** that arbitrary JavaScript can be compiled into a perfect incremental dependency graph, or that visual tracking guarantees semantic identity.
+**Purpose:** let code react to already-defined conditions at local speed, while reserving genuinely new interpretation for the model. **Sources:** AX and capture [S12](29-research-register.md#s12), [S13](29-research-register.md#s13), [S14](29-research-register.md#s14), [S15](29-research-register.md#s15), [S16](29-research-register.md#s16); Apple Vision tracking [S38](29-research-register.md#s38). **Not claimed:** that arbitrary JavaScript can be compiled into a perfect incremental dependency graph, or that visual tracking guarantees semantic identity.
 
 ## 1. Two classes of watch
 
 A declarative watch uses the SDK selector/condition AST, such as a uniquely named button becoming enabled within a known player region. The host can derive relevant scope subscriptions and perform targeted refreshes. An arbitrary predicate watch runs ordinary JavaScript in the worker with a bounded evidence snapshot and explicit reconciliation cadence. It has the same expressive power as code, but the host cannot infer all its dependencies reliably.
 
-API: `aid.events.until(predicate, {scope, deadlineMs, pollMs?, stableForMs?})`. `predicate` executes in the guest. A declarative selector form can be passed to `watchQuery` for native dependency optimization. A watch returns current matching evidence/handles, not authorization to act forever. Every subsequent effect revalidates at dispatch.
+API: `aid.events.until(predicate, {scope, deadlineMs, reconcileMs?, stableForMs?})`. `predicate` executes in the guest. A declarative selector form can be passed to `watchQuery` for native dependency optimization. A watch returns current matching evidence/handles, not authorization to act forever. Every subsequent effect revalidates at dispatch.
 
 ## 2. Condition evaluation semantics
 

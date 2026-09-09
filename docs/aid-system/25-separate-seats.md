@@ -1,6 +1,6 @@
 # D25 — Independent agent desktops and remote seat routing
 
-**Purpose:** eventually let a human continue working while an agent controls an independently owned desktop that the human can watch. **Sources:** Apple's macOS Virtualization guidance [S36](29-research-register.md#s36). This is an extension, not a prerequisite or workaround that conceals failure on the user's actual Mac.
+**Purpose:** eventually let a human continue working while an agent controls an independently owned desktop that the human can watch. **Sources:** Apple's macOS Virtualization guidance [S42](29-research-register.md#s42). This is an extension, not a prerequisite or workaround that conceals failure on the user's actual Mac.
 
 ## 1. Seat definition
 
@@ -48,4 +48,4 @@ Reusable skills carry environment profiles so a procedure validated locally is n
 
 Define `SeatProvider`/`SeatDirectory`/`RemoteSeatTransport` interfaces now; implement only local-login in core. Future remote provider first targets a second enrolled physical Mac before VM-specific complexity. Then qualify a VM provider using supported platform configuration.
 
-**SEAT-01:** concurrent seats do not share input/focus. **SEAT-02:** Spaces/displays are not mislabeled independent seats. **SEAT-03:** cross-seat handles fail. **SEAT-04:** preview is the actual controlled desktop and reports delay. **SEAT-05:** remote loss triggers defined stop/uncertainty. **SEAT-06:** host/guest grants and shared data remain separate. **SEAT-07:** restored VM invalidates epochs. **SEAT-08:** machine enrollment/revocation is authenticated. **SEAT-09:** emergency stop works locally on controlled seat. **SEAT-10:** supported OS/hardware/licensing constraints are recorded before release. Gate G10 applies only when enabling these providers.
+**SEAT-01:** concurrent seats do not share input/focus. **SEAT-02:** Spaces/displays are not mislabeled independent seats. **SEAT-03:** cross-seat handles fail. **SEAT-04:** preview is the actual controlled desktop and reports delay. **SEAT-05:** remote loss triggers defined stop/uncertainty. **SEAT-06:** host/guest grants and shared data remain separate. **SEAT-07:** restored VM invalidates epochs. **SEAT-08:** machine enrollment/revocation is authenticated. **SEAT-09:** emergency stop works locally on controlled seat. **SEAT-10:** supported OS/hardware/licensing constraints are recorded before release. Gate G11 applies only when enabling these providers.

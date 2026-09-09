@@ -1,6 +1,8 @@
 # Cozea AID Environment — master system design
 
-**Design revision:** 1.0, 2026-09-08. **Status:** implementation specification; native delivery, isolation, and provider compatibility still require the named qualification gates. **Repository:** `Cozea/electron-app`. **Branch:** `feat/programmable-aids-runtime`.
+**Design revision:** 1.1, reconciled 2026-09-09. **Status:** implementation specification; native delivery, isolation, and provider compatibility still require the named qualification gates. **Repository:** `Cozea/electron-app`. **Branch:** `feat/programmable-aids-runtime`.
+
+Read [the implementation handoff](HANDOFF.md) for reading order and repeatable checks, and [the completion review](DESIGN-REVIEW.md) for resolved contradictions and scenario traces.
 
 ## 0. Authority, evidence, and implementation rule
 
@@ -43,22 +45,16 @@ These invariants supersede v2's blanket observation-coherence veto, request-idle
 
 ## 3. Architecture and rates
 
-```text
-Cozea human UI / T3 / provider adapter
-       | authenticated execution and explicit evidence
-       v
-AidHost (workspace, control, execution, journal, checkpoints)
-       |                           |
-       v                           v
-restricted JS worker        native authority / stop channel
-       | typed requests             |
-       +----------------------------v
-                     Swift AID driver
-        windows / AX / capture / motor / cursor / watchdog
-                         |
-                    real desktop
-                         |
-                  bounded evidence
+```mermaid
+flowchart TD
+  UI["Human UI and provider adapter"] --> Host["AID host: workspaces and journals"]
+  Host --> Worker["Restricted JavaScript worker"]
+  Host --> Stop["Native authority and stop"]
+  Worker -->|Typed requests| Driver["Swift device driver"]
+  Stop --> Driver
+  Driver --> Desktop["Real desktop"]
+  Desktop --> Evidence["Scoped evidence and artifacts"]
+  Evidence --> Host
 ```
 
 There are three rates. The **model** operates at judgment speed. The **program** operates at event/condition speed. The **motor kernel** operates at input/presentation speed. Pixel capture can be continuous locally without continuously invoking a model. No high-frequency pointer sample traverses MCP, inference, or a JavaScript callback during a native path.
@@ -73,7 +69,7 @@ The host binds all objects to Cozea's existing **device principal** (`identityKe
 | --- | --- | --- |
 | `workspaceId` | JS realm, named module revisions, pure data | Resident until explicit close/expiry; optional pure-data save |
 | `controlId` + epoch | Allowed target/capability scope, capture ownership | Active logical UI-control episode only |
-| `executionId` | One cell/program invocation and checkpoint state | Live execution plus bounded journal/tombstone |
+| `executionId` | One cell/program invocation and checkpoint state | Live execution plus admission index retained until namespace closure |
 | `operationId` | One admitted native operation/timeline | Journaled; never reused with different content |
 | `seatId` | One foreground-input domain | Driver boot/login generation |
 | `observationId` | Immutable evidence and timing/coordinates | Explicit bounded retention |
@@ -99,9 +95,9 @@ For a pointer action, the native linearized sequence is:
 1. Verify peer, owner, control epoch, capability, seat and request identity.
 2. Resolve target dependencies and select a qualified route before submission.
 3. Acquire the physical-input permit; re-read authority after admission.
-4. Ensure the intended foreground app/window, unless using an explicitly allowed semantic/background route.
-5. Validate and prepare the real target; record durable operation intent.
-6. Present the Cozea pointer approach with the real hotspot.
+4. Durably record intent and the conservative possible-dispatch boundary before any launch, activation, window mutation or real pointer approach.
+5. Prepare and verify the intended foreground app/window under that recorded operation and selected route.
+6. Present the Cozea pointer approach with the real hotspot; this is an effect if it moves the real pointer.
 7. Revalidate target/focus/control at arrival; never trust pre-animation geometry blindly.
 8. Submit the discrete contact or an already-validated native gesture timeline.
 9. Release owned held state on normal completion, cancellation or exception.
@@ -187,4 +183,4 @@ An npm package, standalone MCP distribution, hosted service or public branding i
 
 ## 13. Initial platform qualification profile
 
-The first target to qualify is **macOS26 / Apple silicon**. This is a chosen reproducible profile, not a statement about the latest OS. No legacy macOS14/Intel support obligation is imposed by this redesign; those and newer profiles are independently qualified if useful. Public npm/standalone-MCP distribution remains deferred. This design set commits documentation, contracts and design-validation fixtures only; its12 empirical platform gates remain unrun.
+The first target to qualify is **macOS26 / Apple silicon**. This is a chosen reproducible profile, not a statement about the latest OS. No legacy macOS14/Intel support obligation is imposed by this redesign; those and newer profiles are independently qualified if useful. Public npm/standalone-MCP distribution remains deferred. This design set commits documentation, contracts and design-validation fixtures only; its 12 empirical platform gates remain unrun.

@@ -1,6 +1,6 @@
 # D18 — Human supervision, truthful feedback and immediate takeover
 
-**Purpose:** let a person understand and interrupt real computer interaction without slowing every action artificially. **Baseline seams:** `CozeaChatSurface`, `WorkbenchAssistantChatTile`, existing workbench overlay/portal rules, Computer Use settings and native cursor. **Sources:** Electron security/ports [S09–S10](29-research-register.md#s09), optional MCP Apps [S40](29-research-register.md#s40).
+**Purpose:** let a person understand and interrupt real computer interaction without slowing every action artificially. **Baseline seams:** `CozeaChatSurface`, `WorkbenchAssistantChatTile`, existing workbench overlay/portal rules, Computer Use settings and native cursor. **Sources:** Electron security/ports [S25](29-research-register.md#s25), [S47](29-research-register.md#s47), optional MCP Apps [S52](29-research-register.md#s52).
 
 ## 1. Product surface
 

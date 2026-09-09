@@ -1,0 +1,5466 @@
+{
+  "revision": "1.1",
+  "requirements": [
+    {
+      "id": "BASE-01",
+      "owner": "01-baseline-decisions.md",
+      "criterion": "a clean baseline run demonstrates that a call can return a compact receipt without capture.",
+      "workPackages": [
+        "W01",
+        "W31"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "Receipt"
+      ],
+      "implementationTestId": "BASE-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "BASE-02",
+      "owner": "01-baseline-decisions.md",
+      "criterion": "a fake-clock source test exposes owned-stream expiry at 15 seconds before the fix.",
+      "workPackages": [
+        "W01",
+        "W31"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "Receipt"
+      ],
+      "implementationTestId": "BASE-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "BASE-03",
+      "owner": "01-baseline-decisions.md",
+      "criterion": "coordinate reuse cases distinguish expected content from transform changes.",
+      "workPackages": [
+        "W01",
+        "W31"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "Receipt"
+      ],
+      "implementationTestId": "BASE-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "BASE-04",
+      "owner": "01-baseline-decisions.md",
+      "criterion": "the effective T3 catalogue is compared after the patch, not before.",
+      "workPackages": [
+        "W01",
+        "W31"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "Receipt"
+      ],
+      "implementationTestId": "BASE-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "BASE-05",
+      "owner": "01-baseline-decisions.md",
+      "criterion": "every user-reported scenario has an independent expected outcome and a limitation record.",
+      "workPackages": [
+        "W01",
+        "W31"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "Receipt"
+      ],
+      "implementationTestId": "BASE-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "BASE-06",
+      "owner": "01-baseline-decisions.md",
+      "criterion": "no private attachment is included in the docs or fixtures.",
+      "workPackages": [
+        "W01",
+        "W31"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "Receipt"
+      ],
+      "implementationTestId": "BASE-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-01",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "every device method has effect/capability/cancellation metadata.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-02",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "generated files byte-match on two clean machines.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-03",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "coordinate-free/mixed-frame inputs, non-finite values and over-limit frames reject before allocation.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-04",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "cross-owner and stale-generation handles reject even with correct IDs.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-05",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "method docs, TypeScript call and Swift route share one argument fixture.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-06",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "reordered equivalent object keys hash identically while changed arguments conflict.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-07",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "image and path transfers do not enter control logs or block revocation.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "API-08",
+      "owner": "02-contracts-sdk.md",
+      "criterion": "unknown methods fail without dynamic dispatch to arbitrary Swift/Node symbols.",
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "contractTypes": [
+        "Aid",
+        "HostRequest",
+        "HostResult"
+      ],
+      "implementationTestId": "API-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-01",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "export a closure, import it in two later cells, and verify state persists without re-evaluation.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-02",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "duplicate cell-local `const` names do not collide.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-03",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "a failed cell publishes no new namespace but reports already executed effects.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-04",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "identical idempotency key never repeats an effect; a new key intentionally can.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-05",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "denied filesystem/URL/native-module imports fail.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-06",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "infinite loop and infinite microtasks are independently interruptible.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-07",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "checkpoint resume preserves local variables without replay.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-08",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "worker death expires promises/handles and cancels control.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-09",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "exports inspection does not execute getters.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JS-10",
+      "owner": "03-javascript-workspaces.md",
+      "criterion": "image-result Promise carries an artifact reference, not base64 copied into every heap snapshot. Gate G02 qualifies these before a model can run generated code on a real desktop.",
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "JS-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-01",
+      "owner": "04-isolation-processes.md",
+      "criterion": "guest cannot open a file/socket/process/Node global through any import.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-02",
+      "owner": "04-isolation-processes.md",
+      "criterion": "malformed lengths, prototypes and oversize messages cannot crash the driver.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-03",
+      "owner": "04-isolation-processes.md",
+      "criterion": "wrong-signed XPC peer and forged launch nonce reject.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-04",
+      "owner": "04-isolation-processes.md",
+      "criterion": "busy-loop guest does not delay native revoke.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-05",
+      "owner": "04-isolation-processes.md",
+      "criterion": "denied capture/input has no “helpful” alternate route.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-06",
+      "owner": "04-isolation-processes.md",
+      "criterion": "driver and worker crashes are distinguishable in receipts.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-07",
+      "owner": "04-isolation-processes.md",
+      "criterion": "signed relocated app works with intended TCC identity, no developer machine grants assumed.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ISO-08",
+      "owner": "04-isolation-processes.md",
+      "criterion": "custom guest bytecode/native extension load is rejected. W04/W05 implement this boundary before model-generated code reaches a real target.",
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "contractTypes": [
+        "WireNativeRequest",
+        "WireBudget"
+      ],
+      "implementationTestId": "ISO-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G02"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-01",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "pure helper survives control close while input/capture calls through old proxies fail.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-02",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "control remains active over 60 seconds without screenshot requests while valid host heartbeat continues.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-03",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "host channel loss revokes within the configured lease.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-04",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "two agents cannot interleave physical input on one seat.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-05",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "cancellation before permit acquisition never submits input.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-06",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "revocation during cursor travel prevents contact.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-07",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "checkpoint continuation does not receive premature provider-turn teardown.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-08",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "late old turn-end/heartbeat cannot cancel or revive a newer epoch.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-09",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "releasing one capture owner preserves another.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "LIFE-10",
+      "owner": "05-lifecycle-authority.md",
+      "criterion": "wake, driver restart and permission loss invalidate live grants without deleting opted-in pure data. These tests precede any claim of reconnectable, persistent control.",
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "contractTypes": [
+        "Resource",
+        "WireControlStatus",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "LIFE-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-01",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "two preceding clicks occur once across a decision and response.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-02",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "duplicate identical responses resume once.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-03",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "conflicting response rejected.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-04",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "button-held checkpoint is cleaned up and rejected.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-05",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "target replacement invalidates a selected choice.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-06",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "lost response recovered through inspect without replay.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-07",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "provider-ready event during a valid checkpoint does not tear down capture/control.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-08",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "real stop during the same state does tear down.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-09",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "worker loss never transparently recreates a continuation.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CP-10",
+      "owner": "06-continuations-checkpoints.md",
+      "criterion": "images arrive as actual multimodal content for every qualified provider. Gate G03 must pass before exposing `decide` as supported.",
+      "workPackages": [
+        "W24"
+      ],
+      "contractTypes": [
+        "DecisionRequest",
+        "WireCheckpoint",
+        "WireRespond"
+      ],
+      "implementationTestId": "CP-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-01",
+      "owner": "07-evidence-scene.md",
+      "criterion": "scoped observation can be expanded to raw data with stable provenance.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-02",
+      "owner": "07-evidence-scene.md",
+      "criterion": "`.one()` rejects ambiguous matches.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-03",
+      "owner": "07-evidence-scene.md",
+      "criterion": "crop-to-input roundtrip is exact within declared tolerance.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-04",
+      "owner": "07-evidence-scene.md",
+      "criterion": "lost delta base triggers a full request.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-05",
+      "owner": "07-evidence-scene.md",
+      "criterion": "truncation is not interpreted as deletion.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-06",
+      "owner": "07-evidence-scene.md",
+      "criterion": "AX/pixel mismatch is represented, not hidden.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-07",
+      "owner": "07-evidence-scene.md",
+      "criterion": "one principal cannot query another's observation IDs.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-08",
+      "owner": "07-evidence-scene.md",
+      "criterion": "no extra image encoding occurs after ordinary input.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-09",
+      "owner": "07-evidence-scene.md",
+      "criterion": "checkpoint pins respect budgets and expire honestly.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EV-10",
+      "owner": "07-evidence-scene.md",
+      "criterion": "selector evaluation cannot hang the driver. The same tests run with deliberately weak AX fixtures and dynamic labels.",
+      "workPackages": [
+        "W17"
+      ],
+      "contractTypes": [
+        "Observation",
+        "WireObservation",
+        "Coverage"
+      ],
+      "implementationTestId": "EV-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06",
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-01",
+      "owner": "08-accessibility.md",
+      "criterion": "every node read/action query/settable check obeys remaining budget.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-02",
+      "owner": "08-accessibility.md",
+      "criterion": "app A hang does not block app B or native stop.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-03",
+      "owner": "08-accessibility.md",
+      "criterion": "dynamic progress text does not prevent stable button validation.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-04",
+      "owner": "08-accessibility.md",
+      "criterion": "same-position label/action replacement invalidates semantics.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-05",
+      "owner": "08-accessibility.md",
+      "criterion": "huge/virtualized/cyclic trees return bounded partial results.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-06",
+      "owner": "08-accessibility.md",
+      "criterion": "destroyed refs and PID reuse are rejected.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-07",
+      "owner": "08-accessibility.md",
+      "criterion": "incomplete notification support is disclosed and reconciled.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-08",
+      "owner": "08-accessibility.md",
+      "criterion": "raw anonymous actions survive formatting.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-09",
+      "owner": "08-accessibility.md",
+      "criterion": "modifier/clipboard fallback never occurs after uncertain AX action.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "AX-10",
+      "owner": "08-accessibility.md",
+      "criterion": "callbacks retain safe lifetimes through observer teardown and do not leak process records. Keep baseline tests and add permissioned AppKit, WKWebView and Electron fixtures.",
+      "workPackages": [
+        "W16"
+      ],
+      "contractTypes": [
+        "Query",
+        "Element",
+        "ElementSelection"
+      ],
+      "implementationTestId": "AX-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-01",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "same stream survives 60 seconds of valid task activity without screenshots.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-02",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "no owner means deterministic stop; another owner's release does not interrupt remaining owners.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-03",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "capacity cannot silently evict an active stream.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-04",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "late startup/frame callback after reset is ignored and stopped.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-05",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "unchanged/idle evidence is distinguished from a new image and from stale evidence.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-06",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "crop transforms and mixed-scale capture match input geometry.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-07",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "exactly requested encodings/exports occur, none after ordinary actions.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-08",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "capture stop on revoke/sleep/host loss is measured.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-09",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "sharing UI never changes the bound source.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CAP-10",
+      "owner": "09-capture-artifacts.md",
+      "criterion": "slow consumer, OOM and encoder cancellation remain bounded. Gate G07 includes actual signed-app permissions and recorded stream starts/stops.",
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "contractTypes": [
+        "Artifact",
+        "ImageEvidence",
+        "WireArtifact"
+      ],
+      "implementationTestId": "CAP-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G07"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WATCH-01",
+      "owner": "10-watches-servo.md",
+      "criterion": "a button-enable event wakes a condition without a model call.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "WATCH-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WATCH-02",
+      "owner": "10-watches-servo.md",
+      "criterion": "duplicate events cannot produce duplicate effects.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "WATCH-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WATCH-03",
+      "owner": "10-watches-servo.md",
+      "criterion": "slow/throwing/infinite predicates cannot block stop.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "WATCH-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WATCH-04",
+      "owner": "10-watches-servo.md",
+      "criterion": "missing AX notifications are reconciled and coverage is disclosed.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "WATCH-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WATCH-05",
+      "owner": "10-watches-servo.md",
+      "criterion": "a vanished/ambiguous target does not resolve as a new lookalike.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "WATCH-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WATCH-06",
+      "owner": "10-watches-servo.md",
+      "criterion": "all watches end or become inert when their execution/control ends.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "WATCH-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WATCH-07",
+      "owner": "10-watches-servo.md",
+      "criterion": "steady-state unrelated updates do not trigger full-tree recapture.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "WATCH-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SERVO-01",
+      "owner": "10-watches-servo.md",
+      "criterion": "track bounded motion with measured error/latency.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "SERVO-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SERVO-02",
+      "owner": "10-watches-servo.md",
+      "criterion": "occlusion/identity loss stops before additional input.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "SERVO-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SERVO-03",
+      "owner": "10-watches-servo.md",
+      "criterion": "late trajectory chunks release held state. Servo is an extension gate, not a blocker for basic condition watches.",
+      "workPackages": [
+        "W20"
+      ],
+      "contractTypes": [
+        "Events",
+        "Watch"
+      ],
+      "implementationTestId": "SERVO-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-01",
+      "owner": "11-spatial-validity.md",
+      "criterion": "image/crop/window/display mappings roundtrip at 1×/2× and mixed negative-origin layouts.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-02",
+      "owner": "11-spatial-validity.md",
+      "criterion": "own ink allows repeated strokes without image export.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-03",
+      "owner": "11-spatial-validity.md",
+      "criterion": "unrelated status tick does not block a stable semantic target.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-04",
+      "owner": "11-spatial-validity.md",
+      "criterion": "Save-to-Send label change blocks old intent.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-05",
+      "owner": "11-spatial-validity.md",
+      "criterion": "scroll/zoom/move/document replacement invalidates the correct frame.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-06",
+      "owner": "11-spatial-validity.md",
+      "criterion": "modal/occlusion/takeover stops a held gesture.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-07",
+      "owner": "11-spatial-validity.md",
+      "criterion": "weak coverage is surfaced and cannot be upgraded by an ID alone.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-08",
+      "owner": "11-spatial-validity.md",
+      "criterion": "out-of-bounds/nonfinite/singular transforms fail before input.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-09",
+      "owner": "11-spatial-validity.md",
+      "criterion": "expired epoch cannot renew a surface.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SPACE-10",
+      "owner": "11-spatial-validity.md",
+      "criterion": "explicit reacquisition creates a new handle and never silently remaps an index.",
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "contractTypes": [
+        "Point",
+        "CoordinateFrame",
+        "SurfaceBinding"
+      ],
+      "implementationTestId": "SPACE-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-01",
+      "owner": "12-motor-timelines.md",
+      "criterion": "exactly one down, faithful timed samples and one up for a stroke.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-02",
+      "owner": "12-motor-timelines.md",
+      "criterion": "modifiers overlap the declared path interval only.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-03",
+      "owner": "12-motor-timelines.md",
+      "criterion": "cancellation at every event boundary stops admission and releases owned state.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-04",
+      "owner": "12-motor-timelines.md",
+      "criterion": "infinite guest loop cannot prevent cleanup.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-05",
+      "owner": "12-motor-timelines.md",
+      "criterion": "backpressure preserves endpoints/corners or reports failure.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-06",
+      "owner": "12-motor-timelines.md",
+      "criterion": "frame/event skew is measured, not inferred from callback order.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-07",
+      "owner": "12-motor-timelines.md",
+      "criterion": "gesture geometry is not replaced by approach easing.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-08",
+      "owner": "12-motor-timelines.md",
+      "criterion": "invalid/out-of-scope paths cause zero effects.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-09",
+      "owner": "12-motor-timelines.md",
+      "criterion": "streamed chunk starvation yields one cleanup release.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "MOTOR-10",
+      "owner": "12-motor-timelines.md",
+      "criterion": "same-seat competing calls cannot interleave. G04/G05 use live AppKit/WebKit/Electron and drawing applications; Notes remains a separately reported result.",
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "contractTypes": [
+        "Pointer",
+        "Timeline",
+        "Receipt"
+      ],
+      "implementationTestId": "MOTOR-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "KEY-01",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "emoji/combining/CJK chunks are not split or duplicated.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "KEY-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "KEY-02",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "caret/selection semantics preserved.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "KEY-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "KEY-03",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "a windowless app shortcut can create a window under an app grant.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "KEY-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "KEY-04",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "focus takeover stops remaining text.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "KEY-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "KEY-05",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "cancellation releases only owned modifier state.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "KEY-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "KEY-06",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "unsupported layout/IME profile fails honestly.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "KEY-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "KEY-07",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "custom editor roles can qualify without lying about AX support.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "KEY-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CLIP-01",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "no read/write without the corresponding grant.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "CLIP-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CLIP-02",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "foreign clipboard changes are not overwritten by default.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "CLIP-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CLIP-03",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "paste really traverses the foreground UI.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "CLIP-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CLIP-04",
+      "owner": "13-keyboard-clipboard.md",
+      "criterion": "permission change and oversized/malformed formats fail safely.",
+      "workPackages": [
+        "W12"
+      ],
+      "contractTypes": [
+        "Keyboard",
+        "Clipboard",
+        "Receipt"
+      ],
+      "implementationTestId": "CLIP-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-01",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "vector tip is origin under all transforms.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-02",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "logical size is consistent across backing scales.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-03",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "input never precedes qualified visible arrival.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-04",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "held path and event path share samples.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-05",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "main-run-loop timer remains responsive.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-06",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "overlay cannot acquire focus or receive mouse input.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-07",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "takeover does not warp/reclaim.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-08",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "reduced-motion and presentation modes preserve correctness.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-09",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "glyph/halo size and orientation are reviewed in actual signed app at both scales.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "CUR-10",
+      "owner": "14-cursor-presentation.md",
+      "criterion": "no proprietary reference asset is required at runtime.",
+      "workPackages": [
+        "W10"
+      ],
+      "contractTypes": [
+        "MoveOptions",
+        "PathOptions",
+        "CursorPacing"
+      ],
+      "implementationTestId": "CUR-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WIN-01",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "windowless Finder is prepared through UI-capable app operations.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "WIN-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WIN-02",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "sharing indicator is excluded without rejecting legitimate small dialogs.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "WIN-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WIN-03",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "multiple windows require explicit unambiguous selection.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "WIN-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WIN-04",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "app/PID/window reuse invalidates handles.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "WIN-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WIN-05",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "activation is verified and never calls the driver's own NSApp by mistake.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "WIN-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "WIN-06",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "modal lineage blocks old-surface input.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "WIN-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ROUTE-01",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "all foreground device classes have qualified public paths.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "ROUTE-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ROUTE-02",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "uncertain dispatch never causes automatic second-route input.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "ROUTE-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ROUTE-03",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "private missing-symbol and OS-policy failures are distinct.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "ROUTE-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "ROUTE-04",
+      "owner": "15-apps-windows-backends.md",
+      "criterion": "mode/settings revoke immediately. G05/G06/G09 record actual Finder/Safari/drawing outcomes rather than inferring them from source builds.",
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "contractTypes": [
+        "AppQuery",
+        "PreparedApp",
+        "Window"
+      ],
+      "implementationTestId": "ROUTE-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G05",
+        "G06"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-01",
+      "owner": "16-journal-recovery.md",
+      "criterion": "lost response never duplicates effects.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-02",
+      "owner": "16-journal-recovery.md",
+      "criterion": "same key/different code conflicts.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-03",
+      "owner": "16-journal-recovery.md",
+      "criterion": "fault injection at every journal/dispatch boundary yields correct certainty.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-04",
+      "owner": "16-journal-recovery.md",
+      "criterion": "disk full prevents unjournaled input.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-05",
+      "owner": "16-journal-recovery.md",
+      "criterion": "old-generation callbacks are rejected.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-06",
+      "owner": "16-journal-recovery.md",
+      "criterion": "checkpoint answers are consumed once.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-07",
+      "owner": "16-journal-recovery.md",
+      "criterion": "active-generation key history is never silently forgotten.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-08",
+      "owner": "16-journal-recovery.md",
+      "criterion": "cleanup failures remain visible.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-09",
+      "owner": "16-journal-recovery.md",
+      "criterion": "read-only replay cannot reach native effects.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "JRN-10",
+      "owner": "16-journal-recovery.md",
+      "criterion": "recovery never automatically sends Undo or replays code to rebuild heap. G04/G08 are required for reconnectability claims.",
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireExecutionStatus",
+        "WireFailure"
+      ],
+      "implementationTestId": "JRN-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-01",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "six tools match generated contracts and policy.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-02",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "execution outlives reply window but not lost-host authority.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-03",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "explicit tool result images reach each provider.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-04",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "same-context checkpoint resumes once.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-05",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "duplicate task/response delivery does not replay effects.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-06",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "terminal turn hooks respect epoch/task bindings.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-07",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "unsupported extension negotiates the explicit-envelope adapter honestly.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-08",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "scheduled denial cannot be bypassed through `exec` or nested devices.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-09",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "cancelled task shows stopping until native quiescence.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "HOST-10",
+      "owner": "17-host-provider-protocol.md",
+      "criterion": "old nine-tool catalogue cannot accidentally coexist as an unguarded alternate path after cutover. Gate G03 includes real pinned T3 bundle tests, not mocked schemas alone.",
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "HostRequest",
+        "HostResult",
+        "WireEmission"
+      ],
+      "implementationTestId": "HOST-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-01",
+      "owner": "18-human-supervision.md",
+      "criterion": "actual target, mode and capture scope remain accurate while switching apps.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-02",
+      "owner": "18-human-supervision.md",
+      "criterion": "Stop works while JS is busy and renderer is deliberately stalled through native path.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-03",
+      "owner": "18-human-supervision.md",
+      "criterion": "stopping is not mislabeled quiescent before cleanup.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-04",
+      "owner": "18-human-supervision.md",
+      "criterion": "hidden/unmounted chat presentation does not orphan control.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-05",
+      "owner": "18-human-supervision.md",
+      "criterion": "duplicate approval click yields one response/effect.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-06",
+      "owner": "18-human-supervision.md",
+      "criterion": "changed target requires new approval.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-07",
+      "owner": "18-human-supervision.md",
+      "criterion": "screen-reader/keyboard controls and reduced motion work.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-08",
+      "owner": "18-human-supervision.md",
+      "criterion": "high-rate input does not create high-rate React renders.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-09",
+      "owner": "18-human-supervision.md",
+      "criterion": "takeover never warps/refocuses against user.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "UI-10",
+      "owner": "18-human-supervision.md",
+      "criterion": "preview/evidence export is scoped to the owning assistant/project and no other renderer can invoke the control API. User-visible assertions are backed by native/journal events, not optimistic component state.",
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "contractTypes": [
+        "WireControlStatus",
+        "WireExecutionStatus",
+        "DecisionRequest"
+      ],
+      "implementationTestId": "UI-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G04",
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-01",
+      "owner": "19-security-privacy.md",
+      "criterion": "worker cannot read arbitrary host files or open sockets.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-02",
+      "owner": "19-security-privacy.md",
+      "criterion": "all indirect/nested effects require grants.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-03",
+      "owner": "19-security-privacy.md",
+      "criterion": "cross-owner handles/artifacts fail.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-04",
+      "owner": "19-security-privacy.md",
+      "criterion": "malformed/oversize traffic cannot stall urgent stop.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-05",
+      "owner": "19-security-privacy.md",
+      "criterion": "observations cannot create approvals.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-06",
+      "owner": "19-security-privacy.md",
+      "criterion": "secrets are absent from standard trace/journal exports.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-07",
+      "owner": "19-security-privacy.md",
+      "criterion": "known secure fields are handled and unknown coverage disclosed.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-08",
+      "owner": "19-security-privacy.md",
+      "criterion": "expired/revoked grants cannot revive.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-09",
+      "owner": "19-security-privacy.md",
+      "criterion": "malicious module/getter inspection is bounded and non-effectful.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEC-10",
+      "owner": "19-security-privacy.md",
+      "criterion": "GUI egress residual risk is represented in product policy and tested examples. Security signoff must include signed packaged behavior; debug process isolation is not sufficient.",
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "contractTypes": [
+        "Capability",
+        "Resource",
+        "Artifact"
+      ],
+      "implementationTestId": "SEC-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G08"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-01",
+      "owner": "20-evaluation.md",
+      "criterion": "A/B plans have identical operation/evidence sequences.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-02",
+      "owner": "20-evaluation.md",
+      "criterion": "overlaps are not double-counted.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-03",
+      "owner": "20-evaluation.md",
+      "criterion": "failures remain in reports.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-04",
+      "owner": "20-evaluation.md",
+      "criterion": "native/JS/model times are separated.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-05",
+      "owner": "20-evaluation.md",
+      "criterion": "sample counts/environment are mandatory.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-06",
+      "owner": "20-evaluation.md",
+      "criterion": "no hidden fixture route is available to the agent.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-07",
+      "owner": "20-evaluation.md",
+      "criterion": "private trace content is redacted.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-08",
+      "owner": "20-evaluation.md",
+      "criterion": "negative outcomes from Notes or unknown apps remain labelled.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-09",
+      "owner": "20-evaluation.md",
+      "criterion": "budgets are versioned, not silently edited.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "EVAL-10",
+      "owner": "20-evaluation.md",
+      "criterion": "held-out task set is preserved. G09 gates performance claims only after correctness gates pass.",
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "implementationTestId": "EVAL-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G09"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-01",
+      "owner": "21-procedural-memory.md",
+      "criterion": "import does not cause desktop effects.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-02",
+      "owner": "21-procedural-memory.md",
+      "criterion": "every execution reacquires live authority/targets.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-03",
+      "owner": "21-procedural-memory.md",
+      "criterion": "source/profile changes create new version.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-04",
+      "owner": "21-procedural-memory.md",
+      "criterion": "cross-project publication requires approval and strips private data.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-05",
+      "owner": "21-procedural-memory.md",
+      "criterion": "external provider skills are not overwritten.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-06",
+      "owner": "21-procedural-memory.md",
+      "criterion": "unqualified environments are disclosed.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-07",
+      "owner": "21-procedural-memory.md",
+      "criterion": "sandbox/grants cannot be expanded through dependencies.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SKILL-08",
+      "owner": "21-procedural-memory.md",
+      "criterion": "retrieval returns provenance and failures, not only success anecdotes. This extension follows core execution qualification; it must not mask missing device capabilities with hard-coded native tasks.",
+      "workPackages": [
+        "X01"
+      ],
+      "contractTypes": [
+        "WorkspaceContext",
+        "ModuleRevision"
+      ],
+      "implementationTestId": "SKILL-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-01",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "at most one seat writer despite multiple planning branches.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-02",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "prepared plans have no effects before admission.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-03",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "stale observation/epoch rejects a branch.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-04",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "unrelated value changes preserve valid pure work.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-05",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "cancelled branches release only their resources.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-06",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "exact inference input observation IDs are recorded.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-07",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "provider without streaming observations remains truthful.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "PIPE-08",
+      "owner": "22-pipelined-planning.md",
+      "criterion": "benchmarks report extra cost and discarded work. This is an optimization after core correctness, not a prerequisite for basic fast local sequencing.",
+      "workPackages": [
+        "X02"
+      ],
+      "contractTypes": [
+        "Observation",
+        "ExecutionContext"
+      ],
+      "implementationTestId": "PIPE-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-01",
+      "owner": "23-debugger-replay.md",
+      "criterion": "inspecting a getter cannot cause effects.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-02",
+      "owner": "23-debugger-replay.md",
+      "criterion": "pause while held releases or explicitly interrupts before inspection.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-03",
+      "owner": "23-debugger-replay.md",
+      "criterion": "resume rejects stale target/epoch.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-04",
+      "owner": "23-debugger-replay.md",
+      "criterion": "suffix replacement does not rerun prefix.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-05",
+      "owner": "23-debugger-replay.md",
+      "criterion": "offline replay cannot connect to a driver.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-06",
+      "owner": "23-debugger-replay.md",
+      "criterion": "divergence is reported, not silently filled from live state.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-07",
+      "owner": "23-debugger-replay.md",
+      "criterion": "source maps point to the correct original cell revision.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-08",
+      "owner": "23-debugger-replay.md",
+      "criterion": "debug export requires consent and strips credentials.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-09",
+      "owner": "23-debugger-replay.md",
+      "criterion": "history navigation does not imply rollback.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DBG-10",
+      "owner": "23-debugger-replay.md",
+      "criterion": "recording-disabled operation still yields useful metadata debugging.",
+      "workPackages": [
+        "X03"
+      ],
+      "contractTypes": [
+        "ExecutionContext",
+        "WireExecutionStatus"
+      ],
+      "implementationTestId": "DBG-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-01",
+      "owner": "24-demonstrations.md",
+      "criterion": "explicit consent precedes any recording.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-02",
+      "owner": "24-demonstrations.md",
+      "criterion": "no simultaneous agent writer.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-03",
+      "owner": "24-demonstrations.md",
+      "criterion": "redacted text becomes parameters and is not exported.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-04",
+      "owner": "24-demonstrations.md",
+      "criterion": "missing evidence is marked.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-05",
+      "owner": "24-demonstrations.md",
+      "criterion": "synthesized code cannot escape grants/sandbox.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-06",
+      "owner": "24-demonstrations.md",
+      "criterion": "coordinate-dependent program fails or rebinds explicitly when layout changes.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-07",
+      "owner": "24-demonstrations.md",
+      "criterion": "offline pass is not labelled live qualification.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-08",
+      "owner": "24-demonstrations.md",
+      "criterion": "recording cancellation and retention expiry remove local artifacts.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-09",
+      "owner": "24-demonstrations.md",
+      "criterion": "skill promotion preserves provenance without private payloads.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEMO-10",
+      "owner": "24-demonstrations.md",
+      "criterion": "a person can inspect what was recorded and exported.",
+      "workPackages": [
+        "X04"
+      ],
+      "contractTypes": [
+        "Observation",
+        "Timeline"
+      ],
+      "implementationTestId": "DEMO-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G10"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-01",
+      "owner": "25-separate-seats.md",
+      "criterion": "concurrent seats do not share input/focus.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-02",
+      "owner": "25-separate-seats.md",
+      "criterion": "Spaces/displays are not mislabeled independent seats.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-03",
+      "owner": "25-separate-seats.md",
+      "criterion": "cross-seat handles fail.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-04",
+      "owner": "25-separate-seats.md",
+      "criterion": "preview is the actual controlled desktop and reports delay.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-05",
+      "owner": "25-separate-seats.md",
+      "criterion": "remote loss triggers defined stop/uncertainty.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-06",
+      "owner": "25-separate-seats.md",
+      "criterion": "host/guest grants and shared data remain separate.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-07",
+      "owner": "25-separate-seats.md",
+      "criterion": "restored VM invalidates epochs.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-08",
+      "owner": "25-separate-seats.md",
+      "criterion": "machine enrollment/revocation is authenticated.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-09",
+      "owner": "25-separate-seats.md",
+      "criterion": "emergency stop works locally on controlled seat.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "SEAT-10",
+      "owner": "25-separate-seats.md",
+      "criterion": "supported OS/hardware/licensing constraints are recorded before release. Gate G11 applies only when enabling these providers.",
+      "workPackages": [
+        "X05"
+      ],
+      "contractTypes": [
+        "SeatId",
+        "ControlId",
+        "WireControlStatus"
+      ],
+      "implementationTestId": "SEAT-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G11"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-01",
+      "owner": "26-extended-devices.md",
+      "criterion": "unsupported axes are rejected before effects.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-02",
+      "owner": "26-extended-devices.md",
+      "criterion": "virtual provider cannot launch without proper platform support.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-03",
+      "owner": "26-extended-devices.md",
+      "criterion": "pressure/contact geometry is measured against application effect.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-04",
+      "owner": "26-extended-devices.md",
+      "criterion": "disconnect and stop release/terminate owned state as qualified.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-05",
+      "owner": "26-extended-devices.md",
+      "criterion": "no silent mouse approximation.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-06",
+      "owner": "26-extended-devices.md",
+      "criterion": "calibration invalidates on display/seat changes.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-07",
+      "owner": "26-extended-devices.md",
+      "criterion": "hardware commands are authenticated and bounded.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-08",
+      "owner": "26-extended-devices.md",
+      "criterion": "cursor/contact presentation matches real device output.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-09",
+      "owner": "26-extended-devices.md",
+      "criterion": "grants remain scoped per seat/app.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "DEV-10",
+      "owner": "26-extended-devices.md",
+      "criterion": "device/app failures are reported, not concealed by hybrid completion. These are extension deliverables after the core AID environment is useful and qualified.",
+      "workPackages": [
+        "X06"
+      ],
+      "contractTypes": [
+        "CapabilityStatus",
+        "Timeline"
+      ],
+      "implementationTestId": "DEV-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G12"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-01",
+      "owner": "27-integration-packaging.md",
+      "criterion": "clean locked build produces verified manifests/resources.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-01",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-02",
+      "owner": "27-integration-packaging.md",
+      "criterion": "relocated packaged app loads driver/worker without source-tree paths.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-02",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-03",
+      "owner": "27-integration-packaging.md",
+      "criterion": "source/bundle tool catalogues agree.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-03",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-04",
+      "owner": "27-integration-packaging.md",
+      "criterion": "check mode is read-only.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-04",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-05",
+      "owner": "27-integration-packaging.md",
+      "criterion": "legacy and AID cannot both own input.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-05",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-06",
+      "owner": "27-integration-packaging.md",
+      "criterion": "scheduled denial survives cutover.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-06",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-07",
+      "owner": "27-integration-packaging.md",
+      "criterion": "no additional browser host appears.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-07",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-08",
+      "owner": "27-integration-packaging.md",
+      "criterion": "signed helper permissions are explicit.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-08",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-09",
+      "owner": "27-integration-packaging.md",
+      "criterion": "public package publication is absent.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-09",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    },
+    {
+      "id": "INT-10",
+      "owner": "27-integration-packaging.md",
+      "criterion": "removal of legacy leaves no tool bypass or obsolete permission paths. G01/G03 and packaged smoke tests gate cutover.",
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "contractTypes": [
+        "HostApi",
+        "WireNativeRequest"
+      ],
+      "implementationTestId": "INT-10",
+      "implementationTestStatus": "not_run",
+      "qualificationGates": [
+        "G01",
+        "G03"
+      ],
+      "designEvidence": "../DESIGN-REVIEW.md",
+      "note": "The named acceptance case is prescribed; document checks do not substitute for this implementation test."
+    }
+  ]
+}

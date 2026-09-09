@@ -1,10 +1,10 @@
 # D13 — Text, physical keys, composition and explicit clipboard use
 
-**Purpose:** provide a programmable keyboard with correct semantics, foreground recovery and no invisible fallback. **Baseline:** v2 keyboard posts to a PID and `type_text` requires a narrow list of AX editable roles. **Sources:** [S17–S18](29-research-register.md#s17), clipboard policy [S39](29-research-register.md#s39).
+**Purpose:** provide a programmable keyboard with correct semantics, foreground recovery and no invisible fallback. **Baseline:** v2 keyboard posts to a PID and `type_text` requires a narrow list of AX editable roles. **Sources:** [S17](29-research-register.md#s17), [S18](29-research-register.md#s18), clipboard policy [S51](29-research-register.md#s51).
 
 ## 1. Separate operations
 
-`typeText(text)` inserts literal Unicode using a qualified text-input route while preserving selection/caret. `chord(keys)` expresses a logical shortcut. `keyDown`/`keyUp` and timed holds express physical key transitions. `setValue` is a distinct semantic AX operation that replaces a specified attribute. `clipboard.write`/`paste` are explicit optional device capabilities. None silently substitutes for another.
+`typeText(text)` inserts literal Unicode using a qualified text-input route while preserving selection/caret. `chord(keys)` expresses a logical shortcut. `keyDown`/`keyUp` and timed holds express physical key transitions. `setValue` is a distinct semantic AX operation that replaces a specified attribute. `clipboard.writeText/writeImage` and `pasteText/pasteImage` are explicit optional device capabilities. None silently substitutes for another.
 
 Typing a Unicode character is not equivalent to pressing its physical key on every layout. Physical key codes and logical names carry an explicit keyboard-layout profile. Unknown mappings fail before effects rather than defaulting to US layout. An IME may consume physical events through composition; Unicode injection does not claim to reproduce all IME behavior.
 
@@ -28,7 +28,7 @@ Large text has an explicit tradeoff. If clipboard paste is granted, the caller m
 
 Compile a chord to modifier-down, key-down/up and reverse modifier-up transitions using the same timeline ledger as pointer gestures. Logical aliases are normalized in generated contracts; invalid or duplicated contradictory keys fail before admission. Auto-repeat and timed holds have explicit durations/rates within the supported profile, rather than guessing the OS's user preference.
 
-Native ownership tracks precisely which automation transitions were admitted. Release on completion, cancellation, checkpoint, worker loss and epoch revoke. A user-held physical modifier is not owned by automation; the driver must detect conflicting hardware state where possible and stop or ask the host rather than issuing blanket releases. No stuck-key guarantee is made until G06 fault tests pass for the chosen backend.
+Native ownership tracks precisely which automation transitions were admitted. Release on completion, cancellation, checkpoint, worker loss and epoch revoke. A user-held physical modifier is not owned by automation; the driver must detect conflicting hardware state where possible and stop or ask the host rather than issuing blanket releases. No stuck-key guarantee is made until G05/G04 fault tests pass for the chosen backend.
 
 ## 5. IME and layout qualification
 
@@ -38,11 +38,11 @@ Where AX exposes composition text/range, treat it as observed state with privacy
 
 ## 6. Clipboard capability and restoration
 
-Clipboard is a global shared resource with privacy implications. Read, write and paste are separate grants. `write` accepts bounded approved MIME types; begin with plain text and explicit image artifacts, not arbitrary executable file promises. Store only the data needed for the operation and erase temporary copies at scope end.
+Clipboard is a global shared resource with privacy implications. Read, write and paste are separate grants. `writeText` and `writeImage` accept bounded approved MIME types; begin with plain text and explicit image artifacts, not arbitrary executable file promises. Store only the data needed for the operation and erase temporary copies at scope end.
 
 The platform's `changeCount` can detect many intervening writes, but a read/check/write sequence is **not an atomic compare-and-swap**. Therefore default clipboard operation does not automatically restore old data. An opt-in best-effort restoration may compare change count and owned marker, but must disclose that concurrency cannot be guaranteed and must skip restoration whenever foreign change is detected. For strict noninterference, leave restoration to explicit user action instead of risking overwriting new clipboard contents.
 
-`paste` verifies foreground target and invokes the UI paste action/shortcut through the selected route. It never writes directly into a backing file. Read permission changes or newer pasteboard access behavior can require user approval; query actual capability and show a clear reason rather than assuming permission from an earlier OS version.
+`pasteText`/`pasteImage` verify foreground target and invokes the UI paste action/shortcut through the selected route. It never writes directly into a backing file. Read permission changes or newer pasteboard access behavior can require user approval; query actual capability and show a clear reason rather than assuming permission from an earlier OS version.
 
 ## 7. Receipts and recovery
 
@@ -55,3 +55,5 @@ After an uncertain chord or partially typed string, observe before deciding whet
 Replace `PublicEventBackend.typeChunk/key` PID-only routing with a `KeyboardBackend` contract and `KeyboardLayoutProfile`; keep Unicode chunking portable and testable. Integrate the current focus checks as evidence rather than the only allowed role whitelist. Add host `ClipboardCapabilityBroker` with D19 redaction/retention rules.
 
 **KEY-01:** emoji/combining/CJK chunks are not split or duplicated. **KEY-02:** caret/selection semantics preserved. **KEY-03:** a windowless app shortcut can create a window under an app grant. **KEY-04:** focus takeover stops remaining text. **KEY-05:** cancellation releases only owned modifier state. **KEY-06:** unsupported layout/IME profile fails honestly. **KEY-07:** custom editor roles can qualify without lying about AX support. **CLIP-01:** no read/write without the corresponding grant. **CLIP-02:** foreign clipboard changes are not overwritten by default. **CLIP-03:** paste really traverses the foreground UI. **CLIP-04:** permission change and oversized/malformed formats fail safely.
+
+`Keyboard.repeat(key,{count,intervalMs,holdMs?})` compiles explicit repeated key transitions to the same native timeline; finite count/timing bounds are admission checks. It does not borrow the user’s autorepeat preference. Image clipboard methods accept authorized `ImageEvidence`, resolve bytes through the artifact service and use the same default-off restoration policy as text.

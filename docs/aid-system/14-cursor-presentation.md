@@ -1,6 +1,6 @@
 # D14 — Truthful pointer presentation, hotspot geometry and pacing
 
-**Purpose:** retain the visible Cozea pointer while eliminating the inherited inverted glyph/hotspot mismatch and fixed ceremonial delay. **Baseline:** `CursorController` positions artwork using `tipAnchor`; the port forces `referenceImage = nil` and uses the procedural contour. The user observed a large inverted pointer. **Sources:** AppKit coordinates/HiDPI [S19](29-research-register.md#s19), display links [S20](29-research-register.md#s20).
+**Purpose:** retain the visible Cozea pointer while eliminating the inherited inverted glyph/hotspot mismatch and fixed ceremonial delay. **Baseline:** `CursorController` positions artwork using `tipAnchor`; the port forces `referenceImage = nil` and uses the procedural contour. The user observed a large inverted pointer. **Sources:** AppKit coordinates/HiDPI [S21](29-research-register.md#s21), display links [S20](29-research-register.md#s20).
 
 ## 1. Geometry is the authority
 

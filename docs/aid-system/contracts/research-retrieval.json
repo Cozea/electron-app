@@ -1,0 +1,918 @@
+{
+  "date": "2026-09-09",
+  "records": [
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/function-calling",
+      "checkedAt": "2026-09-09T03:16:07.003933+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://ai.google.dev/gemini-api/docs/function-calling",
+      "bytes": 585764,
+      "sha256": "d4cdd9c4ba9bb64a0e789e52cf9fbf39a142a4c4a4fcd4fb87618cc0661a3efd",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://ai.google.dev/gemini-api/docs/generate-content/function-calling",
+      "checkedAt": "2026-09-09T03:16:07.004940+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://ai.google.dev/gemini-api/docs/generate-content/function-calling",
+      "bytes": 461826,
+      "sha256": "26857b6f0b13918a562627106bcba8cd79d2a335fed676cfc89a96a361c172f0",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://arxiv.org/abs/2209.07753",
+      "checkedAt": "2026-09-09T03:16:07.005718+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://arxiv.org/abs/2209.07753",
+      "bytes": 44028,
+      "sha256": "d1704b0aae51d5902df32503500c7a8e7c45c5a70411ec689b748d13ca7b501e",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://arxiv.org/abs/2404.07972",
+      "checkedAt": "2026-09-09T03:16:07.006286+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://arxiv.org/abs/2404.07972",
+      "bytes": 46117,
+      "sha256": "b647fbf05a6cf37e69afee5ab99152ca57d1af31020cc33a65d1d27a2fe34ede",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://bellard.org/quickjs/quickjs.html",
+      "checkedAt": "2026-09-09T03:16:07.007057+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://bellard.org/quickjs/quickjs.html",
+      "bytes": 49246,
+      "sha256": "07942fabafe129c7b99205f27c84523392d4c274f56017640d73715d5a988db1",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://blog.modelcontextprotocol.io/posts/2026-07-28/",
+      "checkedAt": "2026-09-09T03:16:07.007641+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://blog.modelcontextprotocol.io/posts/2026-07-28/",
+      "bytes": 133679,
+      "sha256": "9e3c347f359baa66725fffe8e88f348299905d236dea320cd8457e8c4619e520",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://bytecodealliance.org/articles/WASI-0.3",
+      "checkedAt": "2026-09-09T03:16:07.008723+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://bytecodealliance.org/articles/WASI-0.3",
+      "bytes": 23909,
+      "sha256": "5b114d1a33821503f7b983b438226fc54c10f4149e6f2b344302fc48cbe42e2d",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://component-model.bytecodealliance.org/design/wit.html",
+      "checkedAt": "2026-09-09T03:16:07.011913+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://component-model.bytecodealliance.org/design/wit.html",
+      "bytes": 53978,
+      "sha256": "2bcc2bff40e75da6866f30a191bbc0d8c1b79ddc1c8ef788be5db7b3ebc2f5dc",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://component-model.bytecodealliance.org/reference/faq.html",
+      "checkedAt": "2026-09-09T03:16:07.013072+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://component-model.bytecodealliance.org/reference/faq.html",
+      "bytes": 36603,
+      "sha256": "d78833368a6f3b601d1cf78eb54f2742d1b2c5495ad15159dd942a13a910953a",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://component-model.bytecodealliance.org/running-components/wasmtime.html",
+      "checkedAt": "2026-09-09T03:16:07.015221+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://component-model.bytecodealliance.org/running-components/wasmtime.html",
+      "bytes": 31753,
+      "sha256": "60c9e929f88281b2efa3d10860aef18b673826d1d020a8b4b96548b31d1931a5",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://developer.apple.com/documentation/appintents",
+      "checkedAt": "2026-09-09T03:16:07.015989+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/appintents",
+      "bytes": 17533,
+      "sha256": "9e30262ba18ed1ad8ce6dca3ed05aef1606cca1db8932df2a489c9e5dd8ba015",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/appkit/nspasteboard/changecount",
+      "checkedAt": "2026-09-09T03:16:07.018042+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/appkit/nspasteboard/changecount",
+      "bytes": 17320,
+      "sha256": "25e0eebf7feda68e4dd6cde79f2a84e9038c501a66f268e688cef3435b9b14eb",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/appkit/nsrunningapplication",
+      "checkedAt": "2026-09-09T03:16:16.312638+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/appkit/nsrunningapplication",
+      "bytes": 17495,
+      "sha256": "95e42227fd6f04d5caba560f0d5b79b3038c295c6a7f02550f2561c1db17aeb9",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/appkit/nsview",
+      "checkedAt": "2026-09-09T03:16:16.347853+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/appkit/nsview",
+      "bytes": 17341,
+      "sha256": "82b5ebf593d5178d5ef0b0d9ba158a818ca3a89a5e36b4ccf35e7e71f4b14929",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/appkit/nsworkspace",
+      "checkedAt": "2026-09-09T03:16:16.367364+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/appkit/nsworkspace",
+      "bytes": 17426,
+      "sha256": "716f45b482da9de6ac4b1b3f31bbc4a28002af38ce103d69e17f3556b153e796",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/applicationservices/1459345-axuielementsetmessagingtimeout",
+      "checkedAt": "2026-09-09T03:16:18.846179+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/applicationservices/1459345-axuielementsetmessagingtimeout",
+      "bytes": 17599,
+      "sha256": "96ef8261b6199e06ff98ccd753f6070a4a166dec71507270977d54e52226a1be",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/applicationservices/1460133-axobservercreate",
+      "checkedAt": "2026-09-09T03:16:18.924751+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/applicationservices/1460133-axobservercreate",
+      "bytes": 17589,
+      "sha256": "da2db38b74f8f28e931677a0c38ddeaffcbe6343c44bd3292ae41a6323f4917a",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/applicationservices/1462051-axuielementcopymultipleattribute",
+      "checkedAt": "2026-09-09T03:16:19.360275+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/applicationservices/1462051-axuielementcopymultipleattribute",
+      "bytes": 17696,
+      "sha256": "a7bdd53951b27417a7de8ace26b5bbfb3a138f7a832ec315cff03f7e508da875",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/applicationservices/1462060-axuielementcopyattributevalues",
+      "checkedAt": "2026-09-09T03:16:19.368164+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/applicationservices/1462060-axuielementcopyattributevalues",
+      "bytes": 17791,
+      "sha256": "f29e7c808d2c577bdb57a2f1d86a5882fed5608621244be5178a202652289348",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/applicationservices/1462091-axuielementperformaction",
+      "checkedAt": "2026-09-09T03:16:19.368744+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/applicationservices/1462091-axuielementperformaction",
+      "bytes": 17626,
+      "sha256": "0ae0b23d503151614116175393a4529fc1211d7cb979278c77bb0816c31b1db5",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/applicationservices/accessibility",
+      "checkedAt": "2026-09-09T03:16:19.626456+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "error": "HTTPError: HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://developer.apple.com/documentation/applicationservices/axuielement",
+      "checkedAt": "2026-09-09T03:16:19.653893+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/applicationservices/axuielement",
+      "bytes": 17389,
+      "sha256": "3ad38d124b93ddcc9f0f0c26a89c1a5e20f695a104937c14fbe0e85c4796776f",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/coregraphics/cgevent",
+      "checkedAt": "2026-09-09T03:16:20.285500+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/coregraphics/cgevent",
+      "bytes": 17361,
+      "sha256": "a403a43c19f6c2a03d277453d8484004bb2515f1f973fbdeb649a10e15bbc0c6",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/coregraphics/cgevent/keyboardsetunicodestring(stringlength:unicodestring:)",
+      "checkedAt": "2026-09-09T03:16:20.389318+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/coregraphics/cgevent/keyboardsetunicodestring(stringlength:unicodestring:)",
+      "bytes": 17763,
+      "sha256": "335e2836e20ea74d94274c6101feae670a2c560fe6fcf2bd2851e4084da7977a",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/coregraphics/cgevent/post(tap:)",
+      "checkedAt": "2026-09-09T03:16:20.613263+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/coregraphics/cgevent/post(tap:)",
+      "bytes": 17428,
+      "sha256": "0af84cac4403a07527e4971a43de01bde0b3dccaaad9dbd2e060f97eab53778c",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/coregraphics/cgevent/tapcreate(tap:place:options:eventsofinterest:callback:userinfo:)",
+      "checkedAt": "2026-09-09T03:16:21.172848+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/coregraphics/cgevent/tapcreate(tap:place:options:eventsofinterest:callback:userinfo:)",
+      "bytes": 17722,
+      "sha256": "26dff26eba7467220c35ff127cb964cf89051eada9ec61f9e546eeea5b77045c",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/coregraphics/cgeventsource",
+      "checkedAt": "2026-09-09T03:16:23.641441+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/coregraphics/cgeventsource",
+      "bytes": 17415,
+      "sha256": "76e6bde271f36dea33998740b8e6c9db20c33a3cac966be86596c3d82b0f7373",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/corevideo/cvpixelbuffer",
+      "checkedAt": "2026-09-09T03:16:28.046045+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/corevideo/cvpixelbuffer",
+      "bytes": 17340,
+      "sha256": "5d5bc16c9cee18e14f14a2319b052d68a78fd305d7434af225d16fb8729abc0e",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/foundation/nsxpcconnection",
+      "checkedAt": "2026-09-09T03:16:28.048053+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/foundation/nsxpcconnection",
+      "bytes": 17397,
+      "sha256": "0fa1a39f5303645b5f94f4958fd2b62c08f7636153f47964d84eb386313e0b41",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/hiddriverkit",
+      "checkedAt": "2026-09-09T03:16:28.051604+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/hiddriverkit",
+      "bytes": 17504,
+      "sha256": "311298dfb65710ae83a3d061bbff018a80a28393dd905aabd592d6a05b862873",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/iosurface",
+      "checkedAt": "2026-09-09T03:16:28.054034+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/iosurface",
+      "bytes": 17507,
+      "sha256": "36a2009a04f6e117e1ce69960998484e2c6baed37063ea268369b77231cd6821",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/quartzcore/cadisplaylink",
+      "checkedAt": "2026-09-09T03:16:28.059825+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/quartzcore/cadisplaylink",
+      "bytes": 17495,
+      "sha256": "bd368e24751c5e43c99972ff64b4a031967579328aa692befa3ca16ec6c87548",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension",
+      "checkedAt": "2026-09-09T03:16:28.064146+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/safariservices/messaging-between-the-app-and-javascript-in-a-safari-web-extension",
+      "bytes": 18014,
+      "sha256": "d9ca5b0db437682cfaf4ef26f1f1668b79946acacda109c7d2a7c3661d81b04d",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos",
+      "checkedAt": "2026-09-09T03:16:28.167710+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-in-macos",
+      "bytes": 17676,
+      "sha256": "9bfc5d81c9eb89c291034b2081096ced68d44d957f7ab7a32039d13ef8ec2f02",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/scclipbufferingoutput",
+      "checkedAt": "2026-09-09T03:16:28.181993+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/scclipbufferingoutput",
+      "bytes": 17487,
+      "sha256": "911b275cda059d8ca984b47e36a84371b66b2aae2a0a111073d2bb39abcafb78",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/scframestatus",
+      "checkedAt": "2026-09-09T03:16:28.190478+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/scframestatus",
+      "bytes": 17351,
+      "sha256": "e12ff1d7522c2b8b26252d8b09e5baeb30a4325342e142ca6c43167d3059f172",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/scscreenshotconfiguration",
+      "checkedAt": "2026-09-09T03:16:28.233748+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/scscreenshotconfiguration",
+      "bytes": 17654,
+      "sha256": "c239a7c46afe2cec68fe434630809c740132dfb287f5a2b6fa67800eba3cb76c",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/scscreenshotmanager",
+      "checkedAt": "2026-09-09T03:16:28.237124+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/scscreenshotmanager",
+      "bytes": 17456,
+      "sha256": "98514110bfed872355e196aa1ff93218c91a875a738e2a908a8a77481be3c740",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/scstream",
+      "checkedAt": "2026-09-09T03:16:28.386874+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/scstream",
+      "bytes": 17365,
+      "sha256": "a58c50e21492b1fd448584f4f173c46b271627892c4ea05ebad2279dac6f5047",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/scstreamframeinfo",
+      "checkedAt": "2026-09-09T03:16:41.227029+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/scstreamframeinfo",
+      "bytes": 17437,
+      "sha256": "b096b9b55c1ff25aff9f4c829aa4c9b88dfc45219720a28ff8a318626171e5f5",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/screencapturekit/scstreamoutput",
+      "checkedAt": "2026-09-09T03:16:41.239124+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/screencapturekit/scstreamoutput",
+      "bytes": 17479,
+      "sha256": "04dbaa1c575feeb90f6766382d373e3cf3c2656bb78df480faa35f703be1aff8",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/security/app-sandbox",
+      "checkedAt": "2026-09-09T03:16:41.243856+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/security/app-sandbox",
+      "bytes": 17511,
+      "sha256": "5dcc1f0e2507801a96c6d0b1ef0e7c7fa9f300ed10055b24dd22d2e8c509e676",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/security/code-signing-services",
+      "checkedAt": "2026-09-09T03:16:41.256008+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/security/code-signing-services",
+      "bytes": 17420,
+      "sha256": "86a5f1772cc33569cf01924e852e7b9b97dd314d808d4baa6fa521a3c7cced0e",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/security/hardened-runtime",
+      "checkedAt": "2026-09-09T03:16:41.260574+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/security/hardened-runtime",
+      "bytes": 17419,
+      "sha256": "5f81eefde27a4a58e72ba433123c788aec21eee3b30efe3112d00c20201a2157",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution",
+      "checkedAt": "2026-09-09T03:16:41.270101+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution",
+      "bytes": 17741,
+      "sha256": "216494f04733db52cdae70ad65077599b70e4e88557f28adfe28fa1b70fa565d",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/updates/appintents",
+      "checkedAt": "2026-09-09T03:16:41.287317+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/updates/appintents",
+      "bytes": 17324,
+      "sha256": "ce90567e894cde02adeeabf81c87a85f914867c89d0049ea4e84855d23497e3f",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/virtualization",
+      "checkedAt": "2026-09-09T03:16:41.289576+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/virtualization",
+      "bytes": 17370,
+      "sha256": "773f1674599f8f0530c1fe5fbc0b69452fc6eb19e9991faf892a276818630fe7",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/vision/vntrackobjectrequest",
+      "checkedAt": "2026-09-09T03:16:41.292015+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/vision/vntrackobjectrequest",
+      "bytes": 17609,
+      "sha256": "9a3fb210a5736ec1b367cbfbb835e5c8f4d80d60233e93b30d94d1f13c30c688",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/documentation/xpc",
+      "checkedAt": "2026-09-09T03:16:41.386826+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/documentation/xpc",
+      "bytes": 17234,
+      "sha256": "e941b2555c1bddf2caacff3caf4f352fe8d81d773cfd393154de993b0ce16442",
+      "htmlShellOnly": true
+    },
+    {
+      "url": "https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/APIs/APIs.html",
+      "checkedAt": "2026-09-09T03:16:41.419800+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/APIs/APIs.html",
+      "bytes": 50846,
+      "sha256": "a233a46acfa6fec97b64435e9205b52482866e499b82ba418194f489dfa36f1d",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/function-calling",
+      "checkedAt": "2026-09-09T03:16:41.452354+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developers.openai.com/api/docs/guides/function-calling",
+      "bytes": 1398547,
+      "sha256": "fb9fc6d3882f32babf53a0750ec7f651244fbbf3706cf0f3d465eb608a9f775e",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://developers.openai.com/api/docs/guides/tools-computer-use",
+      "checkedAt": "2026-09-09T03:16:48.879621+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developers.openai.com/api/docs/guides/tools-computer-use",
+      "bytes": 520667,
+      "sha256": "0a5e6e42c0a3950e3dc6749592a3510a2c382c736f7810e0b1171c7c815c94e2",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://doc.rust-lang.org/nomicon/ffi.html",
+      "checkedAt": "2026-09-09T03:16:54.612365+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://doc.rust-lang.org/nomicon/ffi.html",
+      "bytes": 62470,
+      "sha256": "a6631d08a64c6d55bcce3350843849451361debafb6b463da332f9ba663b5e55",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/",
+      "checkedAt": "2026-09-09T03:16:54.628712+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://docs.swift.org/swift-book/documentation/the-swift-programming-language/concurrency/",
+      "bytes": 2953,
+      "sha256": "aa6c0a03c046242f88e5cfb97b3bbc39bbd31b54d3281fa00c78190324e40f2d",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://docs.wasmtime.dev/async.html",
+      "checkedAt": "2026-09-09T03:16:54.631011+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "error": "HTTPError: HTTP Error 404: Not Found"
+    },
+    {
+      "url": "https://docs.wasmtime.dev/examples-async.html",
+      "checkedAt": "2026-09-09T03:16:54.632865+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://docs.wasmtime.dev/examples-async.html",
+      "bytes": 33363,
+      "sha256": "7d556dd9e014420105adf8400043cd513d8b2cba9917ec37d40b7d73a85e8fa2",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://docs.wasmtime.dev/examples-interrupting-wasm.html",
+      "checkedAt": "2026-09-09T03:16:54.640870+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://docs.wasmtime.dev/examples-interrupting-wasm.html",
+      "bytes": 28340,
+      "sha256": "d55c0ece9d6c105913c67f7dc7eac0b70b7283e1c48116a3dfe0f58a69e9827c",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://docs.wasmtime.dev/security.html",
+      "checkedAt": "2026-09-09T03:16:54.645157+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://docs.wasmtime.dev/security.html",
+      "bytes": 29125,
+      "sha256": "06eb1dc1903cdc40c13473f5d3947e20ca71c36a8bbfe27016f7dd2900dd8526",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://electronjs.org/docs/latest/tutorial/message-ports",
+      "checkedAt": "2026-09-09T03:16:54.657177+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.electronjs.org/docs/latest/tutorial/message-ports",
+      "bytes": 150245,
+      "sha256": "2b24cc7843bba6a1041a594dbb5ce40dea2e4b58e369a5864949c013fd1cb956",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://github.com/WebAssembly/WASI",
+      "checkedAt": "2026-09-09T03:16:54.658757+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://github.com/WebAssembly/WASI",
+      "bytes": 270180,
+      "sha256": "938b66d8c991dc0712e0132d60070c69acaa5912e67a9c9b2ae61891eba89cf0",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://json-schema.org/draft/2020-12",
+      "checkedAt": "2026-09-09T03:16:54.661997+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://json-schema.org/draft/2020-12",
+      "bytes": 88911,
+      "sha256": "6a98b8ea583a60a8da43fd54e47db56905e61b9604a4a53c5d1a9608eea792ec",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://modelcontextprotocol.io/extensions/apps/overview",
+      "checkedAt": "2026-09-09T03:16:54.671700+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://modelcontextprotocol.io/extensions/apps/overview",
+      "bytes": 314662,
+      "sha256": "a515a16912160980dd13917a98edca91c4acc0c94e19acdfc8fc2ea5784dc31b",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/",
+      "checkedAt": "2026-09-09T03:16:54.860687+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://modelcontextprotocol.io/specification/2026-07-28",
+      "bytes": 292333,
+      "sha256": "c71603eeb4c918dd795e587ec5729177e337511f890a91525c995ef84212feb2",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle",
+      "checkedAt": "2026-09-09T03:16:57.496311+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle",
+      "bytes": 407377,
+      "sha256": "af7173653a56a3a99610e0f0ba73e5e880369c0500382e1ae8730ce1b698665b",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports",
+      "checkedAt": "2026-09-09T03:17:03.020120+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://modelcontextprotocol.io/specification/2025-11-25/basic/transports",
+      "bytes": 343343,
+      "sha256": "7ace772b53fa5fe1e88fabb4b1146bcd2f007a131514dd247b8af83e3bfbf87e",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation",
+      "checkedAt": "2026-09-09T03:17:03.032349+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation",
+      "bytes": 282001,
+      "sha256": "28d693857adea1ddd1d18f8109479c016a9bd6bccb7c4793db34fa8e47426f84",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks",
+      "checkedAt": "2026-09-09T03:17:03.182185+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks",
+      "bytes": 812892,
+      "sha256": "295f68bf966bd4bd02db7cdf6d2249f8a4360acec60d2b623ee4e616ad334b8f",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://nodejs.org/api/vm.html",
+      "checkedAt": "2026-09-09T03:17:03.183255+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://nodejs.org/api/vm.html",
+      "bytes": 438833,
+      "sha256": "f3d30436c0f7a21f499f6569084b7d86356f4e2bf138a64b46f7e2222e50028e",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://opentelemetry.io/docs/specs/otel/trace/",
+      "checkedAt": "2026-09-09T03:17:03.424003+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://opentelemetry.io/docs/specs/otel/trace/",
+      "bytes": 67262,
+      "sha256": "50747e8c3faba43f0a6dcadce3bd6cd4af88f8d46e278115cd9876d1609db642",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://os-world.github.io/",
+      "checkedAt": "2026-09-09T03:17:03.561500+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "http://osworld-v1.xlang.ai/",
+      "bytes": 153030,
+      "sha256": "bf37e00ce23e8c5472d485a6eb3b291ffa2de220b44040402516e41cbc48c516",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls",
+      "checkedAt": "2026-09-09T03:17:04.906631+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls",
+      "bytes": 587407,
+      "sha256": "df78fa61c23ce7ad5d8c7a69026755a9b9f5999a7ebe530c1949dfc2d94fa380",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling",
+      "checkedAt": "2026-09-09T03:17:07.113170+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling",
+      "bytes": 1157990,
+      "sha256": "f1be73272bdb49ae879cb629c0cde1584f00d775a44f837dd75d139883600646",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://tasks.extensions.modelcontextprotocol.io/specification/2026-07-28/tasks",
+      "checkedAt": "2026-09-09T03:17:09.783197+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://tasks.extensions.modelcontextprotocol.io/specification/2026-07-28/tasks",
+      "bytes": 165245,
+      "sha256": "72deb32df44655d590de838c96669b32297dfe6d14b0a80fc3ccfac255582032",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://tc39.es/ecma262/",
+      "checkedAt": "2026-09-09T03:17:09.889518+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://tc39.es/ecma262/",
+      "bytes": 4194304,
+      "sha256": "c71c9cdc088ceec472054a08470dbf1d5396769350ab7f0dc33c824b09a5978f",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://tc39.es/ecma426/",
+      "checkedAt": "2026-09-09T03:17:09.989986+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://tc39.es/ecma426/",
+      "bytes": 568647,
+      "sha256": "ab1b4d112f8f1038f8b3afd2dc0f41c6cf4c9fbcde68adf5cefe084fc439ccca",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://wasi.dev/",
+      "checkedAt": "2026-09-09T03:17:10.043792+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://wasi.dev/",
+      "bytes": 19006,
+      "sha256": "e811ab1a9ce57ee4dcef1a6007f82bf4f3ad2c7b5b97b88529145e267afefe24",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.anthropic.com/engineering/code-execution-with-mcp",
+      "checkedAt": "2026-09-09T03:17:10.306043+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.anthropic.com/engineering/code-execution-with-mcp",
+      "bytes": 211923,
+      "sha256": "637c8b3e4e68fbbbc42ec2703c5d6ab73d9514c3bd3af0323899a5482bdb4779",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.electronjs.org/docs/latest/api/utility-process",
+      "checkedAt": "2026-09-09T03:17:10.524257+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.electronjs.org/docs/latest/api/utility-process",
+      "bytes": 72991,
+      "sha256": "b56352b768eafd42505e91d262cf66fdcab6ff57bb552098782c4843eab6a432",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.electronjs.org/docs/latest/tutorial/security",
+      "checkedAt": "2026-09-09T03:17:10.827853+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.electronjs.org/docs/latest/tutorial/security",
+      "bytes": 170321,
+      "sha256": "1b53b15cf03c2edf11f4e412562d9e9776143cad846ebc4902dfbf46985ec212",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules",
+      "checkedAt": "2026-09-09T03:17:11.917892+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.electronjs.org/docs/latest/tutorial/using-native-node-modules",
+      "bytes": 43941,
+      "sha256": "c7ca8d9bd65494712edca8cf14fc75e4f231f27065eaaf5b3a465e234f09680b",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.rfc-editor.org/rfc/rfc8785",
+      "checkedAt": "2026-09-09T03:17:12.116511+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.rfc-editor.org/info/rfc8785/",
+      "bytes": 466278,
+      "sha256": "48567971120066eb3b9f0da8faaad87adc7629504a78b4463690cc51358bf230",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.sqlite.org/atomiccommit.html",
+      "checkedAt": "2026-09-09T03:17:12.141103+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.sqlite.org/atomiccommit.html",
+      "bytes": 77968,
+      "sha256": "5a5be7b660217c9408c8a81eaf2faa2d08832ed3790f895a0a713916ad856ea1",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.sqlite.org/wal.html",
+      "checkedAt": "2026-09-09T03:17:17.414247+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.sqlite.org/wal.html",
+      "bytes": 42143,
+      "sha256": "f3467b530b883d4a00574fe1a898b3d121ed72764ae28cf66941080ac0badb9e",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.swift.org/blog/swift-6.2-released/",
+      "checkedAt": "2026-09-09T03:17:17.582842+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.swift.org/blog/swift-6.2-released/",
+      "bytes": 81623,
+      "sha256": "5fbae0cddb852d0b689d5549691633ebd3d0a8594345eef74e8d337b709cca62",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.swift.org/blog/swift-6.3-released/",
+      "checkedAt": "2026-09-09T03:17:18.356184+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.swift.org/blog/swift-6.3-released/",
+      "bytes": 69955,
+      "sha256": "0a527061c1f5b869afb441a7e454afe1950a9b3fa36ac32a5facf015ab551cdc",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.swift.org/documentation/",
+      "checkedAt": "2026-09-09T03:17:18.367715+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.swift.org/documentation/",
+      "bytes": 521,
+      "sha256": "daca4b8d0b5594840481b1dd96f9433f2b232f88b193bec97462374c19ef9d85",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.usb.org/document-library/hid-usage-tables-15",
+      "checkedAt": "2026-09-09T03:17:18.519254+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.usb.org/document-library/hid-usage-tables-17",
+      "bytes": 38283,
+      "sha256": "6891919a482eeb91e7714edeac9144f2ef07b68ce93fe0c8bfb034ee2b647d14",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://www.w3.org/TR/trace-context/",
+      "checkedAt": "2026-09-09T03:17:18.521847+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://www.w3.org/TR/trace-context/",
+      "bytes": 100612,
+      "sha256": "9e7228d2a91c5aa4bef6e7f610366a2000274ee51699053e10c8ac3f0b8965be",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://developer.apple.com/tutorials/data/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:).json",
+      "checkedAt": "2026-09-09T03:17:18.660646+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/tutorials/data/documentation/foundation/nsxpcconnection/setcodesigningrequirement(_:).json",
+      "bytes": 13302,
+      "sha256": "0d273ea6c624593666846bb982e6261c77823bdc28961a6bd7acf01d82601123",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://raw.githubusercontent.com/swiftlang/swift-evolution/main/proposals/0306-actors.md",
+      "checkedAt": "2026-09-09T03:17:18.904068+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://raw.githubusercontent.com/swiftlang/swift-evolution/main/proposals/0306-actors.md",
+      "bytes": 62853,
+      "sha256": "a8bf41b8807e14805ff5d4f53cabcb41f57166a51251eaf589132e106b37c8bd",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://sqlite.org/pragma.html#pragma_synchronous",
+      "checkedAt": "2026-09-09T03:17:19.207100+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://sqlite.org/pragma.html#pragma_synchronous",
+      "bytes": 139778,
+      "sha256": "b9bcb335ae818497f3fa05114a10492f64f35503f275da2264f2d5d436db3f5d",
+      "htmlShellOnly": false
+    },
+    {
+      "url": "https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/APIs/APIs.html",
+      "checkedAt": "2026-09-09T03:17:19.446900+00:00",
+      "semanticVerdict": "see D29 claim review; retrieval alone is not semantic verification",
+      "httpStatus": 200,
+      "finalUrl": "https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/APIs/APIs.html",
+      "bytes": 50846,
+      "sha256": "a233a46acfa6fec97b64435e9205b52482866e499b82ba418194f489dfa36f1d",
+      "htmlShellOnly": false
+    }
+  ],
+  "note": "Metadata only. D29 separates reviewed claims, design decisions and unrun runtime qualification."
+}

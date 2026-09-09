@@ -1,6 +1,6 @@
 # D29 — Primary research register and adoption boundaries
 
-**Revision:** 1.1. **Research window:** 2026-09-08. **Purpose:** connect platform-dependent design choices to primary documentation and identify what documentation does not prove. This is a newly completed register, not a claim that the missing earlier register was recovered byte-for-byte.
+**Revision:** 1.1. **Research window:** 2026-09-08–2026-09-09. **Purpose:** connect platform-dependent design choices to primary documentation and identify what documentation does not prove. This is a newly completed register, not a claim that the missing earlier register was recovered byte-for-byte.
 
 ## 1. Evidence rules
 
@@ -29,16 +29,16 @@ The public documents below are primary sources. The supplied private Cozea findi
 <a id="s01"></a>
 ### S01 — MCP versioned specifications and lifecycle
 
-Primary sources: <https://modelcontextprotocol.io/specification/>; <https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle>; <https://modelcontextprotocol.io/specification/2025-11-25/basic/transports>. Newer candidate release note: <https://blog.modelcontextprotocol.io/posts/2026-07-28/>.
+Primary sources: <https://modelcontextprotocol.io/specification/>; <https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle>; <https://modelcontextprotocol.io/specification/2025-11-25/basic/transports>. Published 2026-07-28 release note: <https://blog.modelcontextprotocol.io/posts/2026-07-28/>.
 
 **Use:** D17's adapter negotiation, application handles, request correlation and compatibility matrix. Read the actual selected revision rather than applying one lifecycle rule to all hosts. The host contract remains open/exec/inspect/respond/close/describe whether the protocol session is stateful or not.
 
-**Not established:** that the pinned T3/Effect implementation implements a newer release, that a live JS realm can move between Macs, or that a transport reconnect preserves native authority automatically. G03 supplies the implementation proof. A newer release-note retrieval failure must be recorded, not replaced by an invented release summary.
+**Not established:** that the pinned T3/Effect implementation implements a newer release, that a live JS realm can move between Macs, or that a transport reconnect preserves native authority automatically. G03 supplies the implementation proof. The 2026-07-28 release was reopened in this review: its core removes the initialization exchange and transport session header for that profile. This does not establish adoption in pinned T3.
 
 <a id="s02"></a>
 ### S02 — Long-running tasks, input requests and cancellation
 
-Primary sources: <https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks>; <https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation>; candidate extension: <https://tasks.extensions.modelcontextprotocol.io/specification/draft/tasks>.
+Primary sources: <https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks>; <https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation>; published extension profile: <https://tasks.extensions.modelcontextprotocol.io/specification/2026-07-28/tasks>.
 
 **Use:** asynchronous operation status, capability negotiation and explicit task/continuation adapters. Native execution IDs remain authoritative and map to protocol task IDs rather than becoming identical concepts. If the adopted extension supplies task input/update methods, bind them to the same single-use checkpoint record.
 
@@ -65,7 +65,7 @@ Primary source: <https://docs.wasmtime.dev/security.html>.
 <a id="s05"></a>
 ### S05 — Wasmtime asynchronous host integration
 
-Primary sources: <https://docs.wasmtime.dev/async.html>; <https://docs.wasmtime.dev/examples-async.html>.
+Primary source: <https://docs.wasmtime.dev/examples-async.html>. The former `async.html` URL returned 404 during review; the maintained example is the applicable source.
 
 **Use:** qualify host-side asynchronous scheduling and the worker's integration with pending device requests. The AID contract separates native device timing from guest execution, so a host implementation may use explicit request/completion queues even when a particular component-async toolchain is not ready.
 
@@ -92,7 +92,7 @@ Primary source: <https://component-model.bytecodealliance.org/design/wit.html>.
 <a id="s08"></a>
 ### S08 — WASI revisions and component async work
 
-Primary sources: <https://wasi.dev/>; <https://github.com/WebAssembly/WASI>; candidate announcement: <https://bytecodealliance.org/articles/WASI-0.3>.
+Primary sources: <https://wasi.dev/>; <https://github.com/WebAssembly/WASI>; published launch announcement: <https://bytecodealliance.org/articles/WASI-0.3>.
 
 **Use:** evaluate versioned async/resource capabilities and their actual guest/host support. Record the exact implemented interfaces and toolchain hashes rather than treating an announcement as deployment evidence.
 
@@ -359,7 +359,7 @@ Primary source: <https://doc.rust-lang.org/nomicon/ffi.html>.
 <a id="s37"></a>
 ### S37 — Accessibility roles and application-specific coverage
 
-Primary source: <https://developer.apple.com/documentation/applicationservices/accessibility>.
+Primary source: <https://developer.apple.com/documentation/applicationservices/axuielement>. The former aggregate `applicationservices/accessibility` URL returned 404; use the element API and S12/S13 method documentation.
 
 **Use:** inspect actual roles/actions and retain raw access beneath convenience selectors. Record supported/unsupported attributes and notification coverage per app.
 
@@ -446,3 +446,95 @@ Mechanical source checks must not republish whole copyrighted documentation page
 ## 8. Claims deliberately not made
 
 This register does not claim all macOS apps accept synthetic events, AX is complete, capture never changes source, a display callback proves visible presentation, a stateless protocol makes a Mac stateless, Wasm prevents every privileged-host mistake, or a compiled design prototype is ready for users. Those boundaries are part of the system's trustworthiness, not permission to omit implementation work.
+
+
+## 9. Recovered citation topics requiring explicit additional entries
+
+These are newly verified references, not claimed reconstructions of the lost register numbering. The per-document mapping is in [research-reference-map.json](contracts/research-reference-map.json).
+
+<a id="s46"></a>
+### S46 — Node VM is not a security boundary
+
+Primary source: <https://nodejs.org/api/vm.html>.
+
+The VM module documentation expressly disclaims use as a security mechanism. D04 therefore excludes Electron-main/node:vm execution of untrusted generated code. This is a boundary requirement, not proof that the selected alternative has passed G02.
+
+<a id="s47"></a>
+### S47 — Electron MessagePorts
+
+Primary source: <https://electronjs.org/docs/latest/tutorial/message-ports>.
+
+Electron documents channels between execution contexts and its MessagePort extensions. Use a narrowly exposed supervised transport with explicit ownership and bounds; a transferred port does not authenticate every request or create OS process isolation. D18/D27 retain native urgent stop separately.
+
+<a id="s48"></a>
+### S48 — OpenAI Responses function output and computer-use integration
+
+Primary source: <https://developers.openai.com/api/docs/guides/function-calling>.
+
+The Responses guide allows tool output as text or supported image/file content, correlated with the function call. Use the pinned SDK schema, actual image blocks and call identity. AID execution identity remains separate. No local integration or model task success was tested. Also see <https://developers.openai.com/api/docs/guides/tools-computer-use> for the public code-execution integration pattern; it is not evidence of this app’s private internals.
+
+<a id="s49"></a>
+### S49 — Anthropic client tool results and programmatic-tool limits
+
+Primary source: <https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls>.
+
+Client tool results match tool_use_id and can contain supported image blocks in the documented user-message structure. The separate <https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling> path restricts answers to programmatic calls to text. These pathways are not interchangeable. G03 must test the actual selected pathway and image delivery.
+
+<a id="s50"></a>
+### S50 — Gemini Interactions versus generateContent function results
+
+Primary source: <https://ai.google.dev/gemini-api/docs/function-calling>.
+
+The current Interactions guide describes multimodal blocks in a function_result result. The separate <https://ai.google.dev/gemini-api/docs/generate-content/function-calling> surface uses its own function-response parts. Choose by API/SDK and qualified model capability; do not translate by model marketing name or transplant JSON between the two APIs.
+
+<a id="s51"></a>
+### S51 — NSPasteboard change tracking
+
+Primary source: <https://developer.apple.com/documentation/appkit/nspasteboard/changecount>.
+
+The change count can reveal ownership changes between observations. It does not make a read-check-write restore atomic. The inference used in D13 is therefore conservative: no automatic restore by default; optional best-effort restore skips detected foreign changes and cannot promise race-free noninterference.
+
+<a id="s52"></a>
+### S52 — MCP Apps optional supervisory view
+
+Primary source: <https://modelcontextprotocol.io/extensions/apps/overview>.
+
+MCP Apps provides interactive HTML views rendered by supporting hosts. It can carry a supervisory interface after G03 qualification, but does not replace Cozea’s native stop path or confer desktop authority. Host support, sandbox permissions and trusted approval routing remain distinct.
+
+<a id="s53"></a>
+### S53 — Code as Policies research
+
+Primary source: <https://arxiv.org/abs/2209.07753>.
+
+Liang and colleagues describe model-generated programs that compose perception and control primitives, including logic and geometric computation. This supports investigating reusable procedural code; it does not prove reliable generalization from arbitrary human desktop demonstrations. D21/D24 require their own fixtures and G10 results.
+
+
+## 10. Claim review and adoption decisions — 2026-09-09
+
+This is a semantic review of the claims below. Source retrieval metadata is recorded separately in `contracts/research-retrieval.json`; an HTML shell, HTTP success or body hash alone is not counted as platform proof. Quoted wording is avoided; summaries describe only the relevant support. All signed/runtime qualification remains unrun.
+
+| Claim reviewed | Primary evidence and decision | Implementation obligation |
+|---|---|---|
+| July 2026 MCP has a stateless core | S01's published release and versioned specification distinguish this profile from 2025-11-25 initialization/session handling. Corrected wording that suggested the release itself was unverified. | Negotiate profile; route explicit handles to their resident Mac; G03 |
+| MRTR and Tasks input differ | S01 describes original-request retry with input responses; S02 describes task input through `tasks/update`. | Deduplicate to existing execution/continuation in both routes; never evaluate a prefix twice |
+| Task cancellation may not stop work | S02 explicitly makes cancellation cooperative; even eventual cancelled status is not guaranteed by acknowledgement. | Independent native revoke; report quiescence only from cleanup evidence; G04 |
+| QuickJS supplies language/embedding primitives | S03 supports modules, promises and resource controls; its manual does not implement Cozea cell publication or checkpoint persistence. | Pin engine/build; qualify jobs, top-level await, modules and interruption; G02 |
+| Wasmtime isolation includes a trusted embedding boundary | S04/S06 document isolation and interruption facilities, not safety of arbitrary privileged imports or blocking host calls. | Typed queues plus App Sandbox worker and independent stop; G01/G02/G04 |
+| WASI 0.3 exists, but not as automatic QuickJS glue | S08's launch announcement states release and distinguishes host support from guest-toolchain rollout. | Queue-based core-Wasm bridge remains selected; optional ABI adoption needs G02 |
+| Node VM is unsuitable as the isolation boundary | S46 explicitly excludes that security use. | No node:vm fallback in Electron main |
+| XPC offers public signing requirements | Apple's [connection API](https://developer.apple.com/documentation/foundation/nsxpcconnection/setcodesigningrequirement%28_%3A%29) and DocC metadata identify macOS 13 availability, one setup call before resume, and invalidation on mismatch. | Configure both peers using supported APIs; malformed requirements fail early; signed bundle/TCC attribution still G01 |
+| AX can read multiple attributes and bounded array pages | S12/S13 and the corresponding Apple API pages identify bulk, indexed and timeout primitives. They do not freeze an application-wide tree or guarantee prompt cancellation. | Budget each read, page with lineage, isolate blocked lanes, disclose partial coverage; G06 |
+| ScreenCaptureKit queue depth has a practical bound | Apple's [WWDC22 session](https://developer.apple.com/videos/play/wwdc2022/10155/) describes default three and upper guidance of eight; S14 supplies stream APIs. | Separate platform queue from owned retained frames; measure memory and freshness; G07 |
+| Frame callback/idle data is not an invented recapture | S15 supplies frame metadata; D09 is Cozea's explicit provenance/freshness policy. | Validate timestamp units and clock mapping on the selected SDK; no relabelled stale frames |
+| Core Graphics event posting exists | S17/S18 describe event submission and sources. Neither says every app accepts synthetic input or gives physical pen/touch equivalence. | Consistent foreground route, held-state ledger and per-app G05 tests |
+| Clipboard change tracking is not atomic restore | S51 supports tracking ownership changes; atomicity is not supplied by the read/check/write sequence. | Default off; best-effort opt-in limitation propagated to W12 and G05 |
+| Actor isolation alone is not a transaction across await | S40 and the [accepted actors proposal](https://github.com/swiftlang/swift-evolution/blob/main/proposals/0306-actors.md) describe reentrancy. | Explicit native permit spans awaited effect phases; G04 |
+| Logical points and image pixels need conversion | S21's platform conversion APIs are a substrate; the six-number frame graph is our design. | Mixed scale/negative-origin/rotation/crop round-trip fixture; G05/G06 |
+| Provider image delivery is API-specific | S48/S49/S50 establish distinct result structures and programmatic-path limits. | Fixture must prove actual image content reaches the chosen model, with call ID and permission; G03 |
+| Electron ports and renderer isolation have distinct roles | S25/S47 document IPC and isolation guidance. Ports alone do not validate principals or make native stop responsive. | Narrow preload, no arbitrary privileged renderer dispatch; G08 |
+| SQLite durability cannot be atomic with desktop effects | S27 documents journal/synchronous modes; D16 conservatively records possible dispatch before external effects. | Fault injection around disk failure, dispatch and acknowledgement; G04/G08 |
+| Schemas, canonical JSON, source maps and tracing are standards, not runtime guarantees | S28–S31 supply formats; the application still owns resource identity, limits and semantics. | Duplicate keys, unsafe counters, nonfinite values, digest and cross-language vectors; W03 |
+| Vision, virtualization and extended HID are qualified extensions | S38/S42–S44 expose platform concepts. They do not prove semantic target stability, an independent macOS seat in a Space, or virtual pen acceptance. | X02/X05/X06 capability profiles and G10–G12; no silent substitute |
+| Programmatic orchestration and code policies are research support | S41/S53 demonstrate patterns in their own settings; OSWorld S45 supplies evaluation inspiration. | No imported token-savings/benchmark prediction; Cozea A/B/C and held-out tests decide G09/G10 |
+
+No implementation-ready claim depends on a moving documentation page silently becoming a tested runtime. For any optional symbol unavailable in the chosen SDK, retain the baseline provider and mark that capability unqualified. For a required topology/engine/input experiment that fails, follow D30's specified fallback or blocked gate with an ADR; do not invent an untested replacement.

@@ -4,7 +4,7 @@
 
 ## 1. Research and boundary
 
-The supplied Codex transcript establishes composable JavaScript, not stack-preserving decision checkpoints. This subsystem is an original design. MCP MRTR and Tasks provide ways to carry requests for input, but do not serialize a JavaScript continuation or guarantee exactly-once desktop behavior. Tasks input is obtained through the task-specific mechanism; same-agent judgment is distinct from human elicitation. [S01–S02](29-research-register.md#s01) support the protocol facts, not this host integration.
+The supplied Codex transcript establishes composable JavaScript, not stack-preserving decision checkpoints. This subsystem is an original design. MCP MRTR and Tasks provide ways to carry requests for input, but do not serialize a JavaScript continuation or guarantee exactly-once desktop behavior. Tasks input is obtained through the task-specific mechanism; same-agent judgment is distinct from human elicitation. [S01](29-research-register.md#s01), [S02](29-research-register.md#s02) support the protocol facts, not this host integration.
 
 The implementation must retain a pending guest Promise in the resident worker. It must not resume by evaluating the original cell from line one. A worker crash loses that continuation. Durable records permit explanation and replanning, not transparent restoration of an arbitrary stack.
 
@@ -12,13 +12,13 @@ The implementation must retain a pending guest Promise in the resident worker. I
 
 Define `model-decision`, `human-approval`, and `debug-pause`. All are safe boundaries with no automation-owned held keys/buttons. A model decision may choose among already authorized targets or return structured planning data. It cannot grant a new capability. A human approval is handled by trusted Cozea UI and binds a concrete action/grant digest; guest code cannot impersonate the approver. Debug pause never changes permissions.
 
-`aid.execution.decide({question, evidence, responseSchema, choices?})` creates a model-decision. SDK permission-sensitive effects may cause a host-generated human-approval before their dispatch. The guest is allowed to request approval, but its description is supplemented with trusted target, capability and effect information. Do not treat a guest-supplied friendly label as the complete consent request.
+`aid.execution.decide({question, observation, responseSchema, choices?})` creates a model-decision. SDK permission-sensitive effects may cause a host-generated human-approval before their dispatch. The guest is allowed to request approval, but its description is supplemented with trusted target, capability and effect information. Do not treat a guest-supplied friendly label as the complete consent request.
 
 ## 3. Normative checkpoint record
 
 Store: `checkpointId`, `executionId`, `workspaceId`, control ID/epoch, owner tuple, kind, source cell/line, question, immutable evidence IDs, response-schema hash, optional choice IDs, dependency fingerprint, creation/deadline times, status, consumed response digest and next journal sequence. Sensitive answers are encrypted or omitted according to D19. A transport task ID is a projection, not checkpoint identity.
 
-States are `preparing -> waiting -> claimed -> answered -> resumed`; alternatives are `denied`, `expired`, `invalidated`, `cancelled`, or `lost`. `claimed` prevents two host workers from accepting conflicting responses. Persist the validated response before resolving the guest Promise. The checkpoint can resume only the exact execution and worker generation that created it.
+Stored states are `pending -> accepted -> settled`; alternatives are `rejected`, `expired`, or `lost`, as in [state-machines.json](contracts/state-machines.json). Preparation occurs before publication. Acceptance is one durable compare-and-set on an explicit consumed flag and answer digest (JSON `null` is a valid answer, never an unanswered sentinel). Denial, cancellation and dependency invalidation are rejection reasons. Persist the validated response before resolving the guest Promise. The checkpoint can resume only the exact execution and worker generation that created it.
 
 ## 4. Suspension algorithm
 
@@ -35,9 +35,9 @@ A pending checkpoint does not hold the physical-input mutex indefinitely. Howeve
 
 A response contains checkpoint ID, response ID/idempotency key, and JSON value. Trusted host context supplies owner/epoch. Validate schema, size, expiry, choice identity and checkpoint state. Repeated identical response IDs return the same result; a different value for a consumed checkpoint returns `REQUEST_CONFLICT`.
 
-Before resolving the Promise, check the control is still valid and target dependencies still match. If the response concerns a result that disappeared, set `invalidated`, attach fresh scoped evidence if authorized, and reject with `CHECKPOINT_INVALIDATED`. The agent must decide again or change procedure. Never select the nearest surviving result because its coordinates resemble the original.
+Before resolving the Promise, check the control is still valid and target dependencies still match. If the response concerns a result that disappeared, set `rejected` with reason `DEPENDENCY_CHANGED`, attach fresh scoped evidence if authorized, and reject with `DEPENDENCY_CHANGED`. The agent must decide again or change procedure. Never select the nearest surviving result because its coordinates resemble the original.
 
-Append `checkpoint.answered` durably, then resolve the guest slot once on the worker's engine thread. Record `checkpoint.resumed` when the worker acknowledges. A disconnect after answer persistence is recovered through `inspect`; it must not generate a second answer or run the prefix again. If the worker dies after answer persistence but before acknowledgement, report `WORKSPACE_LOST` with the answer record and last effect certainty. Do not pretend the answer was never used.
+Append `checkpoint.accepted` durably, then settle the guest slot once on the worker's engine thread. Record `checkpoint.settled` when the worker acknowledges. An identical duplicate sees that recorded disposition even if dependencies later change back. A disconnect after answer persistence is recovered through `inspect`; it must not generate a second answer or run the prefix again. If the worker dies after answer persistence but before acknowledgement, report `WORKSPACE_LOST` with the answer record and last effect certainty. Do not pretend the answer was never used.
 
 ## 6. Cozea orchestration mapping
 

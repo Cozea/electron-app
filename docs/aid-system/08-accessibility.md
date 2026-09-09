@@ -1,6 +1,6 @@
 # D08 — Accessibility acquisition, identity and incremental reconciliation
 
-**Purpose:** make macOS Accessibility a reliable, bounded semantic sensor/action provider without requiring a complete tree for every effect. **Baseline:** `AccessibilityRuntime`, `AXAccess`, `AXReadBudget`, `AccessibilityObserver`, `AccessibilityTree` and retained observation elements. **Primary sources:** [S11–S12](29-research-register.md#s11), [S48](29-research-register.md#s48).
+**Purpose:** make macOS Accessibility a reliable, bounded semantic sensor/action provider without requiring a complete tree for every effect. **Baseline:** `AccessibilityRuntime`, `AXAccess`, `AXReadBudget`, `AccessibilityObserver`, `AccessibilityTree` and retained observation elements. **Primary sources:** [S12](29-research-register.md#s12), [S13](29-research-register.md#s13), [S37](29-research-register.md#s37).
 
 ## 1. Selected architecture
 

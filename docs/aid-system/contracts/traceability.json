@@ -1,0 +1,671 @@
+{
+  "revision": "1.1",
+  "subsystems": [
+    {
+      "document": "01-baseline-decisions.md",
+      "requirements": [
+        "ADR-01",
+        "ADR-02",
+        "ADR-03",
+        "ADR-04",
+        "ADR-05",
+        "ADR-06",
+        "ADR-07",
+        "ADR-08",
+        "ADR-09",
+        "ADR-10",
+        "ADR-11",
+        "ADR-12",
+        "ADR-13",
+        "ADR-14",
+        "ADR-15",
+        "BASE-01",
+        "BASE-02",
+        "BASE-03",
+        "BASE-04",
+        "BASE-05",
+        "BASE-06"
+      ],
+      "workPackages": [
+        "W01",
+        "W31"
+      ],
+      "gates": [
+        "G09"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "01-baseline-decisions.md"
+    },
+    {
+      "document": "02-contracts-sdk.md",
+      "requirements": [
+        "API-01",
+        "API-02",
+        "API-03",
+        "API-04",
+        "API-05",
+        "API-06",
+        "API-07",
+        "API-08",
+        "SHA-256"
+      ],
+      "workPackages": [
+        "W02",
+        "W03",
+        "W22"
+      ],
+      "gates": [
+        "G02",
+        "G03",
+        "G08"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "02-contracts-sdk.md"
+    },
+    {
+      "document": "03-javascript-workspaces.md",
+      "requirements": [
+        "JS-01",
+        "JS-02",
+        "JS-03",
+        "JS-04",
+        "JS-05",
+        "JS-06",
+        "JS-07",
+        "JS-08",
+        "JS-09",
+        "JS-10"
+      ],
+      "workPackages": [
+        "W05",
+        "W21",
+        "W22"
+      ],
+      "gates": [
+        "G02"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "03-javascript-workspaces.md"
+    },
+    {
+      "document": "04-isolation-processes.md",
+      "requirements": [
+        "ISO-01",
+        "ISO-02",
+        "ISO-03",
+        "ISO-04",
+        "ISO-05",
+        "ISO-06",
+        "ISO-07",
+        "ISO-08"
+      ],
+      "workPackages": [
+        "W04",
+        "W05"
+      ],
+      "gates": [
+        "G01",
+        "G02"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "04-isolation-processes.md"
+    },
+    {
+      "document": "05-lifecycle-authority.md",
+      "requirements": [
+        "LIFE-01",
+        "LIFE-02",
+        "LIFE-03",
+        "LIFE-04",
+        "LIFE-05",
+        "LIFE-06",
+        "LIFE-07",
+        "LIFE-08",
+        "LIFE-09",
+        "LIFE-10"
+      ],
+      "workPackages": [
+        "W06",
+        "W07"
+      ],
+      "gates": [
+        "G04"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "05-lifecycle-authority.md"
+    },
+    {
+      "document": "06-continuations-checkpoints.md",
+      "requirements": [
+        "CP-01",
+        "CP-02",
+        "CP-03",
+        "CP-04",
+        "CP-05",
+        "CP-06",
+        "CP-07",
+        "CP-08",
+        "CP-09",
+        "CP-10"
+      ],
+      "workPackages": [
+        "W24"
+      ],
+      "gates": [
+        "G02",
+        "G03",
+        "G04"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "06-continuations-checkpoints.md"
+    },
+    {
+      "document": "07-evidence-scene.md",
+      "requirements": [
+        "EV-01",
+        "EV-02",
+        "EV-03",
+        "EV-04",
+        "EV-05",
+        "EV-06",
+        "EV-07",
+        "EV-08",
+        "EV-09",
+        "EV-10"
+      ],
+      "workPackages": [
+        "W17"
+      ],
+      "gates": [
+        "G06",
+        "G07"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "07-evidence-scene.md"
+    },
+    {
+      "document": "08-accessibility.md",
+      "requirements": [
+        "AX-01",
+        "AX-02",
+        "AX-03",
+        "AX-04",
+        "AX-05",
+        "AX-06",
+        "AX-07",
+        "AX-08",
+        "AX-09",
+        "AX-10"
+      ],
+      "workPackages": [
+        "W16"
+      ],
+      "gates": [
+        "G06"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "08-accessibility.md"
+    },
+    {
+      "document": "09-capture-artifacts.md",
+      "requirements": [
+        "CAP-01",
+        "CAP-02",
+        "CAP-03",
+        "CAP-04",
+        "CAP-05",
+        "CAP-06",
+        "CAP-07",
+        "CAP-08",
+        "CAP-09",
+        "CAP-10"
+      ],
+      "workPackages": [
+        "W14",
+        "W15"
+      ],
+      "gates": [
+        "G07"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "09-capture-artifacts.md"
+    },
+    {
+      "document": "10-watches-servo.md",
+      "requirements": [
+        "SERVO-01",
+        "SERVO-02",
+        "SERVO-03",
+        "WATCH-01",
+        "WATCH-02",
+        "WATCH-03",
+        "WATCH-04",
+        "WATCH-05",
+        "WATCH-06",
+        "WATCH-07"
+      ],
+      "workPackages": [
+        "W20"
+      ],
+      "gates": [
+        "G06"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "10-watches-servo.md"
+    },
+    {
+      "document": "11-spatial-validity.md",
+      "requirements": [
+        "SPACE-01",
+        "SPACE-02",
+        "SPACE-03",
+        "SPACE-04",
+        "SPACE-05",
+        "SPACE-06",
+        "SPACE-07",
+        "SPACE-08",
+        "SPACE-09",
+        "SPACE-10"
+      ],
+      "workPackages": [
+        "W18",
+        "W19"
+      ],
+      "gates": [
+        "G06"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "11-spatial-validity.md"
+    },
+    {
+      "document": "12-motor-timelines.md",
+      "requirements": [
+        "MOTOR-01",
+        "MOTOR-02",
+        "MOTOR-03",
+        "MOTOR-04",
+        "MOTOR-05",
+        "MOTOR-06",
+        "MOTOR-07",
+        "MOTOR-08",
+        "MOTOR-09",
+        "MOTOR-10"
+      ],
+      "workPackages": [
+        "W07",
+        "W11",
+        "W13"
+      ],
+      "gates": [
+        "G04",
+        "G05"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "12-motor-timelines.md"
+    },
+    {
+      "document": "13-keyboard-clipboard.md",
+      "requirements": [
+        "CLIP-01",
+        "CLIP-02",
+        "CLIP-03",
+        "CLIP-04",
+        "KEY-01",
+        "KEY-02",
+        "KEY-03",
+        "KEY-04",
+        "KEY-05",
+        "KEY-06",
+        "KEY-07",
+        "UTF-16"
+      ],
+      "workPackages": [
+        "W12"
+      ],
+      "gates": [
+        "G05",
+        "G08"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "13-keyboard-clipboard.md"
+    },
+    {
+      "document": "14-cursor-presentation.md",
+      "requirements": [
+        "CUR-01",
+        "CUR-02",
+        "CUR-03",
+        "CUR-04",
+        "CUR-05",
+        "CUR-06",
+        "CUR-07",
+        "CUR-08",
+        "CUR-09",
+        "CUR-10"
+      ],
+      "workPackages": [
+        "W10"
+      ],
+      "gates": [
+        "G05"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "14-cursor-presentation.md"
+    },
+    {
+      "document": "15-apps-windows-backends.md",
+      "requirements": [
+        "ROUTE-01",
+        "ROUTE-02",
+        "ROUTE-03",
+        "ROUTE-04",
+        "WIN-01",
+        "WIN-02",
+        "WIN-03",
+        "WIN-04",
+        "WIN-05",
+        "WIN-06"
+      ],
+      "workPackages": [
+        "W09",
+        "W11"
+      ],
+      "gates": [
+        "G05",
+        "G06"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "15-apps-windows-backends.md"
+    },
+    {
+      "document": "16-journal-recovery.md",
+      "requirements": [
+        "JRN-01",
+        "JRN-02",
+        "JRN-03",
+        "JRN-04",
+        "JRN-05",
+        "JRN-06",
+        "JRN-07",
+        "JRN-08",
+        "JRN-09",
+        "JRN-10"
+      ],
+      "workPackages": [
+        "W08",
+        "W23"
+      ],
+      "gates": [
+        "G04",
+        "G08"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "16-journal-recovery.md"
+    },
+    {
+      "document": "17-host-provider-protocol.md",
+      "requirements": [
+        "HOST-01",
+        "HOST-02",
+        "HOST-03",
+        "HOST-04",
+        "HOST-05",
+        "HOST-06",
+        "HOST-07",
+        "HOST-08",
+        "HOST-09",
+        "HOST-10"
+      ],
+      "workPackages": [
+        "W25",
+        "W26"
+      ],
+      "gates": [
+        "G03"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "17-host-provider-protocol.md"
+    },
+    {
+      "document": "18-human-supervision.md",
+      "requirements": [
+        "UI-01",
+        "UI-02",
+        "UI-03",
+        "UI-04",
+        "UI-05",
+        "UI-06",
+        "UI-07",
+        "UI-08",
+        "UI-09",
+        "UI-10"
+      ],
+      "workPackages": [
+        "W07",
+        "W27"
+      ],
+      "gates": [
+        "G04",
+        "G08"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "18-human-supervision.md"
+    },
+    {
+      "document": "19-security-privacy.md",
+      "requirements": [
+        "SEC-01",
+        "SEC-02",
+        "SEC-03",
+        "SEC-04",
+        "SEC-05",
+        "SEC-06",
+        "SEC-07",
+        "SEC-08",
+        "SEC-09",
+        "SEC-10"
+      ],
+      "workPackages": [
+        "W06",
+        "W15",
+        "W28"
+      ],
+      "gates": [
+        "G08"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "19-security-privacy.md"
+    },
+    {
+      "document": "20-evaluation.md",
+      "requirements": [
+        "EVAL-01",
+        "EVAL-02",
+        "EVAL-03",
+        "EVAL-04",
+        "EVAL-05",
+        "EVAL-06",
+        "EVAL-07",
+        "EVAL-08",
+        "EVAL-09",
+        "EVAL-10"
+      ],
+      "workPackages": [
+        "W01",
+        "W29",
+        "W30",
+        "W31",
+        "W33",
+        "W34"
+      ],
+      "gates": [
+        "G09"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "20-evaluation.md"
+    },
+    {
+      "document": "21-procedural-memory.md",
+      "requirements": [
+        "SKILL-01",
+        "SKILL-02",
+        "SKILL-03",
+        "SKILL-04",
+        "SKILL-05",
+        "SKILL-06",
+        "SKILL-07",
+        "SKILL-08"
+      ],
+      "workPackages": [
+        "X01"
+      ],
+      "gates": [
+        "G10"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "21-procedural-memory.md"
+    },
+    {
+      "document": "22-pipelined-planning.md",
+      "requirements": [
+        "PIPE-01",
+        "PIPE-02",
+        "PIPE-03",
+        "PIPE-04",
+        "PIPE-05",
+        "PIPE-06",
+        "PIPE-07",
+        "PIPE-08"
+      ],
+      "workPackages": [
+        "X02"
+      ],
+      "gates": [
+        "G10"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "22-pipelined-planning.md"
+    },
+    {
+      "document": "23-debugger-replay.md",
+      "requirements": [
+        "DBG-01",
+        "DBG-02",
+        "DBG-03",
+        "DBG-04",
+        "DBG-05",
+        "DBG-06",
+        "DBG-07",
+        "DBG-08",
+        "DBG-09",
+        "DBG-10"
+      ],
+      "workPackages": [
+        "X03"
+      ],
+      "gates": [
+        "G10"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "23-debugger-replay.md"
+    },
+    {
+      "document": "24-demonstrations.md",
+      "requirements": [
+        "DEMO-01",
+        "DEMO-02",
+        "DEMO-03",
+        "DEMO-04",
+        "DEMO-05",
+        "DEMO-06",
+        "DEMO-07",
+        "DEMO-08",
+        "DEMO-09",
+        "DEMO-10"
+      ],
+      "workPackages": [
+        "X04"
+      ],
+      "gates": [
+        "G10"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "24-demonstrations.md"
+    },
+    {
+      "document": "25-separate-seats.md",
+      "requirements": [
+        "SEAT-01",
+        "SEAT-02",
+        "SEAT-03",
+        "SEAT-04",
+        "SEAT-05",
+        "SEAT-06",
+        "SEAT-07",
+        "SEAT-08",
+        "SEAT-09",
+        "SEAT-10"
+      ],
+      "workPackages": [
+        "X05"
+      ],
+      "gates": [
+        "G11"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "25-separate-seats.md"
+    },
+    {
+      "document": "26-extended-devices.md",
+      "requirements": [
+        "DEV-01",
+        "DEV-02",
+        "DEV-03",
+        "DEV-04",
+        "DEV-05",
+        "DEV-06",
+        "DEV-07",
+        "DEV-08",
+        "DEV-09",
+        "DEV-10"
+      ],
+      "workPackages": [
+        "X06"
+      ],
+      "gates": [
+        "G12"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "26-extended-devices.md"
+    },
+    {
+      "document": "27-integration-packaging.md",
+      "requirements": [
+        "INT-01",
+        "INT-02",
+        "INT-03",
+        "INT-04",
+        "INT-05",
+        "INT-06",
+        "INT-07",
+        "INT-08",
+        "INT-09",
+        "INT-10"
+      ],
+      "workPackages": [
+        "W04",
+        "W25",
+        "W32",
+        "W34",
+        "W35"
+      ],
+      "gates": [
+        "G01",
+        "G03"
+      ],
+      "contract": "aid-sdk.d.ts",
+      "acceptanceSection": "27-integration-packaging.md"
+    }
+  ],
+  "note": "Requirement IDs are linked to their owning document acceptance section; runtime tests are prescribed there and in D30, not claimed executed."
+}

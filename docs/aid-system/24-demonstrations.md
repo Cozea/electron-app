@@ -1,6 +1,6 @@
 # D24 — Human demonstrations as evidence for program synthesis
 
-**Purpose:** let a person teach unfamiliar UI procedures while keeping demonstrations distinct from privileged macros. **Research:** model-generated policy/program techniques [S46](29-research-register.md#s46) support the general direction; no source proves Cozea can safely generalize arbitrary demonstrations. **Depends on:** D07, D13, D19, D21 and D23.
+**Purpose:** let a person teach unfamiliar UI procedures while keeping demonstrations distinct from privileged macros. **Research:** model-generated policy/program techniques [S53](29-research-register.md#s53) support the general direction; no source proves Cozea can safely generalize arbitrary demonstrations. **Depends on:** D07, D13, D19, D21 and D23.
 
 ## 1. Recording contract
 

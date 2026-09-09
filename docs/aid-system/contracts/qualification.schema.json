@@ -1,0 +1,209 @@
+{
+  "type": "object",
+  "properties": {
+    "schemaRevision": {
+      "const": "1.1"
+    },
+    "gateId": {
+      "type": "string",
+      "pattern": "^G(0[1-9]|1[0-2])$"
+    },
+    "status": {
+      "enum": [
+        "not_run",
+        "blocked",
+        "failed",
+        "passed",
+        "not_applicable"
+      ]
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contractHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "environment": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "failed",
+              "blocked",
+              "not_run",
+              "not_applicable"
+            ]
+          },
+          "procedure": {
+            "type": "string",
+            "minLength": 1
+          },
+          "samples": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "procedure",
+          "samples"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "kind": {
+            "enum": [
+              "trace",
+              "image",
+              "video",
+              "test-output",
+              "manifest",
+              "review"
+            ]
+          },
+          "access": {
+            "enum": [
+              "public-redacted",
+              "private-consented"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "kind",
+          "access"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reviewer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "finishedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaRevision",
+    "gateId",
+    "status",
+    "profileId",
+    "contractHash",
+    "sourceCommit",
+    "environment",
+    "tests",
+    "evidence",
+    "rationale",
+    "reviewer",
+    "limitations"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cozea.invalid/aid-design/1.1/qualification.schema.json",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "passed"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "startedAt",
+          "finishedAt"
+        ],
+        "properties": {
+          "tests": {
+            "minItems": 1,
+            "items": {
+              "properties": {
+                "status": {
+                  "const": "passed"
+                },
+                "samples": {
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "evidence": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "not_applicable"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "gateId": {
+            "enum": [
+              "G10",
+              "G11",
+              "G12"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "x-contract-sha256": "78d10d3812d51e15a06593ef8139c115777bad7aa526e410a4c0bc788fb309ca",
+  "x-generator": "design.py/1.1"
+}

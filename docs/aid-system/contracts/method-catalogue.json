@@ -1,0 +1,1117 @@
+{
+  "revision": "1.1",
+  "methods": [
+    {
+      "name": "Artifact.read",
+      "parameters": [
+        "options?: { readonly offset?: number; readonly length?: number }"
+      ],
+      "returns": "Promise<Uint8Array>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "artifacts.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Artifact.release",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.refresh",
+      "parameters": [],
+      "returns": "Promise<ElementState>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.children",
+      "parameters": [
+        "options?: { readonly continuation?: string; readonly limit?: number; readonly raw?: boolean }"
+      ],
+      "returns": "Promise<ElementSelection>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.perform",
+      "parameters": [
+        "action: string"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "semantic-input",
+      "minimumCapabilities": [
+        "accessibility.act"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.setValue",
+      "parameters": [
+        "value: string | number | boolean"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "semantic-input",
+      "minimumCapabilities": [
+        "accessibility.act"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.describe",
+      "parameters": [],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ElementSelection.one",
+      "parameters": [],
+      "returns": "Element",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.query",
+      "parameters": [
+        "spec: Query"
+      ],
+      "returns": "ElementSelection",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.point",
+      "parameters": [
+        "xPixels: number",
+        "yPixels: number",
+        "imageIndex?: number"
+      ],
+      "returns": "Point",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.crop",
+      "parameters": [
+        "region: FramedRect",
+        "options?: { readonly maxDimension?: number }"
+      ],
+      "returns": "Promise<ImageEvidence>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.diff",
+      "parameters": [
+        "base: Observation"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.bindSurface",
+      "parameters": [
+        "binding: SurfaceBinding"
+      ],
+      "returns": "Promise<Surface>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.release",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.windows",
+      "parameters": [],
+      "returns": "Promise<readonly Window[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.mainWindow",
+      "parameters": [],
+      "returns": "Promise<Window>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.menu",
+      "parameters": [
+        "query?: Query"
+      ],
+      "returns": "Promise<ElementSelection>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.activate",
+      "parameters": [
+        "options?: { readonly window?: WindowChoice }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.describe",
+      "parameters": [],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.focus",
+      "parameters": [],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.refresh",
+      "parameters": [],
+      "returns": "Promise<Window>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.setBounds",
+      "parameters": [
+        "bounds: FramedRect"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.observe",
+      "parameters": [
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.query",
+      "parameters": [
+        "spec: Query"
+      ],
+      "returns": "Promise<ElementSelection>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.point",
+      "parameters": [
+        "xPoints: number",
+        "yPoints: number"
+      ],
+      "returns": "Point",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.describe",
+      "parameters": [],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.point",
+      "parameters": [
+        "u: number",
+        "v: number"
+      ],
+      "returns": "SurfacePoint",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.validate",
+      "parameters": [],
+      "returns": "Promise<{ readonly valid: boolean; readonly reasons: readonly string[] }>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.observe",
+      "parameters": [
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.release",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.moveTo",
+      "parameters": [
+        "target: Point",
+        "options?: MoveOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.moveBy",
+      "parameters": [
+        "delta: { readonly frameId: FrameId; readonly dx: number; readonly dy: number }",
+        "options?: MoveOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.hover",
+      "parameters": [
+        "target: Element | Point",
+        "options?: { readonly dwellMs?: number; readonly pacing?: CursorPacing }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.click",
+      "parameters": [
+        "target: Element | Point",
+        "options?: ClickOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.buttonDown",
+      "parameters": [
+        "button: MouseButton"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.buttonUp",
+      "parameters": [
+        "button: MouseButton"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.withButtonDown",
+      "parameters": [
+        "button: MouseButton",
+        "body: () => Promise<T>"
+      ],
+      "returns": "Promise<T>",
+      "layer": "guest-combinator",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.followPath",
+      "parameters": [
+        "points: readonly Point[]",
+        "options: PathOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.scroll",
+      "parameters": [
+        "target: Element | Point",
+        "options: ScrollOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.play",
+      "parameters": [
+        "timeline: Timeline"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "SurfacePointer.stroke",
+      "parameters": [
+        "points: readonly (Vec2 | SurfacePoint)[]",
+        "options: StrokeOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "SurfacePointer.moveTo",
+      "parameters": [
+        "point: Vec2 | SurfacePoint",
+        "options?: MoveOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "SurfacePointer.click",
+      "parameters": [
+        "point: Vec2 | SurfacePoint",
+        "options?: ClickOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.typeText",
+      "parameters": [
+        "text: string",
+        "options?: { readonly deadlineMs?: number }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.chord",
+      "parameters": [
+        "keys: string | readonly Key[]",
+        "options?: { readonly holdMs?: number }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.keyDown",
+      "parameters": [
+        "key: Key"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.keyUp",
+      "parameters": [
+        "key: Key"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.repeat",
+      "parameters": [
+        "key: Key",
+        "options: { readonly count: number; readonly intervalMs: number; readonly holdMs?: number }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.withKeysDown",
+      "parameters": [
+        "keys: readonly Key[]",
+        "body: () => Promise<T>"
+      ],
+      "returns": "Promise<T>",
+      "layer": "guest-combinator",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Watch.next",
+      "parameters": [
+        "options?: { readonly deadlineMs?: number }"
+      ],
+      "returns": "Promise<T>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Watch.close",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Events.until",
+      "parameters": [
+        "predicate: () => Promise<T | null>",
+        "options: { readonly deadlineMs: number; readonly scope: Window | Surface; readonly reconcileMs?: number; readonly stableForMs?: number }"
+      ],
+      "returns": "Promise<T>",
+      "layer": "guest-combinator",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Events.watchQuery",
+      "parameters": [
+        "window: Window",
+        "query: Query"
+      ],
+      "returns": "Promise<Watch<ElementSelection>>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Events.wait",
+      "parameters": [
+        "ms: number"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.readText",
+      "parameters": [],
+      "returns": "Promise<ClipboardValue>",
+      "layer": "driver",
+      "effectClass": "clipboard-read",
+      "minimumCapabilities": [
+        "clipboard.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.writeText",
+      "parameters": [
+        "text: string"
+      ],
+      "returns": "Promise<{ readonly receipt: Receipt; readonly changeCount: UInt64 }>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.writeImage",
+      "parameters": [
+        "image: ImageEvidence"
+      ],
+      "returns": "Promise<{ readonly receipt: Receipt; readonly changeCount: UInt64 }>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write",
+        "artifacts.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.pasteImage",
+      "parameters": [
+        "target: App | Window",
+        "image: ImageEvidence",
+        "options?: { readonly restore?: boolean }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write",
+        "artifacts.read",
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.pasteText",
+      "parameters": [
+        "target: App | Window",
+        "text: string",
+        "options?: { readonly restore?: boolean }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write",
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.emit",
+      "parameters": [
+        "value: Emission"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "artifact-export",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.decide",
+      "parameters": [
+        "request: DecisionRequest"
+      ],
+      "returns": "Promise<T>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.requestApproval",
+      "parameters": [
+        "request: DecisionRequest"
+      ],
+      "returns": "Promise<{ readonly approved: boolean }>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.inspectReceipts",
+      "parameters": [],
+      "returns": "Promise<readonly Receipt[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.modules",
+      "parameters": [],
+      "returns": "Promise<readonly { readonly name: string; readonly revision: ModuleRevision }[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.saveModule",
+      "parameters": [
+        "name: string",
+        "revision: ModuleRevision"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.saveData",
+      "parameters": [
+        "name: string",
+        "value: JsonValue"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.loadData",
+      "parameters": [
+        "name: string"
+      ],
+      "returns": "Promise<JsonValue | null>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.apps.list",
+      "parameters": [
+        "options?: { readonly includeInstalled?: boolean }"
+      ],
+      "returns": "Promise<readonly AppListing[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "apps.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.apps.get",
+      "parameters": [
+        "query: AppQuery"
+      ],
+      "returns": "Promise<App>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "apps.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.apps.prepare",
+      "parameters": [
+        "request: PrepareAppRequest"
+      ],
+      "returns": "Promise<PreparedApp>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control",
+        "apps.prepare"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.windows.get",
+      "parameters": [
+        "id: WindowId"
+      ],
+      "returns": "Promise<Window>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.windows.list",
+      "parameters": [
+        "app?: App"
+      ],
+      "returns": "Promise<readonly Window[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.windows.focused",
+      "parameters": [],
+      "returns": "Promise<Window | null>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.window",
+      "parameters": [
+        "window: Window",
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.surface",
+      "parameters": [
+        "surface: Surface",
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.desktop",
+      "parameters": [
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "capture.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.region",
+      "parameters": [
+        "region: FramedRect",
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "capture.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.describe",
+      "parameters": [
+        "moduleOrResource?: string | Resource<string>"
+      ],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    }
+  ],
+  "note": "Guest methods and host operations have separate namespaces. Callback/resource/RegExp codecs are prescribed in D02. Capability lists are minima; native checks bind owner, epoch, route and target."
+}

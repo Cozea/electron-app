@@ -1,6 +1,6 @@
 # D22 — Pipelined perception and planning without conflicting writers
 
-**Purpose:** overlap useful preparation with deterministic execution while preserving observation validity and human control. **Research basis:** programmable local execution [S44](29-research-register.md#s44); source/trace semantics in D07/D20. This pipeline is a Cozea design, not a claim that an in-progress model inference can automatically see live screen updates.
+**Purpose:** overlap useful preparation with deterministic execution while preserving observation validity and human control. **Research basis:** programmable local execution [S41](29-research-register.md#s41); source/trace semantics in D07/D20. This pipeline is a Cozea design, not a claim that an in-progress model inference can automatically see live screen updates.
 
 ## 1. Allowed overlap
 

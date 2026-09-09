@@ -1,0 +1,1668 @@
+{
+  "revision": "1.1",
+  "tests": [
+    {
+      "id": "describe",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "describe",
+        "params": {
+          "apiRevision": "1.1",
+          "subject": "pointer"
+        }
+      }
+    },
+    {
+      "id": "open",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "open",
+        "params": {
+          "apiRevision": "1.1",
+          "idempotencyKey": "open_1",
+          "workspaceName": "drawing",
+          "control": {
+            "mode": "visible-ui",
+            "targetApps": [
+              {
+                "name": "AID Drawing Fixture"
+              }
+            ],
+            "capabilities": [
+              "pointer.control",
+              "capture.read"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "exec",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "text",
+            "text": "export const x = 1;"
+          }
+        }
+      }
+    },
+    {
+      "id": "inspect",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "inspect",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "sinceSequence": "9007199254740993"
+        }
+      }
+    },
+    {
+      "id": "respond",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "respond",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "executionId": "exec_1",
+          "checkpointId": "cp_1",
+          "idempotencyKey": "answer_1",
+          "answer": "button_7"
+        }
+      }
+    },
+    {
+      "id": "close",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "close",
+        "params": {
+          "apiRevision": "1.1",
+          "target": {
+            "kind": "execution",
+            "executionId": "exec_1"
+          }
+        }
+      }
+    },
+    {
+      "id": "point",
+      "schema": "values",
+      "valid": true,
+      "value": {
+        "kind": "point",
+        "frameId": "frame_1",
+        "transformGeneration": "1",
+        "units": "normalized",
+        "x": 0.25,
+        "y": 0.75
+      }
+    },
+    {
+      "id": "receipt",
+      "schema": "values",
+      "valid": true,
+      "value": {
+        "operationId": "op_1",
+        "executionId": "exec_1",
+        "sequence": "1",
+        "phase": "dispatch",
+        "route": "foreground-event",
+        "submission": "submitted",
+        "evidence": "not_checked",
+        "outcome": "unverified",
+        "canRetryAutomatically": false,
+        "after": {
+          "operationId": "op_1",
+          "sequence": "1"
+        },
+        "evidenceIds": [],
+        "timingsMs": {},
+        "warnings": []
+      }
+    },
+    {
+      "id": "gate-unrun",
+      "schema": "qualification",
+      "valid": true,
+      "value": {
+        "schemaRevision": "1.1",
+        "gateId": "G01",
+        "status": "not_run",
+        "profileId": "macos26-arm64-candidate",
+        "contractHash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sourceCommit": "0000000000000000000000000000000000000000",
+        "environment": {
+          "qualification": "not run by documentation"
+        },
+        "tests": [],
+        "evidence": [],
+        "rationale": "Design record only; no native test executed.",
+        "reviewer": "unassigned",
+        "limitations": [
+          "Runtime qualification not performed."
+        ]
+      }
+    },
+    {
+      "id": "forged-owner-field",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "describe",
+        "params": {
+          "apiRevision": "1.1",
+          "subject": "pointer",
+          "principalId": "foreign"
+        }
+      }
+    },
+    {
+      "id": "mixed-source",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "text",
+            "text": "x",
+            "artifactId": "a"
+          }
+        }
+      }
+    },
+    {
+      "id": "cell-path-traversal",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "../../escape",
+          "source": {
+            "kind": "text",
+            "text": "export const x = 1;"
+          }
+        }
+      }
+    },
+    {
+      "id": "numeric-counter",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "inspect",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "sinceSequence": 9007199254740993
+        }
+      }
+    },
+    {
+      "id": "leading-zero-counter",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "inspect",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "sinceSequence": "01"
+        }
+      }
+    },
+    {
+      "id": "mixed-close-target",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "close",
+        "params": {
+          "apiRevision": "1.1",
+          "target": {
+            "kind": "execution",
+            "executionId": "exec_1",
+            "workspaceId": "ws_1"
+          }
+        }
+      }
+    },
+    {
+      "id": "unframed-point",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "kind": "point",
+        "transformGeneration": "1",
+        "units": "normalized",
+        "x": 0.25,
+        "y": 0.75
+      }
+    },
+    {
+      "id": "out-of-surface-point",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "kind": "point",
+        "frameId": "frame_1",
+        "transformGeneration": "1",
+        "units": "normalized",
+        "x": 1.5,
+        "y": 0.75
+      }
+    },
+    {
+      "id": "retry-after-submission",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "operationId": "op_1",
+        "executionId": "exec_1",
+        "sequence": "1",
+        "phase": "dispatch",
+        "route": "foreground-event",
+        "submission": "submitted",
+        "evidence": "not_checked",
+        "outcome": "unverified",
+        "canRetryAutomatically": true,
+        "after": {
+          "operationId": "op_1",
+          "sequence": "1"
+        },
+        "evidenceIds": [],
+        "timingsMs": {},
+        "warnings": []
+      }
+    },
+    {
+      "id": "retry-after-uncertainty",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "operationId": "op_1",
+        "executionId": "exec_1",
+        "sequence": "1",
+        "phase": "dispatch",
+        "route": "foreground-event",
+        "submission": "submission_uncertain",
+        "evidence": "not_checked",
+        "outcome": "unverified",
+        "canRetryAutomatically": true,
+        "after": {
+          "operationId": "op_1",
+          "sequence": "1"
+        },
+        "evidenceIds": [],
+        "timingsMs": {},
+        "warnings": []
+      }
+    },
+    {
+      "id": "verified-without-evidence",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "operationId": "op_1",
+        "executionId": "exec_1",
+        "sequence": "1",
+        "phase": "dispatch",
+        "route": "foreground-event",
+        "submission": "submitted",
+        "evidence": "not_checked",
+        "outcome": "verified",
+        "canRetryAutomatically": false,
+        "after": {
+          "operationId": "op_1",
+          "sequence": "1"
+        },
+        "evidenceIds": [],
+        "timingsMs": {},
+        "warnings": []
+      }
+    },
+    {
+      "id": "failed-without-predicate",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "operationId": "op_1",
+        "executionId": "exec_1",
+        "sequence": "1",
+        "phase": "dispatch",
+        "route": "foreground-event",
+        "submission": "submitted",
+        "evidence": "not_checked",
+        "outcome": "failed",
+        "canRetryAutomatically": false,
+        "after": {
+          "operationId": "op_1",
+          "sequence": "1"
+        },
+        "evidenceIds": [],
+        "timingsMs": {},
+        "warnings": []
+      }
+    },
+    {
+      "id": "gate-pass-with-no-tests",
+      "schema": "qualification",
+      "valid": false,
+      "value": {
+        "schemaRevision": "1.1",
+        "gateId": "G01",
+        "status": "passed",
+        "profileId": "macos26-arm64-candidate",
+        "contractHash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sourceCommit": "0000000000000000000000000000000000000000",
+        "environment": {
+          "qualification": "not run by documentation"
+        },
+        "tests": [],
+        "evidence": [],
+        "rationale": "Design record only; no native test executed.",
+        "reviewer": "unassigned",
+        "limitations": [
+          "Runtime qualification not performed."
+        ]
+      }
+    },
+    {
+      "id": "core-gate-not-applicable",
+      "schema": "qualification",
+      "valid": false,
+      "value": {
+        "schemaRevision": "1.1",
+        "gateId": "G01",
+        "status": "not_applicable",
+        "profileId": "macos26-arm64-candidate",
+        "contractHash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "sourceCommit": "0000000000000000000000000000000000000000",
+        "environment": {
+          "qualification": "not run by documentation"
+        },
+        "tests": [],
+        "evidence": [],
+        "rationale": "Design record only; no native test executed.",
+        "reviewer": "unassigned",
+        "limitations": [
+          "Runtime qualification not performed."
+        ]
+      }
+    },
+    {
+      "id": "valid-result-1",
+      "valid": true,
+      "value": {
+        "kind": "opened",
+        "workspaceId": "ws_1",
+        "apiRevision": "1.1",
+        "contractHash": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "schema": "results"
+    },
+    {
+      "id": "valid-result-2",
+      "valid": true,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "running",
+          "sequence": "1",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false
+        },
+        "emissions": [
+          {
+            "kind": "text",
+            "text": "Actual result metadata."
+          }
+        ]
+      },
+      "schema": "results"
+    },
+    {
+      "id": "valid-result-3",
+      "valid": true,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "running",
+          "sequence": "1",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false
+        },
+        "emissions": [
+          {
+            "kind": "image",
+            "artifact": {
+              "kind": "artifact",
+              "id": "artifact_1",
+              "runtimeGeneration": "runtime_1",
+              "mimeType": "image/png",
+              "byteLength": 64,
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "expiresAtMs": 2000000000000,
+              "pixelWidth": 64,
+              "pixelHeight": 64,
+              "observationId": "obs_1"
+            }
+          }
+        ]
+      },
+      "schema": "results"
+    },
+    {
+      "id": "valid-result-4",
+      "valid": true,
+      "value": {
+        "kind": "inspection",
+        "executions": [
+          {
+            "executionId": "exec_1",
+            "workspaceId": "ws_1",
+            "state": "running",
+            "sequence": "1",
+            "historyExpired": false,
+            "droppedRecords": 0,
+            "quiescent": false
+          }
+        ],
+        "modules": [
+          {
+            "name": "geometry",
+            "revision": "r1"
+          }
+        ]
+      },
+      "schema": "results"
+    },
+    {
+      "id": "valid-result-5",
+      "valid": true,
+      "value": {
+        "kind": "closing",
+        "target": {
+          "kind": "execution",
+          "executionId": "exec_1"
+        },
+        "quiescent": false
+      },
+      "schema": "results"
+    },
+    {
+      "id": "valid-result-6",
+      "valid": true,
+      "value": {
+        "kind": "description",
+        "description": {
+          "apiRevision": "1.1",
+          "contractHash": "0000000000000000000000000000000000000000000000000000000000000000",
+          "subject": "pointer",
+          "capabilities": [],
+          "types": "interface Pointer {}",
+          "examples": [],
+          "limitations": [
+            "Fixture only"
+          ]
+        }
+      },
+      "schema": "results"
+    },
+    {
+      "id": "valid-result-7",
+      "valid": true,
+      "value": {
+        "kind": "error",
+        "failure": {
+          "code": "DELIVERY_UNCERTAIN",
+          "message": "May have been submitted.",
+          "phase": "dispatch",
+          "submission": "submission_uncertain",
+          "canRetryAutomatically": false
+        }
+      },
+      "schema": "results"
+    },
+    {
+      "id": "raw-path-in-artifact",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "running",
+          "sequence": "1",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false
+        },
+        "emissions": [
+          {
+            "kind": "image",
+            "artifact": {
+              "kind": "artifact",
+              "id": "artifact_1",
+              "runtimeGeneration": "runtime_1",
+              "mimeType": "image/png",
+              "byteLength": 64,
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "expiresAtMs": 2000000000000,
+              "pixelWidth": 64,
+              "pixelHeight": 64,
+              "observationId": "obs_1",
+              "path": "/private/screenshot.png"
+            }
+          }
+        ]
+      },
+      "schema": "results"
+    },
+    {
+      "id": "image-bypasses-artifact-service",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "running",
+          "sequence": "1",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false
+        },
+        "emissions": [
+          {
+            "kind": "image",
+            "data": "base64-is-not-an-artifact"
+          }
+        ]
+      },
+      "schema": "results"
+    },
+    {
+      "id": "unknown-execution-state",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "done-ish",
+          "sequence": "1",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false
+        },
+        "emissions": [
+          {
+            "kind": "text",
+            "text": "Actual result metadata."
+          }
+        ]
+      },
+      "schema": "results"
+    },
+    {
+      "id": "retry-uncertain-result",
+      "valid": false,
+      "value": {
+        "kind": "error",
+        "failure": {
+          "code": "DELIVERY_UNCERTAIN",
+          "message": "May have been submitted.",
+          "phase": "dispatch",
+          "submission": "submission_uncertain",
+          "canRetryAutomatically": true
+        }
+      },
+      "schema": "results"
+    },
+    {
+      "id": "unrecognized-owner-result-field",
+      "valid": false,
+      "value": {
+        "kind": "opened",
+        "workspaceId": "ws_1",
+        "apiRevision": "1.1",
+        "contractHash": "0000000000000000000000000000000000000000000000000000000000000000",
+        "principalId": "someone-else"
+      },
+      "schema": "results"
+    },
+    {
+      "id": "missing-source",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry"
+        }
+      }
+    },
+    {
+      "id": "forged-arguments-owner",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "text",
+            "text": "export const x = 1;"
+          },
+          "owner": "attacker"
+        }
+      }
+    },
+    {
+      "id": "unknown-method",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "runShell",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "text",
+            "text": "export const x = 1;"
+          }
+        }
+      }
+    },
+    {
+      "id": "old-inline-source",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "inline",
+            "text": "export const x = 1;"
+          }
+        }
+      }
+    },
+    {
+      "id": "old-budget-field",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "text",
+            "text": "export const x = 1;"
+          },
+          "budget": {}
+        }
+      }
+    },
+    {
+      "id": "empty-app-query",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "open",
+        "params": {
+          "apiRevision": "1.1",
+          "idempotencyKey": "open_1",
+          "workspaceName": "drawing",
+          "control": {
+            "mode": "visible-ui",
+            "targetApps": [
+              {}
+            ],
+            "capabilities": [
+              "pointer.control",
+              "capture.read"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "mixed-app-query",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "open",
+        "params": {
+          "apiRevision": "1.1",
+          "idempotencyKey": "open_1",
+          "workspaceName": "drawing",
+          "control": {
+            "mode": "visible-ui",
+            "targetApps": [
+              {
+                "pid": 42,
+                "name": "Safari"
+              }
+            ],
+            "capabilities": [
+              "pointer.control",
+              "capture.read"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "pid-without-launch",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "open",
+        "params": {
+          "apiRevision": "1.1",
+          "idempotencyKey": "open_1",
+          "workspaceName": "drawing",
+          "control": {
+            "mode": "visible-ui",
+            "targetApps": [
+              {
+                "pid": 42
+              }
+            ],
+            "capabilities": [
+              "pointer.control",
+              "capture.read"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "silent-hybrid",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "open",
+        "params": {
+          "apiRevision": "1.1",
+          "idempotencyKey": "open_1",
+          "workspaceName": "drawing",
+          "control": {
+            "mode": "visible-ui",
+            "targetApps": [
+              {
+                "name": "AID Drawing Fixture"
+              }
+            ],
+            "capabilities": [
+              "hybrid.execute"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "unknown-capability",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "open",
+        "params": {
+          "apiRevision": "1.1",
+          "idempotencyKey": "open_1",
+          "workspaceName": "drawing",
+          "control": {
+            "mode": "visible-ui",
+            "targetApps": [
+              {
+                "name": "AID Drawing Fixture"
+              }
+            ],
+            "capabilities": [
+              "pointer.input"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "empty-close",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "close",
+        "params": {
+          "apiRevision": "1.1",
+          "target": {}
+        }
+      }
+    },
+    {
+      "id": "human-role-from-model",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "respond",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "executionId": "exec_1",
+          "checkpointId": "cp_1",
+          "idempotencyKey": "answer_1",
+          "answer": "button_7",
+          "approvedBy": "human"
+        }
+      }
+    },
+    {
+      "id": "exec-artifact",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "artifact",
+            "artifactId": "artifact_1",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "id": "bad-source-hash",
+      "schema": "host",
+      "valid": false,
+      "value": {
+        "method": "exec",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "idempotencyKey": "run_1",
+          "cellName": "geometry",
+          "source": {
+            "kind": "artifact",
+            "artifactId": "artifact_1",
+            "sha256": "oops"
+          }
+        }
+      }
+    },
+    {
+      "id": "respond-null",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "respond",
+        "params": {
+          "apiRevision": "1.1",
+          "workspaceId": "ws_1",
+          "executionId": "exec_1",
+          "checkpointId": "cp_1",
+          "idempotencyKey": "answer_1",
+          "answer": null
+        }
+      }
+    },
+    {
+      "id": "verified-with-predicate",
+      "schema": "values",
+      "valid": true,
+      "value": {
+        "operationId": "op_1",
+        "executionId": "exec_1",
+        "sequence": "1",
+        "phase": "dispatch",
+        "route": "foreground-event",
+        "submission": "submitted",
+        "evidence": "change_observed",
+        "outcome": "verified",
+        "canRetryAutomatically": false,
+        "after": {
+          "operationId": "op_1",
+          "sequence": "1"
+        },
+        "evidenceIds": [
+          "obs_1"
+        ],
+        "timingsMs": {},
+        "warnings": [],
+        "verification": {
+          "predicate": "selection-changed",
+          "evidenceIds": [
+            "obs_1"
+          ]
+        }
+      }
+    },
+    {
+      "id": "verification-wrong-evidence",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "operationId": "op_1",
+        "executionId": "exec_1",
+        "sequence": "1",
+        "phase": "dispatch",
+        "route": "foreground-event",
+        "submission": "submitted",
+        "evidence": "change_observed",
+        "outcome": "verified",
+        "canRetryAutomatically": false,
+        "after": {
+          "operationId": "op_1",
+          "sequence": "1"
+        },
+        "evidenceIds": [
+          "obs_1"
+        ],
+        "timingsMs": {},
+        "warnings": [],
+        "verification": {
+          "predicate": "selection-changed",
+          "evidenceIds": [
+            "obs_2"
+          ]
+        }
+      }
+    },
+    {
+      "id": "waiting-model-quiescent",
+      "schema": "results",
+      "valid": true,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "waiting-for-model",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": true,
+          "checkpoint": {
+            "id": "cp_1",
+            "kind": "model-decision",
+            "executionId": "exec_1",
+            "question": "Choose visible target",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "dependencyDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expiresAtMs": 2000000000000
+          },
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "missing-checkpoint",
+      "schema": "results",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "waiting-for-model",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": true,
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "wrong-checkpoint-kind",
+      "schema": "results",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "waiting-for-model",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": true,
+          "checkpoint": {
+            "id": "cp_1",
+            "kind": "human-approval",
+            "executionId": "exec_1",
+            "question": "Choose visible target",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "dependencyDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expiresAtMs": 2000000000000
+          },
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "held-input-at-checkpoint",
+      "schema": "results",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "waiting-for-model",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false,
+          "checkpoint": {
+            "id": "cp_1",
+            "kind": "model-decision",
+            "executionId": "exec_1",
+            "question": "Choose visible target",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "dependencyDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expiresAtMs": 2000000000000
+          },
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "nested-verification-mismatch",
+      "schema": "results",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "waiting-for-model",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": true,
+          "checkpoint": {
+            "id": "cp_1",
+            "kind": "model-decision",
+            "executionId": "exec_1",
+            "question": "Choose visible target",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "dependencyDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expiresAtMs": 2000000000000
+          },
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_2"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "nested-counter-overflow",
+      "schema": "results",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "waiting-for-model",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": true,
+          "checkpoint": {
+            "id": "cp_1",
+            "kind": "model-decision",
+            "executionId": "exec_1",
+            "question": "Choose visible target",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "dependencyDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expiresAtMs": 2000000000000
+          },
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "18446744073709551616"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "complete-quiescent",
+      "schema": "results",
+      "valid": true,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "completed",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": true,
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "complete-not-quiescent",
+      "schema": "results",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "completed",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false,
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "complete-pending-checkpoint",
+      "schema": "results",
+      "valid": false,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "completed",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": true,
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          },
+          "checkpoint": {
+            "id": "cp_1",
+            "kind": "model-decision",
+            "executionId": "exec_1",
+            "question": "Choose visible target",
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "dependencyDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "expiresAtMs": 2000000000000
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "lost-unconfirmed-cleanup",
+      "schema": "results",
+      "valid": true,
+      "value": {
+        "kind": "execution",
+        "status": {
+          "executionId": "exec_1",
+          "workspaceId": "ws_1",
+          "state": "lost",
+          "sequence": "2",
+          "historyExpired": false,
+          "droppedRecords": 0,
+          "quiescent": false,
+          "lastReceipt": {
+            "operationId": "op_1",
+            "executionId": "exec_1",
+            "sequence": "1",
+            "phase": "dispatch",
+            "route": "foreground-event",
+            "submission": "submitted",
+            "evidence": "change_observed",
+            "outcome": "verified",
+            "canRetryAutomatically": false,
+            "after": {
+              "operationId": "op_1",
+              "sequence": "1"
+            },
+            "evidenceIds": [
+              "obs_1"
+            ],
+            "timingsMs": {},
+            "warnings": [],
+            "verification": {
+              "predicate": "selection-changed",
+              "evidenceIds": [
+                "obs_1"
+              ]
+            }
+          }
+        },
+        "emissions": []
+      }
+    },
+    {
+      "id": "close-control",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "close",
+        "params": {
+          "apiRevision": "1.1",
+          "target": {
+            "kind": "control",
+            "controlId": "control_1"
+          }
+        }
+      }
+    },
+    {
+      "id": "close-workspace",
+      "schema": "host",
+      "valid": true,
+      "value": {
+        "method": "close",
+        "params": {
+          "apiRevision": "1.1",
+          "target": {
+            "kind": "workspace",
+            "workspaceId": "workspace_1"
+          }
+        }
+      }
+    },
+    {
+      "id": "observation-structured",
+      "schema": "values",
+      "valid": true,
+      "value": {
+        "kind": "observation",
+        "id": "obs_1",
+        "runtimeInstanceId": "runtime_1",
+        "generation": "1",
+        "timing": {
+          "clockDomain": "native-monotonic",
+          "clockUncertaintyMs": 0
+        },
+        "coverage": {
+          "complete": true,
+          "reasons": [],
+          "nodesRead": 0
+        },
+        "consistency": "consistent",
+        "frames": [],
+        "images": [],
+        "elements": [],
+        "changes": []
+      }
+    },
+    {
+      "id": "observation-clock-missing",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "kind": "observation",
+        "id": "obs_1",
+        "runtimeInstanceId": "runtime_1",
+        "generation": "1",
+        "timing": {
+          "clockUncertaintyMs": 0
+        },
+        "coverage": {
+          "complete": true,
+          "reasons": [],
+          "nodesRead": 0
+        },
+        "consistency": "consistent",
+        "frames": [],
+        "images": [],
+        "elements": [],
+        "changes": []
+      }
+    },
+    {
+      "id": "observation-time-overflow",
+      "schema": "values",
+      "valid": false,
+      "value": {
+        "kind": "observation",
+        "id": "obs_1",
+        "runtimeInstanceId": "runtime_1",
+        "generation": "1",
+        "timing": {
+          "clockDomain": "native-monotonic",
+          "clockUncertaintyMs": 0,
+          "captureMonotonicNs": "18446744073709551616"
+        },
+        "coverage": {
+          "complete": true,
+          "reasons": [],
+          "nodesRead": 0
+        },
+        "consistency": "consistent",
+        "frames": [],
+        "images": [],
+        "elements": [],
+        "changes": []
+      }
+    }
+  ]
+}

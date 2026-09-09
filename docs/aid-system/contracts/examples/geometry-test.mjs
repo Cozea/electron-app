@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {ellipse} from './geometry.mjs';
+const first = ellipse(.5, .5, .25, .3);
+assert.equal(first.length, 81);
+assert.deepEqual(first[0], first.at(-1));
+const later = await import('./geometry.mjs');
+assert.equal(later.ellipse, ellipse);
+assert.throws(() => ellipse(0, 0, 1, 1, 3), RangeError);
+for (const [x,y] of first) assert.ok(x >= .25 && x <= .75 && y >= .2 && y <= .8);
+console.log('Pure module reuse and geometry passed; no desktop exercised.');

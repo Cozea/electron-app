@@ -1,0 +1,243 @@
+{
+  "revision": "1.1",
+  "invariants": [
+    {
+      "id": "INV-01",
+      "contractTypes": [
+        "Aid",
+        "ExecutionMode"
+      ],
+      "acceptanceTests": [
+        "BASE-05",
+        "HOST-10",
+        "CLIP-03"
+      ],
+      "gates": [
+        "G05",
+        "G08",
+        "G09"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-02",
+      "contractTypes": [
+        "Point",
+        "Timeline"
+      ],
+      "acceptanceTests": [
+        "CUR-01",
+        "MOTOR-06",
+        "MOTOR-07"
+      ],
+      "gates": [
+        "G05"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-03",
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "acceptanceTests": [
+        "JS-01",
+        "JS-02",
+        "JS-06",
+        "JS-07"
+      ],
+      "gates": [
+        "G02"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-04",
+      "contractTypes": [
+        "ControlId",
+        "Timeline"
+      ],
+      "acceptanceTests": [
+        "LIFE-04",
+        "MOTOR-10"
+      ],
+      "gates": [
+        "G04"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-05",
+      "contractTypes": [
+        "Capability",
+        "WireNativeRequest"
+      ],
+      "acceptanceTests": [
+        "SEC-01",
+        "SEC-02",
+        "JS-05"
+      ],
+      "gates": [
+        "G01",
+        "G02",
+        "G08"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-06",
+      "contractTypes": [
+        "Resource",
+        "Capability"
+      ],
+      "acceptanceTests": [
+        "API-04",
+        "SEC-02",
+        "SEC-03"
+      ],
+      "gates": [
+        "G04",
+        "G06",
+        "G08"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-07",
+      "contractTypes": [
+        "Receipt",
+        "HostRequest"
+      ],
+      "acceptanceTests": [
+        "JRN-01",
+        "JRN-03",
+        "JRN-10"
+      ],
+      "gates": [
+        "G04",
+        "G08"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-08",
+      "contractTypes": [
+        "Artifact",
+        "Observation"
+      ],
+      "acceptanceTests": [
+        "CAP-01",
+        "CAP-02",
+        "CAP-07"
+      ],
+      "gates": [
+        "G07"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-09",
+      "contractTypes": [
+        "SurfaceBinding",
+        "Element"
+      ],
+      "acceptanceTests": [
+        "AX-03",
+        "AX-04",
+        "BASE-03"
+      ],
+      "gates": [
+        "G06"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-10",
+      "contractTypes": [
+        "WireControlStatus"
+      ],
+      "acceptanceTests": [
+        "LIFE-03",
+        "MOTOR-03",
+        "MOTOR-04",
+        "UI-02"
+      ],
+      "gates": [
+        "G04"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-11",
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "acceptanceTests": [
+        "JRN-03",
+        "UI-03",
+        "EVAL-08"
+      ],
+      "gates": [
+        "G04",
+        "G09"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-12",
+      "contractTypes": [
+        "WorkspaceContext",
+        "Resource"
+      ],
+      "acceptanceTests": [
+        "LIFE-01",
+        "LIFE-09",
+        "JS-08"
+      ],
+      "gates": [
+        "G02",
+        "G04",
+        "G07"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-13",
+      "contractTypes": [
+        "Pointer",
+        "Keyboard",
+        "Element",
+        "Observation"
+      ],
+      "acceptanceTests": [
+        "AX-08",
+        "API-01"
+      ],
+      "gates": [
+        "G05",
+        "G06"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-14",
+      "contractTypes": [
+        "CapabilityStatus"
+      ],
+      "acceptanceTests": [
+        "KEY-06",
+        "SEAT-02"
+      ],
+      "gates": [
+        "G01",
+        "G03",
+        "G05",
+        "G11",
+        "G12"
+      ],
+      "implementationStatus": "not_run"
+    }
+  ]
+}

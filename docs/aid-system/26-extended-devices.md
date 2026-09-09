@@ -1,6 +1,6 @@
 # D26 — Pen, touch and hardware-backed device providers
 
-**Purpose:** leave room for interactions that ordinary synthetic mouse/keyboard events cannot faithfully express. **Sources:** USB HID usage definitions [S37](29-research-register.md#s37), Apple's HID/virtual-device capabilities [S38](29-research-register.md#s38). A usage-table entry or entitlement name is not proof that a shipped provider can emulate the device in all applications.
+**Purpose:** leave room for interactions that ordinary synthetic mouse/keyboard events cannot faithfully express. **Sources:** USB HID usage definitions [S44](29-research-register.md#s44), Apple's HID/virtual-device capabilities [S43](29-research-register.md#s43). A usage-table entry or entitlement name is not proof that a shipped provider can emulate the device in all applications.
 
 ## 1. Capability taxonomy
 

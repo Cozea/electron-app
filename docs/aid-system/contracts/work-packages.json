@@ -1,0 +1,493 @@
+{
+  "revision": "1.1",
+  "packages": [
+    {
+      "id": "W01",
+      "dependsOn": [],
+      "documents": [
+        "01-baseline-decisions.md",
+        "20-evaluation.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W02",
+      "dependsOn": [
+        "W01"
+      ],
+      "documents": [
+        "02-contracts-sdk.md",
+        "31-design-reconciliation.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W03",
+      "dependsOn": [
+        "W02"
+      ],
+      "documents": [
+        "02-contracts-sdk.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W04",
+      "dependsOn": [
+        "W02"
+      ],
+      "documents": [
+        "04-isolation-processes.md",
+        "27-integration-packaging.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W05",
+      "dependsOn": [
+        "W02"
+      ],
+      "documents": [
+        "03-javascript-workspaces.md",
+        "04-isolation-processes.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W06",
+      "dependsOn": [
+        "W03"
+      ],
+      "documents": [
+        "05-lifecycle-authority.md",
+        "19-security-privacy.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W07",
+      "dependsOn": [
+        "W04",
+        "W06"
+      ],
+      "documents": [
+        "05-lifecycle-authority.md",
+        "12-motor-timelines.md",
+        "18-human-supervision.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W08",
+      "dependsOn": [
+        "W03",
+        "W06"
+      ],
+      "documents": [
+        "16-journal-recovery.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W09",
+      "dependsOn": [
+        "W04",
+        "W06"
+      ],
+      "documents": [
+        "15-apps-windows-backends.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W10",
+      "dependsOn": [
+        "W04",
+        "W07",
+        "W09"
+      ],
+      "documents": [
+        "14-cursor-presentation.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W11",
+      "dependsOn": [
+        "W07",
+        "W08",
+        "W09",
+        "W10"
+      ],
+      "documents": [
+        "12-motor-timelines.md",
+        "15-apps-windows-backends.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W12",
+      "dependsOn": [
+        "W07",
+        "W08",
+        "W09"
+      ],
+      "documents": [
+        "13-keyboard-clipboard.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W13",
+      "dependsOn": [
+        "W10",
+        "W11",
+        "W12"
+      ],
+      "documents": [
+        "12-motor-timelines.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W14",
+      "dependsOn": [
+        "W04",
+        "W06",
+        "W09"
+      ],
+      "documents": [
+        "09-capture-artifacts.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W15",
+      "dependsOn": [
+        "W03",
+        "W06",
+        "W08",
+        "W14"
+      ],
+      "documents": [
+        "09-capture-artifacts.md",
+        "19-security-privacy.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W16",
+      "dependsOn": [
+        "W04",
+        "W06",
+        "W09"
+      ],
+      "documents": [
+        "08-accessibility.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W17",
+      "dependsOn": [
+        "W14",
+        "W15",
+        "W16"
+      ],
+      "documents": [
+        "07-evidence-scene.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W18",
+      "dependsOn": [
+        "W07",
+        "W09",
+        "W16",
+        "W17"
+      ],
+      "documents": [
+        "11-spatial-validity.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W19",
+      "dependsOn": [
+        "W13",
+        "W17",
+        "W18"
+      ],
+      "documents": [
+        "11-spatial-validity.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W20",
+      "dependsOn": [
+        "W16",
+        "W17",
+        "W18",
+        "W19"
+      ],
+      "documents": [
+        "10-watches-servo.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W21",
+      "dependsOn": [
+        "W03",
+        "W05",
+        "W06"
+      ],
+      "documents": [
+        "03-javascript-workspaces.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W22",
+      "dependsOn": [
+        "W03",
+        "W15",
+        "W16",
+        "W18",
+        "W19",
+        "W20",
+        "W21"
+      ],
+      "documents": [
+        "02-contracts-sdk.md",
+        "03-javascript-workspaces.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W23",
+      "dependsOn": [
+        "W08",
+        "W21",
+        "W22"
+      ],
+      "documents": [
+        "16-journal-recovery.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W24",
+      "dependsOn": [
+        "W15",
+        "W18",
+        "W23"
+      ],
+      "documents": [
+        "06-continuations-checkpoints.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W25",
+      "dependsOn": [
+        "W03",
+        "W06",
+        "W23",
+        "W24"
+      ],
+      "documents": [
+        "17-host-provider-protocol.md",
+        "27-integration-packaging.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W26",
+      "dependsOn": [
+        "W25"
+      ],
+      "documents": [
+        "17-host-provider-protocol.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W27",
+      "dependsOn": [
+        "W07",
+        "W15",
+        "W23",
+        "W24",
+        "W25"
+      ],
+      "documents": [
+        "18-human-supervision.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W28",
+      "dependsOn": [
+        "W04",
+        "W06",
+        "W08",
+        "W15",
+        "W24",
+        "W27"
+      ],
+      "documents": [
+        "19-security-privacy.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W29",
+      "dependsOn": [
+        "W13",
+        "W19",
+        "W22",
+        "W24",
+        "W27",
+        "W28",
+        "W32"
+      ],
+      "documents": [
+        "20-evaluation.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W30",
+      "dependsOn": [
+        "W29"
+      ],
+      "documents": [
+        "20-evaluation.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W31",
+      "dependsOn": [
+        "W29",
+        "W30"
+      ],
+      "documents": [
+        "01-baseline-decisions.md",
+        "20-evaluation.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W32",
+      "dependsOn": [
+        "W04",
+        "W05",
+        "W22",
+        "W25",
+        "W27"
+      ],
+      "documents": [
+        "27-integration-packaging.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W33",
+      "dependsOn": [
+        "W31",
+        "W32"
+      ],
+      "documents": [
+        "20-evaluation.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W34",
+      "dependsOn": [
+        "W26",
+        "W28",
+        "W33"
+      ],
+      "documents": [
+        "20-evaluation.md",
+        "27-integration-packaging.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "W35",
+      "dependsOn": [
+        "W34"
+      ],
+      "documents": [
+        "27-integration-packaging.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "X01",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        "21-procedural-memory.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "X02",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        "22-pipelined-planning.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "X03",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        "23-debugger-replay.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "X04",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        "24-demonstrations.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "X05",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        "25-separate-seats.md"
+      ],
+      "state": "not-started"
+    },
+    {
+      "id": "X06",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        "26-extended-devices.md"
+      ],
+      "state": "not-started"
+    }
+  ]
+}

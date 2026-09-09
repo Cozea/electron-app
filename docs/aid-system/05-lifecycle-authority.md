@@ -10,9 +10,9 @@ Authority is bound to Cozea's authenticated device principal (`identityKey`), pr
 
 A workspace transitions `opening → ready → closing → closed`, with `lost` on worker failure. `ready` may contain no active control. Pure-data/source retention is an independent explicit setting.
 
-A control transitions `requested → active → stopping → quiescent → closed`. It may enter `waiting-user` before initial authority is granted. `revoked` is a terminal reason, not a reusable state. Every reacquisition produces a new monotonic `controlEpoch`; the old epoch never becomes valid again.
+A control transitions `pending → active → revoking → quiescent → closed`; `expired` prohibits admission while cleanup is pending. Initial human approval is pending authority, not an active grant. The complete edges are in [state-machines.json](contracts/state-machines.json). `revoked` is a terminal reason, not a reusable state. Every reacquisition produces a new monotonic `controlEpoch`; the old epoch never becomes valid again.
 
-An execution transitions among `queued`, `running`, `waiting-condition`, `waiting-model`, `waiting-user`, `paused`, and a terminal state: `completed`, `failed`, `cancelled`, `interrupted-uncertain`. [D16](16-journal-recovery.md) owns durable semantics. A pending checkpoint does not make input ownership implicit; no held state may persist through it.
+An execution uses `queued`, `running`, `waiting-for-condition`, `waiting-for-model`, `waiting-for-user`, `paused`, `stopping`, and terminal `completed`, `failed`, `cancelled`, `lost`, or `interrupted-after-possible-effect`. A terminal lost/failed result can report unconfirmed cleanup; only confirmed cleanup sets `quiescent:true`. [D16](16-journal-recovery.md) owns durable semantics. A pending checkpoint does not make input ownership implicit; no held state may persist through it.
 
 A seat has `free`, `owned(controlId,epoch)` and `quiescing` states. Exactly one control may be the physical writer. Other controls may hold independent read grants if allowed. A competing write request returns `SEAT_BUSY` with non-sensitive owner/task display information; it does not silently steal focus or queue for minutes behind another agent.
 
@@ -42,7 +42,7 @@ submit through selected native route
 record receipt and release permit/owned held state
 ```
 
-Actor reentrancy cannot implement the seat lock by itself: every `await` may permit another message to alter state. Use an explicit cancellation-aware permit with FIFO ordering within one owner, prompt removal of cancelled waiters and no double resume. Cross-owner concurrency must be explicit; reads do not need this permit. [S21](29-research-register.md#s21).
+Actor reentrancy cannot implement the seat lock by itself: every `await` may permit another message to alter state. Use an explicit cancellation-aware permit with FIFO ordering within one owner, prompt removal of cancelled waiters and no double resume. Cross-owner concurrency must be explicit; reads do not need this permit. [S40](29-research-register.md#s40).
 
 The system cannot atomically lock macOS against a human or another unrelated application. It therefore monitors relevant external changes and revalidates before dispatch, records uncertainty after a race, and refuses to claim a universal no-race guarantee.
 
@@ -70,7 +70,7 @@ Shared read/capture resources may have multiple authorized owners. Releasing one
 
 ## 8. Takeover and approval interactions
 
-A visible Stop action is handled by the trusted host/native channel, not by code in the agent realm. A configured global stop shortcut and a driver-owned status item provide a second path when the renderer is busy. Monitor installation failure means automatic takeover detection is unavailable; the feature must not advertise full autonomous safety until G06 qualifies the available path.
+A visible Stop action is handled by the trusted host/native channel, not by code in the agent realm. A configured global stop shortcut and a driver-owned status item provide a second path when the renderer is busy. Monitor installation failure means automatic takeover detection is unavailable; the feature must not advertise full autonomous safety until G04 qualifies the available path.
 
 Input event tags help distinguish our own events operationally but are not authentication. External focus change, active pointer interference, new blocking UI or revoked permissions cause stop/revalidation according to target dependencies. A static human mouse elsewhere need not cancel an unrelated read; physical interference with an owned gesture does.
 
@@ -80,7 +80,7 @@ Approvals bind the concrete requested capability/target/action digest and expire
 
 `packages/aid-host/src/control/{ControlStore,TaskBinding,Liveness,PolicyBridge}.ts` owns grants and host state. The driver's `AuthorityRegistry`, `SeatPermit`, `InputOwnership` and `RevocationChannel` own immediate enforcement. Map existing `AuthorizationRegistry`, `InputGate`, `OperationCancellation`, scheduled policy methods and teardown barriers into these components; preserve their tested pre-admission cancellation behavior.
 
-Store control grants only as local sensitive records; IDs in model context carry no independent authority. Persist tombstones long enough to reject stale/replayed epochs after worker restart. A driver boot mints a new generation; grants from before reboot are invalid even if IDs collide.
+Store control grants only as local sensitive records; IDs in model context carry no independent authority. Keep grant-generation rejection records for the lifetime of every accepted namespace; closing a namespace rejects all of its old IDs. Never evict records in a way that makes a stale epoch valid after worker restart. A driver boot mints a new generation; grants from before reboot are invalid even if IDs collide.
 
 ## 10. Acceptance
 

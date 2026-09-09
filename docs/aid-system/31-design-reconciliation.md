@@ -18,7 +18,7 @@ SDK/application JSON uses camelCase. Actual MCP-defined fields retain the spelli
 
 `keyboard.typeText`, `keyboard.chord`, `keyDown`, `keyUp`, `pointer.moveTo`, `pointer.followPath`, `Surface.pointer.stroke`, `Window.observe`, `Window.query`, `Observation.query`, and `Observation.bindSurface` are the selected spellings. Older example names such as `getAXState`, `type`, `press`, `region`, `getScreenshot` and `computer.exec({code})` describe intent only and must not be copied into the production SDK.
 
-`QueryResult.items` is an immutable list; `.one()` rejects zero/multiple results and insufficient coverage. Live `Window.query` returns a promise; historical `Observation.query` is local and never silently refreshes. A guest `RegExp` is serialized only as a bounded source/flags description when required, or evaluated in the interruptible guest over scoped candidates. Do not execute arbitrary unbounded regex on the native input thread. Truncation must not make `.one()` falsely claim uniqueness.
+`ElementSelection.items` is an immutable list; `.one()` rejects zero/multiple results and insufficient coverage. Live `Window.query` returns a promise; historical `Observation.query` is local and never silently refreshes. A guest `RegExp` is serialized only as a bounded source/flags description when required, or evaluated in the interruptible guest over scoped candidates. Do not execute arbitrary unbounded regex on the native input thread. Truncation must not make `.one()` falsely claim uniqueness.
 
 ## R03 — Identity is not authority
 
@@ -41,7 +41,7 @@ The following ownership rules are required:
 | Immutable retained artifact | yes | only under separate retention/export policy |
 | Held keys/buttons | only inside a bounded active native/guest scope | never; also never across model/user checkpoints |
 
-Initial implementation profile: trusted host heartbeat every 1 second, native liveness lease 5 seconds, measured with native monotonic time. The host may renew while it has a real active task, including model reasoning. Generated code, logs and an open socket are not independent proof of host liveness. These defaults are qualification inputs and may be revised by measured scheduling evidence with an ADR.
+Initial implementation profile: trusted host heartbeat every 2 seconds, native liveness lease 10 seconds, measured with native monotonic time. The host may renew while it has a real active task, including model reasoning. Generated code, logs and an open socket are not independent proof of host liveness. These defaults are qualification inputs and may be revised by measured scheduling evidence with an ADR.
 
 A dropped HTTP response is not automatically control loss. The local host remains authoritative and returns the existing execution on retry. Loss of the supervising host stops new effect admission when the native lease expires. A provider's individual response ending is not always logical task completion: pending same-model checkpoints must be represented explicitly in the host orchestration state. They cannot be inferred from arbitrary guest activity.
 
@@ -59,7 +59,7 @@ The extra error codes `WORKSPACE_BUSY`, `WORKSPACE_LOST`, `DRIVER_LOST`, `BASE_E
 
 ## R06 — Native effect admission and uncertainty boundary
 
-For every effect: validate authenticated context and typed arguments; bind operation ID to canonical arguments; resolve dependencies and route; obtain the seat permit; recheck epoch; prepare target; durably record intent; perform visible approach if required; revalidate at arrival; mark possible dispatch durably before OS submission; submit; record receipt; release owned transient resources.
+For every effect: validate authenticated context and typed arguments; bind operation ID to canonical arguments; resolve dependencies and route; obtain the seat permit; recheck epoch; durably record intent and possible dispatch **before the first effect**, including app launch/activation, window mutation and real pointer approach; prepare/verify target; perform visible approach if required; revalidate at arrival; submit contact/timeline; record receipt; release owned transient resources. If approach occurred but contact was prevented, the receipt still records the approach effect and the non-contact phase. No caller may infer `not_submitted` for the entire operation merely because its final click was blocked.
 
 The seat permit is an explicit non-reentrant effect transaction guard, not a Swift actor. Awaiting cursor/AX/capture does not admit a second foreground writer. Read-only evidence can proceed separately. Acquisition order is authority/seat before temporary target resources; do not acquire a second seat recursively from a helper.
 
@@ -89,7 +89,7 @@ Export inspection examines descriptors and safe values without invoking getters 
 
 ## R09 — Coordinate units and transforms
 
-A point is a typed frame reference plus units and generation, not an unlabelled pair. The only bare pair accepted is `UnitPoint=[u,v]` inside an already-bound surface method; each component is finite and in [0,1] unless a separately declared extended region contract permits otherwise. No implicit clamping changes a requested path.
+A guest point is a typed frame reference plus transform generation; its registered frame owns units. The wire codec adds explicit validated units. It is never an unlabelled pair. The only bare pair accepted is `Vec2=[u,v]` inside an already-bound surface method; each component is finite and in [0,1] unless a separately declared extended region contract permits otherwise. No implicit clamping changes a requested path.
 
 Use logical platform coordinates for native input and explicit image-pixel coordinates for captured artifacts. Store affine transforms between crop, image, window and display frames. Rotation/reflection belongs in the transform, not a guessed global Y inversion. The canonical matrix encoding is row-major `[a,c,tx,b,d,ty]` with `x'=a*x+c*y+tx`, `y'=b*x+d*y+ty`.
 
@@ -145,9 +145,9 @@ Cleanup releases only automation-owned transient state and never sends a replace
 
 ## R15 — Protocol compatibility is outside native lifetimes
 
-Stateless transport compatibility is a goal, not a requirement to adopt an unverified protocol release. Support the actual negotiated MCP lifecycle and extensions. The revisioned 2025-11-25 lifecycle/transport documents provide a concrete compatibility reference: initialization and optional transport sessions must be handled as specified for that profile. Newer profiles are adopted only from their own published spec and tested client/server negotiation.
+The published MCP 2026-07-28 profile has a stateless core; adoption in pinned T3 is still unqualified. Support the actual negotiated MCP lifecycle and extensions. The revisioned 2025-11-25 lifecycle/transport documents provide a concrete compatibility reference: initialization and optional transport sessions must be handled as specified for that profile. Newer profiles are adopted only from their own published spec and tested client/server negotiation.
 
-The earlier statements that a July 2026 core universally removed initialization, that particular task methods exist in every client, or that a specific WASI/Swift feature is a mandatory dependency are not authoritative implementation instructions. D29 records primary references and adoption limits. The AID host's explicit workspace/control/execution/checkpoint records work independently of those optional protocol developments.
+The July 2026 profile removes initialization/session headers for that profile; it does not change older negotiated connections or prove T3 support. Its Tasks extension uses `tasks/get`, `tasks/update` and cooperative `tasks/cancel`. A core MRTR retry carries inputs on the original request; task input uses `tasks/update`. Both must attach to the already admitted execution/checkpoint. No WASI/Swift announcement is a mandatory dependency by itself. D29 records primary references and adoption limits. The AID host's explicit workspace/control/execution/checkpoint records work independently of those optional protocol developments.
 
 Native execution is authoritative. MCP task status is a projection. A protocol cancel acknowledgement does not mean input is quiescent. A protocol continuation must settle an existing checkpoint; it cannot restart `exec`. A client without Tasks uses explicit handles/status/respond rather than inheriting short HTTP timeouts as its program lifetime.
 
@@ -181,4 +181,23 @@ The native control epoch is revoked independently of the guest. Further requests
 
 A pure exported ellipse helper survives within retention policy. Its closed-over native surface does not survive authority expiry. A new cell imports the helper without replaying initialization effects, prepares the current target, observes/binds a new surface and uses fresh authority. Retained image references obey separate privacy expiry; workspace memory does not keep recording active.
 
-These scenarios are encoded as design-model tests in the validation suite. They test consistency of the intended contract, not macOS behavior. Real implementation must reproduce them through G01–G10.
+The reference-model tests cover ownership, checkpoint deduplication, capture generations and journal retention; the full scenario trace below is a semantic review, not a claim that those small models simulate every subsystem. Real implementation must reproduce the full scenarios through the named G01–G09 core gates and G10–G12 extension gates.
+
+
+## R18 — Inspection, pure initialization and live predicates
+
+Inspector output must not execute a getter, Proxy trap or arbitrary function. Use engine-supported safe descriptor inspection; if an object cannot be inspected without user code, return an opaque summary. Pure persisted modules initialize under an enforced no-effect scope. A `pure-init` annotation alone proves nothing. Helper code can reacquire targets later; restoring source must not replay an old effectful initializer.
+
+An arbitrary `events.until` evaluation has one bounded read-only context. Each live query reports its observation generation/collection interval; multiple queries are not claimed atomic. A predicate needing one snapshot calls `observe` once and runs frozen local queries against it. Recognized query watches can share a versioned snapshot and event subscriptions. Stability duration requires repeated satisfactory samples or an explicitly qualified continuous signal; a missed interval resets stability. Once satisfied, the resumed action revalidates independently. Source-defined predicates cannot escape into the native scheduler.
+
+## R19 — Replay index and retained response bodies
+
+Keep the compact `(owner,workspace-generation,key)->(request-digest,execution-id,terminal-certainty)` admission index until that namespace closes. Large responses, images and logs expire independently. A retry after response expiry returns the original summary and `historyExpired:true`; it cannot re-admit the code. On quota exhaustion reject new admissions with `RESOURCE_LIMIT` before effects. Namespace closure rejects old IDs permanently; workspace reuse by name never reopens an old generation. Response deduplication likewise retains the consumed flag and answer digest, including JSON null, after evidence expiry. W08/W23 and G04/G08 own the implementation tests.
+
+## R20 — Wire results, images and approvals
+
+Host results use the generated `opened`, `execution`, `inspection`, `closing`, `description`, or `error` discriminant. Wire emissions are text, JSON `data`, typed observation metadata, or an image artifact descriptor. The descriptor is metadata, never a URL/path or authority token. The adapter resolves authorized bytes and emits the provider's actual image content, retaining call correlation, dimensions and observation identity. It must not serialize a descriptor or base64 as text and claim vision delivery.
+
+Both scalar and nested receipts must pass the same evidence/range checks. `verified` or predicate `failed` requires a named checked predicate with supporting observation IDs. Trust/provenance checks additionally resolve those IDs against the owner's store; schema conformance alone cannot attest a real desktop effect. Pending model/user states require matching checkpoint kind and confirmed input quiescence. Completed, cancelled and paused require quiescence. Lost/failed/interrupted may explicitly say cleanup is unconfirmed; the UI keeps displaying that fact until the independent supervisor proves otherwise.
+
+Human approval is bound by the host/native admission path to operation arguments, target, mode, epoch and intended-effect digest. `requestApproval` can request the trusted surface; its returned boolean grants no authority by itself. Changes require fresh approval/revalidation. The model-facing `respond` route is never accepted as a human response.

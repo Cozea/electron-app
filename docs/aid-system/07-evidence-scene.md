@@ -4,7 +4,7 @@
 
 ## 1. Baseline and research
 
-V2 combines a formatted AX tree and optional PNG in a snapshot lease. That is useful but makes the text/image payload the main unit of perception. The target separates sensor acquisition, structured records, local querying, artifact encoding and provider emission. ScreenCaptureKit frame callbacks and AX bulk/paged reads provide substrate, not an atomic omniscient scene graph. See [S11–S15](29-research-register.md#s11). Model labels and visual tracker outputs must retain different provenance from AX-reported roles.
+V2 combines a formatted AX tree and optional PNG in a snapshot lease. That is useful but makes the text/image payload the main unit of perception. The target separates sensor acquisition, structured records, local querying, artifact encoding and provider emission. ScreenCaptureKit frame callbacks and AX bulk/paged reads provide substrate, not an atomic omniscient scene graph. See [S12](29-research-register.md#s12), [S13](29-research-register.md#s13), [S14](29-research-register.md#s14), [S15](29-research-register.md#s15), [S16](29-research-register.md#s16). Model labels and visual tracker outputs must retain different provenance from AX-reported roles.
 
 ## 2. Data model
 
@@ -28,7 +28,7 @@ Use a declarative selector AST: scope handle, roles, exact/normalized/regex name
 
 Index stable fields (role, normalized name, window ID, parent ID), geometry in per-window spatial indexes, and revision lists per change dimension. Avoid a single global tree revision. Return a `QueryReceipt` describing cached versus freshly queried fields, unsupported predicates and incomplete coverage. Sorting by geometric/semantic score can help exploration but never converts ambiguity into permission to click.
 
-Raw access uses pagination with opaque cursor + scope generation. If the scope changes, return `DELTA_BASE_LOST`/restart information rather than concatenating two different trees into a false complete result. Paginated AX children may change during traversal; report the interval and generation evidence.
+Raw access uses pagination with opaque cursor + scope generation. If the scope changes, return `BASE_EXPIRED`/restart information rather than concatenating two different trees into a false complete result. Paginated AX children may change during traversal; report the interval and generation evidence.
 
 ## 5. Attention-directed output
 
@@ -61,3 +61,5 @@ Pixel analysis may return several candidates and measurable uncertainty. The mod
 Implement host-side `EvidenceStore`, `ObservationAssembler`, `ProjectionEncoder`, `ArtifactAccessPolicy` and native `SceneRegistry`/scoped sensor providers. Evolve v2 `ObservationStore`, `AccessibilityTree` and `ScreenshotGeometry` rather than maintaining a second invisible snapshot authority. Provider adapters receive typed evidence packets and actual image blocks, not an artifact ID the model cannot dereference.
 
 **EV-01:** scoped observation can be expanded to raw data with stable provenance. **EV-02:** `.one()` rejects ambiguous matches. **EV-03:** crop-to-input roundtrip is exact within declared tolerance. **EV-04:** lost delta base triggers a full request. **EV-05:** truncation is not interpreted as deletion. **EV-06:** AX/pixel mismatch is represented, not hidden. **EV-07:** one principal cannot query another's observation IDs. **EV-08:** no extra image encoding occurs after ordinary input. **EV-09:** checkpoint pins respect budgets and expire honestly. **EV-10:** selector evaluation cannot hang the driver. The same tests run with deliberately weak AX fixtures and dynamic labels.
+
+Explicit `aid.observe.desktop(options)` and `aid.observe.region(framedRect,options)` retain screen/region access alongside window and surface observation. Desktop capture needs a separately approved whole-desktop scope; `targetApps` does not silently grant it. Their observations may omit `windowId`; image frame IDs and transforms still identify the pixel source. Binding a drawing surface requires resolving a specific eligible window/document under that scope. Window-only profiles report desktop capture unavailable instead of substituting another window.

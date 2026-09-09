@@ -1,0 +1,4551 @@
+{
+  "revision": "1.1",
+  "purpose": "Authoritative preimplementation contract. Guest declarations describe rich local resources; schemas describe serialized wire values. Explicit codecs are prescribed in D02, not implemented here.",
+  "guestDeclarations": "/**\n * Cozea AID design contract, revision 1.1.\n * Declarations and test oracle only: no production implementation is supplied.\n * Named ES-module cells import `aid` from `aid:runtime`.\n * All native effects are owner/runtime/control-epoch checked outside the guest.\n */\nexport type JsonPrimitive = string | number | boolean | null;\nexport type JsonValue = JsonPrimitive | readonly JsonValue[] | { readonly [key: string]: JsonValue };\nexport type JsonObject = { readonly [key: string]: JsonValue };\nexport type JsonSchema = JsonObject;\ndeclare const idBrand: unique symbol;\ndeclare const uintBrand: unique symbol;\nexport type Id<K extends string> = string & { readonly [idBrand]: K };\n/** Decimal nonnegative integer string; constructed by a checked codec, never Number(). */\nexport type UInt64 = string & { readonly [uintBrand]: \"uint64-decimal\" };\nexport type RuntimeId = Id<\"runtime\">;\nexport type WorkspaceId = Id<\"workspace\">;\nexport type ControlId = Id<\"control\">;\nexport type ExecutionId = Id<\"execution\">;\nexport type OperationId = Id<\"operation\">;\nexport type CheckpointId = Id<\"checkpoint\">;\nexport type ObservationId = Id<\"observation\">;\nexport type ArtifactId = Id<\"artifact\">;\nexport type AppId = Id<\"app\">;\nexport type WindowId = Id<\"window\">;\nexport type ElementId = Id<\"element\">;\nexport type SurfaceId = Id<\"surface\">;\nexport type FrameId = Id<\"frame\">;\nexport type SeatId = Id<\"seat\">;\nexport type WatchId = Id<\"watch\">;\nexport type ModuleRevision = Id<\"module-revision\">;\nexport type ApiVersion = \"1.1\";\nexport type ExecutionMode = \"visible-ui\" | \"physical-ui\" | \"hybrid\";\nexport type EffectClass = \"pure\" | \"evidence-read\" | \"window-mutation\" | \"semantic-input\" | \"physical-input\" | \"clipboard-read\" | \"clipboard-write\" | \"artifact-export\" | \"supervisor\";\nexport type Capability = \"apps.read\" | \"apps.prepare\" | \"windows.read\" | \"windows.control\" | \"accessibility.read\" | \"accessibility.act\" | \"capture.read\" | \"pointer.control\" | \"keyboard.control\" | \"clipboard.read\" | \"clipboard.write\" | \"artifacts.read\" | \"artifacts.export\" | \"hybrid.execute\";\nexport type ErrorCode = \"AMBIGUOUS_TARGET\" | \"BASE_EXPIRED\" | \"CANCELLED\" | \"CAPTURE_CAPACITY\" | \"CHECKPOINT_EXPIRED\" | \"CLEANUP_FAILED\" | \"CONTROL_EXPIRED\" | \"DEADLINE_EXCEEDED\" | \"DELIVERY_UNCERTAIN\" | \"DEPENDENCY_CHANGED\" | \"DRIVER_LOST\" | \"FOCUS_CHANGED\" | \"INCOMPLETE_EVIDENCE\" | \"INTERNAL\" | \"INVALID_ARGUMENT\" | \"NO_USABLE_WINDOW\" | \"PREDICATE_BUDGET\" | \"REQUEST_CONFLICT\" | \"RESOURCE_EXPIRED\" | \"RESOURCE_LIMIT\" | \"RESOURCE_NOT_FOUND\" | \"SEAT_BUSY\" | \"STALE_TARGET\" | \"UNAUTHORIZED\" | \"UNQUALIFIED_CAPABILITY\" | \"UNSAFE_CHECKPOINT\" | \"UNSUPPORTED_CAPABILITY\" | \"USER_TAKEOVER\" | \"WORKSPACE_BUSY\" | \"WORKSPACE_LOST\";\nexport interface AidError extends Error {\n  readonly code: ErrorCode;\n  readonly phase: \"validation\" | \"admission\" | \"preparation\" | \"presentation\" | \"submission\" | \"observation\" | \"checkpoint\" | \"cleanup\" | \"transport\";\n  readonly executionId?: ExecutionId;\n  readonly operationId?: OperationId;\n  readonly canRetryAutomatically: boolean;\n  readonly details: JsonObject;\n}\nexport interface CapabilityStatus {\n  readonly name: string;\n  readonly supported: boolean;\n  readonly qualified: boolean;\n  readonly granted: boolean;\n  readonly currentlyAvailable: boolean;\n  readonly profileId?: string;\n  readonly reason?: string;\n}\nexport interface Resource<K extends string> {\n  readonly id: Id<K>;\n  readonly runtimeInstanceId: RuntimeId;\n  readonly generation: UInt64;\n}\nexport interface Size { readonly width: number; readonly height: number; }\nexport interface Rect { readonly x: number; readonly y: number; readonly width: number; readonly height: number; }\nexport type Vec2 = readonly [number, number];\nexport interface CoordinateFrame extends Resource<\"frame\"> {\n  readonly kind: \"desktop-points\" | \"display-points\" | \"window-points\" | \"image-pixels\" | \"surface-normalized\";\n  readonly transformGeneration: UInt64;\n  readonly units: \"point\" | \"pixel\" | \"normalized\";\n  readonly extent: Rect;\n  readonly parentFrameId?: FrameId;\n  readonly observationId?: ObservationId;\n}\nexport interface Point {\n  readonly kind: \"framed-point\";\n  readonly frameId: FrameId;\n  readonly transformGeneration: UInt64;\n  readonly x: number;\n  readonly y: number;\n}\nexport interface SurfacePoint extends Point { readonly surfaceId: SurfaceId; }\nexport interface FramedRect { readonly frameId: FrameId; readonly transformGeneration: UInt64; readonly rect: Rect; }\nexport interface OperationBarrier { readonly operationId: OperationId; readonly sequence: UInt64; }\nexport type Submission = \"not_submitted\" | \"submitted\" | \"submission_uncertain\";\nexport type EvidenceState = \"change_observed\" | \"no_change_observed\" | \"not_checked\" | \"inconclusive\";\nexport type Outcome = \"verified\" | \"unverified\" | \"failed\";\nexport interface Receipt {\n  readonly operationId: OperationId;\n  readonly executionId: ExecutionId;\n  readonly target?: { readonly windowId?: WindowId; readonly elementId?: ElementId; readonly surfaceId?: SurfaceId; readonly generation: UInt64 };\n  readonly route: \"foreground-event\" | \"semantic-ax\" | \"targeted-event\" | \"sky\" | \"window-control\" | \"clipboard\" | \"none\";\n  readonly submission: Submission;\n  readonly evidence: EvidenceState;\n  readonly outcome: Outcome;\n  readonly after: OperationBarrier;\n  readonly evidenceIds: readonly ObservationId[];\n  readonly canRetryAutomatically: boolean;\n  readonly verification?: { readonly predicate: string; readonly evidenceIds: readonly ObservationId[] };\n  readonly timingsMs: Readonly<Record<string, number>>;\n  readonly warnings: readonly string[];\n}\nexport interface Coverage {\n  readonly complete: boolean;\n  readonly reasons: readonly (\"node-budget\" | \"depth-budget\" | \"time-budget\" | \"text-budget\" | \"unsupported\" | \"stale\" | \"permission\" | \"missing-base\")[];\n  readonly nodesRead: number;\n  readonly continuation?: string;\n}\nexport interface ObservationTiming {\n  readonly captureMonotonicNs?: UInt64;\n  readonly axStartedMonotonicNs?: UInt64;\n  readonly axEndedMonotonicNs?: UInt64;\n  readonly emittedMonotonicNs?: UInt64;\n  readonly clockDomain: string;\n  readonly clockUncertaintyMs: number;\n  readonly after?: OperationBarrier;\n}\nexport interface Artifact extends Resource<\"artifact\"> {\n  readonly mimeType: string;\n  readonly byteLength: number;\n  readonly sha256: string;\n  readonly expiresAt: string;\n  readonly dimensions?: Size;\n  readonly observationId?: ObservationId;\n  /** Checked owner-scoped read; not an arbitrary filesystem/URL fetch. */\n  read(options?: { readonly offset?: number; readonly length?: number }): Promise<Uint8Array>;\n  release(): Promise<void>;\n}\nexport interface ImageEvidence {\n  readonly artifact: Artifact;\n  readonly frame: CoordinateFrame;\n  readonly source: \"stream\" | \"one-shot\" | \"recorded-fixture\";\n  readonly sourceFrameId: FrameId;\n  readonly captureGeneration: UInt64;\n  readonly crop?: FramedRect;\n}\nexport interface Query {\n  readonly roles?: readonly string[];\n  readonly name?: string | RegExp;\n  readonly enabled?: boolean;\n  readonly selected?: boolean;\n  readonly within?: ElementId;\n  readonly limit?: number;\n  readonly raw?: boolean;\n}\nexport interface ElementState {\n  readonly role: string;\n  readonly label: string;\n  readonly value?: JsonValue;\n  readonly enabled?: boolean;\n  readonly selected?: boolean;\n  readonly focused?: boolean;\n  readonly frame?: FramedRect;\n  readonly actions: readonly string[];\n  readonly settable: boolean;\n  readonly observationId: ObservationId;\n  readonly coverage: Coverage;\n}\nexport interface Element extends Resource<\"element\"> {\n  readonly windowId: WindowId;\n  readonly observed: ElementState;\n  /** Revalidate this identity; never silently resolve a lookalike by title. */\n  refresh(): Promise<ElementState>;\n  children(options?: { readonly continuation?: string; readonly limit?: number; readonly raw?: boolean }): Promise<ElementSelection>;\n  perform(action: string): Promise<Receipt>;\n  setValue(value: string | number | boolean): Promise<Receipt>;\n  describe(): Promise<Description>;\n}\nexport interface ElementSelection {\n  readonly items: readonly Element[];\n  readonly coverage: Coverage;\n  /** Throws on zero/multiple matches or incomplete uniqueness evidence. */\n  one(): Element;\n}\nexport interface ImageRequest {\n  readonly mode: \"overview\" | \"detail\" | \"overview+detail\";\n  readonly maxDimension?: number;\n  readonly format?: \"png\" | \"jpeg\";\n  readonly detailRegions?: readonly FramedRect[];\n}\nexport interface AccessibilityRequest {\n  readonly scope?: ElementId;\n  readonly roles?: readonly string[];\n  readonly maxNodes?: number;\n  readonly maxDepth?: number;\n  readonly textLimit?: number;\n  readonly raw?: boolean;\n}\nexport interface ObserveOptions {\n  readonly accessibility?: boolean | AccessibilityRequest;\n  readonly image?: false | \"overview\" | ImageRequest;\n  readonly since?: ObservationId;\n  readonly after?: OperationBarrier;\n  readonly deadlineMs?: number;\n}\nexport interface SurfaceBinding {\n  readonly region: FramedRect;\n  readonly anchors?: readonly ElementId[];\n  readonly intent: \"drawing\" | \"dragging\" | \"generic-spatial\";\n  readonly maxAgeMs?: number;\n  readonly maxActions?: number;\n  readonly requiredCoverage?: \"qualified\" | \"bounded-uncertainty\";\n}\nexport interface Observation extends Resource<\"observation\"> {\n  /** Absent for an explicitly authorized desktop/multidisplay observation. */\n  readonly windowId?: WindowId;\n  readonly timing: ObservationTiming;\n  readonly coverage: Coverage;\n  readonly consistency: \"consistent\" | \"changed-during-collection\" | \"partial\";\n  readonly images: readonly ImageEvidence[];\n  readonly baseObservationId?: ObservationId;\n  readonly changes: readonly JsonObject[];\n  /** Synchronous query of this frozen evidence, not a hidden live AX request. */\n  query(spec: Query): ElementSelection;\n  point(xPixels: number, yPixels: number, imageIndex?: number): Point;\n  crop(region: FramedRect, options?: { readonly maxDimension?: number }): Promise<ImageEvidence>;\n  diff(base: Observation): Promise<Observation>;\n  bindSurface(binding: SurfaceBinding): Promise<Surface>;\n  release(): Promise<void>;\n}\nexport type AppQuery =\n  | { readonly bundleId: string; readonly name?: never; readonly pid?: never; readonly launchIdentity?: never }\n  | { readonly name: string; readonly bundleId?: never; readonly pid?: never; readonly launchIdentity?: never }\n  | { readonly pid: number; readonly launchIdentity: string; readonly bundleId?: never; readonly name?: never };\nexport interface AppListing {\n  readonly name: string;\n  readonly bundleId?: string;\n  readonly pid?: number;\n  readonly running: boolean;\n  readonly eligible: boolean;\n}\nexport interface WindowChoice {\n  readonly id?: WindowId;\n  readonly title?: string;\n  readonly role?: string;\n}\nexport interface PrepareAppRequest {\n  readonly app: AppQuery;\n  readonly launch?: boolean;\n  readonly unhide?: boolean;\n  readonly reopen?: boolean;\n  readonly foreground?: boolean;\n  readonly window?: WindowChoice;\n}\nexport interface PreparedApp { readonly app: App; readonly window?: Window; readonly receipt: Receipt; }\nexport interface App extends Resource<\"app\"> {\n  readonly name: string;\n  readonly bundleId?: string;\n  readonly pid: number;\n  readonly launchIdentity: string;\n  readonly keyboard: Keyboard;\n  windows(): Promise<readonly Window[]>;\n  mainWindow(): Promise<Window>;\n  menu(query?: Query): Promise<ElementSelection>;\n  activate(options?: { readonly window?: WindowChoice }): Promise<Receipt>;\n  describe(): Promise<Description>;\n}\nexport interface Window extends Resource<\"window\"> {\n  readonly appId: AppId;\n  readonly title: string;\n  readonly frame: CoordinateFrame;\n  readonly keyboard: Keyboard;\n  focus(): Promise<Receipt>;\n  refresh(): Promise<Window>;\n  setBounds(bounds: FramedRect): Promise<Receipt>;\n  observe(options?: ObserveOptions): Promise<Observation>;\n  /** Explicit live scoped query. */\n  query(spec: Query): Promise<ElementSelection>;\n  point(xPoints: number, yPoints: number): Point;\n  describe(): Promise<Description>;\n}\nexport interface Surface extends Resource<\"surface\"> {\n  readonly windowId: WindowId;\n  readonly frame: CoordinateFrame;\n  readonly intent: SurfaceBinding[\"intent\"];\n  readonly coverage: \"qualified\" | \"bounded-uncertainty\";\n  readonly pointer: SurfacePointer;\n  point(u: number, v: number): SurfacePoint;\n  validate(): Promise<{ readonly valid: boolean; readonly reasons: readonly string[] }>;\n  observe(options?: ObserveOptions): Promise<Observation>;\n  release(): Promise<void>;\n}\nexport type MouseButton = \"left\" | \"right\" | \"middle\";\nexport type CursorPacing = \"fast-visible\" | \"presentation\";\nexport interface MoveOptions { readonly durationMs?: number; readonly pacing?: CursorPacing; }\nexport interface ClickOptions {\n  readonly button?: MouseButton;\n  readonly count?: 1 | 2;\n  readonly route?: \"auto\" | \"physical\" | \"semantic\";\n  readonly pacing?: CursorPacing;\n}\nexport interface PathOptions {\n  readonly durationMs: number;\n  readonly interpolation: \"polyline\" | \"cubic\";\n  readonly maxLatenessMs?: number;\n  readonly overload?: \"abort\" | \"slow-within-tolerance\";\n}\nexport interface StrokeOptions extends PathOptions { readonly button?: MouseButton; readonly approach?: CursorPacing; }\nexport interface ScrollOptions {\n  readonly dx: number;\n  readonly dy: number;\n  readonly units: \"pixel\" | \"line\";\n  readonly phase?: \"began\" | \"changed\" | \"ended\";\n  readonly durationMs?: number;\n}\nexport interface Pointer {\n  moveTo(target: Point, options?: MoveOptions): Promise<Receipt>;\n  moveBy(delta: { readonly frameId: FrameId; readonly dx: number; readonly dy: number }, options?: MoveOptions): Promise<Receipt>;\n  hover(target: Element | Point, options?: { readonly dwellMs?: number; readonly pacing?: CursorPacing }): Promise<Receipt>;\n  click(target: Element | Point, options?: ClickOptions): Promise<Receipt>;\n  buttonDown(button: MouseButton): Promise<Receipt>;\n  buttonUp(button: MouseButton): Promise<Receipt>;\n  withButtonDown<T>(button: MouseButton, body: () => Promise<T>): Promise<T>;\n  followPath(points: readonly Point[], options: PathOptions): Promise<Receipt>;\n  scroll(target: Element | Point, options: ScrollOptions): Promise<Receipt>;\n  play(timeline: Timeline): Promise<Receipt>;\n}\nexport interface SurfacePointer {\n  /** Bare pairs here are normalized coordinates of this bound surface only. */\n  stroke(points: readonly (Vec2 | SurfacePoint)[], options: StrokeOptions): Promise<Receipt>;\n  moveTo(point: Vec2 | SurfacePoint, options?: MoveOptions): Promise<Receipt>;\n  click(point: Vec2 | SurfacePoint, options?: ClickOptions): Promise<Receipt>;\n}\nexport type Modifier = \"shift\" | \"control\" | \"alt\" | \"super\";\nexport interface PhysicalKey { readonly kind: \"physical\"; readonly code: number; }\nexport interface LogicalKey { readonly kind: \"logical\"; readonly key: string; }\nexport type Key = PhysicalKey | LogicalKey;\nexport interface Keyboard {\n  typeText(text: string, options?: { readonly deadlineMs?: number }): Promise<Receipt>;\n  chord(keys: string | readonly Key[], options?: { readonly holdMs?: number }): Promise<Receipt>;\n  keyDown(key: Key): Promise<Receipt>;\n  keyUp(key: Key): Promise<Receipt>;\n  repeat(key: Key, options: { readonly count: number; readonly intervalMs: number; readonly holdMs?: number }): Promise<Receipt>;\n  withKeysDown<T>(keys: readonly Key[], body: () => Promise<T>): Promise<T>;\n}\nexport type NativeCondition =\n  | { readonly kind: \"focused-window\"; readonly windowId: WindowId }\n  | { readonly kind: \"element-enabled\"; readonly elementId: ElementId }\n  | { readonly kind: \"frame-after\"; readonly windowId: WindowId; readonly after: OperationBarrier };\nexport type TimelineEvent =\n  | { readonly atMs: number; readonly kind: \"pointer-position\"; readonly point: Point }\n  | { readonly atMs: number; readonly kind: \"button-down\" | \"button-up\"; readonly button: MouseButton }\n  | { readonly atMs: number; readonly kind: \"key-down\" | \"key-up\"; readonly key: Key }\n  | { readonly atMs: number; readonly kind: \"scroll\"; readonly options: ScrollOptions }\n  | { readonly atMs: number; readonly kind: \"condition\"; readonly condition: NativeCondition; readonly timeoutMs: number };\nexport interface Timeline {\n  readonly events: readonly TimelineEvent[];\n  readonly durationMs: number;\n  readonly maxLatenessMs: number;\n  readonly overload: \"abort\" | \"slow-within-tolerance\";\n}\nexport interface Watch<T> extends Resource<\"watch\"> {\n  next(options?: { readonly deadlineMs?: number }): Promise<T>;\n  close(): Promise<void>;\n}\nexport interface Events {\n  /** Predicate executes in a host-established read-only guest scope. */\n  until<T>(predicate: () => Promise<T | null>, options: { readonly deadlineMs: number; readonly scope: Window | Surface; readonly reconcileMs?: number; readonly stableForMs?: number }): Promise<T>;\n  watchQuery(window: Window, query: Query): Promise<Watch<ElementSelection>>;\n  wait(ms: number): Promise<void>;\n}\nexport interface ClipboardValue { readonly text: string; readonly changeCount: UInt64; }\nexport interface Clipboard {\n  readText(): Promise<ClipboardValue>;\n  writeText(text: string): Promise<{ readonly receipt: Receipt; readonly changeCount: UInt64 }>;\n  writeImage(image: ImageEvidence): Promise<{ readonly receipt: Receipt; readonly changeCount: UInt64 }>;\n  pasteImage(target: App | Window, image: ImageEvidence, options?: { readonly restore?: boolean }): Promise<Receipt>;\n  /** Explicit UI paste. Restore defaults false; opt-in restoration is best effort, never atomic CAS. Skip when changeCount differs; races remain possible. */\n  pasteText(target: App | Window, text: string, options?: { readonly restore?: boolean }): Promise<Receipt>;\n}\nexport type Emission =\n  | { readonly kind: \"text\"; readonly text: string }\n  | { readonly kind: \"image\"; readonly image: ImageEvidence }\n  | { readonly kind: \"observation\"; readonly observation: Observation }\n  | { readonly kind: \"json\"; readonly value: JsonValue };\nexport interface DecisionRequest {\n  readonly question: string;\n  readonly observation?: Observation;\n  readonly choices?: readonly JsonObject[];\n  readonly responseSchema: JsonSchema;\n  readonly deadlineMs?: number;\n}\nexport interface ExecutionContext {\n  readonly id: ExecutionId;\n  emit(value: Emission): Promise<void>;\n  /** Same-model typed decision; cannot satisfy a human approval request. */\n  decide<T extends JsonValue = JsonValue>(request: DecisionRequest): Promise<T>;\n  /** A request to the trusted human-approval surface; the answer is not a grant. */\n  requestApproval(request: DecisionRequest): Promise<{ readonly approved: boolean }>;\n  inspectReceipts(): Promise<readonly Receipt[]>;\n}\nexport interface WorkspaceContext {\n  readonly id: WorkspaceId;\n  modules(): Promise<readonly { readonly name: string; readonly revision: ModuleRevision }[]>;\n  /** Save an already admitted pure module revision, with explicit retention consent. */\n  saveModule(name: string, revision: ModuleRevision): Promise<void>;\n  saveData(name: string, value: JsonValue): Promise<void>;\n  loadData(name: string): Promise<JsonValue | null>;\n}\nexport interface Description {\n  readonly apiVersion: ApiVersion;\n  readonly contractHash: string;\n  readonly module: string;\n  readonly documentation: string;\n  readonly capabilities: readonly CapabilityStatus[];\n}\nexport interface Aid {\n  readonly apps: {\n    list(options?: { readonly includeInstalled?: boolean }): Promise<readonly AppListing[]>;\n    /** Read-only lookup. Use prepare for launch/unhide/foreground effects. */\n    get(query: AppQuery): Promise<App>;\n    prepare(request: PrepareAppRequest): Promise<PreparedApp>;\n  };\n  readonly windows: { get(id: WindowId): Promise<Window>; list(app?: App): Promise<readonly Window[]>; focused(): Promise<Window | null> };\n  readonly pointer: Pointer;\n  /** Bound to an explicitly established execution target; never follows user focus silently. */\n  readonly keyboard: Keyboard;\n  readonly observe: { window(window: Window, options?: ObserveOptions): Promise<Observation>; surface(surface: Surface, options?: ObserveOptions): Promise<Observation>; desktop(options?: ObserveOptions): Promise<Observation>; region(region: FramedRect, options?: ObserveOptions): Promise<Observation> };\n  readonly events: Events;\n  readonly clipboard: Clipboard;\n  readonly execution: ExecutionContext;\n  readonly workspace: WorkspaceContext;\n  describe(moduleOrResource?: string | Resource<string>): Promise<Description>;\n}\nexport declare const aid: Aid;\n\n",
+  "machines": {
+    "revision": "1.1",
+    "execution": {
+      "initial": "queued",
+      "terminal": [
+        "completed",
+        "failed",
+        "cancelled",
+        "lost",
+        "interrupted-after-possible-effect"
+      ],
+      "transitions": {
+        "queued": [
+          "running",
+          "stopping",
+          "failed",
+          "lost"
+        ],
+        "running": [
+          "waiting-for-condition",
+          "waiting-for-model",
+          "waiting-for-user",
+          "paused",
+          "stopping",
+          "completed",
+          "failed",
+          "lost",
+          "interrupted-after-possible-effect"
+        ],
+        "waiting-for-condition": [
+          "running",
+          "stopping",
+          "failed",
+          "lost",
+          "interrupted-after-possible-effect"
+        ],
+        "waiting-for-model": [
+          "running",
+          "stopping",
+          "failed",
+          "lost",
+          "interrupted-after-possible-effect"
+        ],
+        "waiting-for-user": [
+          "running",
+          "stopping",
+          "failed",
+          "lost",
+          "interrupted-after-possible-effect"
+        ],
+        "paused": [
+          "running",
+          "stopping",
+          "failed",
+          "lost"
+        ],
+        "stopping": [
+          "cancelled",
+          "failed",
+          "lost",
+          "interrupted-after-possible-effect"
+        ],
+        "completed": [],
+        "failed": [],
+        "cancelled": [],
+        "lost": [],
+        "interrupted-after-possible-effect": []
+      }
+    },
+    "control": {
+      "initial": "pending",
+      "terminal": [
+        "closed"
+      ],
+      "transitions": {
+        "pending": [
+          "active",
+          "expired",
+          "closed"
+        ],
+        "active": [
+          "revoking",
+          "expired"
+        ],
+        "revoking": [
+          "quiescent",
+          "expired"
+        ],
+        "quiescent": [
+          "closed"
+        ],
+        "expired": [
+          "quiescent",
+          "closed"
+        ],
+        "closed": []
+      }
+    },
+    "checkpoint": {
+      "initial": "pending",
+      "terminal": [
+        "settled",
+        "expired",
+        "rejected",
+        "lost"
+      ],
+      "transitions": {
+        "pending": [
+          "accepted",
+          "expired",
+          "rejected",
+          "lost"
+        ],
+        "accepted": [
+          "settled",
+          "rejected",
+          "lost"
+        ],
+        "settled": [],
+        "expired": [],
+        "rejected": [],
+        "lost": []
+      }
+    },
+    "invariants": [
+      "Only active control with current epoch may admit a new effect.",
+      "Checkpoint publication, paused, completed and cancelled require confirmed input quiescence. Lost/failed/interrupted can report quiescent:false until the independent supervisor confirms cleanup; they never admit more input.",
+      "Control expired forbids admission but does not by itself confirm physical quiescence.",
+      "Checkpoint answer accepted at most once; exact duplicate attaches; changed duplicate conflicts.",
+      "Possible submission never permits automatic effect retry.",
+      "A lost guest does not replay a prefix to restore its heap."
+    ],
+    "capture": {
+      "initial": "starting",
+      "terminal": [
+        "stopped",
+        "failed"
+      ],
+      "transitions": {
+        "starting": [
+          "warm",
+          "retiring",
+          "failed"
+        ],
+        "warm": [
+          "retiring",
+          "failed"
+        ],
+        "retiring": [
+          "stopped",
+          "failed"
+        ],
+        "stopped": [],
+        "failed": []
+      }
+    }
+  },
+  "workPackages": [
+    {
+      "id": "W01",
+      "dependsOn": [],
+      "documents": [
+        1,
+        20
+      ]
+    },
+    {
+      "id": "W02",
+      "dependsOn": [
+        "W01"
+      ],
+      "documents": [
+        2,
+        31
+      ]
+    },
+    {
+      "id": "W03",
+      "dependsOn": [
+        "W02"
+      ],
+      "documents": [
+        2
+      ]
+    },
+    {
+      "id": "W04",
+      "dependsOn": [
+        "W02"
+      ],
+      "documents": [
+        4,
+        27
+      ]
+    },
+    {
+      "id": "W05",
+      "dependsOn": [
+        "W02"
+      ],
+      "documents": [
+        3,
+        4
+      ]
+    },
+    {
+      "id": "W06",
+      "dependsOn": [
+        "W03"
+      ],
+      "documents": [
+        5,
+        19
+      ]
+    },
+    {
+      "id": "W07",
+      "dependsOn": [
+        "W04",
+        "W06"
+      ],
+      "documents": [
+        5,
+        12,
+        18
+      ]
+    },
+    {
+      "id": "W08",
+      "dependsOn": [
+        "W03",
+        "W06"
+      ],
+      "documents": [
+        16
+      ]
+    },
+    {
+      "id": "W09",
+      "dependsOn": [
+        "W04",
+        "W06"
+      ],
+      "documents": [
+        15
+      ]
+    },
+    {
+      "id": "W10",
+      "dependsOn": [
+        "W04",
+        "W07",
+        "W09"
+      ],
+      "documents": [
+        14
+      ]
+    },
+    {
+      "id": "W11",
+      "dependsOn": [
+        "W07",
+        "W08",
+        "W09",
+        "W10"
+      ],
+      "documents": [
+        12,
+        15
+      ]
+    },
+    {
+      "id": "W12",
+      "dependsOn": [
+        "W07",
+        "W08",
+        "W09"
+      ],
+      "documents": [
+        13
+      ]
+    },
+    {
+      "id": "W13",
+      "dependsOn": [
+        "W10",
+        "W11",
+        "W12"
+      ],
+      "documents": [
+        12
+      ]
+    },
+    {
+      "id": "W14",
+      "dependsOn": [
+        "W04",
+        "W06",
+        "W09"
+      ],
+      "documents": [
+        9
+      ]
+    },
+    {
+      "id": "W15",
+      "dependsOn": [
+        "W03",
+        "W06",
+        "W08",
+        "W14"
+      ],
+      "documents": [
+        9,
+        19
+      ]
+    },
+    {
+      "id": "W16",
+      "dependsOn": [
+        "W04",
+        "W06",
+        "W09"
+      ],
+      "documents": [
+        8
+      ]
+    },
+    {
+      "id": "W17",
+      "dependsOn": [
+        "W14",
+        "W15",
+        "W16"
+      ],
+      "documents": [
+        7
+      ]
+    },
+    {
+      "id": "W18",
+      "dependsOn": [
+        "W07",
+        "W09",
+        "W16",
+        "W17"
+      ],
+      "documents": [
+        11
+      ]
+    },
+    {
+      "id": "W19",
+      "dependsOn": [
+        "W13",
+        "W17",
+        "W18"
+      ],
+      "documents": [
+        11
+      ]
+    },
+    {
+      "id": "W20",
+      "dependsOn": [
+        "W16",
+        "W17",
+        "W18",
+        "W19"
+      ],
+      "documents": [
+        10
+      ]
+    },
+    {
+      "id": "W21",
+      "dependsOn": [
+        "W03",
+        "W05",
+        "W06"
+      ],
+      "documents": [
+        3
+      ]
+    },
+    {
+      "id": "W22",
+      "dependsOn": [
+        "W03",
+        "W15",
+        "W16",
+        "W18",
+        "W19",
+        "W20",
+        "W21"
+      ],
+      "documents": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "W23",
+      "dependsOn": [
+        "W08",
+        "W21",
+        "W22"
+      ],
+      "documents": [
+        16
+      ]
+    },
+    {
+      "id": "W24",
+      "dependsOn": [
+        "W15",
+        "W18",
+        "W23"
+      ],
+      "documents": [
+        6
+      ]
+    },
+    {
+      "id": "W25",
+      "dependsOn": [
+        "W03",
+        "W06",
+        "W23",
+        "W24"
+      ],
+      "documents": [
+        17,
+        27
+      ]
+    },
+    {
+      "id": "W26",
+      "dependsOn": [
+        "W25"
+      ],
+      "documents": [
+        17
+      ]
+    },
+    {
+      "id": "W27",
+      "dependsOn": [
+        "W07",
+        "W15",
+        "W23",
+        "W24",
+        "W25"
+      ],
+      "documents": [
+        18
+      ]
+    },
+    {
+      "id": "W28",
+      "dependsOn": [
+        "W04",
+        "W06",
+        "W08",
+        "W15",
+        "W24",
+        "W27"
+      ],
+      "documents": [
+        19
+      ]
+    },
+    {
+      "id": "W29",
+      "dependsOn": [
+        "W13",
+        "W19",
+        "W22",
+        "W24",
+        "W27",
+        "W28",
+        "W32"
+      ],
+      "documents": [
+        20
+      ]
+    },
+    {
+      "id": "W30",
+      "dependsOn": [
+        "W29"
+      ],
+      "documents": [
+        20
+      ]
+    },
+    {
+      "id": "W31",
+      "dependsOn": [
+        "W29",
+        "W30"
+      ],
+      "documents": [
+        1,
+        20
+      ]
+    },
+    {
+      "id": "W32",
+      "dependsOn": [
+        "W04",
+        "W05",
+        "W22",
+        "W25",
+        "W27"
+      ],
+      "documents": [
+        27
+      ]
+    },
+    {
+      "id": "W33",
+      "dependsOn": [
+        "W31",
+        "W32"
+      ],
+      "documents": [
+        20
+      ]
+    },
+    {
+      "id": "W34",
+      "dependsOn": [
+        "W26",
+        "W28",
+        "W33"
+      ],
+      "documents": [
+        20,
+        27
+      ]
+    },
+    {
+      "id": "W35",
+      "dependsOn": [
+        "W34"
+      ],
+      "documents": [
+        27
+      ]
+    },
+    {
+      "id": "X01",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        21
+      ]
+    },
+    {
+      "id": "X02",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        22
+      ]
+    },
+    {
+      "id": "X03",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        23
+      ]
+    },
+    {
+      "id": "X04",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        24
+      ]
+    },
+    {
+      "id": "X05",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        25
+      ]
+    },
+    {
+      "id": "X06",
+      "dependsOn": [
+        "W35"
+      ],
+      "documents": [
+        26
+      ]
+    }
+  ],
+  "gates": {
+    "G01": "Signed topology, IPC and permission attribution",
+    "G02": "Resident JavaScript semantics and isolation",
+    "G03": "T3/provider/protocol/image/checkpoint delivery",
+    "G04": "Authority, liveness, input ownership and native stop",
+    "G05": "Devices, timelines and truthful cursor",
+    "G06": "Semantic and spatial dependency validity",
+    "G07": "Capture ownership, freshness and artifact races",
+    "G08": "Security, privacy and human approval",
+    "G09": "Verified task outcomes and measured infrastructure overhead",
+    "G10": "Optional memory/debug/demonstration/planning",
+    "G11": "Independent seats",
+    "G12": "Extended devices"
+  },
+  "gatesByDocument": {
+    "1": [
+      "G09"
+    ],
+    "2": [
+      "G02",
+      "G03",
+      "G08"
+    ],
+    "3": [
+      "G02"
+    ],
+    "4": [
+      "G01",
+      "G02"
+    ],
+    "5": [
+      "G04"
+    ],
+    "6": [
+      "G02",
+      "G03",
+      "G04"
+    ],
+    "7": [
+      "G06",
+      "G07"
+    ],
+    "8": [
+      "G06"
+    ],
+    "9": [
+      "G07"
+    ],
+    "10": [
+      "G06"
+    ],
+    "11": [
+      "G06"
+    ],
+    "12": [
+      "G04",
+      "G05"
+    ],
+    "13": [
+      "G05",
+      "G08"
+    ],
+    "14": [
+      "G05"
+    ],
+    "15": [
+      "G05",
+      "G06"
+    ],
+    "16": [
+      "G04",
+      "G08"
+    ],
+    "17": [
+      "G03"
+    ],
+    "18": [
+      "G04",
+      "G08"
+    ],
+    "19": [
+      "G08"
+    ],
+    "20": [
+      "G09"
+    ],
+    "21": [
+      "G10"
+    ],
+    "22": [
+      "G10"
+    ],
+    "23": [
+      "G10"
+    ],
+    "24": [
+      "G10"
+    ],
+    "25": [
+      "G11"
+    ],
+    "26": [
+      "G12"
+    ],
+    "27": [
+      "G01",
+      "G03"
+    ]
+  },
+  "methods": [
+    {
+      "name": "Artifact.read",
+      "parameters": [
+        "options?: { readonly offset?: number; readonly length?: number }"
+      ],
+      "returns": "Promise<Uint8Array>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "artifacts.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Artifact.release",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.refresh",
+      "parameters": [],
+      "returns": "Promise<ElementState>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.children",
+      "parameters": [
+        "options?: { readonly continuation?: string; readonly limit?: number; readonly raw?: boolean }"
+      ],
+      "returns": "Promise<ElementSelection>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.perform",
+      "parameters": [
+        "action: string"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "semantic-input",
+      "minimumCapabilities": [
+        "accessibility.act"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.setValue",
+      "parameters": [
+        "value: string | number | boolean"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "semantic-input",
+      "minimumCapabilities": [
+        "accessibility.act"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Element.describe",
+      "parameters": [],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ElementSelection.one",
+      "parameters": [],
+      "returns": "Element",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.query",
+      "parameters": [
+        "spec: Query"
+      ],
+      "returns": "ElementSelection",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.point",
+      "parameters": [
+        "xPixels: number",
+        "yPixels: number",
+        "imageIndex?: number"
+      ],
+      "returns": "Point",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.crop",
+      "parameters": [
+        "region: FramedRect",
+        "options?: { readonly maxDimension?: number }"
+      ],
+      "returns": "Promise<ImageEvidence>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.diff",
+      "parameters": [
+        "base: Observation"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.bindSurface",
+      "parameters": [
+        "binding: SurfaceBinding"
+      ],
+      "returns": "Promise<Surface>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Observation.release",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.windows",
+      "parameters": [],
+      "returns": "Promise<readonly Window[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.mainWindow",
+      "parameters": [],
+      "returns": "Promise<Window>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.menu",
+      "parameters": [
+        "query?: Query"
+      ],
+      "returns": "Promise<ElementSelection>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.activate",
+      "parameters": [
+        "options?: { readonly window?: WindowChoice }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "App.describe",
+      "parameters": [],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.focus",
+      "parameters": [],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.refresh",
+      "parameters": [],
+      "returns": "Promise<Window>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.setBounds",
+      "parameters": [
+        "bounds: FramedRect"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.observe",
+      "parameters": [
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.query",
+      "parameters": [
+        "spec: Query"
+      ],
+      "returns": "Promise<ElementSelection>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "accessibility.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.point",
+      "parameters": [
+        "xPoints: number",
+        "yPoints: number"
+      ],
+      "returns": "Point",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Window.describe",
+      "parameters": [],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.point",
+      "parameters": [
+        "u: number",
+        "v: number"
+      ],
+      "returns": "SurfacePoint",
+      "layer": "guest",
+      "effectClass": "pure",
+      "minimumCapabilities": [],
+      "ownerChecked": false,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.validate",
+      "parameters": [],
+      "returns": "Promise<{ readonly valid: boolean; readonly reasons: readonly string[] }>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.observe",
+      "parameters": [
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Surface.release",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.moveTo",
+      "parameters": [
+        "target: Point",
+        "options?: MoveOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.moveBy",
+      "parameters": [
+        "delta: { readonly frameId: FrameId; readonly dx: number; readonly dy: number }",
+        "options?: MoveOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.hover",
+      "parameters": [
+        "target: Element | Point",
+        "options?: { readonly dwellMs?: number; readonly pacing?: CursorPacing }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.click",
+      "parameters": [
+        "target: Element | Point",
+        "options?: ClickOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.buttonDown",
+      "parameters": [
+        "button: MouseButton"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.buttonUp",
+      "parameters": [
+        "button: MouseButton"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.withButtonDown",
+      "parameters": [
+        "button: MouseButton",
+        "body: () => Promise<T>"
+      ],
+      "returns": "Promise<T>",
+      "layer": "guest-combinator",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.followPath",
+      "parameters": [
+        "points: readonly Point[]",
+        "options: PathOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.scroll",
+      "parameters": [
+        "target: Element | Point",
+        "options: ScrollOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Pointer.play",
+      "parameters": [
+        "timeline: Timeline"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "SurfacePointer.stroke",
+      "parameters": [
+        "points: readonly (Vec2 | SurfacePoint)[]",
+        "options: StrokeOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "SurfacePointer.moveTo",
+      "parameters": [
+        "point: Vec2 | SurfacePoint",
+        "options?: MoveOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "SurfacePointer.click",
+      "parameters": [
+        "point: Vec2 | SurfacePoint",
+        "options?: ClickOptions"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "pointer.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.typeText",
+      "parameters": [
+        "text: string",
+        "options?: { readonly deadlineMs?: number }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.chord",
+      "parameters": [
+        "keys: string | readonly Key[]",
+        "options?: { readonly holdMs?: number }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.keyDown",
+      "parameters": [
+        "key: Key"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.keyUp",
+      "parameters": [
+        "key: Key"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.repeat",
+      "parameters": [
+        "key: Key",
+        "options: { readonly count: number; readonly intervalMs: number; readonly holdMs?: number }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Keyboard.withKeysDown",
+      "parameters": [
+        "keys: readonly Key[]",
+        "body: () => Promise<T>"
+      ],
+      "returns": "Promise<T>",
+      "layer": "guest-combinator",
+      "effectClass": "physical-input",
+      "minimumCapabilities": [
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Watch.next",
+      "parameters": [
+        "options?: { readonly deadlineMs?: number }"
+      ],
+      "returns": "Promise<T>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Watch.close",
+      "parameters": [],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Events.until",
+      "parameters": [
+        "predicate: () => Promise<T | null>",
+        "options: { readonly deadlineMs: number; readonly scope: Window | Surface; readonly reconcileMs?: number; readonly stableForMs?: number }"
+      ],
+      "returns": "Promise<T>",
+      "layer": "guest-combinator",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Events.watchQuery",
+      "parameters": [
+        "window: Window",
+        "query: Query"
+      ],
+      "returns": "Promise<Watch<ElementSelection>>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Events.wait",
+      "parameters": [
+        "ms: number"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.readText",
+      "parameters": [],
+      "returns": "Promise<ClipboardValue>",
+      "layer": "driver",
+      "effectClass": "clipboard-read",
+      "minimumCapabilities": [
+        "clipboard.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.writeText",
+      "parameters": [
+        "text: string"
+      ],
+      "returns": "Promise<{ readonly receipt: Receipt; readonly changeCount: UInt64 }>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.writeImage",
+      "parameters": [
+        "image: ImageEvidence"
+      ],
+      "returns": "Promise<{ readonly receipt: Receipt; readonly changeCount: UInt64 }>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write",
+        "artifacts.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.pasteImage",
+      "parameters": [
+        "target: App | Window",
+        "image: ImageEvidence",
+        "options?: { readonly restore?: boolean }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write",
+        "artifacts.read",
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Clipboard.pasteText",
+      "parameters": [
+        "target: App | Window",
+        "text: string",
+        "options?: { readonly restore?: boolean }"
+      ],
+      "returns": "Promise<Receipt>",
+      "layer": "driver",
+      "effectClass": "clipboard-write",
+      "minimumCapabilities": [
+        "clipboard.write",
+        "keyboard.control"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.emit",
+      "parameters": [
+        "value: Emission"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "artifact-export",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.decide",
+      "parameters": [
+        "request: DecisionRequest"
+      ],
+      "returns": "Promise<T>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.requestApproval",
+      "parameters": [
+        "request: DecisionRequest"
+      ],
+      "returns": "Promise<{ readonly approved: boolean }>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "ExecutionContext.inspectReceipts",
+      "parameters": [],
+      "returns": "Promise<readonly Receipt[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.modules",
+      "parameters": [],
+      "returns": "Promise<readonly { readonly name: string; readonly revision: ModuleRevision }[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.saveModule",
+      "parameters": [
+        "name: string",
+        "revision: ModuleRevision"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.saveData",
+      "parameters": [
+        "name: string",
+        "value: JsonValue"
+      ],
+      "returns": "Promise<void>",
+      "layer": "host",
+      "effectClass": "supervisor",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "WorkspaceContext.loadData",
+      "parameters": [
+        "name: string"
+      ],
+      "returns": "Promise<JsonValue | null>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.apps.list",
+      "parameters": [
+        "options?: { readonly includeInstalled?: boolean }"
+      ],
+      "returns": "Promise<readonly AppListing[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "apps.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.apps.get",
+      "parameters": [
+        "query: AppQuery"
+      ],
+      "returns": "Promise<App>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "apps.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.apps.prepare",
+      "parameters": [
+        "request: PrepareAppRequest"
+      ],
+      "returns": "Promise<PreparedApp>",
+      "layer": "driver",
+      "effectClass": "window-mutation",
+      "minimumCapabilities": [
+        "windows.control",
+        "apps.prepare"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.windows.get",
+      "parameters": [
+        "id: WindowId"
+      ],
+      "returns": "Promise<Window>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.windows.list",
+      "parameters": [
+        "app?: App"
+      ],
+      "returns": "Promise<readonly Window[]>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.windows.focused",
+      "parameters": [],
+      "returns": "Promise<Window | null>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.window",
+      "parameters": [
+        "window: Window",
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.surface",
+      "parameters": [
+        "surface: Surface",
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "windows.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.desktop",
+      "parameters": [
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "capture.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.observe.region",
+      "parameters": [
+        "region: FramedRect",
+        "options?: ObserveOptions"
+      ],
+      "returns": "Promise<Observation>",
+      "layer": "driver",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [
+        "capture.read"
+      ],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    },
+    {
+      "name": "Aid.describe",
+      "parameters": [
+        "moduleOrResource?: string | Resource<string>"
+      ],
+      "returns": "Promise<Description>",
+      "layer": "host",
+      "effectClass": "evidence-read",
+      "minimumCapabilities": [],
+      "ownerChecked": true,
+      "cancellation": "execution",
+      "nestedAuthorization": "every leaf independently checked"
+    }
+  ],
+  "contractTypesByDocument": {
+    "01": [
+      "Aid",
+      "HostRequest",
+      "Receipt"
+    ],
+    "02": [
+      "Aid",
+      "HostRequest",
+      "HostResult"
+    ],
+    "03": [
+      "WorkspaceContext",
+      "ExecutionContext"
+    ],
+    "04": [
+      "WireNativeRequest",
+      "WireBudget"
+    ],
+    "05": [
+      "Resource",
+      "WireControlStatus",
+      "WireExecutionStatus"
+    ],
+    "06": [
+      "DecisionRequest",
+      "WireCheckpoint",
+      "WireRespond"
+    ],
+    "07": [
+      "Observation",
+      "WireObservation",
+      "Coverage"
+    ],
+    "08": [
+      "Query",
+      "Element",
+      "ElementSelection"
+    ],
+    "09": [
+      "Artifact",
+      "ImageEvidence",
+      "WireArtifact"
+    ],
+    "10": [
+      "Events",
+      "Watch"
+    ],
+    "11": [
+      "Point",
+      "CoordinateFrame",
+      "SurfaceBinding"
+    ],
+    "12": [
+      "Pointer",
+      "Timeline",
+      "Receipt"
+    ],
+    "13": [
+      "Keyboard",
+      "Clipboard",
+      "Receipt"
+    ],
+    "14": [
+      "MoveOptions",
+      "PathOptions",
+      "CursorPacing"
+    ],
+    "15": [
+      "AppQuery",
+      "PreparedApp",
+      "Window"
+    ],
+    "16": [
+      "Receipt",
+      "WireExecutionStatus",
+      "WireFailure"
+    ],
+    "17": [
+      "HostApi",
+      "HostRequest",
+      "HostResult",
+      "WireEmission"
+    ],
+    "18": [
+      "WireControlStatus",
+      "WireExecutionStatus",
+      "DecisionRequest"
+    ],
+    "19": [
+      "Capability",
+      "Resource",
+      "Artifact"
+    ],
+    "20": [
+      "Receipt",
+      "WireFailure"
+    ],
+    "21": [
+      "WorkspaceContext",
+      "ModuleRevision"
+    ],
+    "22": [
+      "Observation",
+      "ExecutionContext"
+    ],
+    "23": [
+      "ExecutionContext",
+      "WireExecutionStatus"
+    ],
+    "24": [
+      "Observation",
+      "Timeline"
+    ],
+    "25": [
+      "SeatId",
+      "ControlId",
+      "WireControlStatus"
+    ],
+    "26": [
+      "CapabilityStatus",
+      "Timeline"
+    ],
+    "27": [
+      "HostApi",
+      "WireNativeRequest"
+    ]
+  },
+  "invariantTraceability": [
+    {
+      "id": "INV-01",
+      "contractTypes": [
+        "Aid",
+        "ExecutionMode"
+      ],
+      "acceptanceTests": [
+        "BASE-05",
+        "HOST-10",
+        "CLIP-03"
+      ],
+      "gates": [
+        "G05",
+        "G08",
+        "G09"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-02",
+      "contractTypes": [
+        "Point",
+        "Timeline"
+      ],
+      "acceptanceTests": [
+        "CUR-01",
+        "MOTOR-06",
+        "MOTOR-07"
+      ],
+      "gates": [
+        "G05"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-03",
+      "contractTypes": [
+        "WorkspaceContext",
+        "ExecutionContext"
+      ],
+      "acceptanceTests": [
+        "JS-01",
+        "JS-02",
+        "JS-06",
+        "JS-07"
+      ],
+      "gates": [
+        "G02"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-04",
+      "contractTypes": [
+        "ControlId",
+        "Timeline"
+      ],
+      "acceptanceTests": [
+        "LIFE-04",
+        "MOTOR-10"
+      ],
+      "gates": [
+        "G04"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-05",
+      "contractTypes": [
+        "Capability",
+        "WireNativeRequest"
+      ],
+      "acceptanceTests": [
+        "SEC-01",
+        "SEC-02",
+        "JS-05"
+      ],
+      "gates": [
+        "G01",
+        "G02",
+        "G08"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-06",
+      "contractTypes": [
+        "Resource",
+        "Capability"
+      ],
+      "acceptanceTests": [
+        "API-04",
+        "SEC-02",
+        "SEC-03"
+      ],
+      "gates": [
+        "G04",
+        "G06",
+        "G08"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-07",
+      "contractTypes": [
+        "Receipt",
+        "HostRequest"
+      ],
+      "acceptanceTests": [
+        "JRN-01",
+        "JRN-03",
+        "JRN-10"
+      ],
+      "gates": [
+        "G04",
+        "G08"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-08",
+      "contractTypes": [
+        "Artifact",
+        "Observation"
+      ],
+      "acceptanceTests": [
+        "CAP-01",
+        "CAP-02",
+        "CAP-07"
+      ],
+      "gates": [
+        "G07"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-09",
+      "contractTypes": [
+        "SurfaceBinding",
+        "Element"
+      ],
+      "acceptanceTests": [
+        "AX-03",
+        "AX-04",
+        "BASE-03"
+      ],
+      "gates": [
+        "G06"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-10",
+      "contractTypes": [
+        "WireControlStatus"
+      ],
+      "acceptanceTests": [
+        "LIFE-03",
+        "MOTOR-03",
+        "MOTOR-04",
+        "UI-02"
+      ],
+      "gates": [
+        "G04"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-11",
+      "contractTypes": [
+        "Receipt",
+        "WireFailure"
+      ],
+      "acceptanceTests": [
+        "JRN-03",
+        "UI-03",
+        "EVAL-08"
+      ],
+      "gates": [
+        "G04",
+        "G09"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-12",
+      "contractTypes": [
+        "WorkspaceContext",
+        "Resource"
+      ],
+      "acceptanceTests": [
+        "LIFE-01",
+        "LIFE-09",
+        "JS-08"
+      ],
+      "gates": [
+        "G02",
+        "G04",
+        "G07"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-13",
+      "contractTypes": [
+        "Pointer",
+        "Keyboard",
+        "Element",
+        "Observation"
+      ],
+      "acceptanceTests": [
+        "AX-08",
+        "API-01"
+      ],
+      "gates": [
+        "G05",
+        "G06"
+      ],
+      "implementationStatus": "not_run"
+    },
+    {
+      "id": "INV-14",
+      "contractTypes": [
+        "CapabilityStatus"
+      ],
+      "acceptanceTests": [
+        "KEY-06",
+        "SEAT-02"
+      ],
+      "gates": [
+        "G01",
+        "G03",
+        "G05",
+        "G11",
+        "G12"
+      ],
+      "implementationStatus": "not_run"
+    }
+  ],
+  "definitions": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:~-]*$"
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:~-]+$"
+    },
+    "counter": {
+      "type": "string",
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "revision": {
+      "const": "1.1"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "mode": {
+      "enum": [
+        "visible-ui",
+        "physical-ui",
+        "hybrid"
+      ]
+    },
+    "json": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/json"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/json"
+          }
+        }
+      ]
+    },
+    "app": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "bundleId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": [
+            "bundleId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pid": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "launchIdentity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "pid",
+            "launchIdentity"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "controlRequest": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/mode"
+        },
+        "targetApps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/app"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 128,
+          "items": {
+            "enum": [
+              "apps.read",
+              "apps.prepare",
+              "windows.read",
+              "windows.control",
+              "accessibility.read",
+              "accessibility.act",
+              "capture.read",
+              "pointer.control",
+              "keyboard.control",
+              "clipboard.read",
+              "clipboard.write",
+              "artifacts.read",
+              "artifacts.export",
+              "hybrid.execute"
+            ]
+          }
+        },
+        "requestedLeaseMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        },
+        "captureScope": {
+          "enum": [
+            "target-windows",
+            "desktop"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "targetApps",
+        "capabilities"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "contains": {
+                  "const": "hybrid.execute"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "hybrid"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "wallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "pendingCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "computeMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "source": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 262144
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "artifact"
+            },
+            "artifactId": {
+              "$ref": "#/$defs/id"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          },
+          "required": [
+            "kind",
+            "artifactId",
+            "sha256"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "closeTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "execution"
+            },
+            "executionId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "executionId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "control"
+            },
+            "controlId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "controlId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "workspace"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "open": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "open"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/key"
+            },
+            "workspaceName": {
+              "$ref": "#/$defs/name"
+            },
+            "reuse": {
+              "type": "boolean"
+            },
+            "control": {
+              "$ref": "#/$defs/controlRequest"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "idempotencyKey",
+            "workspaceName"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "exec": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "exec"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "controlId": {
+              "$ref": "#/$defs/id"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/key"
+            },
+            "cellName": {
+              "$ref": "#/$defs/name"
+            },
+            "source": {
+              "$ref": "#/$defs/source"
+            },
+            "requestedBudget": {
+              "$ref": "#/$defs/budget"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "workspaceId",
+            "idempotencyKey",
+            "cellName",
+            "source"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "inspect": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "inspect"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "executionId": {
+              "$ref": "#/$defs/id"
+            },
+            "sinceSequence": {
+              "$ref": "#/$defs/counter"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          "required": [
+            "apiRevision",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "respond": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "respond"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "executionId": {
+              "$ref": "#/$defs/id"
+            },
+            "checkpointId": {
+              "$ref": "#/$defs/id"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/key"
+            },
+            "answer": {
+              "$ref": "#/$defs/json"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "workspaceId",
+            "executionId",
+            "checkpointId",
+            "idempotencyKey",
+            "answer"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "describe": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "describe"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "subject"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "close": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "close"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "target": {
+              "$ref": "#/$defs/closeTarget"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "target"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "rect": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "width": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false
+    },
+    "point": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "point"
+        },
+        "frameId": {
+          "$ref": "#/$defs/id"
+        },
+        "transformGeneration": {
+          "$ref": "#/$defs/counter"
+        },
+        "units": {
+          "enum": [
+            "normalized",
+            "image-pixels",
+            "window-points",
+            "display-points",
+            "desktop-points"
+          ]
+        },
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "frameId",
+        "transformGeneration",
+        "units",
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "units": {
+                "const": "normalized"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "x": {
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "frame": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "generation": {
+          "$ref": "#/$defs/counter"
+        },
+        "parentId": {
+          "$ref": "#/$defs/id"
+        },
+        "units": {
+          "enum": [
+            "normalized",
+            "image-pixels",
+            "window-points",
+            "display-points",
+            "desktop-points"
+          ]
+        },
+        "bounds": {
+          "$ref": "#/$defs/rect"
+        },
+        "toParent": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "generation",
+        "units",
+        "bounds",
+        "toParent"
+      ],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "enum": [
+            "AMBIGUOUS_TARGET",
+            "BASE_EXPIRED",
+            "CANCELLED",
+            "CAPTURE_CAPACITY",
+            "CHECKPOINT_EXPIRED",
+            "CLEANUP_FAILED",
+            "CONTROL_EXPIRED",
+            "DEADLINE_EXCEEDED",
+            "DELIVERY_UNCERTAIN",
+            "DEPENDENCY_CHANGED",
+            "DRIVER_LOST",
+            "FOCUS_CHANGED",
+            "INCOMPLETE_EVIDENCE",
+            "INTERNAL",
+            "INVALID_ARGUMENT",
+            "NO_USABLE_WINDOW",
+            "PREDICATE_BUDGET",
+            "REQUEST_CONFLICT",
+            "RESOURCE_EXPIRED",
+            "RESOURCE_LIMIT",
+            "RESOURCE_NOT_FOUND",
+            "SEAT_BUSY",
+            "STALE_TARGET",
+            "UNAUTHORIZED",
+            "UNQUALIFIED_CAPABILITY",
+            "UNSAFE_CHECKPOINT",
+            "UNSUPPORTED_CAPABILITY",
+            "USER_TAKEOVER",
+            "WORKSPACE_BUSY",
+            "WORKSPACE_LOST"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "phase": {
+          "enum": [
+            "admission",
+            "validation",
+            "approach",
+            "dispatch",
+            "observation",
+            "checkpoint",
+            "cleanup",
+            "transport",
+            "guest"
+          ]
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "submission": {
+          "enum": [
+            "not_submitted",
+            "submitted",
+            "submission_uncertain"
+          ]
+        },
+        "canRetryAutomatically": {
+          "type": "boolean"
+        },
+        "details": {
+          "$ref": "#/$defs/json"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "phase",
+        "submission",
+        "canRetryAutomatically"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "submission": {
+                "enum": [
+                  "submitted",
+                  "submission_uncertain"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "canRetryAutomatically": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "receipt": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/counter"
+        },
+        "phase": {
+          "enum": [
+            "admission",
+            "validation",
+            "approach",
+            "dispatch",
+            "observation",
+            "checkpoint",
+            "cleanup",
+            "transport",
+            "guest"
+          ]
+        },
+        "route": {
+          "enum": [
+            "foreground-event",
+            "semantic-ax",
+            "targeted-event",
+            "sky",
+            "window-control",
+            "clipboard",
+            "none"
+          ]
+        },
+        "submission": {
+          "enum": [
+            "not_submitted",
+            "submitted",
+            "submission_uncertain"
+          ]
+        },
+        "evidence": {
+          "enum": [
+            "not_checked",
+            "change_observed",
+            "no_change_observed",
+            "inconclusive"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "unverified",
+            "verified",
+            "failed"
+          ]
+        },
+        "canRetryAutomatically": {
+          "type": "boolean"
+        },
+        "target": {
+          "type": "object",
+          "properties": {
+            "appId": {
+              "$ref": "#/$defs/id"
+            },
+            "windowId": {
+              "$ref": "#/$defs/id"
+            },
+            "elementId": {
+              "$ref": "#/$defs/id"
+            },
+            "surfaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "generation": {
+              "$ref": "#/$defs/counter"
+            }
+          },
+          "required": [
+            "generation"
+          ],
+          "additionalProperties": false
+        },
+        "after": {
+          "$ref": "#/$defs/barrier"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "uniqueItems": true,
+          "maxItems": 256
+        },
+        "verification": {
+          "type": "object",
+          "properties": {
+            "predicate": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "evidenceIds": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/id"
+              },
+              "uniqueItems": true
+            }
+          },
+          "required": [
+            "predicate",
+            "evidenceIds"
+          ],
+          "additionalProperties": false
+        },
+        "failure": {
+          "$ref": "#/$defs/failure"
+        },
+        "timingsMs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "operationId",
+        "executionId",
+        "sequence",
+        "phase",
+        "route",
+        "submission",
+        "evidence",
+        "outcome",
+        "canRetryAutomatically",
+        "after",
+        "evidenceIds",
+        "timingsMs",
+        "warnings"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "submission": {
+                "enum": [
+                  "submitted",
+                  "submission_uncertain"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "canRetryAutomatically": {
+                "const": false
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "verified",
+                  "failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "verification"
+            ],
+            "properties": {
+              "evidenceIds": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "model-decision",
+            "human-approval"
+          ]
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8192
+        },
+        "schema": {
+          "type": "object"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "maxItems": 256
+        },
+        "dependencyDigest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "executionId",
+        "question",
+        "schema",
+        "evidenceIds",
+        "dependencyDigest",
+        "expiresAtMs"
+      ],
+      "additionalProperties": false
+    },
+    "nativeRequest": {
+      "type": "object",
+      "properties": {
+        "apiRevision": {
+          "const": "1.1"
+        },
+        "requestId": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "controlId": {
+          "$ref": "#/$defs/id"
+        },
+        "controlEpoch": {
+          "$ref": "#/$defs/counter"
+        },
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "arguments": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "apiRevision",
+        "requestId",
+        "runtimeGeneration",
+        "controlId",
+        "controlEpoch",
+        "executionId",
+        "operationId",
+        "method",
+        "arguments"
+      ],
+      "additionalProperties": false
+    },
+    "barrier": {
+      "type": "object",
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/id"
+        },
+        "sequence": {
+          "$ref": "#/$defs/counter"
+        }
+      },
+      "required": [
+        "operationId",
+        "sequence"
+      ],
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "artifact"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "mimeType": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1073741824
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pixelWidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixelHeight": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observationId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "runtimeGeneration",
+        "mimeType",
+        "byteLength",
+        "sha256",
+        "expiresAtMs"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "pixelWidth": [
+          "pixelHeight"
+        ],
+        "pixelHeight": [
+          "pixelWidth"
+        ]
+      }
+    },
+    "imageArtifact": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "artifact"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeGeneration": {
+          "$ref": "#/$defs/id"
+        },
+        "mimeType": {
+          "enum": [
+            "image/png",
+            "image/jpeg"
+          ]
+        },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1073741824
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "expiresAtMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pixelWidth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "pixelHeight": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "observationId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "runtimeGeneration",
+        "mimeType",
+        "byteLength",
+        "sha256",
+        "expiresAtMs",
+        "pixelWidth",
+        "pixelHeight",
+        "observationId"
+      ],
+      "additionalProperties": false,
+      "dependentRequired": {
+        "pixelWidth": [
+          "pixelHeight"
+        ],
+        "pixelHeight": [
+          "pixelWidth"
+        ]
+      }
+    },
+    "framedRect": {
+      "type": "object",
+      "properties": {
+        "frameId": {
+          "$ref": "#/$defs/id"
+        },
+        "transformGeneration": {
+          "$ref": "#/$defs/counter"
+        },
+        "rect": {
+          "$ref": "#/$defs/rect"
+        }
+      },
+      "required": [
+        "frameId",
+        "transformGeneration",
+        "rect"
+      ],
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "complete": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "node-budget",
+              "depth-budget",
+              "time-budget",
+              "text-budget",
+              "unsupported",
+              "stale",
+              "permission",
+              "missing-base"
+            ]
+          },
+          "maxItems": 4096
+        },
+        "nodesRead": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "continuation": {
+          "type": "string",
+          "maxLength": 512
+        }
+      },
+      "required": [
+        "complete",
+        "reasons",
+        "nodesRead"
+      ],
+      "additionalProperties": false
+    },
+    "observationTiming": {
+      "type": "object",
+      "properties": {
+        "captureMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "axStartedMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "axEndedMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "emittedMonotonicNs": {
+          "$ref": "#/$defs/counter"
+        },
+        "clockDomain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clockUncertaintyMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "after": {
+          "$ref": "#/$defs/barrier"
+        }
+      },
+      "required": [
+        "clockDomain",
+        "clockUncertaintyMs"
+      ],
+      "additionalProperties": false
+    },
+    "imageEvidence": {
+      "type": "object",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/imageArtifact"
+        },
+        "frameId": {
+          "$ref": "#/$defs/id"
+        },
+        "source": {
+          "enum": [
+            "stream",
+            "one-shot",
+            "recorded-fixture"
+          ]
+        },
+        "sourceFrameId": {
+          "$ref": "#/$defs/id"
+        },
+        "captureGeneration": {
+          "$ref": "#/$defs/counter"
+        },
+        "crop": {
+          "$ref": "#/$defs/framedRect"
+        }
+      },
+      "required": [
+        "artifact",
+        "frameId",
+        "source",
+        "sourceFrameId",
+        "captureGeneration"
+      ],
+      "additionalProperties": false
+    },
+    "elementEvidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "windowId": {
+          "$ref": "#/$defs/id"
+        },
+        "parentId": {
+          "$ref": "#/$defs/id"
+        },
+        "role": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/json"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "selected": {
+          "type": "boolean"
+        },
+        "focused": {
+          "type": "boolean"
+        },
+        "frame": {
+          "$ref": "#/$defs/framedRect"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 4096
+        },
+        "settable": {
+          "type": "boolean"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "provenance": {
+          "enum": [
+            "accessibility",
+            "pixels",
+            "model-annotation"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "windowId",
+        "role",
+        "label",
+        "actions",
+        "settable",
+        "coverage",
+        "provenance"
+      ],
+      "additionalProperties": false
+    },
+    "observation": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "observation"
+        },
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtimeInstanceId": {
+          "$ref": "#/$defs/id"
+        },
+        "generation": {
+          "$ref": "#/$defs/counter"
+        },
+        "windowId": {
+          "$ref": "#/$defs/id"
+        },
+        "timing": {
+          "$ref": "#/$defs/observationTiming"
+        },
+        "coverage": {
+          "$ref": "#/$defs/coverage"
+        },
+        "consistency": {
+          "enum": [
+            "consistent",
+            "changed-during-collection",
+            "partial"
+          ]
+        },
+        "frames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/frame"
+          },
+          "maxItems": 4096
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/imageEvidence"
+          },
+          "maxItems": 4096
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/elementEvidence"
+          },
+          "maxItems": 4096
+        },
+        "baseObservationId": {
+          "$ref": "#/$defs/id"
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/json"
+          },
+          "maxItems": 4096
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "runtimeInstanceId",
+        "generation",
+        "timing",
+        "coverage",
+        "consistency",
+        "frames",
+        "images",
+        "elements",
+        "changes"
+      ],
+      "additionalProperties": false
+    },
+    "emission": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 262144
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "data"
+            },
+            "value": {
+              "$ref": "#/$defs/json"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "image"
+            },
+            "artifact": {
+              "$ref": "#/$defs/imageArtifact"
+            }
+          },
+          "required": [
+            "kind",
+            "artifact"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "observation"
+            },
+            "observation": {
+              "$ref": "#/$defs/observation"
+            }
+          },
+          "required": [
+            "kind",
+            "observation"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "capability": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "qualified": {
+          "type": "boolean"
+        },
+        "granted": {
+          "type": "boolean"
+        },
+        "currentlyAvailable": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "limits": {
+          "$ref": "#/$defs/json"
+        },
+        "qualificationProfile": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "supported",
+        "qualified",
+        "granted",
+        "currentlyAvailable"
+      ],
+      "additionalProperties": false
+    },
+    "description": {
+      "type": "object",
+      "properties": {
+        "apiRevision": {
+          "const": "1.1"
+        },
+        "contractHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "subject": {
+          "type": "string"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capability"
+          }
+        },
+        "types": {
+          "type": "string"
+        },
+        "examples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "apiRevision",
+        "contractHash",
+        "subject",
+        "capabilities",
+        "types",
+        "examples",
+        "limitations"
+      ],
+      "additionalProperties": false
+    },
+    "executionStatus": {
+      "type": "object",
+      "properties": {
+        "executionId": {
+          "$ref": "#/$defs/id"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/id"
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "running",
+            "waiting-for-condition",
+            "waiting-for-model",
+            "waiting-for-user",
+            "paused",
+            "stopping",
+            "completed",
+            "failed",
+            "cancelled",
+            "lost",
+            "interrupted-after-possible-effect"
+          ]
+        },
+        "sequence": {
+          "$ref": "#/$defs/counter"
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "lastReceipt": {
+          "$ref": "#/$defs/receipt"
+        },
+        "failure": {
+          "$ref": "#/$defs/failure"
+        },
+        "historyExpired": {
+          "type": "boolean"
+        },
+        "droppedRecords": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "quiescent": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "executionId",
+        "workspaceId",
+        "state",
+        "sequence",
+        "historyExpired",
+        "droppedRecords",
+        "quiescent"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "waiting-for-model"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "checkpoint"
+            ],
+            "properties": {
+              "checkpoint": {
+                "properties": {
+                  "kind": {
+                    "const": "model-decision"
+                  }
+                }
+              },
+              "quiescent": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "waiting-for-user"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "checkpoint"
+            ],
+            "properties": {
+              "checkpoint": {
+                "properties": {
+                  "kind": {
+                    "const": "human-approval"
+                  }
+                }
+              },
+              "quiescent": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "completed",
+                  "failed",
+                  "cancelled",
+                  "lost",
+                  "interrupted-after-possible-effect"
+                ]
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "checkpoint"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "completed",
+                  "cancelled",
+                  "paused"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "quiescent": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "controlStatus": {
+      "type": "object",
+      "properties": {
+        "controlId": {
+          "$ref": "#/$defs/id"
+        },
+        "epoch": {
+          "$ref": "#/$defs/counter"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "active",
+            "revoking",
+            "quiescent",
+            "expired",
+            "closed"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "visible-ui",
+            "physical-ui",
+            "hybrid"
+          ]
+        },
+        "quiescent": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "controlId",
+        "epoch",
+        "state",
+        "mode",
+        "quiescent"
+      ],
+      "additionalProperties": false
+    },
+    "opened": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "opened"
+        },
+        "workspaceId": {
+          "$ref": "#/$defs/id"
+        },
+        "control": {
+          "$ref": "#/$defs/controlStatus"
+        },
+        "apiRevision": {
+          "const": "1.1"
+        },
+        "contractHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "kind",
+        "workspaceId",
+        "apiRevision",
+        "contractHash"
+      ],
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "execution"
+        },
+        "status": {
+          "$ref": "#/$defs/executionStatus"
+        },
+        "emissions": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {
+            "$ref": "#/$defs/emission"
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "status",
+        "emissions"
+      ],
+      "additionalProperties": false
+    },
+    "inspection": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "inspection"
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/executionStatus"
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "revision"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "executions",
+        "modules"
+      ],
+      "additionalProperties": false
+    },
+    "closing": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "closing"
+        },
+        "target": {
+          "$ref": "#/$defs/closeTarget"
+        },
+        "quiescent": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "quiescent"
+      ],
+      "additionalProperties": false
+    },
+    "described": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "description"
+        },
+        "description": {
+          "$ref": "#/$defs/description"
+        }
+      },
+      "required": [
+        "kind",
+        "description"
+      ],
+      "additionalProperties": false
+    },
+    "error": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "error"
+        },
+        "failure": {
+          "$ref": "#/$defs/failure"
+        }
+      },
+      "required": [
+        "kind",
+        "failure"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "schemaRoots": {
+    "host": {
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://cozea.invalid/aid-design/1.1/host.schema.json",
+        "title": "AID protocol-neutral host requests — design revision 1.1",
+        "description": "Application contract, not MCP. Schemas do not grant authority. Semantic/native checks enforce generation, byte and target rules.",
+        "oneOf": [
+          {
+            "$ref": "#/$defs/open"
+          },
+          {
+            "$ref": "#/$defs/exec"
+          },
+          {
+            "$ref": "#/$defs/inspect"
+          },
+          {
+            "$ref": "#/$defs/respond"
+          },
+          {
+            "$ref": "#/$defs/close"
+          },
+          {
+            "$ref": "#/$defs/describe"
+          }
+        ]
+      },
+      "definitionNames": [
+        "id",
+        "key",
+        "counter",
+        "revision",
+        "hash",
+        "name",
+        "mode",
+        "json",
+        "app",
+        "controlRequest",
+        "budget",
+        "source",
+        "closeTarget",
+        "open",
+        "exec",
+        "inspect",
+        "respond",
+        "describe",
+        "close"
+      ]
+    },
+    "values": {
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://cozea.invalid/aid-design/1.1/values.schema.json",
+        "title": "Transferable AID values; native method args additionally require generated method validation",
+        "oneOf": [
+          {
+            "$ref": "#/$defs/point"
+          },
+          {
+            "$ref": "#/$defs/frame"
+          },
+          {
+            "$ref": "#/$defs/failure"
+          },
+          {
+            "$ref": "#/$defs/receipt"
+          },
+          {
+            "$ref": "#/$defs/checkpoint"
+          },
+          {
+            "$ref": "#/$defs/nativeRequest"
+          },
+          {
+            "$ref": "#/$defs/observation"
+          }
+        ]
+      },
+      "definitionNames": [
+        "id",
+        "counter",
+        "rect",
+        "point",
+        "frame",
+        "failure",
+        "receipt",
+        "checkpoint",
+        "nativeRequest",
+        "json",
+        "barrier",
+        "artifact",
+        "imageArtifact",
+        "framedRect",
+        "coverage",
+        "observationTiming",
+        "imageEvidence",
+        "elementEvidence",
+        "observation"
+      ]
+    },
+    "results": {
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://cozea.invalid/aid-design/1.1/results.schema.json",
+        "title": "Protocol-neutral typed AID results — revision 1.1",
+        "description": "No network resolution. Runtime provenance, ownership and evidence checks are additional requirements.",
+        "oneOf": [
+          {
+            "$ref": "#/$defs/opened"
+          },
+          {
+            "$ref": "#/$defs/execution"
+          },
+          {
+            "$ref": "#/$defs/inspection"
+          },
+          {
+            "$ref": "#/$defs/closing"
+          },
+          {
+            "$ref": "#/$defs/described"
+          },
+          {
+            "$ref": "#/$defs/error"
+          }
+        ]
+      },
+      "definitionNames": [
+        "id",
+        "counter",
+        "rect",
+        "point",
+        "frame",
+        "failure",
+        "receipt",
+        "checkpoint",
+        "nativeRequest",
+        "json",
+        "barrier",
+        "closeTarget",
+        "artifact",
+        "emission",
+        "capability",
+        "description",
+        "executionStatus",
+        "controlStatus",
+        "opened",
+        "execution",
+        "inspection",
+        "closing",
+        "described",
+        "error",
+        "imageArtifact",
+        "framedRect",
+        "coverage",
+        "observationTiming",
+        "imageEvidence",
+        "elementEvidence",
+        "observation"
+      ]
+    },
+    "qualification": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "schemaRevision": {
+            "const": "1.1"
+          },
+          "gateId": {
+            "type": "string",
+            "pattern": "^G(0[1-9]|1[0-2])$"
+          },
+          "status": {
+            "enum": [
+              "not_run",
+              "blocked",
+              "failed",
+              "passed",
+              "not_applicable"
+            ]
+          },
+          "profileId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contractHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "sourceCommit": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "environment": {
+            "type": "object",
+            "minProperties": 1
+          },
+          "tests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "enum": [
+                    "passed",
+                    "failed",
+                    "blocked",
+                    "not_run",
+                    "not_applicable"
+                  ]
+                },
+                "procedure": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "samples": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "status",
+                "procedure",
+                "samples"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "kind": {
+                  "enum": [
+                    "trace",
+                    "image",
+                    "video",
+                    "test-output",
+                    "manifest",
+                    "review"
+                  ]
+                },
+                "access": {
+                  "enum": [
+                    "public-redacted",
+                    "private-consented"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "sha256",
+                "kind",
+                "access"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "startedAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "schemaRevision",
+          "gateId",
+          "status",
+          "profileId",
+          "contractHash",
+          "sourceCommit",
+          "environment",
+          "tests",
+          "evidence",
+          "rationale",
+          "reviewer",
+          "limitations"
+        ],
+        "additionalProperties": false,
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "https://cozea.invalid/aid-design/1.1/qualification.schema.json",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "passed"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "startedAt",
+                "finishedAt"
+              ],
+              "properties": {
+                "tests": {
+                  "minItems": 1,
+                  "items": {
+                    "properties": {
+                      "status": {
+                        "const": "passed"
+                      },
+                      "samples": {
+                        "minimum": 1
+                      }
+                    }
+                  }
+                },
+                "evidence": {
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "not_applicable"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "gateId": {
+                  "enum": [
+                    "G10",
+                    "G11",
+                    "G12"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "definitionNames": []
+    }
+  }
+}

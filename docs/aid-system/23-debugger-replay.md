@@ -1,6 +1,6 @@
 # D23 — Execution debugger, safe inspection and recorded simulation
 
-**Purpose:** make agent procedures inspectable and repairable without replaying prior effects or claiming rollback of the desktop. **Sources:** standardized source maps [S29](29-research-register.md#s29), engine embedding/interruption [S03–S05](29-research-register.md#s03), journal D16.
+**Purpose:** make agent procedures inspectable and repairable without replaying prior effects or claiming rollback of the desktop. **Sources:** standardized source maps [S29](29-research-register.md#s29), engine embedding/interruption [S03](29-research-register.md#s03), [S04](29-research-register.md#s04), [S06](29-research-register.md#s06), journal D16.
 
 ## 1. Debugger scope
 

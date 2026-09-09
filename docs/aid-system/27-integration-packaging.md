@@ -1,6 +1,6 @@
 # D27 — Concrete Cozea integration, source ownership and packaging seams
 
-**Purpose:** implement the design in the actual application without accidental parallel runtimes or premature public distribution. **Pinned baseline:** Cozea `8e65b729…`, design branch `b8852de1…`, T3 `be4668f7…`. **Source facts:** inspected host service, catalogue patch, native package and T3 toolkit; see D01. **Platform sources:** [S09–S10](29-research-register.md#s09), [S22–S26](29-research-register.md#s22).
+**Purpose:** implement the design in the actual application without accidental parallel runtimes or premature public distribution. **Pinned baseline:** Cozea `8e65b729…`, design branch `b8852de1…`, T3 `be4668f7…`. **Source facts:** inspected host service, catalogue patch, native package and T3 toolkit; see D01. **Platform sources:** [S25](29-research-register.md#s25), [S47](29-research-register.md#s47), [S22](29-research-register.md#s22), [S09](29-research-register.md#s09), [S10](29-research-register.md#s10), [S23](29-research-register.md#s23), [S24](29-research-register.md#s24).
 
 ## 1. Target repository layout
 

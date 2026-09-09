@@ -2,34 +2,47 @@ name: AID Design Review
 on:
   push:
     branches: [feat/programmable-aids-runtime]
-    paths: ['docs/aid-system/**', 'docs/computer-use-aid-*.md', '.agent/CONTINUITY.md', '.github/workflows/aid-design-review.yml']
+    paths: ['docs/aid-system/**', 'docs/computer-use-aid*', '.github/workflows/aid-*', '.agent/CONTINUITY.md']
+  pull_request:
+    paths: ['docs/aid-system/**', 'docs/computer-use-aid*', '.github/workflows/aid-*']
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
-  design:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
-          persist-credentials: false
-      - name: Export exact documentation and source metadata
+          python-version: '3.12'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.2.22'
+      - name: Install isolated validation tools
         run: |
-          mkdir -p /tmp/aid-design-inputs
-          git archive --format=tar HEAD docs AGENTS.md .agent/CONTINUITY.md package.json .gitmodules native/computer-use-runtime apps/desktop/electron/services/ComputerUseRuntimeService.ts scripts/patch-computer-use-contract.mjs > /tmp/aid-design-inputs/source.tar
-          git rev-parse HEAD > /tmp/aid-design-inputs/commit.txt
-          git ls-tree -r HEAD docs/aid-system > /tmp/aid-design-inputs/tree.txt
-      - name: Run design validation when installed
+          python -m venv "$RUNNER_TEMP/aid-python"
+          "$RUNNER_TEMP/aid-python/bin/pip" install jsonschema==4.23.0 attrs==24.2.0 referencing==0.35.1 rpds-py==0.20.0 jsonschema-specifications==2024.10.1
+          mkdir -p "$RUNNER_TEMP/aid-typescript"
+          bun add --cwd "$RUNNER_TEMP/aid-typescript" --ignore-scripts typescript@5.6.3
+      - name: Validate and export exact committed sources
+        env:
+          AID_TYPESCRIPT_ROOT: ${{ runner.temp }}/aid-typescript/node_modules/typescript
+          PYTHONDONTWRITEBYTECODE: '1'
         run: |
-          if test -f docs/aid-system/validation/check_design.py; then
-            python3 docs/aid-system/validation/check_design.py
-          else
-            echo 'Input export only; complete design validation is not installed yet.'
-          fi
-      - uses: actions/upload-artifact@v4
+          "$RUNNER_TEMP/aid-python/bin/python" docs/aid-system/tools/design.py export --report "$RUNNER_TEMP/aid-validation.json" --out "$RUNNER_TEMP/aid-handoff"
+      - name: Upload checked handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: aid-design-${{ github.sha }}
+          path: ${{ runner.temp }}/aid-handoff/
+          if-no-files-found: error
+      - name: Upload validation report
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: aid-design-inputs
-          path: /tmp/aid-design-inputs
-          retention-days: 7
+          name: aid-validation-${{ github.sha }}
+          path: ${{ runner.temp }}/aid-validation.json
+          if-no-files-found: warn

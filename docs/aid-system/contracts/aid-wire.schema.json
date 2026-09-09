@@ -1,147 +1,577 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:cozea:aid:design:wire:1",
-  "title": "Cozea AID design wire contract revision 1.1",
-  "description": "Documentation/test oracle, not an implemented transport. Native policy and runtime-generation checks remain required.",
+  "$id": "https://cozea.invalid/aid-design/1.1/host.schema.json",
+  "title": "AID protocol-neutral host requests — design revision 1.1",
+  "description": "Application contract, not MCP. Schemas do not grant authority. Semantic/native checks enforce generation, byte and target rules.",
   "oneOf": [
-    { "$ref": "#/$defs/request" },
-    { "$ref": "#/$defs/receipt" },
-    { "$ref": "#/$defs/executionSnapshot" }
+    {
+      "$ref": "#/$defs/open"
+    },
+    {
+      "$ref": "#/$defs/exec"
+    },
+    {
+      "$ref": "#/$defs/inspect"
+    },
+    {
+      "$ref": "#/$defs/respond"
+    },
+    {
+      "$ref": "#/$defs/close"
+    },
+    {
+      "$ref": "#/$defs/describe"
+    }
   ],
   "$defs": {
-    "id": { "type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,128}$" },
-    "uint64": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,19})$", "description": "Decoder additionally rejects values above 18446744073709551615." },
-    "hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-    "mode": { "enum": ["visible-ui", "physical-ui", "hybrid"] },
-    "capability": { "enum": ["apps.read", "apps.prepare", "windows.read", "windows.control", "accessibility.read", "accessibility.act", "capture.read", "pointer.control", "keyboard.control", "clipboard.read", "clipboard.write", "artifacts.read", "artifacts.export", "hybrid.execute"] },
-    "appQuery": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:~-]*$"
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:~-]+$"
+    },
+    "counter": {
+      "type": "string",
+      "maxLength": 20,
+      "pattern": "^(0|[1-9][0-9]*)$"
+    },
+    "revision": {
+      "const": "1.1"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "mode": {
+      "enum": [
+        "visible-ui",
+        "physical-ui",
+        "hybrid"
+      ]
+    },
+    "json": {
       "oneOf": [
-        { "type": "object", "properties": { "bundleId": { "type": "string", "minLength": 1, "maxLength": 512 } }, "required": ["bundleId"], "additionalProperties": false },
-        { "type": "object", "properties": { "pid": { "type": "integer", "minimum": 1, "maximum": 2147483647 } }, "required": ["pid"], "additionalProperties": false },
-        { "type": "object", "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 512 } }, "required": ["name"], "additionalProperties": false }
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/json"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/json"
+          }
+        }
+      ]
+    },
+    "app": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "bundleId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": [
+            "bundleId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "pid": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "launchIdentity": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": [
+            "pid",
+            "launchIdentity"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "controlRequest": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/mode"
+        },
+        "targetApps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/app"
+          }
+        },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 128,
+          "items": {
+            "enum": [
+              "apps.read",
+              "apps.prepare",
+              "windows.read",
+              "windows.control",
+              "accessibility.read",
+              "accessibility.act",
+              "capture.read",
+              "pointer.control",
+              "keyboard.control",
+              "clipboard.read",
+              "clipboard.write",
+              "artifacts.read",
+              "artifacts.export",
+              "hybrid.execute"
+            ]
+          }
+        },
+        "requestedLeaseMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        },
+        "captureScope": {
+          "enum": [
+            "target-windows",
+            "desktop"
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "targetApps",
+        "capabilities"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "capabilities": {
+                "contains": {
+                  "const": "hybrid.execute"
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "mode": {
+                "const": "hybrid"
+              }
+            }
+          }
+        }
       ]
     },
     "budget": {
       "type": "object",
       "properties": {
-        "wallMs": { "type": "integer", "minimum": 1, "maximum": 3600000 },
-        "computeMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
-        "memoryMiB": { "type": "integer", "minimum": 8, "maximum": 4096 },
-        "pendingCalls": { "type": "integer", "minimum": 1, "maximum": 4096 }
+        "wallMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        },
+        "memoryMiB": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "pendingCalls": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "computeMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 86400000
+        }
       },
-      "additionalProperties": false,
-      "description": "Requested bounds only; actual grant is host policy. Long executions use trusted renewal, never an implicit unbounded guest lease."
-    },
-    "controlRequest": {
-      "type": "object",
-      "properties": {
-        "mode": { "$ref": "#/$defs/mode" },
-        "capabilities": { "type": "array", "items": { "$ref": "#/$defs/capability" }, "uniqueItems": true, "maxItems": 14 },
-        "apps": { "type": "array", "items": { "$ref": "#/$defs/appQuery" }, "maxItems": 32 },
-        "durationMs": { "type": "integer", "minimum": 1, "maximum": 3600000 }
-      },
-      "required": ["mode", "capabilities"],
-      "additionalProperties": false,
-      "allOf": [{ "if": { "properties": { "capabilities": { "contains": { "const": "hybrid.execute" } } }, "required": ["capabilities"] }, "then": { "properties": { "mode": { "const": "hybrid" } } } }]
+      "required": [],
+      "additionalProperties": false
     },
     "source": {
       "oneOf": [
-        { "type": "object", "properties": { "kind": { "const": "inline" }, "text": { "type": "string", "maxLength": 262144 } }, "required": ["kind", "text"], "additionalProperties": false },
-        { "type": "object", "properties": { "kind": { "const": "artifact" }, "artifactId": { "$ref": "#/$defs/id" }, "sha256": { "$ref": "#/$defs/hash" } }, "required": ["kind", "artifactId", "sha256"], "additionalProperties": false }
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 262144
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "artifact"
+            },
+            "artifactId": {
+              "$ref": "#/$defs/id"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          },
+          "required": [
+            "kind",
+            "artifactId",
+            "sha256"
+          ],
+          "additionalProperties": false
+        }
       ]
     },
-    "openArgs": {
-      "type": "object",
-      "properties": { "idempotencyKey": { "$ref": "#/$defs/id" }, "workspaceName": { "type": "string", "minLength": 1, "maxLength": 128 }, "control": { "$ref": "#/$defs/controlRequest" } },
-      "required": ["idempotencyKey", "workspaceName"], "additionalProperties": false
-    },
-    "execArgs": {
-      "type": "object",
-      "properties": { "workspaceId": { "$ref": "#/$defs/id" }, "controlId": { "$ref": "#/$defs/id" }, "idempotencyKey": { "$ref": "#/$defs/id" }, "cellName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" }, "source": { "$ref": "#/$defs/source" }, "budget": { "$ref": "#/$defs/budget" } },
-      "required": ["workspaceId", "idempotencyKey", "cellName", "source"], "additionalProperties": false
-    },
-    "inspectArgs": {
+    "closeTarget": {
       "oneOf": [
-        { "type": "object", "properties": { "executionId": { "$ref": "#/$defs/id" }, "sinceSequence": { "$ref": "#/$defs/uint64" } }, "required": ["executionId"], "additionalProperties": false },
-        { "type": "object", "properties": { "workspaceId": { "$ref": "#/$defs/id" } }, "required": ["workspaceId"], "additionalProperties": false }
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "execution"
+            },
+            "executionId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "executionId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "control"
+            },
+            "controlId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "controlId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "workspace"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
       ]
     },
-    "respondArgs": {
-      "type": "object",
-      "properties": { "executionId": { "$ref": "#/$defs/id" }, "checkpointId": { "$ref": "#/$defs/id" }, "idempotencyKey": { "$ref": "#/$defs/id" }, "response": {} },
-      "required": ["executionId", "checkpointId", "idempotencyKey", "response"], "additionalProperties": false,
-      "description": "The stored checkpoint response schema and trusted respondent kind are checked separately; callers cannot supply an approval identity."
-    },
-    "closeArgs": {
-      "oneOf": [
-        { "type": "object", "properties": { "executionId": { "$ref": "#/$defs/id" } }, "required": ["executionId"], "additionalProperties": false },
-        { "type": "object", "properties": { "controlId": { "$ref": "#/$defs/id" } }, "required": ["controlId"], "additionalProperties": false },
-        { "type": "object", "properties": { "workspaceId": { "$ref": "#/$defs/id" } }, "required": ["workspaceId"], "additionalProperties": false }
-      ]
-    },
-    "describeArgs": { "type": "object", "properties": { "module": { "type": "string", "maxLength": 128 } }, "additionalProperties": false },
-    "request": {
-      "type": "object",
-      "properties": { "apiVersion": { "const": "1.0" }, "requestId": { "$ref": "#/$defs/id" }, "method": { "enum": ["open", "exec", "inspect", "respond", "close", "describe"] }, "arguments": { "type": "object" } },
-      "required": ["apiVersion", "requestId", "method", "arguments"], "additionalProperties": false,
-      "allOf": [
-        { "if": { "properties": { "method": { "const": "open" } } }, "then": { "properties": { "arguments": { "$ref": "#/$defs/openArgs" } } } },
-        { "if": { "properties": { "method": { "const": "exec" } } }, "then": { "properties": { "arguments": { "$ref": "#/$defs/execArgs" } } } },
-        { "if": { "properties": { "method": { "const": "inspect" } } }, "then": { "properties": { "arguments": { "$ref": "#/$defs/inspectArgs" } } } },
-        { "if": { "properties": { "method": { "const": "respond" } } }, "then": { "properties": { "arguments": { "$ref": "#/$defs/respondArgs" } } } },
-        { "if": { "properties": { "method": { "const": "close" } } }, "then": { "properties": { "arguments": { "$ref": "#/$defs/closeArgs" } } } },
-        { "if": { "properties": { "method": { "const": "describe" } } }, "then": { "properties": { "arguments": { "$ref": "#/$defs/describeArgs" } } } }
-      ]
-    },
-    "barrier": { "type": "object", "properties": { "operationId": { "$ref": "#/$defs/id" }, "sequence": { "$ref": "#/$defs/uint64" } }, "required": ["operationId", "sequence"], "additionalProperties": false },
-    "verification": {
-      "type": "object",
-      "properties": { "predicateId": { "$ref": "#/$defs/id" }, "method": { "enum": ["host-predicate", "model-adjudication", "human-adjudication"] }, "evidenceIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "minItems": 1, "maxItems": 128 } },
-      "required": ["predicateId", "method", "evidenceIds"], "additionalProperties": false
-    },
-    "receipt": {
+    "open": {
       "type": "object",
       "properties": {
-        "operationId": { "$ref": "#/$defs/id" }, "executionId": { "$ref": "#/$defs/id" },
-        "target": { "type": "object", "properties": { "windowId": { "$ref": "#/$defs/id" }, "elementId": { "$ref": "#/$defs/id" }, "surfaceId": { "$ref": "#/$defs/id" }, "generation": { "$ref": "#/$defs/uint64" } }, "required": ["generation"], "additionalProperties": false, "anyOf": [{ "required": ["windowId"] }, { "required": ["elementId"] }, { "required": ["surfaceId"] }] },
-        "route": { "enum": ["foreground-event", "semantic-ax", "targeted-event", "sky", "window-control", "clipboard", "none"] },
-        "submission": { "enum": ["not_submitted", "submitted", "submission_uncertain"] },
-        "evidence": { "enum": ["change_observed", "no_change_observed", "not_checked"] },
-        "outcome": { "enum": ["verified", "unverified", "failed"] },
-        "after": { "$ref": "#/$defs/barrier" },
-        "evidenceIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "maxItems": 128 },
-        "verification": { "$ref": "#/$defs/verification" },
-        "canRetryAutomatically": { "type": "boolean" },
-        "timingsMs": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0 } },
-        "warnings": { "type": "array", "items": { "type": "string", "maxLength": 4096 }, "maxItems": 128 }
+        "method": {
+          "const": "open"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/key"
+            },
+            "workspaceName": {
+              "$ref": "#/$defs/name"
+            },
+            "reuse": {
+              "type": "boolean"
+            },
+            "control": {
+              "$ref": "#/$defs/controlRequest"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "idempotencyKey",
+            "workspaceName"
+          ],
+          "additionalProperties": false
+        }
       },
-      "required": ["operationId", "executionId", "route", "submission", "evidence", "outcome", "after", "evidenceIds", "canRetryAutomatically", "timingsMs", "warnings"], "additionalProperties": false,
-      "allOf": [
-        { "if": { "properties": { "canRetryAutomatically": { "const": true } } }, "then": { "properties": { "submission": { "const": "not_submitted" } } } },
-        { "if": { "properties": { "outcome": { "enum": ["verified", "failed"] } } }, "then": { "required": ["verification"], "properties": { "evidenceIds": { "minItems": 1 } } } }
-      ]
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
     },
-    "checkpoint": {
-      "type": "object",
-      "properties": { "id": { "$ref": "#/$defs/id" }, "kind": { "enum": ["model-decision", "human-approval"] }, "executionId": { "$ref": "#/$defs/id" }, "responseSchema": { "type": "object" }, "expiresAt": { "type": "string", "format": "date-time" }, "question": { "type": "string", "maxLength": 16384 }, "evidenceIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "maxItems": 128 } },
-      "required": ["id", "kind", "executionId", "responseSchema", "expiresAt", "question", "evidenceIds"], "additionalProperties": false
-    },
-    "executionSnapshot": {
+    "exec": {
       "type": "object",
       "properties": {
-        "executionId": { "$ref": "#/$defs/id" }, "workspaceId": { "$ref": "#/$defs/id" },
-        "state": { "enum": ["queued", "running", "waiting-for-condition", "waiting-for-model", "waiting-for-user", "paused", "cancelling", "completed", "failed", "cancelled", "interrupted-after-possible-effect"] },
-        "sequence": { "$ref": "#/$defs/uint64" }, "lastOperationId": { "$ref": "#/$defs/id" }, "checkpoint": { "$ref": "#/$defs/checkpoint" },
-        "receiptIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "maxItems": 4096 }, "artifactIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "maxItems": 4096 },
-        "historyComplete": { "type": "boolean" }, "quiescent": { "type": "boolean" },
-        "error": { "type": "object", "properties": { "code": { "type": "string", "minLength": 1, "maxLength": 64 }, "message": { "type": "string", "maxLength": 4096 } }, "required": ["code", "message"], "additionalProperties": false }
+        "method": {
+          "const": "exec"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "controlId": {
+              "$ref": "#/$defs/id"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/key"
+            },
+            "cellName": {
+              "$ref": "#/$defs/name"
+            },
+            "source": {
+              "$ref": "#/$defs/source"
+            },
+            "requestedBudget": {
+              "$ref": "#/$defs/budget"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "workspaceId",
+            "idempotencyKey",
+            "cellName",
+            "source"
+          ],
+          "additionalProperties": false
+        }
       },
-      "required": ["executionId", "workspaceId", "state", "sequence", "receiptIds", "artifactIds", "historyComplete", "quiescent"], "additionalProperties": false,
-      "allOf": [
-        { "if": { "properties": { "state": { "const": "waiting-for-model" } } }, "then": { "required": ["checkpoint"], "properties": { "quiescent": { "const": true }, "checkpoint": { "properties": { "kind": { "const": "model-decision" } } } } } },
-        { "if": { "properties": { "state": { "const": "waiting-for-user" } } }, "then": { "required": ["checkpoint"], "properties": { "quiescent": { "const": true }, "checkpoint": { "properties": { "kind": { "const": "human-approval" } } } } } },
-        { "if": { "properties": { "state": { "const": "completed" } } }, "then": { "properties": { "quiescent": { "const": true } }, "not": { "required": ["checkpoint"] } } }
-      ]
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "inspect": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "inspect"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "executionId": {
+              "$ref": "#/$defs/id"
+            },
+            "sinceSequence": {
+              "$ref": "#/$defs/counter"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          "required": [
+            "apiRevision",
+            "workspaceId"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "respond": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "respond"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            },
+            "executionId": {
+              "$ref": "#/$defs/id"
+            },
+            "checkpointId": {
+              "$ref": "#/$defs/id"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/key"
+            },
+            "answer": {
+              "$ref": "#/$defs/json"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "workspaceId",
+            "executionId",
+            "checkpointId",
+            "idempotencyKey",
+            "answer"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "describe": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "describe"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "subject": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "workspaceId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "subject"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
+    },
+    "close": {
+      "type": "object",
+      "properties": {
+        "method": {
+          "const": "close"
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "apiRevision": {
+              "$ref": "#/$defs/revision"
+            },
+            "target": {
+              "$ref": "#/$defs/closeTarget"
+            }
+          },
+          "required": [
+            "apiRevision",
+            "target"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "method",
+        "params"
+      ],
+      "additionalProperties": false
     }
-  }
+  },
+  "x-contract-sha256": "78d10d3812d51e15a06593ef8139c115777bad7aa526e410a4c0bc788fb309ca",
+  "x-generator": "design.py/1.1"
 }
