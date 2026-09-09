@@ -1,3 +1,8 @@
+import { RoomCheckpointStore, ROOM_COMPACTION_FLOOR_KEY } from "./RoomCheckpointStore"
+import { currentRoomAuthority } from "../lib/liveRoomAuthority"
+import { CollaborationProtocolError, parseCheckpointRequest, parseRoomAuthority, protocolRecord, protocolSequence, type RoomAuthority } from "../../../../shared/collaborationProtocol"
+import { decodeCanonicalBase64, validateEncryptedCollaborationEnvelope } from "../../../../shared/collaborationWire"
+import { fileInitializationOrigin } from "../../../../shared/collaborationFileInitialization"
 import type { Env } from '../types'
 import { COLLAB_MAX_FRAME_BYTES, reserveUpdateBudget, validateUpdateInput, type RetainedUsage, type UpdateRate } from '../lib/collaborationLimits'
 import {
@@ -32,6 +37,8 @@ interface SocketAttachment {
   roomId: string
   sessionId?: string
   principalId: string
+  identityKey?: string
+  expiresAt?: number
   mediaClientId: string
   knownSeq: number
   awarenessBinary?: string
@@ -103,59 +110,54 @@ export class CollabRoom implements DurableObject {
   private readonly state: DurableObjectState
   private readonly env: Env
   private updateQueue: Promise<void> = Promise.resolve()
+  private readonly checkpoints: RoomCheckpointStore
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state
     this.env = env
+    this.checkpoints = new RoomCheckpointStore(state.storage)
   }
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
-    if (url.pathname === '/internal/checkpoint' && request.method === 'POST') {
-      if (!this.env.AI_GATEWAY_SECRET || request.headers.get('authorization') !== `Bearer ${this.env.AI_GATEWAY_SECRET}`) {
-        return new Response('Unauthorized', { status: 401 })
+    if (url.pathname.startsWith('/internal/')) {
+      if (!this.env.AI_GATEWAY_SECRET || request.headers.get('authorization') !== `Bearer ${this.env.AI_GATEWAY_SECRET}`) return new Response('Unauthorized', { status: 401 })
+      try {
+        if (url.pathname === '/internal/checkpoint' && request.method === 'POST') {
+          const body = protocolRecord(await request.json(), "Internal checkpoint request")
+          const authority = parseRoomAuthority(body.authority)
+          const command = parseCheckpointRequest(body.request)
+          const operation = this.updateQueue.then(() => this.checkpoints.handle(authority, command))
+          this.updateQueue = operation.then(() => undefined, () => undefined)
+          return Response.json(await operation)
+        }
+        if (url.pathname === '/internal/base-advanced' && request.method === 'POST') {
+          const body = protocolRecord(await request.json(), "Publication receipt")
+          const sequence = protocolSequence(body.coveredThroughSequence, "coveredThroughSequence")
+          if (typeof body.commitSha !== "string" || !/^[a-f0-9]{40}$/.test(body.commitSha)) throw new CollaborationProtocolError("INVALID_REQUEST", "Invalid publication commit")
+          const commitSha = body.commitSha
+          const operation = this.updateQueue.then(async () => {
+            if (sequence > await this.getSessionHeadSequence()) throw new CollaborationProtocolError("INVALID_SEQUENCE", "Publication exceeds the canonical room head", 409)
+            await this.state.storage.put("g3:publication", { commitSha, coveredThroughSequence: sequence })
+            // Git publication is not CRDT compaction. Keep the replay history
+            // until an independently finalized checkpoint permits retirement.
+            this.broadcast({ type: 'base.advanced', payload: { roomId: this.currentRoomId() ?? '', commitSha, coveredThroughSequence: sequence } })
+          })
+          this.updateQueue = operation.catch(() => undefined)
+          await operation
+          return new Response(null, { status: 204 })
+        }
+        if (url.pathname === '/internal/close' && request.method === 'POST') {
+          await this.updateQueue
+          await this.state.storage.put("g3:closed", true)
+          for (const socket of this.state.getWebSockets()) socket.close(1000, 'Session closed')
+          return new Response(null, { status: 204 })
+        }
+        return new Response('Unknown internal operation', { status: 404 })
+      } catch (error) {
+        if (error instanceof CollaborationProtocolError) return protocolError(error.code, error.message, { status: error.status }, error.recoverable)
+        throw error
       }
-      const body = await request.json() as { authority?: { role?: string; keyVersion?: number | null }; request?: { operation?: string; keyVersion?: number; sequence?: number; updateBinary?: string } }
-      const authority = body.authority; const checkpoint = body.request
-      if (!authority || authority.role !== 'editor' || !checkpoint) return new Response('Invalid checkpoint authority', { status: 403 })
-      if (checkpoint.operation === 'inspect') return Response.json({ headSequence: await this.getSessionHeadSequence() })
-      if (!Number.isSafeInteger(checkpoint.keyVersion) || (checkpoint.keyVersion ?? 0) < 1) return new Response('Invalid key version', { status: 400 })
-      if (checkpoint.operation === 'bootstrap') {
-        return Response.json({ checkpoint: await this.state.storage.get(`checkpoint:${checkpoint.keyVersion}`) ?? null })
-      }
-      if (checkpoint.operation !== 'save' || !Number.isSafeInteger(checkpoint.sequence) || (checkpoint.sequence ?? -1) < 0 ||
-        typeof checkpoint.updateBinary !== 'string' || checkpoint.updateBinary.length > 96 * 1024 * 1024) return new Response('Invalid checkpoint', { status: 400 })
-      await this.updateQueue
-      if ((checkpoint.sequence ?? 0) > await this.getSessionHeadSequence()) return new Response('Checkpoint exceeds room head', { status: 409 })
-      const value = { keyVersion: checkpoint.keyVersion!, sequence: checkpoint.sequence!, updateBinary: checkpoint.updateBinary }
-      await this.state.storage.put(`checkpoint:${checkpoint.keyVersion}`, value)
-      return Response.json({ checkpoint: value })
-    }
-
-    if (url.pathname === '/internal/base-advanced' && request.method === 'POST') {
-      const body = await request.json() as { commitSha?: string; coveredThroughSequence?: number }
-      const sequence = Number(body.coveredThroughSequence)
-      if (!Number.isFinite(sequence) || sequence < 0 || typeof body.commitSha !== 'string') {
-        return new Response('Invalid base advancement', { status: 400 })
-      }
-      const pruning = this.updateQueue.then(() => this.pruneThrough(Math.floor(sequence)))
-      this.updateQueue = pruning.catch(() => undefined)
-      await pruning
-      this.broadcast({
-        type: 'base.advanced',
-        payload: {
-          roomId: this.currentRoomId() ?? '',
-          commitSha: body.commitSha,
-          coveredThroughSequence: Math.floor(sequence),
-        },
-      })
-      return new Response(null, { status: 204 })
-    }
-
-    if (url.pathname === '/internal/close' && request.method === 'POST') {
-      await this.state.storage.deleteAll()
-      for (const socket of this.state.getWebSockets()) socket.close(1000, 'Session closed')
-      return new Response(null, { status: 204 })
     }
 
     if (request.headers.get('upgrade') !== 'websocket') {
@@ -204,9 +206,9 @@ export class CollabRoom implements DurableObject {
       socket.send(stringifyMessage({
         type: 'error',
         payload: {
-          code: 'INTERNAL_ERROR',
+          code: error instanceof CollaborationProtocolError ? error.code : 'INTERNAL_ERROR',
           message: error instanceof Error ? error.message : 'Unhandled websocket room error',
-          recoverable: false,
+          recoverable: error instanceof CollaborationProtocolError && error.recoverable,
         },
       }))
       socket.close(1011, 'internal room error')
@@ -251,6 +253,12 @@ export class CollabRoom implements DurableObject {
       const headSeq = isV2Room(claims.roomId)
         ? await this.getSessionHeadSequence()
         : Math.max(0, Math.floor(message.payload.knownSeq))
+      if (roomSessionId) {
+        if (!Number.isFinite(claims.exp) || claims.exp * 1000 <= Date.now()) throw new Error("Session token expired")
+        const authority = await currentRoomAuthority(this.env, claims.sub, roomSessionId)
+        if (authority.principalId !== claims.principalId || authority.projectId !== claims.projectId || authority.roomId !== claims.roomId) throw new Error("Current room authority changed")
+        await this.checkpoints.bind(authority)
+      }
       const attachment: SocketAttachment = {
         handshaken: true,
         clientId: message.payload.clientId,
@@ -258,6 +266,8 @@ export class CollabRoom implements DurableObject {
         roomId: claims.roomId,
         sessionId: claims.sessionId,
         principalId: claims.principalId,
+        identityKey: claims.sub,
+        expiresAt: claims.exp * 1000,
         mediaClientId: `${claims.principalId}:${crypto.randomUUID()}`,
         knownSeq: Math.max(0, Math.floor(message.payload.knownSeq)),
       }
@@ -298,6 +308,7 @@ export class CollabRoom implements DurableObject {
     if (!message.payload || message.payload.roomId !== connection.roomId) {
       throw new Error('Message room does not match the authenticated socket')
     }
+    if (connection.sessionId && message.type !== 'update.push') await this.requireRoomAuthority(connection)
     switch (message.type) {
       case 'sync.request':
         await this.handleSyncRequest(socket, connection, message)
@@ -331,12 +342,16 @@ export class CollabRoom implements DurableObject {
   ): Promise<void> {
     if (isV2Room(connection.roomId)) {
       const headSeq = await this.getSessionHeadSequence()
+      const known = protocolSequence(message.payload.knownSeq, "knownSeq")
+      const floor = await this.state.storage.get<number>(ROOM_COMPACTION_FLOOR_KEY) ?? 0
+      if (known < floor || known > headSeq) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "Replay cursor requires a canonical checkpoint", 409, true)
       const entries = await this.state.storage.list<StoredSessionUpdate>({
         start: updateKey(message.payload.knownSeq + 1),
         end: 'update;',
-        limit: SYNC_PAGE_SIZE,
+        limit: 1, // Bounded legacy-sized replay until chunked replay is installed.
       })
       const updates = [...entries.values()].sort((left, right) => left.seq - right.seq)
+      if (known < headSeq && updates[0]?.seq !== known + 1) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "The next canonical update is unavailable; reload the checkpoint", 409, true)
       const toSeq = updates.at(-1)?.seq ?? message.payload.knownSeq
       socket.send(stringifyMessage({
         type: 'sync.delta',
@@ -416,7 +431,10 @@ export class CollabRoom implements DurableObject {
     connection: SocketAttachment,
     message: UpdatePushMessage,
   ): Promise<{ seq: number }> {
+    const authority = await this.requireRoomAuthority(connection, true)
     const retainedBytes = validateUpdateInput(message.payload)
+    const envelope = validateEncryptedCollaborationEnvelope(message.payload.updateBinary, { roomId: authority.roomId, projectId: authority.projectId, kind: "yjs_update", idempotencyKey: message.payload.idempotencyKey })
+    if (envelope.keyVersion !== authority.keyVersion) throw new CollaborationProtocolError("ENCRYPTION_KEY_STALE", "Update uses an old room key; reconcile retained local work", 409, true)
     const idempotencyKey = `${IDEMPOTENCY_PREFIX}${message.payload.idempotencyKey}`
     const existing = await this.state.storage.get<number>(idempotencyKey)
     if (typeof existing === 'number') {
@@ -432,6 +450,10 @@ export class CollabRoom implements DurableObject {
     const rate = await this.state.storage.get<UpdateRate>(rateKey)
     const budget = reserveUpdateBudget(usage, rate, retainedBytes, Date.now())
     const seq = (await this.getSessionHeadSequence()) + 1
+    const encodedEnvelope = JSON.parse(new TextDecoder().decode(decodeCanonicalBase64(message.payload.updateBinary, 4 * 1024 * 1024))) as { aad: string }
+    const metadata = protocolRecord(JSON.parse(new TextDecoder().decode(decodeCanonicalBase64(encodedEnvelope.aad, 8192))), "Update metadata")
+    const initialization = fileInitializationOrigin(metadata.initialization)
+    const receipt = initialization ? await this.checkpoints.initializationReceipt(authority, initialization, seq) : {}
     const stored: StoredSessionUpdate = {
       seq,
       updateBinary: message.payload.updateBinary,
@@ -441,6 +463,7 @@ export class CollabRoom implements DurableObject {
       retainedBytes,
     }
     await this.state.storage.put({
+      ...receipt,
       [HEAD_SEQUENCE_KEY]: seq,
       [updateKey(seq)]: stored,
       [idempotencyKey]: seq,
@@ -448,6 +471,16 @@ export class CollabRoom implements DurableObject {
       [rateKey]: budget.rate,
     })
     return { seq }
+  }
+
+  private async requireRoomAuthority(connection: SocketAttachment, write = false): Promise<RoomAuthority> {
+    if (!connection.sessionId || !connection.identityKey || !connection.expiresAt || connection.expiresAt <= Date.now()) throw new CollaborationProtocolError("SESSION_EXPIRED", "Session authority expired; refresh the connection", 401, true)
+    if (await this.state.storage.get("g3:closed")) throw new CollaborationProtocolError("DEVICE_REVOKED", "This session is closed", 403)
+    const authority = await currentRoomAuthority(this.env, connection.identityKey, connection.sessionId)
+    if (authority.principalId !== connection.principalId || authority.projectId !== connection.projectId || authority.roomId !== connection.roomId) throw new CollaborationProtocolError("SESSION_MISMATCH", "Socket authority does not match this room", 403)
+    if (write && authority.role !== "editor") throw new CollaborationProtocolError("READ_ONLY", "Observers cannot submit shared updates", 403)
+    if (write && authority.rotationRequired) throw new CollaborationProtocolError("KEY_ROTATION_REQUIRED", "Room key rotation must finish before accepting updates", 409, true)
+    return authority
   }
 
   private async handlePresencePush(
@@ -605,33 +638,6 @@ export class CollabRoom implements DurableObject {
       start = [...entries.keys()].at(-1)! + '\0'
     }
     return usage
-  }
-
-  private async pruneThrough(sequence: number): Promise<void> {
-    while (true) {
-      const entries = await this.state.storage.list<StoredSessionUpdate>({
-        prefix: UPDATE_PREFIX,
-        limit: 256,
-      })
-      const removable = [...entries.entries()]
-        .filter(([, update]) => update.seq <= sequence)
-      if (removable.length === 0) return
-      const keys: string[] = []
-      for (const [key, update] of removable) {
-        keys.push(key, `${IDEMPOTENCY_PREFIX}${update.idempotencyKey}`)
-      }
-      const usage = await this.getRetainedUsage()
-      const removedBytes = removable.reduce((total, [, update]) =>
-        total + (update.retainedBytes ?? update.updateBinary.length + update.idempotencyKey.length * 2 + 1024), 0)
-      await this.state.storage.transaction(async (storage) => {
-        await storage.delete(keys)
-        await storage.put(RETAINED_USAGE_KEY, {
-          bytes: Math.max(0, usage.bytes - removedBytes),
-          count: Math.max(0, usage.count - removable.length),
-        })
-      })
-      if (entries.size < 256) return
-    }
   }
 
   private async hydrateLegacyPresence(projectId: string): Promise<void> {

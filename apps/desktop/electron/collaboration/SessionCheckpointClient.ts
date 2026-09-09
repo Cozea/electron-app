@@ -1,3 +1,4 @@
+import { COLLABORATION_PROTOCOL_REVISION, validateCheckpointInspection } from "../../../../shared/collaborationProtocol"
 import * as Y from "yjs"
 import { bytesToEnvelope, decryptPayload, encryptPayload, envelopeToBytes } from "../../../../shared/collaborationCipher"
 import { collaborationDigest, COLLABORATION_CHUNK_CHARS, COLLABORATION_MAX_ENCODED_CHECKPOINT, validateEncryptedCollaborationEnvelope } from "../../../../shared/collaborationWire"
@@ -19,6 +20,10 @@ interface CheckpointClientOptions {
 export class SessionCheckpointClient {
   private readonly options: CheckpointClientOptions
   constructor(options: CheckpointClientOptions) { this.options = options }
+
+  private request(body: Record<string, unknown>): Promise<unknown> {
+    return this.options.request({ ...body, protocolRevision: COLLABORATION_PROTOCOL_REVISION })
+  }
 
   private validate(descriptor: EncryptedCheckpointDescriptor): void {
     const { roomId, projectId, keyVersion } = this.options
@@ -42,7 +47,7 @@ export class SessionCheckpointClient {
     this.validate(descriptor)
     const pieces: string[] = []
     for (let index = 0; index < descriptor.chunkCount; index++) {
-      const result = await this.options.request({ operation: "read", id: descriptor.id, index }) as { id: string; index: number; data: string }
+      const result = await this.request({ operation: "read", id: descriptor.id, index }) as { id: string; index: number; data: string }
       if (result.id !== descriptor.id || result.index !== index || typeof result.data !== "string" || result.data.length !== Math.min(COLLABORATION_CHUNK_CHARS, descriptor.totalChars - index * COLLABORATION_CHUNK_CHARS)) throw new Error("Checkpoint changed during download; retry recovery")
       pieces.push(result.data)
     }
@@ -58,14 +63,14 @@ export class SessionCheckpointClient {
 
   async bootstrap(): Promise<{ sequence: number; update: Uint8Array } | null> {
     const local = await this.recoverLocal()
-    const inspected = await this.options.request({ operation: "inspect" }) as { checkpoint: EncryptedCheckpointDescriptor | null }
+    const inspected = validateCheckpointInspection(await this.request({ operation: "inspect" }))
     if (inspected.checkpoint) {
       this.validate(inspected.checkpoint)
       return local && local.sequence >= inspected.checkpoint.sequence ? local : this.load(inspected.checkpoint)
     }
     if (local) throw new Error("The room lost its canonical checkpoint; local recovery data was retained")
     if (this.options.role === "observer") return null
-    const claimed = await this.options.request({ operation: "claim", sequence: 0 }) as { lease?: CheckpointUploadLease; waiting?: boolean }
+    const claimed = await this.request({ operation: "claim", sequence: 0 }) as { lease?: CheckpointUploadLease; waiting?: boolean }
     if (!claimed.lease) return null
     // Only the elected device constructs the first CRDT history.
     const document = new Y.Doc({ gc: false })
@@ -85,8 +90,8 @@ export class SessionCheckpointClient {
     const encoded = await this.options.store.prepareCheckpointUpload(lease.id, prepared)
     validateEncryptedCollaborationEnvelope(encoded, { roomId, projectId, kind: "yjs_snapshot", keyVersion })
     const digest = await collaborationDigest(encoded)
-    for (let offset = 0; offset < encoded.length; offset += COLLABORATION_CHUNK_CHARS) await this.options.request({ operation: "upload", id: lease.id, index: offset / COLLABORATION_CHUNK_CHARS, totalChars: encoded.length, digest, data: encoded.slice(offset, offset + COLLABORATION_CHUNK_CHARS) })
-    const finalized = await this.options.request({ operation: "finalize", id: lease.id }) as { checkpoint: EncryptedCheckpointDescriptor }
+    for (let offset = 0; offset < encoded.length; offset += COLLABORATION_CHUNK_CHARS) await this.request({ operation: "upload", id: lease.id, index: offset / COLLABORATION_CHUNK_CHARS, totalChars: encoded.length, digest, data: encoded.slice(offset, offset + COLLABORATION_CHUNK_CHARS) })
+    const finalized = await this.request({ operation: "finalize", id: lease.id }) as { checkpoint: EncryptedCheckpointDescriptor }
     this.validate(finalized.checkpoint)
     if (finalized.checkpoint.digest !== digest || finalized.checkpoint.sequence !== lease.sequence) throw new Error("Checkpoint finalization differs from the prepared state")
     return finalized.checkpoint
@@ -109,7 +114,7 @@ export class SessionCheckpointClient {
 
   async checkpoint(sequence: number, update: Uint8Array): Promise<boolean> {
     if (this.options.role !== "editor") return false
-    const result = await this.options.request({ operation: "claim", sequence }) as { lease?: CheckpointUploadLease }
+    const result = await this.request({ operation: "claim", sequence }) as { lease?: CheckpointUploadLease }
     if (!result.lease) return false
     const descriptor = await this.upload(result.lease, update)
     await this.load(descriptor)

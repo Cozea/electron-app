@@ -1,3 +1,4 @@
+import { COLLABORATION_PROTOCOL_REVISION } from "../../../../shared/collaborationProtocol"
 import path from "node:path"
 import { inventoryRecoveryStorage } from "./RecoveryStorageBudget"
 import { compactVerifiedRecoveryStore } from "./RecoveryStorageCleanup"
@@ -109,7 +110,7 @@ export class SessionRuntimeHost {
     const binding = offline ? await this.coordinator.resumeOffline(sessionId, sourceWorkspaceId) : await this.coordinator.prepare(sessionId, sourceWorkspaceId, await this.gateway.accessToken(), false)
     const workspace = await this.coordinator.workspaceForSession(sessionId)
     const store = new DurableSessionStore(this.root, material.session.roomId, material.keyVersion)
-    const request = (body: Record<string, unknown>) => this.gateway.post("/collab/v2/checkpoint", { sessionId, ...body })
+    const request = (body: Record<string, unknown>) => this.gateway.post("/collab/v2/checkpoint", { sessionId, ...body, protocolRevision: COLLABORATION_PROTOCOL_REVISION })
     const checkpoints = new SessionCheckpointClient({ sessionId, projectId: binding.projectId, roomId: material.session.roomId,
       role: authority.role, keyVersion: material.keyVersion, roomKeyBase64: material.roomKeyBase64, store, request })
     const runtime = new CollaborationSessionRuntime({ sessionId, role: authority.role, session: material.session, offline,

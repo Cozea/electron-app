@@ -9,8 +9,13 @@ export const CHECKPOINT_UPLOAD_LIFETIME_MS = 10 * 60_000
 export const FILE_INITIALIZATION_LEASE_MS = 60_000
 
 export class CollaborationProtocolError extends Error {
-  constructor(readonly code: string, message: string, readonly status = 400, readonly recoverable = false, readonly retryAfterMs?: number) {
+  readonly code: string
+  readonly status: number
+  readonly recoverable: boolean
+  readonly retryAfterMs?: number
+  constructor(code: string, message: string, status = 400, recoverable = false, retryAfterMs?: number) {
     super(message)
+    this.code = code; this.status = status; this.recoverable = recoverable; this.retryAfterMs = retryAfterMs
     this.name = "CollaborationProtocolError"
   }
 }

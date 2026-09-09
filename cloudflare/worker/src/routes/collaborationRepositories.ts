@@ -1,3 +1,4 @@
+import { COLLABORATION_PROTOCOL_REVISION, CollaborationProtocolError, isCheckpointRead, parseCheckpointRequest, parseRoomAuthority, protocolRecord } from "../../../../shared/collaborationProtocol"
 import { ConvexHttpClient } from "convex/browser"
 import { makeFunctionReference } from "convex/server"
 import {
@@ -13,7 +14,7 @@ import {
 } from '../lib/githubApp'
 import { requireActiveDeviceAccessInConvex } from '../lib/convex'
 import { verifyDeviceAccessToken } from '../lib/jwt'
-import { jsonResponse } from '../lib/protocol'
+import { jsonResponse, protocolError } from '../lib/protocol'
 import { parseJsonRequest } from '../lib/validation'
 import type { DeviceAccessClaims, Env } from '../types'
 import type {
@@ -103,10 +104,11 @@ export async function handleVerifyCollaborationPush(
   const existing = await client.query(makeFunctionReference<"query">("collaborationSessions:publicationReceiptForServer"),
     { serverSecret: env.AI_GATEWAY_SECRET, identityKey: auth.sub, sessionId, commitSha }) as CollaborationPushVerificationResponse | null
   if (existing) {
-    await env.COLLAB_ROOM.get(env.COLLAB_ROOM.idFromName(`session:${sessionId}`)).fetch(new Request("https://internal/internal/base-advanced", {
-      method: "POST", headers: { "content-type": "application/json" },
+    const roomReceipt = await env.COLLAB_ROOM.get(env.COLLAB_ROOM.idFromName(`session:${sessionId}`)).fetch(new Request("https://internal/internal/base-advanced", {
+      method: "POST", headers: { authorization: `Bearer ${env.AI_GATEWAY_SECRET}`, "content-type": "application/json" },
       body: JSON.stringify({ commitSha: existing.commitSha, coveredThroughSequence: existing.coveredThroughSequence }),
     }))
+    if (!roomReceipt.ok) throw new Error("Publication is verified but the room did not acknowledge it; retry Push")
     return jsonResponse(existing, { headers: { "cache-control": "no-store" } })
   }
   const authorization = await authorizePushVerification(env, { identityKey: auth.sub, sessionId })
@@ -132,7 +134,7 @@ export async function handleVerifyCollaborationPush(
     coveredThroughSequence: authorization.session.pendingCommitThroughSequence,
   })
   const roomAck = await env.COLLAB_ROOM.get(env.COLLAB_ROOM.idFromName(`session:${sessionId}`)).fetch(new Request("https://internal/internal/base-advanced", {
-    method: "POST", headers: { "content-type": "application/json" },
+    method: "POST", headers: { authorization: `Bearer ${env.AI_GATEWAY_SECRET}`, "content-type": "application/json" },
     body: JSON.stringify({ commitSha, coveredThroughSequence: authorization.session.pendingCommitThroughSequence }),
   }))
   if (!roomAck.ok) throw new Error("Published base was verified but live-room acknowledgement failed; retry Push")
@@ -184,27 +186,36 @@ export async function handleResolveCollaborationBranch(request: Request, env: En
 }
 
 export async function handleCollaborationCheckpoint(request: Request, env: Env): Promise<Response> {
-  const auth = await authenticate(request, env)
-  const body = await parseJsonRequest(request) as Record<string, unknown>
-  const sessionId = requiredString(body.sessionId, "sessionId", 128)
-  const client = new ConvexHttpClient(env.CONVEX_URL)
-  let authority = await client.query(makeFunctionReference<"query">("collaborationRoomAuthorization:authorizeSessionForServer"),
-    { serverSecret: env.AI_GATEWAY_SECRET, identityKey: auth.sub, sessionId }) as any
-  if (!authority.allowed || authority.role !== "editor") throw new Error("Session checkpoint access denied")
-  if (body.rotation === true && authority.pendingKeyVersion) {
-    authority = await client.query(makeFunctionReference<"query">("collaborationEncryption:rotationCheckpointAuthorityForServer"),
-      { serverSecret: env.AI_GATEWAY_SECRET, principalId: authority.principalId, sessionId }) as any
+  try {
+    const auth = await authenticate(request, env)
+    const body = protocolRecord(await parseJsonRequest(request), "Checkpoint request")
+    const sessionId = requiredString(body.sessionId, "sessionId", 128)
+    const command = parseCheckpointRequest(body)
+    const client = new ConvexHttpClient(env.CONVEX_URL)
+    let raw = protocolRecord(await client.query(makeFunctionReference<"query">("collaborationRoomAuthorization:authorizeSessionForServer"),
+      { serverSecret: env.AI_GATEWAY_SECRET, identityKey: auth.sub, sessionId }), "Session authority")
+    if (raw.allowed !== true) throw new CollaborationProtocolError("DEVICE_REVOKED", "Session membership is unavailable", 403)
+    if (body.rotation === true && raw.pendingKeyVersion) {
+      if (raw.role !== "editor") throw new CollaborationProtocolError("READ_ONLY", "Observers cannot rotate room keys", 403)
+      raw = protocolRecord(await client.query(makeFunctionReference<"query">("collaborationEncryption:rotationCheckpointAuthorityForServer"),
+        { serverSecret: env.AI_GATEWAY_SECRET, principalId: raw.principalId, sessionId }), "Rotation authority")
+    }
+    const authority = parseRoomAuthority({ ...raw, sessionId })
+    if (!isCheckpointRead(command) && authority.role !== "editor") throw new CollaborationProtocolError("READ_ONLY", "Observers can read but cannot publish checkpoints", 403)
+    const response = await env.COLLAB_ROOM.get(env.COLLAB_ROOM.idFromName(authority.roomId)).fetch(new Request("https://internal/internal/checkpoint", {
+      method: "POST", headers: { authorization: `Bearer ${env.AI_GATEWAY_SECRET}`, "content-type": "application/json" },
+      body: JSON.stringify({ authority, request: { ...command, protocolRevision: COLLABORATION_PROTOCOL_REVISION } }),
+    }))
+    if (!response.ok) return response
+    const result = protocolRecord(await response.json(), "Checkpoint response")
+    if (result.checkpoint && body.rotation === true && authority.previousKeyVersion) {
+      const checkpoint = protocolRecord(result.checkpoint, "Rotation checkpoint")
+      if (checkpoint.keyVersion === authority.keyVersion) await client.mutation(makeFunctionReference<"mutation">("collaborationEncryption:activateRotationFromServer"),
+        { serverSecret: env.AI_GATEWAY_SECRET, sessionId, keyVersion: authority.keyVersion, sequence: checkpoint.sequence })
+    }
+    return jsonResponse(result, { headers: { "cache-control": "no-store" } })
+  } catch (error) {
+    if (error instanceof CollaborationProtocolError) return protocolError(error.code, error.message, { status: error.status }, error.recoverable)
+    throw error
   }
-  const response = await env.COLLAB_ROOM.get(env.COLLAB_ROOM.idFromName(authority.roomId)).fetch(new Request("https://internal/internal/checkpoint", {
-    method: "POST", headers: { authorization: `Bearer ${env.AI_GATEWAY_SECRET}`, "content-type": "application/json" },
-    body: JSON.stringify({ authority: { ...authority, sessionId }, request: body }),
-  }))
-  if (!response.ok) return response
-  const result = await response.json() as { checkpoint?: { keyVersion: number; sequence: number } }
-  const checkpoint = result.checkpoint
-  if (checkpoint && body.rotation === true && authority.previousKeyVersion && checkpoint.keyVersion === authority.keyVersion) {
-    await client.mutation(makeFunctionReference<"mutation">("collaborationEncryption:activateRotationFromServer"),
-      { serverSecret: env.AI_GATEWAY_SECRET, sessionId, keyVersion: authority.keyVersion, sequence: checkpoint.sequence })
-  }
-  return jsonResponse(result, { headers: { "cache-control": "no-store" } })
 }

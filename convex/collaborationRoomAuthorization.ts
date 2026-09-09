@@ -2,7 +2,7 @@ import { v } from "convex/values"
 import type { Id } from "./_generated/dataModel"
 import type { QueryCtx } from "./_generated/server"
 import { authenticatedQuery as query } from "./lib/authenticatedFunctions"
-import { canAccessProject } from "./lib/projectAccess"
+import { canAccessProject, canEditProject } from "./lib/projectAccess"
 import { roomKeyHasRemovedRecipient } from "./lib/collaborationKeyAccess"
 
 function assertGatewaySecret(secret: string): void {
@@ -34,7 +34,7 @@ export async function authorizeCollaborationParticipant(
     sessionDocumentId: session._id,
     sessionId: session.sessionId,
     roomId,
-    role: participant.role,
+    role: participant.role === "editor" && await canEditProject(ctx, session.projectId, principalId) ? "editor" as const : "observer" as const,
     capabilities: participant.capabilities,
     keyVersion: active?.keyVersion ?? null,
     pendingKeyVersion: pending?.keyVersion ?? null,

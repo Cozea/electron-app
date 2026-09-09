@@ -31,7 +31,9 @@ export const ROOM_COMPACTION_FLOOR_KEY = "g3:compaction-floor"
  * This store never prunes updates merely because Git publication advanced.
  */
 export class RoomCheckpointStore {
-  constructor(private readonly storage: RoomStorage, private readonly now: () => number = Date.now) {}
+  private readonly storage: RoomStorage
+  private readonly now: () => number
+  constructor(storage: RoomStorage, now: () => number = Date.now) { this.storage = storage; this.now = now }
 
   async bind(authority: RoomAuthority): Promise<void> {
     if (authority.roomId !== `session:${authority.sessionId}`) throw new CollaborationProtocolError("SESSION_MISMATCH", "Checkpoint room binding is invalid", 403)
