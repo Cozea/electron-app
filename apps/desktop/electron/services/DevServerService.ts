@@ -103,8 +103,24 @@ function normalizeLaneId(laneId?: string | null): string {
   return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_LANE_ID
 }
 
-function buildRunKey(workspaceId: string, laneId?: string | null): string {
-  return `${workspaceId}::${normalizeLaneId(laneId)}`
+/**
+ * Dev server runs are keyed by working copy, not by lane.
+ *
+ * A local branch lane is a *view* of one checkout, not a second checkout: git
+ * allows a single branch checked out per directory, and `buildProjectBranchLaneState`
+ * hands every lane of a project the same `workspaceId`. Keying a run per lane
+ * therefore started the user's whole command set a second time in the same
+ * folder, where the two copies fought over identical ports and over
+ * single-instance locks (vinext, among others, exits immediately when one is
+ * already held, leaving a terminal that looks open but idle).
+ *
+ * Auxiliary process configuration is already stored per workspace, so keying the
+ * run the same way puts the runner and its configuration back in agreement.
+ * Lane is still carried on the run for terminal bookkeeping; it just no longer
+ * multiplies the run.
+ */
+function buildRunKey(workspaceId: string): string {
+  return workspaceId
 }
 
 function appendBootstrapOutput(current: string, chunk: string): string {
@@ -153,7 +169,7 @@ export class DevServerService {
    * progress or receive the already-running process.
    */
   public async ensure(options: DevServerStartOptions): Promise<DevServerStartResult> {
-    const runKey = buildRunKey(options.workspaceId, options.laneId)
+    const runKey = buildRunKey(options.workspaceId)
     const existing = this.processes.get(runKey)
     if (existing) {
       return await this.waitForExistingRun(existing)
@@ -194,7 +210,7 @@ export class DevServerService {
       onStateChange = () => {},
     } = options
     const normalizedLaneId = normalizeLaneId(laneId)
-    const runKey = buildRunKey(workspaceId, normalizedLaneId)
+    const runKey = buildRunKey(workspaceId)
 
     const stopResult = await this.stop(workspaceId, normalizedLaneId)
     if (!stopResult.success) {
@@ -519,7 +535,7 @@ export class DevServerService {
     laneId?: string | null,
     exitCode = 0,
   ): Promise<{ success: boolean; error?: string }> {
-    const runKey = buildRunKey(workspaceId, laneId)
+    const runKey = buildRunKey(workspaceId)
     const entry = this.processes.get(runKey)
     if (!entry) {
       return { success: true }
@@ -563,8 +579,10 @@ export class DevServerService {
     }
   }
 
-  public isRunning(workspaceId: string, laneId?: string | null): boolean {
-    return this.processes.has(buildRunKey(workspaceId, laneId))
+  // `_laneId` is accepted and ignored: runs are keyed by working copy now, and
+  // every caller still threads the lane it is rendering. See `buildRunKey`.
+  public isRunning(workspaceId: string, _laneId?: string | null): boolean {
+    return this.processes.has(buildRunKey(workspaceId))
   }
 
   /**
@@ -573,10 +591,10 @@ export class DevServerService {
    */
   public detachSurface(
     workspaceId: string,
-    laneId: string | null | undefined,
+    _laneId: string | null | undefined,
     terminalId: string,
   ): { success: boolean; ownsRuntime: boolean } {
-    const entry = this.processes.get(buildRunKey(workspaceId, laneId))
+    const entry = this.processes.get(buildRunKey(workspaceId))
     if (!entry || entry.terminalId !== terminalId) {
       return { success: true, ownsRuntime: false }
     }
@@ -587,10 +605,10 @@ export class DevServerService {
   /** Reconnect a new surface binding to the PTY that already owns this run. */
   public attachSurface(
     workspaceId: string,
-    laneId: string | null | undefined,
+    _laneId: string | null | undefined,
     terminalId: string,
   ): { success: boolean; ownsRuntime: boolean } {
-    const entry = this.processes.get(buildRunKey(workspaceId, laneId))
+    const entry = this.processes.get(buildRunKey(workspaceId))
     if (!entry || entry.terminalId !== terminalId) {
       return { success: true, ownsRuntime: false }
     }
@@ -598,8 +616,8 @@ export class DevServerService {
     return { success: true, ownsRuntime: true }
   }
 
-  public getState(workspaceId: string, laneId?: string | null): DevServerProcessState {
-    const entry = this.processes.get(buildRunKey(workspaceId, laneId))
+  public getState(workspaceId: string, _laneId?: string | null): DevServerProcessState {
+    const entry = this.processes.get(buildRunKey(workspaceId))
     return {
       running: Boolean(entry),
       ready: Boolean(entry?.ready),

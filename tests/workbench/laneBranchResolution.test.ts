@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { resolveLaneBranchKnowledge } from '@/features/source-control/model/projectBranchSessionStore'
+import {
+  buildBranchSessionLaneId,
+  resolveCollabBranchKnowledge,
+  resolveLaneBranchKnowledge,
+} from '@/features/source-control/model/projectBranchSessionStore'
 import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 import {
   migratePersistedWorkbenchState,
@@ -152,5 +156,68 @@ describe('persisted workbench ghost-sibling prune', () => {
     expect(Object.keys(migrated.workbenches)).toContain(
       buildWorkbenchScopeKey('project-1', 'collab', 'ws-b'),
     )
+  })
+})
+
+describe('resolveCollabBranchKnowledge', () => {
+  it('prefers a branch the project records', () => {
+    expect(
+      resolveCollabBranchKnowledge({
+        recordedDefaultBranch: 'develop',
+        storedCollabBranch: 'main',
+        statusResult: { success: true, isRepo: true, currentBranch: 'feature/x' },
+      }),
+    ).toBe('develop')
+  })
+
+  // The bug this guards: a local-only repo records no default branch, so the
+  // collab branch used to be a hardcoded "main". Compared against a real
+  // `master` the two never matched, and the first commit moved the workbench to
+  // a branch lane, leaving the agent tile behind in a lane nothing reopened.
+  it('adopts the repo branch on a first sighting when nothing is recorded', () => {
+    expect(
+      resolveCollabBranchKnowledge({
+        recordedDefaultBranch: null,
+        storedCollabBranch: null,
+        statusResult: { success: true, isRepo: true, currentBranch: 'master' },
+      }),
+    ).toBe('master')
+  })
+
+  it('keeps a local-only repo on its own collab lane after the first commit', () => {
+    const collabBranch = resolveCollabBranchKnowledge({
+      recordedDefaultBranch: null,
+      storedCollabBranch: null,
+      statusResult: { success: true, isRepo: true, currentBranch: 'master' },
+    })
+    const activeBranch = resolveLaneBranchKnowledge({
+      statusResult: { success: true, isRepo: true, currentBranch: 'master' },
+      storedBranch: null,
+      collabBranch,
+    })
+
+    expect(activeBranch).toEqual({ kind: 'resolved', branch: 'master', remember: true })
+    expect(buildBranchSessionLaneId('master', collabBranch)).toBe('collab')
+  })
+
+  it('holds the learned branch steady so a real checkout still opens a branch lane', () => {
+    const collabBranch = resolveCollabBranchKnowledge({
+      recordedDefaultBranch: null,
+      storedCollabBranch: 'master',
+      statusResult: { success: true, isRepo: true, currentBranch: 'feature/x' },
+    })
+
+    expect(collabBranch).toBe('master')
+    expect(buildBranchSessionLaneId('feature/x', collabBranch)).toBe('branch:feature%2Fx')
+  })
+
+  it('falls back to main only when nothing knows anything', () => {
+    expect(
+      resolveCollabBranchKnowledge({
+        recordedDefaultBranch: null,
+        storedCollabBranch: null,
+        statusResult: { success: false },
+      }),
+    ).toBe('main')
   })
 })

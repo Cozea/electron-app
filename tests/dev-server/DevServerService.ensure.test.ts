@@ -256,7 +256,7 @@ describe('DevServerService.ensure', () => {
     const service = new DevServerService()
     const start = vi.spyOn(service, 'start')
     const workspaceId = `workspace-${crypto.randomUUID()}`
-    const runKey = `${workspaceId}::collab`
+    const runKey = workspaceId
     const processRegistry = (service as unknown as {
       processes: Map<string, Record<string, unknown>>
     }).processes
@@ -278,6 +278,58 @@ describe('DevServerService.ensure', () => {
       existing: true,
     })
     expect(start).not.toHaveBeenCalled()
+  })
+
+  // A local branch lane is a view of one checkout, not a second one: git allows a
+  // single branch checked out per directory, so both lanes of a project carry the
+  // same workspaceId. Keying runs per lane started the user's whole command set
+  // twice in one folder, where the copies collided on ports and on single-instance
+  // locks (vinext exits immediately when one is held, leaving an idle terminal).
+  it('joins the existing run when a second lane asks for the same working copy', async () => {
+    const service = new DevServerService()
+    const start = vi.spyOn(service, 'start')
+    const workspaceId = `workspace-${crypto.randomUUID()}`
+    const processRegistry = (service as unknown as {
+      processes: Map<string, Record<string, unknown>>
+    }).processes
+    processRegistry.set(workspaceId, {
+      workspaceId,
+      laneId: 'collab',
+      runKey: workspaceId,
+      runId: 'collab-run',
+      activePort: 3000,
+      ready: true,
+    })
+
+    const result = await service.ensure({ ...options(workspaceId), laneId: 'branch:master' })
+
+    expect(result).toEqual({
+      success: true,
+      port: 3000,
+      runId: 'collab-run',
+      existing: true,
+    })
+    expect(start).not.toHaveBeenCalled()
+    expect(service.isRunning(workspaceId, 'branch:master')).toBe(true)
+    expect(service.getState(workspaceId, 'branch:master').runId).toBe('collab-run')
+  })
+
+  it('coalesces concurrent ensure requests across lanes of one working copy', async () => {
+    const service = new DevServerService()
+    const workspaceId = `workspace-${crypto.randomUUID()}`
+    let resolveStart!: (result: DevServerStartResult) => void
+    const startResult = new Promise<DevServerStartResult>((resolve) => {
+      resolveStart = resolve
+    })
+    const start = vi.spyOn(service, 'start').mockReturnValue(startResult)
+
+    const collab = service.ensure(options(workspaceId))
+    const branch = service.ensure({ ...options(workspaceId), laneId: 'branch:master' })
+    resolveStart({ success: true, port: 3000, runId: 'single-run' })
+
+    await expect(collab).resolves.toMatchObject({ success: true, existing: false })
+    await expect(branch).resolves.toMatchObject({ success: true, existing: true })
+    expect(start).toHaveBeenCalledTimes(1)
   })
 
   it('coalesces concurrent ensure requests for the same workspace and lane', async () => {
@@ -302,7 +354,7 @@ describe('DevServerService.ensure', () => {
     const service = new DevServerService()
     const start = vi.spyOn(service, 'start')
     const workspaceId = `workspace-${crypto.randomUUID()}`
-    const runKey = `${workspaceId}::collab`
+    const runKey = workspaceId
     const processRegistry = (service as unknown as {
       processes: Map<string, Record<string, unknown>>
     }).processes
@@ -332,7 +384,7 @@ describe('DevServerService.ensure', () => {
   it('marks only the owning terminal detached while keeping the process running', () => {
     const service = new DevServerService()
     const workspaceId = `workspace-${crypto.randomUUID()}`
-    const runKey = `${workspaceId}::collab`
+    const runKey = workspaceId
     const processRegistry = (service as unknown as {
       processes: Map<string, Record<string, unknown>>
     }).processes

@@ -21,6 +21,7 @@ import {
   useDevServerRunStore,
 } from "@/features/dev-server/devServerRunStore"
 import {
+  isSidebarRowInteractiveTarget,
   resolveProjectCollabBranch,
   resolveSidebarDevAppMenuAction,
   areSidebarProjectItemsEqual,
@@ -163,6 +164,26 @@ export const ProjectSidebarTreeItem = React.memo(
       e.stopPropagation();
       void actions.openProject(project, workspaceId);
     }, [actions, project, workspaceId]);
+
+    // The whole row pill opens the project, not just the name. Deliberately no
+    // role/tabIndex here: the row already contains real buttons, and nesting
+    // interactive elements would break keyboard navigation and screen readers.
+    // This is a pointer affordance only; the name button stays the accessible
+    // control for opening, and it carries the aria-label.
+    //
+    // Controls inside the row own their own clicks (the chevron expands, the
+    // ellipsis opens the menu), so bail when the click started on one. Testing
+    // the event target beats relying on each control to stop propagation, which
+    // the menu button never did and a control added later would likely forget.
+    const handleProjectRowClick = React.useCallback(
+      (event: React.MouseEvent<HTMLDivElement>) => {
+        if (isSidebarRowInteractiveTarget(event.target as HTMLElement | null)) {
+          return
+        }
+        void actions.openProject(project, workspaceId)
+      },
+      [actions, project, workspaceId],
+    )
 
     const handlePrefetchProject = React.useCallback(() => {
       if (context.isCurrentProject) return
@@ -379,8 +400,9 @@ export const ProjectSidebarTreeItem = React.memo(
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onContextMenu={handleProjectMenuClick}
+          onClick={handleProjectRowClick}
           className={cn(
-            "group/project-item relative flex min-h-7 items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70 select-none",
+            "group/project-item relative flex min-h-7 cursor-pointer items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70 select-none",
             SIDEBAR_PILL_HOVER_CLASS,
             (selection.activeSelectionLevel === "project" ||
               (!isLanesOpen && context.isCurrentProject)) &&

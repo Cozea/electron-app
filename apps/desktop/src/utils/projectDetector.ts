@@ -596,6 +596,12 @@ function detectFrameworkFromPackageJson(pkg: PackageJson): Framework {
   if (deps['expo']) return 'expo'
   if (deps['react-native']) return 'react-native'
   if (deps['next']) return 'nextjs'
+  // `vinext` runs Next apps on Vite and ships its own `next`-compatible CLI, so a
+  // vinext project is a Next project for every purpose here: same file-based
+  // routing, same 3000 default, same `--port` flag. It must be tested before the
+  // `vite` branch below, which it would otherwise match and be mistaken for a
+  // plain Vite SPA on 5173.
+  if (deps['vinext']) return 'nextjs'
   if (deps['@remix-run/react'] || deps['@remix-run/node']) return 'remix'
   if (deps['@sveltejs/kit']) return 'sveltekit'
   if (deps['nuxt'] || deps['nuxt3']) return 'nuxt'

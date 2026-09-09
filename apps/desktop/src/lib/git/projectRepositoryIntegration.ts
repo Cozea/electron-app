@@ -44,15 +44,35 @@ function normalizeProvider(
   return value?.trim().toLowerCase() === "github" ? "github" : "local"
 }
 
-export function resolveProjectSharedBranch(
+/** Last-resort shared branch for display, when nothing records a real one. */
+export const FALLBACK_SHARED_BRANCH = "main"
+
+/**
+ * The default branch the project actually *records*, or null when nothing does.
+ *
+ * Lane ids are the comparison `activeBranch === collabBranch`, so this operand
+ * must never be guessed. A local-only project records no default branch, and
+ * answering "main" for a repo that is really on `master` makes the two operands
+ * differ forever: the workbench scope key flips to a branch lane and strands
+ * every open tile under the previous key. Callers that only need a label may
+ * fall back via `resolveProjectSharedBranch`; callers that build a lane id must
+ * treat null as "learn it from the repo" instead.
+ */
+export function resolveProjectRecordedDefaultBranch(
   project: ProjectRepositoryIntegrationProjectLike | null | undefined,
-): string {
+): string | null {
   return (
     project?.repo?.defaultBranch?.trim() ||
     project?.sourceControl?.defaultBranch?.trim() ||
     project?.gitRepository?.defaultBranch?.trim() ||
-    "main"
+    null
   )
+}
+
+export function resolveProjectSharedBranch(
+  project: ProjectRepositoryIntegrationProjectLike | null | undefined,
+): string {
+  return resolveProjectRecordedDefaultBranch(project) ?? FALLBACK_SHARED_BRANCH
 }
 
 export function resolveProjectRepositoryIntegration(

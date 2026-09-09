@@ -37,7 +37,10 @@ import {
 } from "@/contexts/project/ProjectRouteContext";
 import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
 import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
-import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
+import {
+  FALLBACK_SHARED_BRANCH,
+  resolveProjectRecordedDefaultBranch,
+} from "@/lib/git/projectRepositoryIntegration";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 import { saveLastAppRoute } from "@/lib/settings/settingsReturnRoute";
 
@@ -270,8 +273,10 @@ export function ProjectLayout({
     delayMs: 250,
     timeoutMs: 3_000,
   });
-  const collabBranch = useMemo(
-    () => resolveProjectSharedBranch(project),
+  // Nullable on purpose. A local-only project records no default branch, and
+  // lane resolution learns it from the repo instead of assuming "main".
+  const recordedDefaultBranch = useMemo(
+    () => resolveProjectRecordedDefaultBranch(project),
     [project],
   );
   const routeProjectIdentity = workspaceProjectId;
@@ -283,8 +288,13 @@ export function ProjectLayout({
   } = useProjectLaneState({
     projectId: shouldEnableProjectRuntime ? routeProjectIdentity : null,
     workspaceId: activeWorkspaceId,
-    collabBranch,
+    collabBranch: recordedDefaultBranch,
   });
+  // Read the branch back off the resolved lane so every consumer below, the
+  // document scope id included, compares against the same branch the lane ids
+  // were built from. Falling back here would reintroduce the mismatch.
+  const collabBranch =
+    collabLane?.branch ?? recordedDefaultBranch ?? FALLBACK_SHARED_BRANCH;
   const activeBranch = activeLane?.branch ?? collabBranch;
   const collaborationEnabled =
     shouldEnableProjectRuntime && Boolean(runtimeWorkspaceId) && Boolean(project?._id) && activeBranch === collabBranch;
