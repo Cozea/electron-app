@@ -1,0 +1,82 @@
+name: Collaboration supplemental executable fixture
+
+on:
+  push:
+    branches: [refactor/collaboration-v2-end-to-end]
+
+permissions:
+  contents: read
+
+jobs:
+  fixture:
+    if: contains(github.event.head_commit.message, '[collab-vendor-fixture]') && github.repository == 'Cozea/electron-app'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+      - name: Prepare pinned runtime dependencies
+        run: |
+          bun run bootstrap
+          node node_modules/electron/install.js
+      - name: Export only installed dependencies and Electron runtime
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/collab-vendor-fixture"
+          mkdir -p "$fixture"/{manifest,a,b,c,d}
+          find vendor/t3code -name node_modules -type d -prune -print0 > "$fixture/paths.bin"
+          electron=$(realpath --relative-to="$PWD" node_modules/electron)
+          printf '%s\0' "$electron/dist" "$electron/path.txt" >> "$fixture/paths.bin"
+          tar --null --verbatim-files-from -czf "$fixture/dependencies.tar.gz" -T "$fixture/paths.bin"
+          (cd "$fixture" && sha256sum dependencies.tar.gz) > "$fixture/manifest/SHA256SUMS"
+          git rev-parse HEAD > "$fixture/manifest/source-sha"
+          git -C vendor/t3code rev-parse HEAD > "$fixture/manifest/vendor-sha"
+          node scripts/collaboration/runtime-inventory.mjs
+          cp .agent/collaboration-evidence/runtime.json "$fixture/manifest/runtime.json"
+          split -b 240M -d "$fixture/dependencies.tar.gz" "$fixture/part"
+          test ! -f "$fixture/part04"
+          for spec in 00:a 01:b 02:c 03:d; do
+            part=${spec%:*}; directory=${spec#*:}
+            if test -f "$fixture/part$part"; then mv "$fixture/part$part" "$fixture/$directory/"; fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-vendor-fixture-manifest-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-vendor-fixture/manifest/
+          retention-days: 1
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-vendor-fixture-a-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-vendor-fixture/a/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-vendor-fixture-b-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-vendor-fixture/b/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-vendor-fixture-c-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-vendor-fixture/c/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-vendor-fixture-d-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-vendor-fixture/d/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore

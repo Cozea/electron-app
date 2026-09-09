@@ -1,131 +1,50 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import path from "node:path";
-const changed = new Set();
-const edit = (name, transform) => { const before = readFileSync(name, "utf8"); const after = transform(before); if (before === after) throw new Error(`No transformation: ${name}`); writeFileSync(name, after); changed.add(name); };
-const replace = (source, before, after) => { const at = source.indexOf(before); if (at < 0 || source.indexOf(before, at + before.length) >= 0) throw new Error(`Exact anchor changed: ${before.slice(0, 100)}`); return source.slice(0, at) + after + source.slice(at + before.length); };
-const create = (name, content) => { if (existsSync(name)) throw new Error(`File already exists: ${name}`); mkdirSync(path.dirname(name), { recursive: true }); writeFileSync(name, content); changed.add(name); };
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
+import { createHash } from "node:crypto";
 
-edit("shared/SessionFileDocument.ts", source => {
-  source = 'import { changesFromPublishedBaseline, validatePublishedManifest, type SessionPublishedManifest } from "./collaborationPublication"\n' + source;
-  source = replace(source, '  readonly doc: Y.Doc', '  readonly doc: Y.Doc\n  private readonly sessionId: string\n  private readonly publicationManifests: Y.Map<SessionPublishedManifest>');
-  source = replace(source, '    this.doc.gc = false', '    this.doc.gc = false\n    this.sessionId = sessionId\n    this.publicationManifests = this.doc.getMap("published-file-baselines")');
-  const begin = source.indexOf('  snapshotChanges(): CollaborationTextChange[] {');
-  const end = source.indexOf('\n  checkpoint():', begin);
-  if (begin < 0 || end < 0) throw new Error("Snapshot generator anchor changed");
-  return source.slice(0, begin) + String.raw`  publicationManifest(commitSha: string): SessionPublishedManifest | null {
-    const value = this.publicationManifests.get(commitSha)
-    return value ? validatePublishedManifest(value, { sessionId: this.sessionId, commitSha }) : null
-  }
-
-  recordPublicationManifest(value: SessionPublishedManifest): void {
-    const manifest = validatePublishedManifest(value, { sessionId: this.sessionId })
-    const existing = this.publicationManifest(manifest.commitSha)
-    if (existing) {
-      if (JSON.stringify(existing) !== JSON.stringify(manifest)) throw new Error("The same published commit has conflicting file identities")
-      return
-    }
-    this.doc.transact(() => this.publicationManifests.set(manifest.commitSha, manifest), "publication-manifest")
-  }
-
-  snapshotChanges(published?: SessionPublishedManifest): CollaborationTextChange[] {
-    if (this.renameConflicts().length) throw new Error("Resolve competing shared renames before committing or projecting files")
-    if (this.pathConflicts().length) throw new Error("Resolve shared path collisions before committing or projecting files")
-    const baseline = published ? validatePublishedManifest(published, { sessionId: this.sessionId }) : undefined
-    return changesFromPublishedBaseline(this.files(), baseline)
-  }
-` + source.slice(end);
-});
-
-edit("shared/collaborationDesktop.ts", source => {
-  source = replace(source, '  preparedAt: number\n', '  preparedAt: number\n  publicationBasisId?: string\n  publicationBasisKeyVersion?: number\n');
-  return replace(source, '  throughSequence: number\n  textChanges:', '  throughSequence: number\n  publicationBasisId?: string\n  publicationBasisKeyVersion?: number\n  textChanges:');
-});
-
-edit("apps/desktop/electron/collaboration/DurableSessionStore.ts", source => replace(source, '  readInitializationBasis(id: string): Promise<string | null> {', String.raw`  readPublicationBasis(id: string): Promise<string | null> {
-    if (!idPattern.test(id)) throw new Error("Invalid publication basis identity")
-    return this.serial(() => this.read<string>(` + '`publication-basis-${id}.json`' + String.raw`))
-  }
-  savePublicationBasis(id: string, encoded: string): Promise<void> {
-    if (!idPattern.test(id)) throw new Error("Invalid publication basis identity")
-    return this.serial(async () => {
-      const name = ` + '`publication-basis-${id}.json`' + String.raw`
-      const previous = await this.read<string>(name)
-      if (previous && previous !== encoded) throw new Error("Prepared publication basis cannot be replaced")
-      if (!previous) await this.write(name, encoded)
-    })
-  }
-
-  readInitializationBasis(id: string): Promise<string | null> {`));
-
-edit("apps/desktop/electron/collaboration/CollaborationSessionRuntime.ts", source => {
-  source = 'import { encodePublicationBasis, manifestFromPublicationBasis } from "./PublicationBasis"\nimport type { PreparedCollaborationCommit } from "../../../../shared/collaborationDesktop"\n' + source;
-  source = replace(source, '  offline?: boolean\n', '  offline?: boolean\n  readPublicationBasis?: (id: string, keyVersion: number) => Promise<{ encoded: string; roomKeyBase64: string } | null>\n');
-  const begin = source.indexOf('  async captureCommit():');
-  const end = source.indexOf('\n  async waitForSequence(', begin);
-  if (begin < 0 || end < 0) throw new Error("Runtime commit capture anchor changed");
-  return source.slice(0, begin) + String.raw`  async captureCommit(context: { baseCommitSha: string; publishedCommitSha: string | null }): Promise<{ sequence: number; textChanges: CollaborationTextChange[]; publicationBasisId: string; publicationBasisKeyVersion: number }> {
-    // The fence covers work accepted before Commit, not future renderer input.
-    const acceptedEditorFence = this.editorQueue
-    await acceptedEditorFence
-    await this.projectFiles()
-    if (this.projectionPaused) throw new Error("Resolve paused file synchronization before committing; local bytes were retained")
-    const snapshot = await this.assertEditor().captureCommitState()
-    const acknowledged = new SessionFileDocument(this.options.sessionId)
-    try {
-      Y.applyUpdate(acknowledged.doc, snapshot.update)
-      const published = acknowledged.publicationManifest(context.baseCommitSha)
-      if (context.publishedCommitSha && !published) throw new Error("The verified Git base lacks its published file baseline; recover the retained publication before preparing another commit")
-      const textChanges = acknowledged.snapshotChanges(published ?? undefined)
-      const basis = await encodePublicationBasis({ sessionId: this.options.sessionId, projectId: this.options.session.projectId, roomId: this.options.session.roomId, ...this.options.encryption }, context.baseCommitSha, snapshot.sequence, snapshot.update)
-      await this.options.store.savePublicationBasis(basis.id, basis.encoded)
-      return { sequence: snapshot.sequence, textChanges, publicationBasisId: basis.id, publicationBasisKeyVersion: this.options.encryption.keyVersion }
-    } finally { acknowledged.destroy() }
-  }
-
-  async publishPreparedManifest(prepared: PreparedCollaborationCommit): Promise<void> {
-    const provider = this.assertEditor()
-    const previous = this.files.publicationManifest(prepared.commitSha)
-    if (previous) {
-      if (previous.parentCommitSha !== prepared.parentCommitSha || previous.throughSequence !== prepared.throughSequence) throw new Error("Prepared publication identity changed")
-    } else {
-      const id = prepared.publicationBasisId, keyVersion = prepared.publicationBasisKeyVersion
-      if (!id || !keyVersion) throw new Error("This retained prepared commit predates publication baselines; retain it for explicit recovery rather than guessing file identities")
-      const material = keyVersion === this.options.encryption.keyVersion
-        ? { encoded: await this.options.store.readPublicationBasis(id), roomKeyBase64: this.options.encryption.roomKeyBase64 }
-        : await this.options.readPublicationBasis?.(id, keyVersion)
-      if (!material?.encoded) throw new Error("The prepared publication basis is unavailable; all local work was retained")
-      const manifest = await manifestFromPublicationBasis({ sessionId: this.options.sessionId, projectId: this.options.session.projectId, roomId: this.options.session.roomId, keyVersion, roomKeyBase64: material.roomKeyBase64 },
-        { id, parentCommitSha: prepared.parentCommitSha, sequence: prepared.throughSequence }, prepared.commitSha, material.encoded)
-      this.files.recordPublicationManifest(manifest)
-    }
-    await provider.flushLocalPersistence()
-    // The manifest joins canonical encrypted history before Push. Later text
-    // edits remain outside the prepared Git snapshot and keep their own clocks.
-    await provider.captureCommitState()
-  }
-` + source.slice(end);
-});
-
-edit("apps/desktop/electron/collaboration/SessionRuntimeHost.ts", source => {
-  source = replace(source, '      changedPaths: () => this.coordinator.changedPaths(sessionId),', String.raw`      changedPaths: () => this.coordinator.changedPaths(sessionId),
-      readPublicationBasis: async (id, keyVersion) => {
-        const recovered = await this.keys.recoverKey(binding.projectId, sessionId, keyVersion)
-        if (!recovered) return null
-        const encoded = await new DurableSessionStore(this.root, material.session.roomId, keyVersion).readPublicationBasis(id)
-        return encoded ? { encoded, roomKeyBase64: recovered.roomKeyBase64 } : null
-      },`);
-  source = replace(source, '      const snapshot = await runtime.captureCommit()', '      const context = await this.gateway.post<CollaborationWorkspaceAuthority>("/collab/v2/workspace-context", { sessionId: input.sessionId })\n      const snapshot = await runtime.captureCommit({ baseCommitSha: context.session.baseCommitSha, publishedCommitSha: context.session.publishedCommitSha })');
-  source = replace(source, 'throughSequence: snapshot.sequence, textChanges: snapshot.textChanges })', 'throughSequence: snapshot.sequence, textChanges: snapshot.textChanges, publicationBasisId: snapshot.publicationBasisId, publicationBasisKeyVersion: snapshot.publicationBasisKeyVersion })\n      await runtime.publishPreparedManifest(prepared)');
-  source = replace(source, '    // A completed publication can be recovered without acquiring a new lease.', '    if (prepared.state === "discarded") throw new Error("This prepared commit was discarded")\n    if (prepared.state !== "published") await this.runtime(sessionId).publishPreparedManifest(prepared)\n    // A completed publication can be recovered without acquiring a new lease.');
-  return source;
-});
-
-edit("apps/desktop/electron/collaboration/SessionWorkspaceCoordinator.ts", source => {
-  source = replace(source, '      const previousRaw = await this.deps.read(preparedKey(input.sessionId))', '      if (input.publicationBasisId !== undefined && (!/^[A-Za-z0-9_-]{1,160}$/.test(input.publicationBasisId) || !Number.isSafeInteger(input.publicationBasisKeyVersion) || Number(input.publicationBasisKeyVersion) < 1)) throw new Error("Prepared publication capture identity is invalid")\n      const previousRaw = await this.deps.read(preparedKey(input.sessionId))');
-  return replace(source, '          preparedAt: this.now(), state: "prepared",', '          preparedAt: this.now(), state: "prepared",\n          ...(input.publicationBasisId ? { publicationBasisId: input.publicationBasisId, publicationBasisKeyVersion: input.publicationBasisKeyVersion } : {}),');
-});
-
-create("tests/collaboration/publicationBaseline.test.ts", readFileSync("scripts/collaboration/publication-tests.template", "utf8"));
-mkdirSync(".agent/collaboration-evidence", { recursive: true });
-writeFileSync(".agent/collaboration-candidate.json", JSON.stringify({ message: "refactor: capture immutable published file baselines across commit cycles", paths: [...changed] }, null, 2));
-console.log(`Prepared ${changed.size} publication transformations.`);
+// Exact, locally exercised P2 patch. This is a temporary CI execution adapter;
+// only the separately tested Git tree is promoted by the connector.
+const before = {
+  "apps/desktop/electron/collaboration/CollaborationSessionRuntime.ts": "d11b9fec853f2db509cbccb720346a0a8fc52cfc",
+  "apps/desktop/electron/collaboration/SessionCheckpointClient.ts": "22e200c2d22c8346b245e395c5aa3aa61dcd6229",
+  "apps/desktop/electron/collaboration/SessionRuntimeHost.ts": "c13da5509be9203f9a5cb62e8aebfe943f541d63",
+  "cloudflare/worker/src/durableObjects/CollabRoom.ts": "c4e995afc9895ff3f47e37ebda8731a8a322fe01",
+  "cloudflare/worker/src/durableObjects/RoomCheckpointStore.ts": "23155a29390a3bed043a235d759f68c4c070910d",
+  "cloudflare/worker/src/durableObjects/RoomUpdateChunks.ts": "895bb00358100f52e69b912a5d88af159f79760a",
+  "cloudflare/worker/src/lib/collaborationLimits.ts": "dfa5815cd4607d1ae928bcc60d2f5c4e3c69de2c",
+  "docs/collaboration/refactor-progress.md": "8a48faaa754b7f8b5c55165a6b24bd8e5e82f561",
+  "shared/AcknowledgedCollaborationState.ts": "5c437833e39d2262115e1940e47bad708ca66b08",
+  "shared/CollaborationTransport.ts": "e0da3a9c232b012a9a3e5932fcdd14cfb2418d9d",
+  "shared/collaborationProtocol.ts": "0dcd3690c16c6fcc39f76892f952054d1a075e8e",
+  "tests/collaboration/transportIntegration.test.ts": "8385b49b73c0384411ebf7656c0af6e0e1bb8615",
+  "tests/collaboration/acknowledgedCapture.test.ts": null
+};
+const after = {
+  "apps/desktop/electron/collaboration/CollaborationSessionRuntime.ts": "37685000e94d0658c2bb3cd42dd4e24880dde3b6",
+  "apps/desktop/electron/collaboration/SessionCheckpointClient.ts": "f2e5e20755447453816c357925e962c8d3d62ecb",
+  "apps/desktop/electron/collaboration/SessionRuntimeHost.ts": "e1b2429ce4fca49867f57520e5c66cf50d66af30",
+  "cloudflare/worker/src/durableObjects/CollabRoom.ts": "4c4f05d04a73502c37272e115ab4f7022d1df750",
+  "cloudflare/worker/src/durableObjects/RoomCheckpointStore.ts": "65a675bb13e78ccbca9d65a0429a52d44f74f55e",
+  "cloudflare/worker/src/durableObjects/RoomUpdateChunks.ts": "4ae9976dab3a13fb5c4a4723324367954b9dd8bb",
+  "cloudflare/worker/src/lib/collaborationLimits.ts": "c7bc0f9349b55d0a410b9c883182c1884f7e60d2",
+  "docs/collaboration/refactor-progress.md": "b2cd29908e00879ffe771f147b117d3aac92b612",
+  "shared/AcknowledgedCollaborationState.ts": "3191da617af0098ac6e24ca0eb1008ccc884cf40",
+  "shared/CollaborationTransport.ts": "54155cb0faa0854c79641c0cf7bbf9a63020e9c4",
+  "shared/collaborationProtocol.ts": "296927c1f927f8d3f9a8868d1bf76ca10dda02e9",
+  "tests/collaboration/transportIntegration.test.ts": "2591e58a55b57badb466b76793768c08ac8fca46",
+  "tests/collaboration/acknowledgedCapture.test.ts": "1b85db5c4ccdf13a1ac73311ec04a85732021a3b"
+};
+const compressed = Array.from({ length: 5 }, (_, index) => readFileSync(new URL(`./compaction.part${index}.b64`, import.meta.url), "utf8")).join("");
+const patch = gunzipSync(Buffer.from(compressed, "base64"));
+if (createHash("sha256").update(patch).digest("hex") !== "5705d674acd28c3bab5ce3110acc55a3b525228c915ce3626c4f6cc504543065") throw new Error("Candidate patch digest differs");
+const git = (...args) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }).trim();
+for (const [path, sha] of Object.entries(before)) {
+  if (sha === null ? existsSync(path) : !existsSync(path) || git("hash-object", path) !== sha) throw new Error(`Candidate preimage changed: ${path}`);
+}
+execFileSync("git", ["apply", "--check", "-"], { input: patch });
+execFileSync("git", ["apply", "-"], { input: patch });
+for (const [path, sha] of Object.entries(after)) if (git("hash-object", path) !== sha) throw new Error(`Candidate output differs: ${path}`);
+mkdirSync(".agent", { recursive: true });
+writeFileSync(".agent/collaboration-candidate.json", JSON.stringify({ paths: Object.keys(after), message: "refactor: compact canonical replay behind durable checkpoints" }));
+console.log(`Prepared ${Object.keys(after).length} exact compaction changes.`);
