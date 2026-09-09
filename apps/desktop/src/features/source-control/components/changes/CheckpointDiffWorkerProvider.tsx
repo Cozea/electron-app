@@ -2,16 +2,11 @@ import { WorkerPoolContextProvider, useWorkerPool } from '@pierre/diffs/react'
 import DiffsWorker from '@pierre/diffs/worker/worker.js?worker'
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
+import { resolveThemeColorMode } from '@/lib/theme'
 import { resolveDiffThemeName, type DiffThemeName } from '@/features/assistant/lib/diffRendering'
 
 function resolveThemeMode(theme: ReturnType<typeof useTheme>['theme']): 'light' | 'dark' {
-  if (theme === 'light' || theme === 'dark') {
-    return theme
-  }
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
-  }
-  return 'light'
+  return resolveThemeColorMode(theme)
 }
 
 function DiffWorkerThemeSync({ themeName }: { themeName: DiffThemeName }) {

@@ -72,10 +72,9 @@ describe('desktop-first loading architecture', () => {
     expect(launch).toContain('api.projects.getAccessibleById')
   })
 
-  it('marks process entry first and registers runtime shutdown after main bootstrap', () => {
+  it('registers lifecycle handling first and runtime shutdown after main bootstrap', () => {
     const source = read('apps/desktop/electron/mainEntry.ts')
     expect(source.trim().split('\n')).toEqual([
-      "import './mainEntryMark'",
       "import './registerAppLifecycle'",
       "import './desktopBootstrapMain'",
       "import './main'",
@@ -96,12 +95,5 @@ describe('desktop-first loading architecture', () => {
     expect(lifecycle).toContain("app.on('activate'")
     expect(lifecycle).toContain('mainWindow.show()')
     expect(lifecycle).toContain('mainWindow.focus()')
-  })
-
-  it('measures app/window boot milestones from true process entry', () => {
-    const lifecycle = read('apps/desktop/electron/registerAppLifecycle.ts')
-    expect(lifecycle).toContain('__COZEA_MAIN_ENTRY_AT__')
-    expect(lifecycle).toContain("logProcessEntryMilestone('process-entry-to-app-ready')")
-    expect(lifecycle).toContain("logProcessEntryMilestone('process-entry-to-main-window-created')")
   })
 })

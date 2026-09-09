@@ -7,7 +7,7 @@ import {
   type SetStateAction,
 } from "react";
 import type { PreviewAnnotationPayload } from "@cozea/contracts/t3/ipc";
-import type { ComposerImageDraft } from "@/features/assistant/chat/CozeaChatSurface";
+import type { ComposerImageDraft } from "@/features/assistant/model/assistantComposerTypes";
 import {
   assistantDrafts,
   type AssistantContentDraft,
@@ -38,6 +38,14 @@ export function useAssistantContentDraft(metadata: DraftMetadata) {
   const write = useCallback((patch: Partial<AssistantContentDraft>) => {
     const meta = metadataRef.current;
     const previous = assistantDrafts.store.getState().drafts[assistantDrafts.resolveKey(meta.key)];
+    if (
+      previous &&
+      Object.entries(patch).every(
+        ([key, value]) => previous[key as keyof AssistantContentDraft] === value,
+      )
+    ) {
+      return;
+    }
     assistantDrafts.save({
       ...meta,
       ...(previous ?? { text: "", cursor: 0, images: [], annotations: [] }),
@@ -123,6 +131,12 @@ export function useAssistantContentDraft(metadata: DraftMetadata) {
     },
     [write],
   );
+  const setComposerState = useCallback(
+    (text: string, cursor: number) => {
+      write({ text, cursor });
+    },
+    [write],
+  );
   const setComposerImages = useCallback(
     (value: SetStateAction<ComposerImageDraft[]>) => {
       const next = apply(value, imagesRef.current);
@@ -163,6 +177,7 @@ export function useAssistantContentDraft(metadata: DraftMetadata) {
     composerPreviewAnnotations: record?.annotations ?? EMPTY_ANNOTATIONS,
     setComposer,
     setComposerCursor,
+    setComposerState,
     setComposerImages,
     setComposerPreviewAnnotations,
     draftReady: ready,

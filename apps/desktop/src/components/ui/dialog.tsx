@@ -23,7 +23,7 @@ function DialogTrigger({
     return (
       <BaseDialog.Trigger
         data-slot="dialog-trigger"
-        render={children as any}
+        render={children as React.ComponentProps<typeof BaseDialog.Trigger>["render"]}
         {...props}
       />
     )
@@ -45,7 +45,13 @@ function DialogClose({
   ...props
 }: React.ComponentProps<typeof BaseDialog.Close> & { asChild?: boolean }) {
   if (asChild) {
-    return <BaseDialog.Close data-slot="dialog-close" render={children as any} {...props} />
+    return (
+      <BaseDialog.Close
+        data-slot="dialog-close"
+        render={children as React.ComponentProps<typeof BaseDialog.Close>["render"]}
+        {...props}
+      />
+    )
   }
   return <BaseDialog.Close data-slot="dialog-close" {...props}>{children}</BaseDialog.Close>
 }

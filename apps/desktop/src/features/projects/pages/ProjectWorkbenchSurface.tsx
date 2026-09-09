@@ -192,17 +192,17 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     () => (
       <div className="flex min-w-0 items-center gap-2">
         <div
-          className="flex h-7 min-w-0 max-w-[min(320px,42vw)] items-center text-sm font-medium text-foreground"
+          className="flex h-7 min-w-0 max-w-[320px] items-center text-sm font-medium text-foreground"
           title={projectName}
         >
           <span className="truncate">{projectName}</span>
         </div>
-        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-          <div className="inline-flex h-7 items-center rounded-md bg-secondary px-1 text-muted-foreground/85 transition-colors hover:bg-accent/80">
+        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+          <div className="inline-flex h-7 min-w-0 items-center rounded-md bg-secondary px-1 text-muted-foreground/85 transition-colors hover:bg-accent/80">
             {/* Lane/branch state is read from context inside the control so
                 this element stays identity-stable while lanes settle. */}
             <WorkbenchHeaderBranchControl
-              triggerClassName="h-7 min-h-7 gap-1 rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
+              triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
               trailing={
                 project?._id ? (
                   <ProjectSyncIndicator

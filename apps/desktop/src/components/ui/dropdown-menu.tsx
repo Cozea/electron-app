@@ -32,7 +32,7 @@ function DropdownMenuTrigger({
     return (
       <BaseMenu.Trigger
         data-slot="dropdown-menu-trigger"
-        render={children as any}
+        render={children as React.ComponentProps<typeof BaseMenu.Trigger>["render"]}
         {...props}
       />
     )
@@ -55,14 +55,14 @@ function DropdownMenuContent({
   ...props
 }: React.ComponentProps<typeof BaseMenu.Popup> & {
   sideOffset?: number
-  align?: string
-  side?: string
+  align?: React.ComponentProps<typeof BaseMenu.Positioner>["align"]
+  side?: React.ComponentProps<typeof BaseMenu.Positioner>["side"]
 }) {
   return (
     <BaseMenu.Portal>
       <BaseMenu.Positioner
-        side={side as any}
-        align={align as any}
+        side={side}
+        align={align}
         sideOffset={sideOffset}
         className="z-[var(--cozea-layer-menu)]"
       >

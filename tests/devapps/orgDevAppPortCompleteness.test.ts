@@ -17,6 +17,13 @@ const tileSource = fs.readFileSync(
   ),
   "utf8",
 );
+const runtimeObserverSource = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "apps/desktop/src/features/devapps/model/orgDevAppRuntimeObserver.ts",
+  ),
+  "utf8",
+);
 
 describe("Org DevApp T3 surface completeness", () => {
   it("keeps the dedicated always-mounted dock component", () => {
@@ -45,11 +52,12 @@ describe("Org DevApp T3 surface completeness", () => {
       "approveRuntime",
       "startRuntime",
       "releaseRuntime",
-      "getRuntimeState",
       "stopRuntime",
     ]) {
       expect(tileSource).toMatch(new RegExp(`orgDevApp\\s*\\.\\s*${operation}`));
     }
+    expect(runtimeObserverSource).toMatch(/orgDevApp\s*\.\s*getRuntimeState/);
+    expect(tileSource).toContain("useOrgDevAppRuntimeObservation");
     expect(tileSource).toContain("<BrowserSurfaceSlot");
     expect(tileSource).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
     expect(tileSource).toContain('storageScope: "orgDevApp"');

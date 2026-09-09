@@ -16,7 +16,7 @@ function PopoverTrigger({
     return (
       <BasePopover.Trigger
         data-slot="popover-trigger"
-        render={children as any}
+        render={children as React.ComponentProps<typeof BasePopover.Trigger>["render"]}
         {...props}
       />
     )
@@ -59,7 +59,7 @@ function PopoverContent({
         <BasePopover.Popup
           data-slot="popover-content"
           className={cn(
-            "titlebar-no-drag relative z-50 flex origin-(--transform-origin) rounded-lg border bg-popover text-popover-foreground shadow-lg/5 outline-none focus:outline-none",
+            "titlebar-no-drag relative flex origin-(--transform-origin) rounded-lg border bg-popover text-popover-foreground shadow-lg/5 outline-none focus:outline-none",
             className,
           )}
           {...props}

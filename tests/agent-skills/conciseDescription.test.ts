@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { conciseDescription, prettifySkillName } from "../../apps/desktop/src/features/projects/pages/AgentSkillsPage";
+import {
+  conciseDescription,
+  prettifySkillName,
+} from "@/features/projects/model/agentSkillPresentation";
 
 describe("the one-line description in a library row", () => {
   it("leaves a description that already fits alone", () => {

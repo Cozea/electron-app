@@ -1,6 +1,6 @@
 import * as React from "react"
 
-import { Sidebar, SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
+import { SIDEBAR_TRANSITION_CLASS_NAME, Sidebar, SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
 import {
@@ -18,16 +18,25 @@ import {
  */
 
 function ShellSidebarTrigger() {
-  const { isMobile, state, openMobile } = useSidebar()
-  const show = isMobile ? openMobile : state === "expanded"
-  if (!show) return null
+  const { open } = useSidebar()
   return (
-    <SidebarTrigger
+    <div
+      aria-hidden={!open}
+      inert={!open}
       className={cn(
-        "h-7 w-7 shrink-0 rounded-md",
-        "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
+        "transition-opacity",
+        SIDEBAR_TRANSITION_CLASS_NAME,
+        open ? "opacity-100" : "opacity-0",
       )}
-    />
+    >
+      <SidebarTrigger
+        aria-label="Collapse sidebar"
+        className={cn(
+          "h-7 w-7 shrink-0 rounded-md",
+          "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground",
+        )}
+      />
+    </div>
   )
 }
 

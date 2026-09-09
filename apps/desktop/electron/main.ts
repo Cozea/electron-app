@@ -12,6 +12,7 @@ import { Effect } from 'effect'
 import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '../../../shared/electronApiTypes'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
+import { createShutdownCleanup } from './createShutdownCleanup'
 
 // Services
 import { TerminalService } from './services/TerminalService'
@@ -86,7 +87,6 @@ import {
 } from './workspaces/WorkspaceCatalogRuntime'
 import { WorkspaceCatalog } from './workspaces/WorkspaceCatalog'
 import { readSubstrateShadowServerFlags, readSubstrateFeatureFlags } from './substrate/flags'
-import { getSharedSubstrateNdjsonWriter } from './substrate/obs'
 import { listSubstrateRemoteEnvironments } from './substrate/remoteEnvironments'
 import {
   createDesktopBackendPool,
@@ -108,7 +108,6 @@ import {
   type ShadowServerManager,
 } from './substrate/ShadowServerManager'
 
-import { DevServerService } from './services/DevServerService'
 import { LocalAutomationResolverService } from './runtime/LocalAutomationResolverService'
 import { PreviewSnapshotService } from './services/PreviewSnapshotService'
 import { listAvailableBrowsers, openUrlInBrowser } from './lib/externalBrowser'
@@ -613,7 +612,6 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
   // The shadow owns the T3 process that serves orchestration streams, preview
   // automation brokering, and short-lived signed media URLs for thread artifacts.
   const flags = readSubstrateShadowServerFlags()
-  const obs = getSharedSubstrateNdjsonWriter()
   if (!flags.enabled) {
     logSubstrateShadow('skip-disabled', { flagId: flags.flagId })
     return
@@ -641,16 +639,6 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
       pool: true,
       previewAutomation: true,
     })
-    obs.writeSpan({
-      name: 'substrate.shadow.start',
-      attrs: {
-        host: flags.host,
-        port: flags.port,
-        logsRootDirectory,
-        pool: true,
-        previewAutomation: true,
-      },
-    })
     const status = await pool.register({
       id: PRIMARY_BACKEND_INSTANCE_ID,
       kind: 'local',
@@ -666,15 +654,6 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
       baseUrl: status.baseUrl,
       readyPath: status.readyPath,
       pid: status.pid,
-    })
-    obs.writeSpan({
-      name: 'substrate.shadow.ready',
-      attrs: {
-        phase: status.phase,
-        baseUrl: status.baseUrl,
-        readyPath: status.readyPath,
-        pid: status.pid,
-      },
     })
     const featureFlags = readSubstrateFeatureFlags()
     if (status.phase === 'ready' && featureFlags.primary) {
@@ -756,7 +735,6 @@ function registerSubstrateShadowBridgeHandlers(): void {
           providers: featureFlags.providers,
           vcs: featureFlags.vcs,
           primary: featureFlags.primary,
-          obsNdjson: featureFlags.obsNdjson,
           inProcessAssistant: false,
         },
         remoteEnvironments,
@@ -769,7 +747,6 @@ function registerSubstrateShadowBridgeHandlers(): void {
         providers: featureFlags.providers,
         vcs: featureFlags.vcs,
         primary: featureFlags.primary,
-        obsNdjson: featureFlags.obsNdjson,
         inProcessAssistant: false,
       },
       remoteEnvironments,
@@ -1861,40 +1838,30 @@ registerContextMenuHandlers(ipcMain, {
   getMainWindow: () => win,
 })
 
+const cleanupApplicationServices = createShutdownCleanup([
+  { name: 'DevApp artifacts', run: () => orgDevAppArtifactService.dispose() },
+  { name: 'DevApp preview', run: () => devAppPreviewService.dispose() },
+  { name: 'DevApp workers', run: () => devAppWorkerHost.dispose() },
+  { name: 'Published DevApp workers', run: () => publishedDevAppWorkerHost.dispose() },
+  { name: 'Contained DevApp runtime', run: disposeContainedDevAppRuntime },
+  { name: 'Preview snapshots', run: () => PreviewSnapshotService.getInstance().dispose() },
+  { name: 'Local automation', run: () => LocalAutomationResolverService.getInstance().dispose() },
+], (name, error) => console.warn(`[Lifecycle] ${name} cleanup failed.`, error))
+
 app.on('window-all-closed', () => {
-  orgDevAppArtifactService.dispose()
-  devAppPreviewService.dispose()
-  devAppWorkerHost.dispose()
-  publishedDevAppWorkerHost.dispose()
-  void disposeContainedDevAppRuntime()
   setBroadcastMainWindow(null)
   win = null
-
-  // Kill all DevServer background processes
-  DevServerService.getInstance().killAll()
-  PreviewSnapshotService.getInstance().dispose()
-  // The native ranker is a long-lived child; never leave it behind after Electron exits.
-  LocalAutomationResolverService.getInstance().dispose()
-
-  // Kill all terminal instances when app closes
-  TerminalService.getInstance().killAll()
-
+  // macOS keeps application services alive for a later Dock reopen. On other
+  // platforms app.quit() routes all cleanup through the normal quit lifecycle.
   if (process.platform !== 'darwin') {
     app.quit()
-    win = null
   }
 })
 
 app.on('before-quit', () => {
   appIsQuitting = true
   logAssistantBridge('app-before-quit')
-  orgDevAppArtifactService.dispose()
-  devAppPreviewService.dispose()
-  devAppWorkerHost.dispose()
-  publishedDevAppWorkerHost.dispose()
-  void disposeContainedDevAppRuntime()
-  PreviewSnapshotService.getInstance().dispose()
-  LocalAutomationResolverService.getInstance().dispose()
+  cleanupApplicationServices()
   void disposeWorkspaceCatalogRuntime()
   stopUpdateChecks()
   void stopSubstrateShadowServer()

@@ -32,6 +32,7 @@ const NEUTRAL_MODULES = [
   "apps/desktop/src/lib/createProjectDialogStore.ts",
   "apps/desktop/src/lib/projectHeaderStore.ts",
   "apps/desktop/src/lib/projectIconSets.ts",
+  "apps/desktop/src/lib/platform.ts",
   "apps/desktop/src/lib/useProjectHeader.ts",
   "apps/desktop/src/lib/sidebarActivity.ts",
   "apps/desktop/src/lib/workbenchScopeKey.ts",

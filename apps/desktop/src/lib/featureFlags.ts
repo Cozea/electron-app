@@ -4,9 +4,7 @@ interface FeatureFlagDefinition {
 }
 
 const DEFINITIONS = {
-  viewTransitions: { key: 'VITE_FF_VIEW_TRANSITIONS', defaultValue: true },
   prioritizedScheduling: { key: 'VITE_FF_PRIORITIZED_SCHEDULING', defaultValue: true },
-  contentVisibility: { key: 'VITE_FF_CONTENT_VISIBILITY', defaultValue: true },
   localWorkspaceCatalog: { key: 'VITE_FF_LOCAL_WORKSPACE_CATALOG', defaultValue: true },
   projectDevApps: { key: 'VITE_FF_PROJECT_DEVAPPS', defaultValue: true },
   desktopBootstrap: { key: 'VITE_FF_DESKTOP_BOOTSTRAP', defaultValue: true },
@@ -18,8 +16,6 @@ const DEFINITIONS = {
    * Override with `VITE_FF_COZEA_PALETTE_ENABLED=0` to disable.
    */
   paletteEnabled: { key: 'VITE_FF_COZEA_PALETTE_ENABLED', defaultValue: true },
-  /** Mirror of main-process `cozea.browser.agentAutomation` (default off). */
-  browserAgentAutomation: { key: 'VITE_FF_BROWSER_AGENT_AUTOMATION', defaultValue: false },
 } satisfies Record<string, FeatureFlagDefinition>
 
 function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean {
@@ -35,14 +31,9 @@ function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean 
 }
 
 export const featureFlags = {
-  viewTransitions: parseBoolean(import.meta.env[DEFINITIONS.viewTransitions.key], DEFINITIONS.viewTransitions.defaultValue),
   prioritizedScheduling: parseBoolean(
     import.meta.env[DEFINITIONS.prioritizedScheduling.key],
     DEFINITIONS.prioritizedScheduling.defaultValue
-  ),
-  contentVisibility: parseBoolean(
-    import.meta.env[DEFINITIONS.contentVisibility.key],
-    DEFINITIONS.contentVisibility.defaultValue
   ),
   localWorkspaceCatalog: parseBoolean(
     import.meta.env[DEFINITIONS.localWorkspaceCatalog.key],
@@ -72,9 +63,5 @@ export const featureFlags = {
   paletteEnabled: parseBoolean(
     import.meta.env[DEFINITIONS.paletteEnabled.key],
     DEFINITIONS.paletteEnabled.defaultValue
-  ),
-  browserAgentAutomation: parseBoolean(
-    import.meta.env[DEFINITIONS.browserAgentAutomation.key],
-    DEFINITIONS.browserAgentAutomation.defaultValue
   ),
 } as const

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../../convex/_generated/api"
+import { FilterChip } from "@/components/ui/filter-chip"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { buildInstalledDevAppManifest, buildPublishedDevAppManifest } from "@/features/devapps/orgDevAppManifest"
 import { useOrgDevAppInstallations } from "@/features/devapps/useOrgDevAppInstallations"
@@ -30,10 +31,12 @@ import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import {
   computeWorkbenchSelectionLauncherLayout,
-  type WorkbenchSelectionLauncherLayout,
+  WORKBENCH_SELECTION_LAUNCHER_LAYOUT,
 } from "@/features/workbench/workbenchSelectionLauncherLayout"
+import { useLauncherGridLayout } from "./useLauncherGridLayout"
 import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders"
 import { useTranslation } from "@/lib/i18n"
+import { getNavigatorPlatform, isMacPlatform } from "@/lib/platform"
 import {
   filterWorkbenchSelectionApps,
   getWorkbenchSelectionCategories,
@@ -55,11 +58,7 @@ const LAUNCHER_CONFIG = {
   iconSize: 58,
   iconRadius: 58 * 0.22265625, // macOS standard: width * 0.22265625
   iconGlyphSize: 24,
-  cellWidth: 96,
-  cellHeight: 102,
-  columnGap: 22,
-  rowGap: 18,
-  maxColumns: 6,
+  ...WORKBENCH_SELECTION_LAUNCHER_LAYOUT,
   maxRows: 2,
   labelClassName: "text-sm",
 } as const
@@ -93,7 +92,7 @@ function WelcomeHero({
   workspaceId?: string | null
 }) {
   const { t } = useTranslation()
-  const normalizedProjectName = projectName?.trim() || "this project"
+  const normalizedProjectName = projectName?.trim() || t("workbench.selection.thisProject")
 
   return (
     <div className="mb-6 flex w-full max-w-4xl items-center justify-center">
@@ -157,20 +156,18 @@ function SelectionFilterBar({
         >
           <div className="flex w-max items-center gap-1.5 pb-0.5">
             {categories.map((cat) => (
-              <button
+              <FilterChip
                 key={cat}
                 type="button"
                 onClick={() => onCategoryChange(cat)}
-                className={cn(
-                  "cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors inline-flex items-center gap-1.5 shrink-0",
-                  activeCategory === cat
-                    ? "bg-secondary text-foreground shadow-xs"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                )}
+                active={activeCategory === cat}
+                className="inline-flex items-center gap-1.5 shrink-0"
               >
                 {cat === "Explore DevApps Store" ? <HugeiconsIcon icon={__ShoppingBagHugeIcon} className="size-3" aria-hidden /> : null}
-                {cat === "Explore DevApps Store" ? t('workbench.selection.exploreStore') : ((t as any)(`devApp.category.${cat}`) ?? cat)}
-              </button>
+                {cat === "Explore DevApps Store"
+                  ? t("workbench.selection.exploreStore")
+                  : t(`devApp.category.${cat}`)}
+              </FilterChip>
             ))}
           </div>
         </ScrollArea>
@@ -194,7 +191,7 @@ function SelectionFilterBar({
                 "min-w-0 flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground",
                 "outline-none",
               )}
-              aria-label="Search launcher options"
+              aria-label={t("workbench.selection.searchTools")}
             />
             <Kbd className="shrink-0 px-1.5">{shortcut}</Kbd>
           </span>
@@ -204,16 +201,32 @@ function SelectionFilterBar({
   )
 }
 
-function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolean] {
+interface SelectionSurfaceMetrics {
+  width: number
+  height: number
+}
+
+function useSelectionSurfaceDensity(): [
+  RefObject<HTMLDivElement | null>,
+  SelectionSurfaceMetrics,
+] {
   const ref = useRef<HTMLDivElement | null>(null)
-  const [spacious, setSpacious] = useState(false)
+  const [metrics, setMetrics] = useState<SelectionSurfaceMetrics>({ width: 0, height: 0 })
+
+  const updateMetrics = useCallback((width: number, height: number) => {
+    setMetrics((current) =>
+      current.width === width && current.height === height
+        ? current
+        : { width, height },
+    )
+  }, [])
 
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const { width, height } = el.getBoundingClientRect()
-    setSpacious(isSpaciousSelectionSurface(width, height))
-  }, [])
+    updateMetrics(width, height)
+  }, [updateMetrics])
 
   useEffect(() => {
     const el = ref.current
@@ -223,82 +236,16 @@ function useSelectionSurfaceDensity(): [RefObject<HTMLDivElement | null>, boolea
       const entry = entries[0]
       if (!entry) return
       const { width, height } = entry.contentRect
-      setSpacious(isSpaciousSelectionSurface(width, height))
+      updateMetrics(width, height)
     })
 
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [updateMetrics])
 
-  return [ref, spacious]
+  return [ref, metrics]
 }
 
-function useLauncherGridLayout(
-  itemCount: number,
-  containerRef?: RefObject<HTMLDivElement | null>,
-  isSingletonEmpty: boolean = false,
-): [RefObject<HTMLDivElement | null>, WorkbenchSelectionLauncherLayout] {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [layout, setLayout] = useState<WorkbenchSelectionLauncherLayout>(() =>
-    computeWorkbenchSelectionLauncherLayout({
-      width: 0,
-      height: 0,
-      itemCount,
-      cellWidth: LAUNCHER_CONFIG.cellWidth,
-      cellHeight: LAUNCHER_CONFIG.cellHeight,
-      columnGap: LAUNCHER_CONFIG.columnGap,
-      rowGap: LAUNCHER_CONFIG.rowGap,
-      maxColumns: LAUNCHER_CONFIG.maxColumns,
-      maxRows: isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY,
-    }),
-  )
-
-  const recalculate = useCallback(() => {
-    const container = containerRef?.current ?? ref.current
-    if (!container) return
-    const containerRect = container.getBoundingClientRect()
-    const width = containerRect.width
-    const overhead = isSingletonEmpty ? 220 : 132
-    const availableHeight = isSingletonEmpty
-      ? 2 * LAUNCHER_CONFIG.cellHeight + LAUNCHER_CONFIG.rowGap
-      : Math.max(0, containerRect.height - overhead)
-    const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
-    setLayout(
-      computeWorkbenchSelectionLauncherLayout({
-        width,
-        height: availableHeight,
-        itemCount,
-        cellWidth: LAUNCHER_CONFIG.cellWidth,
-        cellHeight: LAUNCHER_CONFIG.cellHeight,
-        columnGap: LAUNCHER_CONFIG.columnGap,
-        rowGap: LAUNCHER_CONFIG.rowGap,
-        maxColumns: LAUNCHER_CONFIG.maxColumns,
-        maxRows: effectiveMaxRows,
-      }),
-    )
-  }, [containerRef, isSingletonEmpty, itemCount])
-
-  useLayoutEffect(() => {
-    recalculate()
-  }, [recalculate])
-
-  useEffect(() => {
-    const target = containerRef?.current ?? ref.current
-    if (!target) return
-
-    const ro = new ResizeObserver(() => {
-      recalculate()
-    })
-
-    ro.observe(target)
-    if (ref.current && ref.current !== target) {
-      ro.observe(ref.current)
-    }
-    return () => ro.disconnect()
-  }, [containerRef, recalculate])
-
-  return [ref, layout]
-}
 
 function SelectionLauncherButton({
   option,
@@ -395,11 +342,11 @@ export function WorkbenchSelectionTile({
 }: WorkbenchSelectionTileProps) {
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
-  const isMac = useMemo(() => navigator.platform.toLowerCase().includes("mac"), [])
+  const isMac = useMemo(() => isMacPlatform(getNavigatorPlatform()), [])
   const { config } = useAssistantServerConfig(true)
   const densityConfig = LAUNCHER_CONFIG
 
-  const [rootRef, spacious] = useSelectionSurfaceDensity()
+  const [rootRef, surfaceMetrics] = useSelectionSurfaceDensity()
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("All")
   const [searchQuery, setSearchQuery] = useState("")
   const searchInputRef = useRef<HTMLInputElement | null>(null)
@@ -508,11 +455,17 @@ export function WorkbenchSelectionTile({
     }
     return `${t("workbench.selection.noResults")} "${searchQuery.trim()}".`
   }, [canResolvePublicationRef, isDevAppRefInput, parsedRef, resolvedPublicationRef, resolvedRefOptions.length, searchQuery, t])
+  const spacious = isSpaciousSelectionSurface(surfaceMetrics.width, surfaceMetrics.height)
   const isSingletonEmpty = singletonEmptyWorkbench && spacious
-  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, rootRef, isSingletonEmpty)
+  const rootColumnCapacity = computeWorkbenchSelectionLauncherLayout({
+    width: Math.max(0, surfaceMetrics.width - 48),
+    height: 0,
+    itemCount: allOptions.length,
+  }).fittingColumns
+  const useListView = rootColumnCapacity <= 2
+  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, isSingletonEmpty)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
-  const useListView = launcherLayout.fittingColumns <= 2
 
   const launcherContentWidth = useMemo(() => {
     // Keep filter bar and launcher content width tied to available layout columns,
@@ -749,7 +702,7 @@ export function WorkbenchSelectionTile({
                     <button
                       key={`selection-page-dot-${pageIndex}`}
                       type="button"
-                      aria-label={`Go to page ${pageIndex + 1}`}
+                      aria-label={`${t("workbench.selection.goToPage")} ${pageIndex + 1}`}
                       aria-pressed={pageIndex === currentPage}
                       className="flex size-5 items-center justify-center cursor-pointer p-0"
                       onClick={() => handlePageSelect(pageIndex)}

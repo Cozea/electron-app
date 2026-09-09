@@ -14,7 +14,7 @@ export function SettingsPageHeader({
 }) {
   return (
     <div className={cn("mb-6 px-1", className)}>
-      <h1 className="text-[22px] font-bold tracking-tight text-foreground">{title}</h1>
+      <h1 className="text-settings-title font-bold tracking-tight text-foreground">{title}</h1>
     </div>
   );
 }
@@ -68,7 +68,7 @@ export function SettingsSectionTitle({
 /** One line under section title */
 export function SettingsSectionDescription({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("mb-2.5 px-1 text-xs text-muted-foreground/80", className)}>{children}</p>
+    <p className={cn("mb-2.5 px-1 text-sm text-muted-foreground/80", className)}>{children}</p>
   );
 }
 
@@ -149,8 +149,10 @@ export function SettingsRowLabel({
       ) : (
         <span className="text-sm font-medium text-foreground">{title}</span>
       )}
+      {/* The description sits at the title's 13px: at 13/12 the size step was
+        * too small to read as hierarchy, so weight and colour carry it. */}
       {description ? (
-        <p className={cn("text-xs leading-relaxed text-muted-foreground/80 mt-0.5", descriptionClassName)}>{description}</p>
+        <p className={cn("text-sm leading-relaxed text-muted-foreground/80 mt-0.5", descriptionClassName)}>{description}</p>
       ) : null}
     </div>
   );

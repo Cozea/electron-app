@@ -12,11 +12,9 @@ IPC allowlist helper: `electron/substrate/ipcAllowlist.ts` (`PHASE5_IPC_ALLOWLIS
 
 ## Phase 6 — Observability & remote readiness
 
-- NDJSON flag: `cozea.obs.ndjson` (`COZEA_OBS_NDJSON` / `COZEA_SUBSTRATE_OBS_NDJSON`)
-- Writer: `electron/substrate/obs/` — spans for shadow start/ready, rpc `chat.send` accepted, provider materialize
-- Optional path: `COZEA_OBS_NDJSON_PATH`
 - Remote env catalog stubs: `electron/substrate/remoteEnvironments.ts` (local ready; SSH/WSL placeholders)
-- Exposed on `substrateShadow:getStatus` as `remoteEnvironments` + `features.obsNdjson`
+- Exposed on `substrateShadow:getStatus` as `remoteEnvironments`.
+- Cozea-owned NDJSON/OTLP instrumentation and its status flag were removed on 2026-09-09. T3 observability is unchanged.
 
 ## Phase 7 — Monorepo reshape (aligned)
 
@@ -51,6 +49,5 @@ Bun vs pnpm/`vp` decision remains deferred (high blast radius).
 | `cozea.substrate.providers` | `COZEA_SUBSTRATE_PROVIDERS` | 3 |
 | `cozea.substrate.vcs` | `COZEA_SUBSTRATE_VCS` | 4 |
 | `cozea.substrate.primary` | `COZEA_SUBSTRATE_PRIMARY` | 5 |
-| `cozea.obs.ndjson` | `COZEA_OBS_NDJSON` | 6 |
 
 All default **off**. Full-stack enable recipe: `docs/substrate-phases-complete.md`.

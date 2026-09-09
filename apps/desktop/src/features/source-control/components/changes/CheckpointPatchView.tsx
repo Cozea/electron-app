@@ -2,6 +2,7 @@ import { parsePatchFiles } from '@pierre/diffs'
 import { FileDiff, type FileDiffMetadata, Virtualizer } from '@pierre/diffs/react'
 import { useMemo } from 'react'
 import { useTheme } from '@/contexts/ThemeContext'
+import { resolveThemeColorMode } from '@/lib/theme'
 import {
   buildPatchCacheKey,
   resolveDiffThemeName,
@@ -9,13 +10,7 @@ import {
 import { cn } from '@/lib/utils'
 
 function resolveThemeMode(theme: ReturnType<typeof useTheme>['theme']): 'light' | 'dark' {
-  if (theme === 'light' || theme === 'dark') {
-    return theme
-  }
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
-  }
-  return 'light'
+  return resolveThemeColorMode(theme)
 }
 
 function getRenderableFiles(patch: string): FileDiffMetadata[] {

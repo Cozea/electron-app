@@ -1,11 +1,21 @@
 import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 import { describe, expect, it, beforeEach } from "vitest";
-import { useThreadDetailStore } from "@/features/assistant/model/threadDetailStore";
+import {
+  configureThreadDetailCache,
+  getThreadDetailCacheDiagnostics,
+  getThreadDetailProjectionDiagnostics,
+  retainThreadDetail,
+  useThreadDetailStore,
+} from "@/features/assistant/model/threadDetailStore";
 import { deriveGenerationStatusPhase } from "../../apps/desktop/src/features/assistant/chat/MessagesTimeline.logic";
 
 describe("threadDetailStore", () => {
   beforeEach(() => {
-    useThreadDetailStore.setState({ byThreadId: {} });
+    useThreadDetailStore.setState({
+      byThreadId: {},
+      deletedSequenceByThreadId: {},
+      evictedSequenceByThreadId: {},
+    });
   });
 
   it("ingests the T3 thread detail snapshot envelope", () => {
@@ -405,6 +415,115 @@ describe("threadDetailStore", () => {
     expect(detail?.activities[0]?.summary).toBe("Running tests");
     expect(detail?.turnDiffSummaries).toHaveLength(1);
     expect(detail?.turnDiffSummaries[0]?.files[0]?.path).toBe("app.ts");
+  });
+
+  it("maps only the changed message during an ordinary streaming update", () => {
+    const threadId = "th-projection-work";
+    useThreadDetailStore.getState().ingestSnapshot(threadId, {
+      snapshotSequence: 1,
+      thread: {
+        messages: ["first", "second", "third"].map((text, index) => ({
+          id: `message-${index}`,
+          role: "assistant",
+          text,
+          streaming: index === 2,
+          createdAt: "2026-08-27T10:00:00.000Z",
+        })),
+      },
+    });
+    const before = useThreadDetailStore.getState().getThreadDetail(threadId)!;
+    const mappedBefore = getThreadDetailProjectionDiagnostics().mappedMessageCount;
+
+    useThreadDetailStore.getState().applyEvent(threadId, {
+      type: "thread.message-sent",
+      sequence: 2,
+      aggregateKind: "thread",
+      aggregateId: threadId,
+      payload: {
+        threadId,
+        messageId: "message-2",
+        role: "assistant",
+        text: " plus",
+        streaming: true,
+        createdAt: "2026-08-27T10:00:01.000Z",
+      },
+    } as any);
+
+    const after = useThreadDetailStore.getState().getThreadDetail(threadId)!;
+    expect(getThreadDetailProjectionDiagnostics().mappedMessageCount - mappedBefore).toBe(1);
+    expect(after.messages[0]).toBe(before.messages[0]);
+    expect(after.messages[1]).toBe(before.messages[1]);
+    expect(after.messages[2]?.text).toBe("third plus");
+  });
+
+  it("evicts least-recent inactive details without weakening sequence guards", () => {
+    const restorePolicy = configureThreadDetailCache({
+      maxInactiveEntries: 1,
+      maxApproximateBytes: Number.MAX_SAFE_INTEGER,
+    });
+    try {
+      useThreadDetailStore.getState().ingestSnapshot("old", {
+        snapshotSequence: 10,
+        thread: { messages: [] },
+      });
+      useThreadDetailStore.getState().ingestSnapshot("new", {
+        snapshotSequence: 20,
+        thread: { messages: [] },
+      });
+      expect(useThreadDetailStore.getState().getThreadDetail("old")).toBeNull();
+      expect(getThreadDetailCacheDiagnostics().inactiveEntries).toBe(1);
+
+      useThreadDetailStore.getState().ingestSnapshot("old", {
+        snapshotSequence: 9,
+        thread: { messages: [] },
+      });
+      expect(useThreadDetailStore.getState().getThreadDetail("old")).toBeNull();
+
+      useThreadDetailStore.getState().ingestSnapshot("old", {
+        snapshotSequence: 10,
+        thread: { messages: [] },
+      });
+      expect(useThreadDetailStore.getState().getThreadDetail("old")?.lastSequence).toBe(10);
+    } finally {
+      restorePolicy();
+    }
+  });
+
+  it("keeps retained and pending-action details above the inactive soft limit", () => {
+    const restorePolicy = configureThreadDetailCache({
+      maxInactiveEntries: 0,
+      maxApproximateBytes: Number.MAX_SAFE_INTEGER,
+    });
+    const release = retainThreadDetail("visible");
+    try {
+      useThreadDetailStore.getState().ingestSnapshot("visible", {
+        snapshotSequence: 1,
+        thread: { messages: [] },
+      });
+      useThreadDetailStore.getState().ingestSnapshot("approval", {
+        snapshotSequence: 1,
+        thread: {
+          messages: [],
+          activities: [{
+            id: "request",
+            kind: "approval.requested",
+            tone: "approval",
+            summary: "Approve command",
+            payload: { requestId: "approval-1" },
+            createdAt: "2026-08-27T10:00:00.000Z",
+          }],
+        },
+      });
+      expect(useThreadDetailStore.getState().getThreadDetail("visible")).not.toBeNull();
+      expect(useThreadDetailStore.getState().getThreadDetail("approval")).not.toBeNull();
+      expect(getThreadDetailCacheDiagnostics()).toMatchObject({
+        retainedEntries: 2,
+        inactiveEntries: 0,
+      });
+    } finally {
+      release();
+      restorePolicy();
+    }
   });
 });
 

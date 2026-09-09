@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildWorkspaceIdentityKey,
-  normalizeWorkspaceProjectPath,
+  normalizeWorkspaceId,
 } from '@/lib/workspaceIdentity'
 
 describe('workspace identity normalization', () => {
   it('treats workspace ids as opaque values instead of filesystem paths', () => {
-    expect(normalizeWorkspaceProjectPath(' workspace\\id/with/trailing/ ')).toBe(
+    expect(normalizeWorkspaceId(' workspace\\id/with/trailing/ ')).toBe(
       'workspace\\id/with/trailing/',
     )
   })

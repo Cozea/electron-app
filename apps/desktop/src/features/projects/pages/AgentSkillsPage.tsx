@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { FilterChip } from "@/components/ui/filter-chip"
 import { Button } from "@/components/ui/button";
 import { HeaderBackButton } from "@/components/ui/header-back-button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +28,12 @@ import { ensureNativeApi } from "@/lib/nativeApi";
 import { useSearchParams } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useProjectHeader } from "@/lib/useProjectHeader";
-import { SkillBuildsView } from "@/features/projects/pages/SkillBuildsView";
+import { SkillBuildsView } from "@/features/projects/components/SkillBuildsView";
+import {
+  conciseDescription,
+  ESSENTIAL_SKILL_NOTE,
+  prettifySkillName,
+} from "@/features/projects/model/agentSkillPresentation";
 import { ScheduledTasksView } from "@/features/projects/pages/ScheduledTasksView";
 import { agentSkillsSnapshot, useAgentSkillsSnapshot } from "@/features/projects/model/agentSkillsSnapshot";
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient";
@@ -103,144 +109,6 @@ function formatUpdatedAt(value: number): string {
   }).format(new Date(value));
 }
 
-/** Initialisms that should not be sentence-cased when a slug is prettified. */
-const SKILL_NAME_ACRONYMS = new Map<string, string>(
-  Object.entries({
-    ai: "AI", api: "API", ci: "CI", cli: "CLI", css: "CSS", db: "DB", docx: "DOCX",
-    html: "HTML", io: "IO", ios: "iOS", mcp: "MCP", md: "MD", pdf: "PDF", pptx: "PPTX", pr: "PR",
-    qa: "QA", sdk: "SDK", seo: "SEO", ui: "UI", ux: "UX", xlsx: "XLSX",
-  }),
-);
-
-/** Joining words stay lower-case unless they open the title. */
-const SKILL_NAME_MINOR_WORDS = new Set([
-  "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into", "of", "on", "or",
-  "per", "the", "to", "via", "with",
-]);
-
-/**
- * Skill names are declared as invocation slugs — `cloudflare-email-service` —
- * because that is what you type to call one. They read as identifiers rather
- * than names when browsing, so the list shows a title-cased form.
- *
- * If a skill has a plugin/package prefix (e.g. `build-ios-apps:ios-debugger-agent`),
- * only the actual skill name is shown.
- */
-export function prettifySkillName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) return trimmed;
-
-  const target = trimmed.includes(":") ? trimmed.slice(trimmed.lastIndexOf(":") + 1).trim() : trimmed;
-  if (!target || /[A-Z\s]/.test(target)) return target;
-
-  return target
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((word, index) => {
-      const acronym = SKILL_NAME_ACRONYMS.get(word.toLowerCase());
-      if (acronym) return acronym;
-      if (index > 0 && SKILL_NAME_MINOR_WORDS.has(word.toLowerCase())) return word.toLowerCase();
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    })
-    .join(" ");
-}
-
-/**
- * What fits on one line of a library row at a typical window width, next to
- * the row's toggle or Install button. Kept short deliberately: the browser
- * clips anything wider mid-word, which is worse than a clause we chose.
- */
-const CONCISE_DESCRIPTION_LIMIT = 72;
-
-/**
- * Openings that say when to reach for a skill rather than what it does. The
- * row has no space for the ceremony, and the full text is a click away.
- */
-const DESCRIPTION_PREAMBLE = new RegExp(
-  "^(?:" +
-    [
-      "use\\s+(?:this\\s+skill\\s+)?(?:when|whenever|for|to)",
-      "this\\s+skill\\s+(?:is\\s+for|should\\s+be\\s+used\\s+(?:when|to|for))",
-      "(?:load|invoke|trigger)\\s+(?:this\\s+skill\\s+)?(?:when|before)",
-    ].join("|") +
-    ")\\s+" +
-    // The same trailing clause follows any of those openings.
-    "(?:the\\s+user\\s+(?:wants?|asks?|needs?)\\s+(?:to\\s+|for\\s+)?)?",
-  "i",
-);
-
-function stripDescriptionPreamble(value: string): string {
-  const stripped = value.replace(DESCRIPTION_PREAMBLE, "");
-  // Only take it if something substantial is left to read.
-  if (stripped.length < 16) return value;
-  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
-}
-
-/** Words that read as a broken-off sentence when a line ends on them. */
-const DANGLING_WORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "but", "by", "can", "for", "from", "in", "into", "is",
-  "its", "of", "on", "or", "that", "the", "their", "them", "then", "these", "this", "to",
-  "used", "uses", "using", "when", "which", "while", "with", "your",
-]);
-
-/** Descriptions are prose, so their inline markdown is noise in a list row. */
-function stripInlineMarkdown(value: string): string {
-  return value
-    .replace(/`([^`]*)`/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\*([^*\s][^*]*)\*/g, "$1");
-}
-
-/** Drop a trailing fragment so the line ends on a whole thought. */
-function trimDanglingWords(value: string): string {
-  const words = value.split(" ");
-  while (words.length > 1 && DANGLING_WORDS.has(words[words.length - 1].toLowerCase())) {
-    words.pop();
-  }
-  return words.join(" ");
-}
-
-/**
- * Descriptions in the wild run to a paragraph of trigger phrases, and their
- * first sentence alone often overflows the row. Take that sentence, then cut
- * it back to a clause so the line reads as something finished rather than
- * stopping mid-word; the full text is on the skill's own page.
- */
-export function conciseDescription(description: string): string {
-  const collapsed = stripInlineMarkdown(description.replace(/\s+/g, " ")).trim();
-  if (!collapsed) return "No description";
-
-  const firstSentence = collapsed.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? collapsed;
-  // A very short first match is usually an abbreviation, not a sentence.
-  const sentence = stripDescriptionPreamble(
-    (firstSentence.length < 24 ? collapsed : firstSentence).trim(),
-  );
-  if (sentence.length <= CONCISE_DESCRIPTION_LIMIT) return sentence;
-
-  // The ellipsis counts against the budget, so the result never exceeds it.
-  const budget = CONCISE_DESCRIPTION_LIMIT - 1;
-  const head = sentence.slice(0, budget + 1);
-  const clauseBreak = Math.max(
-    head.lastIndexOf(", "),
-    head.lastIndexOf("; "),
-    head.lastIndexOf(": "),
-    head.lastIndexOf(" — "),
-    head.lastIndexOf(" – "),
-    // A relative clause is the tail a one-line summary can most safely lose.
-    head.lastIndexOf(" that "),
-    head.lastIndexOf(" which "),
-    head.lastIndexOf(" where "),
-  );
-  // Only honour a clause break that still leaves a useful amount of the line.
-  const cut = clauseBreak > budget / 2 ? clauseBreak : head.lastIndexOf(" ");
-  const trimmed = trimDanglingWords(
-    sentence.slice(0, cut > 0 ? cut : budget).replace(/[\s,;:—–-]+$/, ""),
-  );
-  return `${trimmed}…`;
-}
-
 function isSkillEnabled(skill: AgentSkillRecord): boolean {
   return skill.bindings.some((binding) => binding.enabled);
 }
@@ -271,8 +139,6 @@ export function isEssentialSkill(skill: AgentSkillRecord): boolean {
 }
 
 /** The one sentence shown wherever an essential skill is marked. */
-export const ESSENTIAL_SKILL_NOTE = "Cozea cannot disable or delete it.";
-
 export function describeSkillsView(
   source: string,
   snapshot: AgentSkillsSnapshot | null,
@@ -1153,17 +1019,12 @@ export function AgentSkillsPage() {
         className="flex items-center gap-1"
       >
         {STATUS_FILTERS.map((filter) => (
-          <button
+          <FilterChip
             key={filter.id}
             type="button"
-            aria-pressed={status === filter.id}
             onClick={() => setStatus(filter.id)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
-              status === filter.id
-                ? "bg-secondary text-foreground shadow-xs"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-            )}
+            active={status === filter.id}
+            className="flex items-center gap-1.5"
           >
             <span>{filter.label}</span>
             <span
@@ -1174,7 +1035,7 @@ export function AgentSkillsPage() {
             >
               {statusCounts[filter.id]}
             </span>
-          </button>
+          </FilterChip>
         ))}
       </div>
     );

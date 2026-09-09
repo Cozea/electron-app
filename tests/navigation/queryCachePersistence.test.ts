@@ -63,4 +63,30 @@ describe('query cache durable invalidation', () => {
     expect(remove).toHaveBeenCalledWith('queryCache', 'disk-only')
     expect(useQueryCache.getState().cache).toEqual({})
   })
+
+  it('commits the final value from a burst after the refresh interval', async () => {
+    vi.useFakeTimers()
+    const { desktopPersistenceClient } = await import('@/app/model/persistence/desktopPersistenceClient')
+    vi.spyOn(desktopPersistenceClient, 'queueDirtyRecord').mockImplementation(() => 1)
+    const { queueQueryCacheUpdate, useQueryCache } = await import('@/app/model/queryCache')
+    useQueryCache.getState().set('project', { revision: 1 })
+
+    queueQueryCacheUpdate('project', { revision: 2 })
+    queueQueryCacheUpdate('project', { revision: 3 })
+    await vi.runAllTimersAsync()
+
+    expect(useQueryCache.getState().get<{ revision: number }>('project')).toEqual({ revision: 3 })
+    vi.useRealTimers()
+  })
+
+  it('does not restore an update cleared while it is pending', async () => {
+    vi.useFakeTimers()
+    const { queueQueryCacheUpdate, useQueryCache } = await import('@/app/model/queryCache')
+    queueQueryCacheUpdate('project', { revision: 1 })
+    useQueryCache.getState().clear('project')
+    await vi.runAllTimersAsync()
+
+    expect(useQueryCache.getState().get('project')).toBeUndefined()
+    vi.useRealTimers()
+  })
 })

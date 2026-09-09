@@ -1,4 +1,4 @@
-import { toastManager } from "@/features/assistant/ui/toast"
+import { toastManager } from "@/components/ui/toast"
 
 type AppToastInput = {
   title: string

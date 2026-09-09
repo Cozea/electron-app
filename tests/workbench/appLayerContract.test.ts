@@ -50,14 +50,11 @@ describe("application layer contract", () => {
       "apps/desktop/src/components/ui/combobox.tsx",
       "apps/desktop/src/components/ui/dialog.tsx",
       "apps/desktop/src/components/ui/dropdown-menu.tsx",
+      "apps/desktop/src/components/ui/popover.tsx",
       "apps/desktop/src/components/ui/select.tsx",
       "apps/desktop/src/components/ui/sheet.tsx",
       "apps/desktop/src/components/ui/tooltip.tsx",
-      "apps/desktop/src/features/assistant/ui/dialog.tsx",
-      "apps/desktop/src/features/assistant/ui/menu.tsx",
-      "apps/desktop/src/features/assistant/ui/popover.tsx",
-      "apps/desktop/src/features/assistant/ui/toast.tsx",
-      "apps/desktop/src/features/assistant/ui/tooltip.tsx",
+      "apps/desktop/src/components/ui/toast.tsx",
     ].map(read);
 
     expect(sharedSources.join("\n")).not.toContain("z-50");

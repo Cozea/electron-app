@@ -343,9 +343,9 @@ import {
   providerCandidates,
   providerLoadout,
   providerSkillCounts,
-  stepDetail,
   toggleCategorySelection,
-} from "../../apps/desktop/src/features/projects/pages/SkillBuildsView";
+} from "../../apps/desktop/src/features/projects/model/skillBuildModel";
+import { stepDetail } from "../../apps/desktop/src/features/projects/components/SkillBuildsView";
 import type { AgentSkillRecord } from "../../shared/electronApiTypes";
 
 function record(
@@ -721,7 +721,7 @@ describe("the mark standing in for a skill", () => {
  */
 describe("the hub's wiring", () => {
   const source = fs.readFileSync(
-    path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx"),
+    path.join(ROOT, "apps/desktop/src/features/projects/components/SkillBuildProviderHub.tsx"),
     "utf8",
   );
 
@@ -800,7 +800,7 @@ describe("the hub's wiring", () => {
  */
 describe("the core's two rings", () => {
   const source = fs.readFileSync(
-    path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx"),
+    path.join(ROOT, "apps/desktop/src/features/projects/components/SkillBuildProviderHub.tsx"),
     "utf8",
   );
 
@@ -814,7 +814,7 @@ describe("the core's two rings", () => {
     // class is the contract, and the stylesheet still has to carry the values.
     expect(block).toContain("skill-builds-active-ring");
     const stylesheet = fs.readFileSync(
-      path.join(ROOT, "apps/desktop/src/features/projects/pages/SkillBuildsView.css"),
+      path.join(ROOT, "apps/desktop/src/features/projects/components/SkillBuildsView.css"),
       "utf8",
     );
     expect(stylesheet).toContain(".skill-builds-active-ring");

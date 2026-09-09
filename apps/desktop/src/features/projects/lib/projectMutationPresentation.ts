@@ -1,3 +1,5 @@
+import { cleanConvexErrorMessage } from "@/lib/convexError"
+
 export interface ProjectDeleteErrorPresentation {
   title: string
   message: string
@@ -52,17 +54,10 @@ function extractErrorCode(input: unknown): string | null {
   return null
 }
 
-function cleanConvexErrorMessage(message: string): string {
-  return message
-    .replace(/^\[CONVEX.*?\]\s*/, '')
-    .replace(/\s*Called by client$/, '')
-    .trim()
-}
-
 export function formatProjectDeleteError(input: unknown): ProjectDeleteErrorPresentation {
   const cleaned = cleanConvexErrorMessage(
     extractErrorText(input, 'Failed to delete project')
-  )
+  ).trim()
   const code = extractErrorCode(input)
   const lower = cleaned.toLowerCase()
 
@@ -103,7 +98,7 @@ export function formatProjectDeleteError(input: unknown): ProjectDeleteErrorPres
 export function formatProjectRenameError(input: unknown): ProjectRenameErrorPresentation {
   const cleaned = cleanConvexErrorMessage(
     extractErrorText(input, 'Failed to rename project')
-  )
+  ).trim()
   const lower = cleaned.toLowerCase()
 
   if (lower.includes('unauthorized to edit project')) {

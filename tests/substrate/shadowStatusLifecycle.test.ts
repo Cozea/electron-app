@@ -72,7 +72,6 @@ const readyStatus = (baseUrl = "http://shadow") => ({
     providers: true,
     vcs: true,
     primary: true,
-    obsNdjson: false,
     inProcessAssistant: false,
   },
 });

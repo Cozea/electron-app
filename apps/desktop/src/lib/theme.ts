@@ -8,6 +8,7 @@ export type ResolvedTheme = Exclude<Theme, 'system'>
 export const THEME_STORAGE_KEY = 'cozea-theme'
 
 export const ALL_THEMES = ['light', 'dark', 'navy', 'wine', 'clay', 'forest'] as const
+export const DARK_COLOR_MODE_CLASS = 'theme-dark'
 
 export function getSystemTheme(): 'light' | 'dark' {
   if (typeof window === 'undefined') return 'light'
@@ -38,12 +39,18 @@ export function resolveAppliedTheme(theme: Theme): ResolvedTheme {
   return theme
 }
 
+export function resolveThemeColorMode(theme: Theme): 'light' | 'dark' {
+  return resolveAppliedTheme(theme) === 'light' ? 'light' : 'dark'
+}
+
 export function applyThemeClass(theme: Theme): void {
   if (typeof document === 'undefined') return
 
   const root = document.documentElement
-  root.classList.remove(...ALL_THEMES)
-  root.classList.add(resolveAppliedTheme(theme))
+  const resolvedTheme = resolveAppliedTheme(theme)
+  root.classList.remove(...ALL_THEMES, DARK_COLOR_MODE_CLASS)
+  root.classList.add(resolvedTheme)
+  if (resolvedTheme !== 'light') root.classList.add(DARK_COLOR_MODE_CLASS)
   // Release the pre-paint bridge set by public/theme-init.js; from here on the
   // class-based color-scheme rules in src/index.css are the authority.
   root.style.removeProperty('color-scheme')

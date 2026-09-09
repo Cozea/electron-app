@@ -1,8 +1,10 @@
+import { useHeaderOverflow } from "./HeaderOverflowContext";
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { cleanConvexError as cleanError } from "@/lib/convexError"
 import { useAuth } from "@/contexts/AuthContext";
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
 import { buildProjectJoinUrl } from "@shared/projectShare";
@@ -50,10 +52,7 @@ function initials(value: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D";
 }
 
-function cleanError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback;
-  return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback;
-}
+
 
 export function HeaderProjectShareButton({
   projectId,
@@ -90,6 +89,7 @@ export function HeaderProjectShareButton({
   const removeMember = useMutation(api.projectMembers.removeMember);
 
   const [open, setOpen] = useState(false);
+  const headerOverflow = useHeaderOverflow();
   const [identityKey, setIdentityKey] = useState("");
   const [inviteRole, setInviteRole] = useState<ProjectRole>("developer");
   const [joinRole, setJoinRole] = useState<ProjectRole>("developer");
@@ -169,7 +169,10 @@ export function HeaderProjectShareButton({
   if (!projectId) return null;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(next) => {
+      setOpen(next);
+      if (next) headerOverflow?.dismiss();
+    }}>
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
@@ -191,7 +194,7 @@ export function HeaderProjectShareButton({
         <TooltipContent>Share project</TooltipContent>
       </Tooltip>
 
-      <DialogContent className="max-h-[82vh] max-w-lg overflow-y-auto">
+      <DialogContent finalFocus={headerOverflow?.returnFocus} className="max-h-[82vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Share {projectName || "project"}</DialogTitle>
           <DialogDescription>

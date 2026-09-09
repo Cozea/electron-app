@@ -834,8 +834,15 @@ interface ComposerPromptEditorProps {
   placeholder: string;
   className?: string;
   onRemoveTerminalContext: (contextId: string) => void;
-  /** Line boxes the prompt currently occupies at the editor's present width. */
-  onMeasuredLinesChange?: (lines: number, promptLength: number) => void;
+  /**
+   * Width the prompt would have inline, from
+   * {@link useInlineComposerPromptWidth}. The wrap answer is measured at this
+   * width rather than at the editor's own, so it stays the same whichever
+   * arrangement the composer is currently in.
+   */
+  inlineMeasureWidthPx?: number | null;
+  /** True when the prompt needs more than one line at `inlineMeasureWidthPx`. */
+  onInlineWrapChange?: (wouldWrapInline: boolean) => void;
   onChange: (
     nextValue: string,
     nextCursor: number,
@@ -1080,7 +1087,8 @@ function ComposerPromptEditorInner({
   placeholder,
   className,
   onRemoveTerminalContext,
-  onMeasuredLinesChange,
+  inlineMeasureWidthPx,
+  onInlineWrapChange,
   onChange,
   onCommandKeyDown,
   onPaste,
@@ -1095,36 +1103,54 @@ function ComposerPromptEditorInner({
     terminalContextIds: terminalContexts.map((context) => context.id),
   });
   const onChangeRef = useRef(onChange);
-  const onMeasuredLinesChangeRef = useRef(onMeasuredLinesChange);
+  const onInlineWrapChangeRef = useRef(onInlineWrapChange);
   useEffect(() => {
-    onMeasuredLinesChangeRef.current = onMeasuredLinesChange;
-  }, [onMeasuredLinesChange]);
-  const lastMeasurementRef = useRef("");
+    onInlineWrapChangeRef.current = onInlineWrapChange;
+  }, [onInlineWrapChange]);
+  const inlineMeasureWidthRef = useRef(inlineMeasureWidthPx);
+  inlineMeasureWidthRef.current = inlineMeasureWidthPx;
+  const inlineProbeRef = useRef<HTMLDivElement | null>(null);
+  const lastWrapAnswerRef = useRef<boolean | null>(null);
+  const lastMeasuredSignatureRef = useRef<string | null>(null);
 
   /**
-   * Report how many line boxes the prompt occupies at the editor's current
-   * width. `scrollHeight` gives the full content height even when the box is
-   * clamped by `max-height`, so this stays correct once the prompt is long
-   * enough to scroll.
+   * Report whether the prompt needs a second line at the inline width.
+   *
+   * The probe is a copy of what Lexical rendered rather than the raw prompt
+   * string: mentions, skills and terminal contexts draw as chips whose widths
+   * have nothing to do with the text they stand for, so measuring the string
+   * would be wrong exactly where the prompt is most interesting. Cloning the
+   * reconciled subtree keeps the probe faithful by construction.
    */
-  const measureLines = useCallback(() => {
-    const report = onMeasuredLinesChangeRef.current;
-    if (!report) return;
+  const measureInlineWrap = useCallback(() => {
+    const report = onInlineWrapChangeRef.current;
+    const probe = inlineProbeRef.current;
     const rootElement = editor.getRootElement();
-    if (!rootElement) return;
-    const style = window.getComputedStyle(rootElement);
-    const lineHeight = resolveLineHeightPx(style);
+    const width = inlineMeasureWidthRef.current;
+    if (!report || !probe || !rootElement) return;
+    if (!width || !Number.isFinite(width) || width <= 0) return;
+
+    // Lexical reports selection changes through the same listener as edits, so
+    // most calls here are arrow keys with nothing to re-measure. Read the
+    // signature off the DOM rather than off the controlled value: both this and
+    // `OnChangePlugin` are update listeners, and this must not depend on which
+    // of the two ran first.
+    const signature = `${width}|${rootElement.childElementCount}|${rootElement.textContent ?? ""}`;
+    if (signature === lastMeasuredSignatureRef.current) return;
+    lastMeasuredSignatureRef.current = signature;
+
+    const clone = rootElement.cloneNode(true) as HTMLElement;
+    probe.replaceChildren(...Array.from(clone.childNodes));
+
+    const lineHeight = resolveLineHeightPx(window.getComputedStyle(probe));
     if (lineHeight <= 0) return;
-    const paddingY =
-      (Number.parseFloat(style.paddingTop) || 0) +
-      (Number.parseFloat(style.paddingBottom) || 0);
-    const contentHeight = Math.max(0, rootElement.scrollHeight - paddingY);
-    const lines = Math.max(1, Math.round(contentHeight / lineHeight));
-    const promptLength = snapshotRef.current.value.length;
-    const measurement = `${lines}:${promptLength}`;
-    if (measurement === lastMeasurementRef.current) return;
-    lastMeasurementRef.current = measurement;
-    report(lines, promptLength);
+    // Half a line of tolerance: descenders and inline chips make the content box
+    // slightly taller than the line box without meaning a second line.
+    const wouldWrapInline = probe.scrollHeight > lineHeight * 1.5;
+
+    if (wouldWrapInline === lastWrapAnswerRef.current) return;
+    lastWrapAnswerRef.current = wouldWrapInline;
+    report(wouldWrapInline);
   }, [editor]);
   const terminalContextsSignature = terminalContextSignature(terminalContexts);
   const terminalContextsSignatureRef = useRef(terminalContextsSignature);
@@ -1189,21 +1215,23 @@ function ComposerPromptEditorInner({
     queueMicrotask(() => {
       isApplyingControlledUpdateRef.current = false;
     });
-    window.requestAnimationFrame(measureLines);
-  }, [measureLines, cursor, editor, terminalContexts, terminalContextsSignature, skillsSignatureText, value]);
+  }, [cursor, editor, terminalContexts, terminalContextsSignature, skillsSignatureText, value]);
 
-  // A width change rewraps the prompt without changing its text, so a resized
-  // tile has to re-measure too.
+  // Measure off Lexical's own commit rather than off `value`. The listener runs
+  // once the reconciler has written the DOM, in the same task as the keystroke
+  // that caused it, so the shell reflows in the same paint as the character
+  // that triggered it instead of a frame behind it.
   useEffect(() => {
-    const rootElement = editor.getRootElement();
-    if (!rootElement) return;
-    measureLines();
-    const observer = new ResizeObserver(() => {
-      measureLines();
+    measureInlineWrap();
+    return editor.registerUpdateListener(() => {
+      measureInlineWrap();
     });
-    observer.observe(rootElement);
-    return () => observer.disconnect();
-  }, [editor, measureLines]);
+  }, [editor, measureInlineWrap]);
+
+  // A narrower row rewraps the prompt without changing its text.
+  useLayoutEffect(() => {
+    measureInlineWrap();
+  }, [inlineMeasureWidthPx, measureInlineWrap]);
 
   const focusAt = useCallback(
     (nextCursor: number) => {
@@ -1331,9 +1359,8 @@ function ComposerPromptEditorInner({
         cursorAdjacentToMention,
         terminalContextIds,
       );
-      window.requestAnimationFrame(measureLines);
     });
-  }, [measureLines]);
+  }, []);
 
   return (
     <ComposerTerminalContextActionsContext.Provider value={terminalContextActions}>
@@ -1364,6 +1391,20 @@ function ComposerPromptEditorInner({
           }
           ErrorBoundary={LexicalErrorBoundary}
         />
+        {/* The wrap measurement, taken at the inline width whatever the composer
+          * is currently doing. Typography must match the editor exactly; the
+          * clamps must not, or a long prompt would measure as capped rather
+          * than as wrapped. */}
+        <div
+          ref={inlineProbeRef}
+          aria-hidden="true"
+          data-testid="composer-inline-wrap-probe"
+          style={{
+            lineHeight: "var(--composer-line-height)",
+            width: inlineMeasureWidthPx ?? 0,
+          }}
+          className="pointer-events-none invisible absolute left-0 top-0 -z-10 block h-auto max-h-none select-none overflow-visible whitespace-pre-wrap break-words text-sm"
+        />
         <OnChangePlugin onChange={handleEditorChange} />
         <ComposerCommandKeyPlugin {...(onCommandKeyDown ? { onCommandKeyDown } : {})} />
         <ComposerInlineTokenArrowPlugin />
@@ -1388,7 +1429,8 @@ export const ComposerPromptEditor = forwardRef<
     placeholder,
     className,
     onRemoveTerminalContext,
-    onMeasuredLinesChange,
+    inlineMeasureWidthPx,
+    onInlineWrapChange,
     onChange,
     onCommandKeyDown,
     onPaste,
@@ -1427,7 +1469,8 @@ export const ComposerPromptEditor = forwardRef<
         disabled={disabled}
         placeholder={placeholder}
         onRemoveTerminalContext={onRemoveTerminalContext}
-        onMeasuredLinesChange={onMeasuredLinesChange}
+        inlineMeasureWidthPx={inlineMeasureWidthPx ?? null}
+        onInlineWrapChange={onInlineWrapChange}
         onChange={onChange}
         onPaste={onPaste}
         editorRef={ref}

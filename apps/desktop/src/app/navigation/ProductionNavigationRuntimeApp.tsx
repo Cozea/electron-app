@@ -5,7 +5,7 @@ import { AuthContext, type AuthContextType } from '@/contexts/AuthContext'
 import { ThemeProvider } from '@/contexts/ThemeContext'
 import { LanguageProvider } from '@/lib/i18n'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { ToastProvider } from '@/features/assistant/ui/toast'
+import { ToastProvider } from '@/components/ui/toast'
 import { ProjectLayout } from '@/features/projects/layouts/ProjectLayout'
 import { ProjectWorkbenchPage } from '@/features/projects/pages/ProjectWorkbenchPage'
 import {

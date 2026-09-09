@@ -15,6 +15,91 @@ const HARD_MAX_AGE = 24 * 60 * 60 * 1000 // 24 hours
 const MAX_CACHE_ENTRIES = 250
 const MIN_CACHE_REFRESH_INTERVAL_MS = 750
 let queryCacheClearGeneration = 0
+const queryCacheKeyGenerations = new Map<string, number>()
+
+interface PendingQueryCacheUpdate {
+  data: unknown
+  globalGeneration: number
+  keyGeneration: number
+  queuedAt: number
+  scheduled: boolean
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+const pendingQueryCacheUpdates = new Map<string, PendingQueryCacheUpdate>()
+
+function cancelPendingQueryCacheUpdate(key: string): void {
+  const pending = pendingQueryCacheUpdates.get(key)
+  if (pending?.timer) clearTimeout(pending.timer)
+  pendingQueryCacheUpdates.delete(key)
+  queryCacheKeyGenerations.set(key, (queryCacheKeyGenerations.get(key) ?? 0) + 1)
+}
+
+function cancelAllPendingQueryCacheUpdates(): void {
+  for (const pending of pendingQueryCacheUpdates.values()) {
+    if (pending.timer) clearTimeout(pending.timer)
+  }
+  pendingQueryCacheUpdates.clear()
+  queryCacheClearGeneration += 1
+}
+
+function commitPendingQueryCacheUpdate(key: string): void {
+  const pending = pendingQueryCacheUpdates.get(key)
+  if (!pending) return
+  if (
+    pending.globalGeneration !== queryCacheClearGeneration ||
+    pending.keyGeneration !== (queryCacheKeyGenerations.get(key) ?? 0)
+  ) {
+    pendingQueryCacheUpdates.delete(key)
+    return
+  }
+
+  const current = useQueryCache.getState().cache[key]
+  if (current?.data === pending.data || (current && current.timestamp > pending.queuedAt)) {
+    pendingQueryCacheUpdates.delete(key)
+    return
+  }
+
+  const remainingMs = current
+    ? Math.max(0, MIN_CACHE_REFRESH_INTERVAL_MS - (Date.now() - current.timestamp))
+    : 0
+  if (remainingMs > 0) {
+    pending.timer = setTimeout(() => {
+      pending.timer = null
+      commitPendingQueryCacheUpdate(key)
+    }, remainingMs)
+    return
+  }
+
+  pendingQueryCacheUpdates.delete(key)
+  useQueryCache.getState().set(key, pending.data)
+}
+
+/** Coalesce bursty fresh-query identities and always retain the final value. */
+export function queueQueryCacheUpdate(key: string, data: unknown): void {
+  const currentPending = pendingQueryCacheUpdates.get(key)
+  if (currentPending) {
+    currentPending.data = data
+    currentPending.queuedAt = Date.now()
+    return
+  }
+
+  const pending: PendingQueryCacheUpdate = {
+    data,
+    globalGeneration: queryCacheClearGeneration,
+    keyGeneration: queryCacheKeyGenerations.get(key) ?? 0,
+    queuedAt: Date.now(),
+    scheduled: true,
+    timer: null,
+  }
+  pendingQueryCacheUpdates.set(key, pending)
+  void scheduleTask(() => {
+    const latest = pendingQueryCacheUpdates.get(key)
+    if (!latest) return
+    latest.scheduled = false
+    commitPendingQueryCacheUpdate(key)
+  }, 'background')
+}
 
 function pruneCache(
   cache: Record<string, { data: unknown; timestamp: number }>
@@ -82,13 +167,14 @@ export const useQueryCache = create<QueryCacheState>()((set, get) => ({
 
   clear: (key?: string) => {
     if (key) {
+      cancelPendingQueryCacheUpdate(key)
       set((state) => {
         const { [key]: _removed, ...rest } = state.cache
         return { cache: rest }
       })
       desktopPersistenceClient.deleteRecord('queryCache', key)
     } else {
-      queryCacheClearGeneration += 1
+      cancelAllPendingQueryCacheUpdates()
       const keys = new Set([
         ...Object.keys(get().cache),
         ...desktopPersistenceClient.entries('queryCache').map(record => record.key),
@@ -166,23 +252,7 @@ export function useCachedQueryState<T>(
   // Update cache when fresh data arrives
   useEffect(() => {
     if (freshData !== undefined) {
-      void scheduleTask(() => {
-        // Use getState to avoid re-render loop
-        const currentCache = useQueryCache.getState().cache[key]
-        // Simple reference check is usually sufficient for Convex data
-        if (currentCache?.data === freshData) return
-
-        // Guard against high-frequency cache writes when a query returns
-        // rapidly changing object references.
-        if (
-          currentCache &&
-          Date.now() - currentCache.timestamp < MIN_CACHE_REFRESH_INTERVAL_MS
-        ) {
-          return
-        }
-
-        useQueryCache.getState().set(key, freshData)
-      }, 'background')
+      queueQueryCacheUpdate(key, freshData)
     }
   }, [key, freshData])
 

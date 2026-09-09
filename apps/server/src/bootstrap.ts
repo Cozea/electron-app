@@ -9,7 +9,6 @@ import {
   SUBSTRATE_T3_PIN_SHA,
 } from "../../../apps/desktop/electron/substrate/constants";
 import { readSubstrateFeatureFlags } from "../../../apps/desktop/electron/substrate/flags";
-import { getSharedSubstrateNdjsonWriter } from "../../../apps/desktop/electron/substrate/obs";
 import { createShadowHttpServer } from "../../../apps/desktop/electron/substrate-shadow-server/createShadowHttpServer";
 import type { OrchestrationRpcBackend } from "../../../apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers";
 import { bootstrapT3Server, type T3ServerBootstrapHandle } from "./t3Bootstrap.ts";
@@ -60,18 +59,6 @@ export async function bootstrapCozeaSubstrateServer(
   };
 
   const substrateFlags = readSubstrateFeatureFlags();
-  const obs = getSharedSubstrateNdjsonWriter();
-  obs.writeSpan({
-    name: "cozea.server.start",
-    attrs: {
-      host,
-      port,
-      rpcChat: substrateFlags.rpcChat,
-      providers: substrateFlags.providers,
-      primary: substrateFlags.primary,
-      t3Server: substrateFlags.t3Server,
-    },
-  });
 
   let t3Handle: T3ServerBootstrapHandle | null = null;
   let orchestrationBackend: OrchestrationRpcBackend | undefined;

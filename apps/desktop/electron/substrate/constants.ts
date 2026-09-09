@@ -21,12 +21,6 @@ export const SUBSTRATE_VCS_FLAG = "cozea.substrate.vcs" as const;
 /** Phase 5 — primary out-of-process substrate (default on). */
 export const SUBSTRATE_PRIMARY_FLAG = "cozea.substrate.primary" as const;
 
-/** Phase 6 / Track E — NDJSON spans (default on). */
-export const SUBSTRATE_OBS_NDJSON_FLAG = "cozea.obs.ndjson" as const;
-
-/** Default OTLP HTTP logs endpoint when observability is enabled. */
-export const DEFAULT_OTLP_LOGS_ENDPOINT = "http://127.0.0.1:4318/v1/logs" as const;
-
 /** Phase T1 — upstream T3 apps/server dual-run (default off). */
 export const SUBSTRATE_T3_SERVER_FLAG = "cozea.t3.server" as const;
 
@@ -45,7 +39,6 @@ export type SubstrateFlagId =
   | typeof SUBSTRATE_PROVIDERS_FLAG
   | typeof SUBSTRATE_VCS_FLAG
   | typeof SUBSTRATE_PRIMARY_FLAG
-  | typeof SUBSTRATE_OBS_NDJSON_FLAG
   | typeof SUBSTRATE_T3_SERVER_FLAG;
 
 /** IPC channel prefixes that remain after Phase 5 shrink (allowlist). */

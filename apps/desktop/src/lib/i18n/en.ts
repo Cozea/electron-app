@@ -306,6 +306,8 @@ const en = {
 
   // ── Workbench Selection Tile (Add dev app) ───────────────────────────
   "workbench.selection.letsWorkOn": "Let's work on",
+  "workbench.selection.thisProject": "this project",
+  "workbench.selection.goToPage": "Go to page",
   "workbench.selection.exploreStore": "Explore DevApps Store",
   "workbench.selection.searchTools": "Search tools",
   "workbench.selection.searchPlaceholder": "Search...",
@@ -822,6 +824,15 @@ const en = {
   "inbox.declined": "Invitation declined",
   "inbox.invitedBy": "Invited by",
   "inbox.deviceInvitations": "Device invitations",
+  "assistant.questions.label": "Questions from the agent",
+  "assistant.questions.hint": "The agent can keep working while you answer.",
+  "assistant.questions.answerLabel": "Answer",
+  "assistant.questions.customPlaceholder": "Or write an answer",
+  "assistant.questions.answerPlaceholder": "Your answer",
+  "assistant.questions.retryHint": "Retry sends the same answer.",
+  "assistant.questions.sending": "Sending…",
+  "assistant.questions.retry": "Retry answer",
+  "assistant.questions.send": "Send answer",
 } as const
 
 export type TranslationKey = keyof typeof en

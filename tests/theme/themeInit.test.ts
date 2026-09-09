@@ -3,7 +3,12 @@ import path from 'node:path'
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ALL_THEMES, applyThemeClass, THEME_STORAGE_KEY } from '../../apps/desktop/src/lib/theme'
+import {
+  ALL_THEMES,
+  applyThemeClass,
+  DARK_COLOR_MODE_CLASS,
+  THEME_STORAGE_KEY,
+} from '../../apps/desktop/src/lib/theme'
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..')
 const scriptSource = fs.readFileSync(
@@ -83,27 +88,41 @@ describe('public/theme-init.js', () => {
 
   it('applies every theme that src/lib/theme.ts defines', () => {
     for (const theme of ALL_THEMES) {
-      expect(runThemeInit({ stored: theme }).addedClasses).toEqual([theme])
+      expect(runThemeInit({ stored: theme }).addedClasses).toEqual(
+        theme === 'light' ? [theme] : [theme, DARK_COLOR_MODE_CLASS],
+      )
     }
   })
 
   it('resolves the system theme via prefers-color-scheme', () => {
-    expect(runThemeInit({ stored: 'system', systemPrefersDark: true }).addedClasses).toEqual(['dark'])
+    expect(runThemeInit({ stored: 'system', systemPrefersDark: true }).addedClasses).toEqual([
+      'dark',
+      DARK_COLOR_MODE_CLASS,
+    ])
     expect(runThemeInit({ stored: 'system', systemPrefersDark: false }).addedClasses).toEqual(['light'])
   })
 
   it('migrates the legacy sunny theme to clay', () => {
     // getStoredThemePreference() persists the migration; the script only paints with it.
-    expect(runThemeInit({ stored: 'sunny' }).addedClasses).toEqual(['clay'])
+    expect(runThemeInit({ stored: 'sunny' }).addedClasses).toEqual([
+      'clay',
+      DARK_COLOR_MODE_CLASS,
+    ])
   })
 
   it('falls back to dark like getStoredThemePreference()', () => {
-    expect(runThemeInit({ stored: null }).addedClasses).toEqual(['dark'])
-    expect(runThemeInit({ stored: 'not-a-theme' }).addedClasses).toEqual(['dark'])
+    expect(runThemeInit({ stored: null }).addedClasses).toEqual(['dark', DARK_COLOR_MODE_CLASS])
+    expect(runThemeInit({ stored: 'not-a-theme' }).addedClasses).toEqual([
+      'dark',
+      DARK_COLOR_MODE_CLASS,
+    ])
   })
 
   it('falls back to dark when storage access throws', () => {
-    expect(runThemeInit({ storageThrows: true }).addedClasses).toEqual(['dark'])
+    expect(runThemeInit({ storageThrows: true }).addedClasses).toEqual([
+      'dark',
+      DARK_COLOR_MODE_CLASS,
+    ])
   })
 
   it('bridges color-scheme inline until the stylesheet loads', () => {
@@ -136,7 +155,7 @@ describe('applyThemeClass', () => {
 
     applyThemeClass('navy')
 
-    expect([...classes]).toEqual(['platform-darwin', 'navy'])
+    expect([...classes]).toEqual(['platform-darwin', 'navy', DARK_COLOR_MODE_CLASS])
     expect(removedProperties).toContain('color-scheme')
   })
 })

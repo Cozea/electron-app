@@ -13,21 +13,25 @@ import {
   stripDisplayedPlanMarkdown,
 } from "../proposedPlan";
 import ChatMarkdown from "./ChatMarkdown";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu as Menu,
+  DropdownMenuContent as MenuPopup,
+  DropdownMenuItem as MenuItem,
+  DropdownMenuTrigger as MenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { Badge } from "../ui/badge";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
+  DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogPanel,
-  DialogPopup,
   DialogTitle,
-} from "../ui/dialog";
-import { toastManager } from "../ui/toast";
+} from "@/components/ui/dialog";
+import { toastManager } from "@/components/ui/toast";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
@@ -182,14 +186,14 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           }
         }}
       >
-        <DialogPopup className="max-w-xl">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Save plan to workspace</DialogTitle>
             <DialogDescription>
               Enter a path relative to <code>the workspace</code>.
             </DialogDescription>
           </DialogHeader>
-          <DialogPanel className="space-y-3">
+          <div className="space-y-3">
             <label htmlFor={savePathInputId} className="grid gap-1.5">
               <span className="text-xs font-medium text-foreground">Workspace path</span>
               <Input
@@ -201,7 +205,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
                 disabled={isSavingToWorkspace}
               />
             </label>
-          </DialogPanel>
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
@@ -219,7 +223,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               {isSavingToWorkspace ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
-        </DialogPopup>
+        </DialogContent>
       </Dialog>
     </div>
   );

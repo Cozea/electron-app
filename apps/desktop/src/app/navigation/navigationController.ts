@@ -8,7 +8,6 @@ import type {
   PresentationCommand,
   PresentationCommandResult,
 } from '@shared/navigationRuntimeTypes';
-import { navigationMetrics } from '@/lib/performance/navigationMetrics';
 
 class NavigationController {
   private commandSequence = 0;
@@ -50,24 +49,16 @@ class NavigationController {
     const api = window.electronAPI?.workbenchSession;
     if (!api?.setPresentation) return null;
 
-    const navId = navigationMetrics.nextNavigationId();
     const command: PresentationCommand = {
       clientEpoch: this.clientEpoch,
       sequence,
-      navigationId: navId,
+      navigationId: sequence,
       target,
       retained,
     };
 
-    navigationMetrics.increment('presentationRequests');
-
     try {
       const result = await api.setPresentation(command);
-      if (result.status === 'applied') {
-        navigationMetrics.increment('presentationApplies');
-      } else if (result.status === 'superseded') {
-        navigationMetrics.increment('presentationSuperseded');
-      }
       return result;
     } catch (err) {
       console.warn('[NavigationController] setPresentation failed:', err);

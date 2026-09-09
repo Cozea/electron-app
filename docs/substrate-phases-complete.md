@@ -13,7 +13,6 @@ End-to-end substrate spine with **all flags default ON** and Phase 4 consolidati
 | `cozea.substrate.providers` | `COZEA_SUBSTRATE_PROVIDERS` | **on** |
 | `cozea.substrate.vcs` | `COZEA_SUBSTRATE_VCS` | **on** |
 | `cozea.substrate.primary` | `COZEA_SUBSTRATE_PRIMARY` | **on** |
-| `cozea.obs.ndjson` | `COZEA_OBS_NDJSON` | **on** |
 | Codex deep probe | `COZEA_SUBSTRATE_CODEX_DEEP_PROBE` | **on** |
 
 Opt out with `COZEA_SUBSTRATE_*=0`.
@@ -34,7 +33,7 @@ GitCore remains the git execution layer behind `GitVcsDriver`.
 
 ## Observability
 
-NDJSON + OTLP export (default `http://127.0.0.1:4318/v1/logs`). Disable collector with `COZEA_OTLP_ENDPOINT=0`.
+Cozea-owned NDJSON/OTLP instrumentation was removed on 2026-09-09 ahead of a future PostHog/Sentry integration. Local startup logs remain. T3 observability is unchanged.
 
 ## Remaining follow-ons
 

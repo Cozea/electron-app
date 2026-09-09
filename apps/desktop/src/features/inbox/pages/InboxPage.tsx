@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
+import { cleanConvexError } from "@/lib/convexError"
 import { useAuth } from "@/contexts/AuthContext"
 import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
@@ -29,10 +30,7 @@ function initial(value: string): string {
   return value.trim().charAt(0).toUpperCase() || "?"
 }
 
-function cleanConvexError(error: unknown, fallback = "Could not update this invitation."): string {
-  const raw = error instanceof Error ? error.message : fallback
-  return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
-}
+
 
 function formatExpiryDays(expiresAt: number): string {
   const ms = expiresAt - Date.now()
@@ -94,7 +92,7 @@ export function InboxPage() {
           })
         }
       } catch (caught) {
-        const cleanMsg = cleanConvexError(caught)
+        const cleanMsg = cleanConvexError(caught, "Could not update this invitation.")
         setError(cleanMsg)
         appToast.error({
           title: "Action failed",

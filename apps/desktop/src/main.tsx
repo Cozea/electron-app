@@ -10,11 +10,10 @@ import '@fontsource-variable/jetbrains-mono/index.css'
 import './lib/immer'
 import './index.css'
 import { ConvexProvider } from './contexts/ConvexProvider'
-import { ToastProvider } from './features/assistant/ui/toast'
+import { ToastProvider } from './components/ui/toast'
 import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { applyStoredLanguage } from './lib/i18n'
 
-import { markCozeaPerformance, measureCozeaPerformance } from './lib/performance/marks'
 import { appRouter } from './router/routes'
 import { ElectronBrowserHostGate } from './features/browser/ElectronBrowserHostGate'
 import {
@@ -26,8 +25,6 @@ import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
 import { ProductionNavigationRuntimeApp } from './app/navigation/ProductionNavigationRuntimeApp'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'
-const rendererEntryMark = markCozeaPerformance('renderer:entry')
-
 function applyBootstrapRouteFromSearch(): void {
   if (window.location.protocol !== 'file:') {
     return
@@ -93,10 +90,7 @@ async function prewarmRestoredWorkbench(bootstrap: DesktopBootstrapSnapshot): Pr
 async function startRenderer(): Promise<void> {
   applyBootstrapRouteFromSearch()
 
-  const bootstrapStartMark = markCozeaPerformance('renderer:desktop-bootstrap-start')
   const bootstrap = await initializeDesktopBootstrap()
-  const bootstrapEndMark = markCozeaPerformance('renderer:desktop-bootstrap-ready')
-  measureCozeaPerformance('renderer:desktop-bootstrap', bootstrapStartMark, bootstrapEndMark)
   applyDesktopBootstrapRoute(bootstrap)
   void import('./app/model/queryCache')
     .then(({ initializeQueryCache }) => initializeQueryCache())
@@ -112,10 +106,7 @@ async function startRenderer(): Promise<void> {
     featureFlags.commonRoutePrewarm &&
     window.location.pathname.endsWith('/workbench')
   ) {
-    const workbenchWarmStart = markCozeaPerformance('renderer:workbench-code-prewarm-start')
     await prewarmRestoredWorkbench(bootstrap)
-    const workbenchWarmEnd = markCozeaPerformance('renderer:workbench-code-prewarm-end')
-    measureCozeaPerformance('renderer:workbench-code-prewarm', workbenchWarmStart, workbenchWarmEnd)
   }
 
   const platform = window.electronAPI?.platform
@@ -127,7 +118,6 @@ async function startRenderer(): Promise<void> {
   applyThemeClass(getStoredThemePreference())
   applyStoredLanguage()
 
-  const rootRenderStartMark = markCozeaPerformance('renderer:root-render-start')
   createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <ConvexProvider>
@@ -139,13 +129,6 @@ async function startRenderer(): Promise<void> {
     </React.StrictMode>,
   )
 
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      const firstFrameMark = markCozeaPerformance('renderer:first-frame')
-      measureCozeaPerformance('renderer:entry-to-root-render-start', rendererEntryMark, rootRenderStartMark)
-      measureCozeaPerformance('renderer:entry-to-first-frame', rendererEntryMark, firstFrameMark)
-    })
-  })
 }
 
 const rendererStart = __COZEA_NAVIGATION_TEST__

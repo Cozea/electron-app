@@ -11,6 +11,7 @@ import { useMutation, useQuery } from "convex/react"
 
 import { api } from "../../../../../convex/_generated/api"
 import type { Id } from "../../../../../convex/_generated/dataModel"
+import { cleanConvexError } from "@/lib/convexError"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   SettingsGroup,
@@ -197,10 +198,7 @@ export function OrganizationSettingsTabs({
   )
 }
 
-function cleanConvexError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback
-  return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
-}
+
 
 interface WorkbenchTarget {
   projectId: string

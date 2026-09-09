@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { api } from '../../../../../../convex/_generated/api'
+import { cleanConvexError as cleanError } from "@/lib/convexError"
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectHeader } from '@/lib/useProjectHeader'
 import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
@@ -37,10 +38,7 @@ const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
   { value: 'viewer', label: 'Viewer' },
 ]
 
-function cleanError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback
-  return raw.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '') || fallback
-}
+
 
 function initials(value: string): string {
   const parts = value.trim().split(/\s+/).filter(Boolean)

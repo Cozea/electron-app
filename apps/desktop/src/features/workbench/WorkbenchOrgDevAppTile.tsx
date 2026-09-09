@@ -31,6 +31,10 @@ import type { OrgDevAppInstallation } from "@shared/orgDevAppInstallation"
 import type { DevAppParts } from "@shared/devAppParts"
 import type { DevAppCapability } from "@shared/devAppCapabilities"
 import type { DevAppFolderGrant } from "@shared/devAppContainedRuntime"
+import {
+  orgDevAppRuntimeObserver,
+  useOrgDevAppRuntimeObservation,
+} from "@/features/devapps/model/orgDevAppRuntimeObserver"
 
 interface ResolvedOrgDevAppArtifact {
   url: string
@@ -101,7 +105,7 @@ export function WorkbenchOrgDevAppTile({
   const [prepareAttempt, setPrepareAttempt] = useState(0)
   const [approvedReleaseKey, setApprovedReleaseKey] = useState<string | null>(null)
   const [approvalRequiredReleaseKey, setApprovalRequiredReleaseKey] = useState<string | null>(null)
-  const [runtimeState, setRuntimeState] = useState<OrgDevAppRuntimeState | null>(null)
+  const [localRuntimeState, setRuntimeState] = useState<OrgDevAppRuntimeState | null>(null)
   const [showLogs, setShowLogs] = useState(false)
   const [environmentStatus, setEnvironmentStatus] = useState<OrgDevAppEnvironmentStatus | null>(null)
   const [environmentValues, setEnvironmentValues] = useState<Record<string, string>>({})
@@ -174,6 +178,18 @@ export function WorkbenchOrgDevAppTile({
   const hasPublishedWorker = Boolean(artifact?.parts.worker)
   const hostedRuntime = runtimeLocation === "hosted"
   const allowsDeviceFolders = runtimeLocation === "device"
+  const runtimeIdentity = useMemo(
+    () => artifact?.runtimeKind === "service"
+      ? { contentHash: artifact.contentHash, publicationId: artifact.publicationId }
+      : null,
+    [artifact?.contentHash, artifact?.publicationId, artifact?.runtimeKind],
+  )
+  const runtimeObservation = useOrgDevAppRuntimeObservation(
+    runtimeIdentity,
+    serviceApproved,
+    showLogs,
+  )
+  const runtimeState = runtimeObservation.state ?? localRuntimeState
 
   useEffect(() => {
     setPreparedOrigin(null)
@@ -292,6 +308,10 @@ export function WorkbenchOrgDevAppTile({
           })
           if (!started.success) throw new Error(started.error)
           setRuntimeState(started.state)
+          orgDevAppRuntimeObserver.publish(
+            { contentHash: artifact.contentHash, publicationId: artifact.publicationId },
+            started.state,
+          )
           if (started.state.status !== "ready" || !started.state.originUrl) {
             throw new Error(started.state.error ?? "The Service DevApp did not start.")
           }
@@ -351,27 +371,12 @@ export function WorkbenchOrgDevAppTile({
   )
 
   useEffect(() => {
-    if (artifact?.runtimeKind !== "service" || !serviceApproved) return
-    let cancelled = false
-    const refresh = async () => {
-      const result = await window.electronAPI.orgDevApp.getRuntimeState({
-        contentHash: artifact.contentHash,
-        publicationId: artifact.publicationId,
-      })
-      if (cancelled || !result.success) return
-      setRuntimeState(result.state)
-      if (result.state.status === "failed") {
-        setPreparedOrigin(null)
-        setPrepareError(result.state.error ?? "The Service DevApp stopped unexpectedly.")
-      }
-    }
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), showLogs ? 1_000 : 2_500)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [artifact?.contentHash, artifact?.publicationId, artifact?.runtimeKind, serviceApproved, showLogs])
+    if (runtimeObservation.state?.status !== "failed") return
+    setPreparedOrigin(null)
+    setPrepareError(
+      runtimeObservation.state.error ?? "The Service DevApp stopped unexpectedly.",
+    )
+  }, [runtimeObservation.state])
 
   const runtimeGeneration = releaseKey
     ? `${releaseKey}:${artifact?.runtimeKind === "service" ? prepareAttempt : 0}`
@@ -537,7 +542,16 @@ export function WorkbenchOrgDevAppTile({
                         publicationId: artifact.publicationId,
                       })
                       .then((result) => {
-                        if (result.success) setRuntimeState(result.state)
+                        if (result.success) {
+                          setRuntimeState(result.state)
+                          orgDevAppRuntimeObserver.publish(
+                            {
+                              contentHash: artifact.contentHash,
+                              publicationId: artifact.publicationId,
+                            },
+                            result.state,
+                          )
+                        }
                         setPreparedOrigin(null)
                       })
                   }}

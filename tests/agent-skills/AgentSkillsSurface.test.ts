@@ -60,7 +60,7 @@ describe("Agent Skills surface", () => {
     expect(pageSource).toContain("setSearchParams(new URLSearchParams(returnTo))");
 
     const buildsSource = readWorkspaceSource(
-      "apps/desktop/src/features/projects/pages/SkillBuildsView.tsx",
+      "apps/desktop/src/features/projects/components/SkillBuildsView.tsx",
     );
     // Builds names the build and the provider page being left, not just the
     // section: both are component state that only survive the trip in the URL.

@@ -42,21 +42,21 @@ typography:
     letterSpacing: "normal"
   caption:
     fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-    fontSize: "11px"
+    fontSize: "12px"
     fontWeight: 500
     lineHeight: "16px"
     letterSpacing: "normal"
   micro-label:
     fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-    fontSize: "9px"
+    fontSize: "10px"
     fontWeight: 500
-    lineHeight: "12px"
+    lineHeight: "14px"
     letterSpacing: "0.025em"
   identity-mark:
     fontFamily: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-    fontSize: "8px"
+    fontSize: "10px"
     fontWeight: 600
-    lineHeight: "8px"
+    lineHeight: "14px"
     letterSpacing: "normal"
   mono:
     fontFamily: "JetBrains Mono Variable, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
@@ -190,12 +190,12 @@ The canonical dark reference is a near-black graphite stack; every supported the
 ### Hierarchy
 
 - **Headline** (600, 1.25rem, 1.75rem): Dialog titles, inspector titles, and substantial section identities.
-- **Title** (600, 1.125rem, 1.75rem): Page titles and compact surface titles.
+- **Title** (600, 1.125rem, 1.75rem): Compact surface titles. Settings page titles use the named 22px Settings-title token.
 - **Body** (400, 13px, 20px): Default application copy, descriptions, navigation, and table content.
 - **Label** (500, 13px, 20px): Buttons, form labels, compact section headings, and status labels.
-- **Caption** (500, 11px, 16px): Compact operational metadata, restart notes, and secondary control context.
-- **Micro Label** (500, 9px, 12px): Short uppercase source or state tags where a 13px label would overpower the row.
-- **Identity Mark** (600, 8px, 8px): One- or two-letter provider marks inside fixed compact symbols; never use it for prose.
+- **Caption** (500, 12px, 16px): Compact operational metadata, restart notes, and secondary control context.
+- **Micro Label** (500, 10px, 14px): Short uppercase source or state tags where a 13px label would overpower the row.
+- **Identity Mark** (600, 10px, 14px): One- or two-letter provider marks inside fixed compact symbols; never use it for prose.
 - **Mono** (400, 13px, 24px): Instruction bodies, code, slugs, paths, and technical readouts.
 
 ### Named Rules
@@ -206,11 +206,11 @@ The canonical dark reference is a near-black graphite stack; every supported the
 
 ## Layout
 
-Cozea uses a persistent desktop shell around a flexible workbench. The primary sidebar is 16rem wide on desktop, collapses or moves into an 18rem sheet on small screens, and yields the remaining width to resizable or split work surfaces. Workbench content should preserve clear pane ownership through dividers, headers, and local scroll regions.
+Cozea uses a persistent desktop shell around a flexible workbench. The primary sidebar has one saved width across routes (224px by default, adjustable from 192px to 384px). It uses the same mounted offcanvas surface at every window size and automatically collapses below 768px. Workbench content should preserve clear pane ownership through dividers, headers, and local scroll regions.
 
 The layout rhythm is based on 4px increments. Controls typically use 8–12px internal spacing, compact groups use 8–16px gaps, and major pane headers or inspector sections use 20–24px padding. Density should feel information-rich, not cramped: keep related controls close and let pane boundaries, not empty space, establish structure.
 
-Responsive changes preserve the job rather than merely stacking everything. Sidebars become sheets, secondary inspector columns collapse when width is insufficient, and local toolbars wrap before labels are removed. Agent Skills keeps its filter sidebar but moves the library, detail, and editor through one focused settings column instead of preserving simultaneous panes merely because width is available.
+Responsive changes preserve the job rather than merely stacking everything. The app sidebar collapses, secondary inspector columns collapse when width is insufficient, and local toolbars wrap before labels are removed. Agent Skills keeps its filter sidebar but moves the library, detail, and editor through one focused settings column instead of preserving simultaneous panes merely because width is available.
 
 ## Elevation & Depth
 
@@ -277,6 +277,8 @@ For inventory-and-inspection work, begin with one grouped settings list and let 
 Dialogs use an 18px radius, 24px padding, a quiet border, restrained low shadow, and a black translucent backdrop with light blur. Menus and tooltips remain compact, scale by only a few percent as they appear, and never compete with the underlying work.
 
 Component state motion typically completes in 120–200ms. Structural sidebar changes use the established 300ms `cubic-bezier(0.22, 1, 0.36, 1)` curve, and reduced-motion preferences remove decorative animation.
+
+The sidebar buttons stay mounted and fade between their sidebar/header locations; hidden controls are inert. The header button's reserved width and the actual window-control inset animate with the sidebar's shared transition, so project controls do not jump right at the start of collapse. Embedded headers keep constant outer padding and use the native leading-space contract only while the sidebar is closed, including manually expanded narrow windows. Reduced motion removes these transitions.
 
 ## Do's and Don'ts
 

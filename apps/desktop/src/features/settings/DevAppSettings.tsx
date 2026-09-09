@@ -3,6 +3,7 @@ import { useConvex, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../convex/_generated/api"
+import { FilterChip } from "@/components/ui/filter-chip"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   SettingsGroup,
@@ -339,16 +340,12 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
           ).map((tab) => {
             const isActive = activeTab === tab.id
             return (
-              <button
+              <FilterChip
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "cursor-pointer rounded-full px-3 py-1 text-xs font-medium transition-colors inline-flex items-center gap-1.5",
-                  isActive
-                    ? "bg-secondary text-foreground shadow-xs"
-                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                )}
+                active={isActive}
+                className="inline-flex items-center gap-1.5"
               >
                 <span>{tab.label}</span>
                 <span
@@ -359,7 +356,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
                 >
                   {tab.count}
                 </span>
-              </button>
+              </FilterChip>
             )
           })}
         </div>

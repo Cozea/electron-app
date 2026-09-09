@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.theme-dark *));
 
 :root {
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -50,11 +50,8 @@
   /*
    * Empty-folder illustration.
    *
-   * Derived from --card / --card-foreground rather than hard-coded per theme,
-   * and deliberately NOT using the `dark:` variant: that variant is defined as
-   * `&:is(.dark *)`, and applyThemeClass() puts exactly one mutually exclusive
-   * theme class on <html>, so `dark:` never matches navy/wine/clay/forest. A
-   * mix against the card tokens re-resolves correctly under all six.
+   * Derived from --card / --card-foreground rather than hard-coded per theme.
+   * A mix against the card tokens re-resolves correctly under all six themes.
    *
    * --card-foreground always contrasts with --card, so marks and labels stay
    * legible whichever way the theme flips.
@@ -1247,6 +1244,8 @@ body {
   --text-lg--line-height: 24px;
   --text-xl: 18px;
   --text-xl--line-height: 26px;
+  --text-settings-title: 22px;
+  --text-settings-title--line-height: 28px;
   --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-heading: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

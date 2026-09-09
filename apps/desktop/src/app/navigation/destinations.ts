@@ -4,6 +4,7 @@
  */
 
 import { settingsModules } from '@/lib/settings/settingsModules';
+import { destinationModules } from '@/app/navigation/destinationModules';
 
 export type RouteDestinationKind =
   | 'projects'
@@ -27,51 +28,51 @@ export interface DestinationDefinition {
 
 const DESTINATION_DEFINITIONS: Record<string, DestinationDefinition> = {
   '/projects': {
-    loader: () => import('@/features/projects/pages/ProjectsLaunchPage'),
+    loader: destinationModules.projects,
     pathPrefix: '/projects',
   },
   '/projects/store': {
-    loader: () => import('@/features/devapps/pages/AppStorePage'),
+    loader: destinationModules.store,
     pathPrefix: '/projects/store',
   },
   '/projects/skills': {
-    loader: () => import('@/features/projects/pages/AgentSkillsPage'),
+    loader: destinationModules.skills,
     pathPrefix: '/projects/skills',
   },
   '/projects/inbox': {
-    loader: () => import('@/features/inbox/pages/InboxPage'),
+    loader: destinationModules.inbox,
     pathPrefix: '/projects/inbox',
   },
   '/projects/tasks': {
-    loader: () => import('@/features/tasks/pages/TasksPage'),
+    loader: destinationModules.tasks,
     pathPrefix: '/projects/tasks',
   },
   '/projects/new': {
-    loader: () => import('@/pages/NewProject'),
+    loader: destinationModules.newProject,
     pathPrefix: '/projects/new',
   },
   'workbench': {
-    loader: () => import('@/features/projects/pages/ProjectWorkbenchPage'),
+    loader: destinationModules.workbench,
     pathPrefix: '/workbench',
   },
   '/projects/settings/account': {
-    loader: settingsModules.account ?? (() => import('@/features/settings/Account')),
+    loader: settingsModules.account,
     pathPrefix: '/projects/settings/account',
   },
   '/projects/settings/appearance': {
-    loader: settingsModules.appearance ?? (() => import('@/features/settings/Appearance')),
+    loader: settingsModules.appearance,
     pathPrefix: '/projects/settings/appearance',
   },
   '/projects/settings/organizations': {
-    loader: settingsModules.organizations ?? (() => import('@/features/settings/Organizations')),
+    loader: settingsModules.organizations,
     pathPrefix: '/projects/settings/organizations',
   },
   '/projects/settings/tooling': {
-    loader: settingsModules.tooling ?? (() => import('@/features/settings/Tooling')),
+    loader: settingsModules.tooling,
     pathPrefix: '/projects/settings/tooling',
   },
   '/projects/settings/devapps': {
-    loader: settingsModules.devapps ?? (() => import('@/features/settings/DevAppSettings')),
+    loader: settingsModules.devapps,
     pathPrefix: '/projects/settings/devapps',
   },
 };

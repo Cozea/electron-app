@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import * as Y from 'yjs'
+import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
@@ -66,10 +67,7 @@ export interface ProjectSettingsPageProps {
   onRequestClose?: (() => void) | null
 }
 
-function cleanConvexError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback
-  return raw.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '') || fallback
-}
+
 
 interface ActiveRecoveryKit {
   roomId: string

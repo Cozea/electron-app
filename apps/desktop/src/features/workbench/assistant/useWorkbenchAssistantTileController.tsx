@@ -1,32 +1,22 @@
+import { prepareComposerImageUploads } from "./prepareComposerImageUploads";
 import { providerImageRejection } from "@/features/assistant/chat/providerInputCapabilities";
 import { compactionUnavailableReason } from "@/features/assistant/chat/contextCompaction";
 import {
   questionDraftKey,
-  submitQuestionOnce,
   useQuestionDraftStore,
 } from "@/features/assistant/questionDraftStore";
-import {
-  buildPendingUserInputAnswers,
-  pendingUserInputDraftFromAnswer,
-} from "@/features/assistant/pendingUserInput";
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ClipboardEventHandler,
   type ComponentProps,
 } from "react";
 
 import {
   ApprovalRequestId,
-  CommandId,
-  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
-  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ModelSelection,
-  type OrchestrationGetTurnDiffResult,
-  type ProviderApprovalDecision,
   type ProviderInteractionMode,
   type ProviderInstanceId,
   type ProviderKind,
@@ -45,32 +35,24 @@ import type {
   PreviewAnnotationSubmission,
 } from "@cozea/contracts/t3/ipc";
 
-import { Button } from "@/components/ui/button";
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
   inferCheckpointTurnCountByTurnId,
 } from "@/features/assistant/chat/session-logic";
-import {
-  CozeaChatSurface,
-  type ComposerImageDraft,
-  type ProviderModelOptionsByProvider,
-  type UserInputAnswerDrafts,
-} from "@/features/assistant/chat/CozeaChatSurface";
+import { CozeaChatSurface } from "@/features/assistant/chat/CozeaChatSurface";
+import type {
+  ProviderModelOptionsByProvider,
+  UserInputAnswerDrafts,
+} from "@/features/assistant/model/assistantComposerTypes";
 import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
 } from "@/features/assistant/chat/composerDraftStore";
-import { clampCollapsedComposerCursor } from "@/features/assistant/composer-logic";
-import {
-  appendComposerMentions,
-  partitionDroppedComposerFiles,
-} from "@/features/assistant/chat/composerDroppedFiles";
 import {
   reportMemoryUpdateOutcome,
   subscribeMemoryUpdateRequests,
 } from "@/features/project-memory/memoryUpdateBus";
-import { ProviderRemediationAction } from "@/features/assistant/chat/ProviderRemediationAction";
 import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation";
 import {
   assistantDrafts,
@@ -119,10 +101,7 @@ import {
 } from "@/substrate/t3ConnectionStatus";
 import { ensureNativeApi } from "@/lib/nativeApi";
 import { projectAnalysisDesktopClient } from "@/lib/projectAnalysis/projectAnalysisDesktopClient";
-import {
-  appendPreviewAnnotationPrompt,
-  previewAnnotationScreenshotFile,
-} from "@/features/browser/previewAnnotation";
+import { appendPreviewAnnotationPrompt } from "@/features/browser/previewAnnotation";
 import { getProviderModelCapabilities } from "@/features/assistant/model/providerModels";
 import {
   createAssistantProjectSelectorForTile,
@@ -142,6 +121,14 @@ import {
 
 import { useAssistantServerConfig } from "./useAssistantServerConfig";
 import { useAssistantTurnLifecycle } from "./useAssistantTurnLifecycle";
+import { renderAssistantComposerStatus } from "./AssistantComposerStatus";
+import { useAssistantPendingRequestActions } from "./useAssistantPendingRequestActions";
+import { useAssistantDiffDialog } from "./useAssistantDiffDialog";
+import { useAssistantWorkspaceRoot } from "./useAssistantWorkspaceRoot";
+import {
+  revokeBlobPreviewUrl,
+  useAssistantComposerAttachments,
+} from "./useAssistantComposerAttachments";
 import { resolvePlanFollowUpSubmission } from "@/features/assistant/proposedPlan";
 import {
   findLatestProposedPlan,
@@ -166,9 +153,6 @@ import {
   withWorkspaceBindingLock,
   withModelSelectionModel,
 } from "./workbenchAssistantShared";
-
-import { HugeiconsIcon } from "@hugeicons/react";
-import { AlertCircleIcon as __AlertCircleHugeIcon } from "@hugeicons/core-free-icons";
 
 interface UseWorkbenchAssistantTileControllerInput {
   projectId: string;
@@ -202,29 +186,6 @@ interface WorkbenchAssistantTileControllerResult {
   surfaceProps: ComponentProps<typeof CozeaChatSurface>;
 }
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("Could not read image data."));
-    });
-    reader.addEventListener("error", () => {
-      reject(reader.error ?? new Error("Failed to read image."));
-    });
-    reader.readAsDataURL(file);
-  });
-}
-
-function revokeBlobPreviewUrl(previewUrl: string | undefined): void {
-  if (!previewUrl || typeof URL === "undefined" || !previewUrl.startsWith("blob:")) {
-    return;
-  }
-  URL.revokeObjectURL(previewUrl);
-}
 
 export function useWorkbenchAssistantTileController(
   input: UseWorkbenchAssistantTileControllerInput,
@@ -292,7 +253,6 @@ export function useWorkbenchAssistantTileController(
   /** Set while a memory rebuild we were asked to run is still outstanding. */
   const [memoryUpdateInFlight, setMemoryUpdateInFlight] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [autoSendAnnotationId, setAutoSendAnnotationId] = useState<string | null>(null);
   const [bindingError, setBindingError] = useState<string | null>(null);
   const [isBinding, setIsBinding] = useState(false);
   const [bindingRevision, setBindingRevision] = useState(0);
@@ -303,7 +263,7 @@ export function useWorkbenchAssistantTileController(
   const [isRevertingCheckpoint, setIsRevertingCheckpoint] = useState(false);
   const [activeRequestKey, setActiveRequestKey] = useState<string | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
-  const [diffDialog, setDiffDialog] = useState<DiffDialogState | null>(null);
+  const { closeDiffDialog, diffDialog, openDiffDialog } = useAssistantDiffDialog();
   const [userInputDrafts, setUserInputDrafts] = useState<UserInputAnswerDrafts>({});
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   const updateAssistantTile = useProjectWorkbenchStore(
@@ -352,34 +312,10 @@ export function useWorkbenchAssistantTileController(
   // the timeline. The runtime context already exposes the real root via
   // `input.projectRootPath`; only fall back to resolving from the opaque
   // workspaceId when that is unavailable.
-  const [resolvedWorkspaceRoot, setResolvedWorkspaceRoot] = useState<string | null>(null);
-  useEffect(() => {
-    if (input.projectRootPath) {
-      setResolvedWorkspaceRoot(input.projectRootPath);
-      return;
-    }
-    if (!input.workspaceId) {
-      setResolvedWorkspaceRoot(null);
-      return;
-    }
-    let cancelled = false;
-    const workspaceId = input.workspaceId;
-    void projectAnalysisDesktopClient
-      .resolveRoot(workspaceId)
-      .then((root) => {
-        if (!cancelled) {
-          setResolvedWorkspaceRoot(root);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setResolvedWorkspaceRoot(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [input.projectRootPath, input.workspaceId]);
+  const resolvedWorkspaceRoot = useAssistantWorkspaceRoot(
+    input.projectRootPath,
+    input.workspaceId,
+  );
 
   useEffect(() => {
     if (!thread?.id) {
@@ -475,6 +411,7 @@ export function useWorkbenchAssistantTileController(
     setComposer,
     composerCursor,
     setComposerCursor,
+    setComposerState,
     composerImages,
     setComposerImages,
     composerPreviewAnnotations,
@@ -709,6 +646,32 @@ export function useWorkbenchAssistantTileController(
     () => derivePendingUserInputs(visibleThread?.activities ?? []),
     [visibleThread?.activities],
   );
+  const requestSendFromAttachment = useCallback(
+    () => handleSendRef.current(),
+    [],
+  );
+  const {
+    addComposerFiles,
+    attachPreviewAnnotation,
+    handleComposerPaste,
+    removeComposerImage,
+    removePreviewAnnotation,
+  } = useAssistantComposerAttachments({
+    composer,
+    setComposer,
+    setComposerCursor,
+    composerImages,
+    setComposerImages,
+    previewAnnotations: composerPreviewAnnotations,
+    setPreviewAnnotations: setComposerPreviewAnnotations,
+    pendingUserInputs,
+    selectedProvider,
+    workspaceRoot: resolvedWorkspaceRoot,
+    isSending,
+    sendInFlightRef,
+    requestSend: requestSendFromAttachment,
+    setSendError,
+  });
   useEffect(() => {
     if (!visibleThread) return;
     const resolved = new Set(
@@ -735,7 +698,7 @@ export function useWorkbenchAssistantTileController(
         !resolved.has(payload.requestId)
       )
         continue;
-      useQuestionDraftStore.getState().remove(
+      void useQuestionDraftStore.getState().remove(
         questionDraftKey(visibleThread.id, {
           requestId: ApprovalRequestId.makeUnsafe(payload.requestId),
           createdAt: activity.createdAt,
@@ -1131,7 +1094,10 @@ export function useWorkbenchAssistantTileController(
     updateAssistantTile,
   ]);
 
-  const runMetaSync = async (mutate: () => Promise<void>, options?: { requestKey?: string }) => {
+  const runMetaSync = useCallback(async (
+    mutate: () => Promise<void>,
+    options?: { requestKey?: string },
+  ) => {
     setThreadOperationCount((count) => count + 1);
     if (options?.requestKey) {
       setActiveRequestKey(options.requestKey);
@@ -1148,7 +1114,7 @@ export function useWorkbenchAssistantTileController(
         setActiveRequestKey(null);
       }
     }
-  };
+  }, [validateConversationContext]);
 
   const normalizeDraftModelSelection = useCallback(
     (selection: ModelSelection) =>
@@ -1874,20 +1840,7 @@ export function useWorkbenchAssistantTileController(
       );
       const skills =
         providerSnapshot?.skills?.filter((s) => extractedSkillNames.includes(s.name)) ?? [];
-      const uploadAttachments = await Promise.all(
-        composerImagesSnapshot.map(async (image) => {
-          if (!image.file) {
-            throw new Error(`Attachment '${image.name}' is no longer available.`);
-          }
-          return {
-            type: "image" as const,
-            name: image.name,
-            mimeType: image.mimeType,
-            sizeBytes: image.sizeBytes,
-            dataUrl: await readFileAsDataUrl(image.file),
-          };
-        }),
-      );
+      const uploadAttachments = await prepareComposerImageUploads(composerImagesSnapshot);
 
       await getOrchestration().dispatchCommand({
         type: "thread.turn.start",
@@ -2033,195 +1986,21 @@ export function useWorkbenchAssistantTileController(
     });
   }, [memoryUpdateInFlight, memoryTurnError, input.tile.id]);
 
-  useEffect(() => {
-    if (!autoSendAnnotationId || isSending || sendInFlightRef.current) return;
-    const annotation = composerPreviewAnnotations.find(
-      (candidate) => candidate.id === autoSendAnnotationId,
-    );
-    if (!annotation) return;
-    setAutoSendAnnotationId(null);
-    void handleSendRef.current();
-  }, [autoSendAnnotationId, composerImages, composerPreviewAnnotations, isSending]);
-
-  const attachPreviewAnnotation = useCallback(
-    async (
-      annotation: PreviewAnnotationPayload,
-      submission: PreviewAnnotationSubmission,
-    ): Promise<void> => {
-      setComposerPreviewAnnotations((current) => [
-        ...current.filter((candidate) => candidate.id !== annotation.id),
-        annotation,
-      ]);
-      try {
-        const file = await previewAnnotationScreenshotFile(annotation);
-        const screenshot = annotation.screenshot;
-        if (file && screenshot) {
-          setComposerImages((current) => [
-            ...current.filter((image) => image.id !== annotation.id),
-            {
-              id: annotation.id,
-              name: file.name,
-              mimeType: file.type,
-              sizeBytes: file.size,
-              previewUrl: screenshot.dataUrl,
-              file,
-            },
-          ]);
-        }
-      } catch {
-        // The exact structured T3 payload remains sendable if screenshot conversion fails.
-      }
-      if (submission === "send") setAutoSendAnnotationId(annotation.id);
-    },
-    [],
-  );
-
-  const removePreviewAnnotation = useCallback((annotationId: string) => {
-    setComposerPreviewAnnotations((current) =>
-      current.filter((annotation) => annotation.id !== annotationId),
-    );
-    setComposerImages((current) =>
-      current.filter((image) => {
-        if (image.id !== annotationId) return true;
-        revokeBlobPreviewUrl(image.previewUrl);
-        return false;
-      }),
-    );
-    setAutoSendAnnotationId((current) => (current === annotationId ? null : current));
-  }, []);
-
-  const handleApprovalDecision = async (requestId: string, decision: ProviderApprovalDecision) => {
-    if (!thread) {
-      return;
-    }
-
-    await runMetaSync(
-      async () => {
-        ensureNativeApi();
-        await getOrchestration().dispatchCommand({
-          type: "thread.approval.respond",
-          commandId: newCommandId(),
-          threadId: thread.id,
-          requestId: ApprovalRequestId.makeUnsafe(requestId),
-          decision,
-          createdAt: new Date().toISOString(),
-        });
-      },
-      { requestKey: requestId },
-    );
-  };
-
-  const handleUserInputDraftChange = (
-    requestId: string,
-    questionId: string,
-    value: string | string[],
-  ) => {
-    setUserInputDrafts((current) => ({
-      ...current,
-      [requestId]: {
-        ...current[requestId],
-        [questionId]: value,
-      },
-    }));
-  };
-
-  const handleSubmitUserInput = async (requestId: string) => {
-    if (!thread) {
-      return;
-    }
-
-    const request = pendingUserInputs.find((entry) => String(entry.requestId) === requestId);
-    if (!request) return;
-    if (request?.responseMode === "message") {
-      await runMetaSync(
-        () =>
-          submitQuestionOnce(thread.id, request, async (submission) => {
-            await getOrchestration().dispatchCommand({
-              type: "thread.user-input.respond",
-              commandId: CommandId.makeUnsafe(submission.commandId),
-              threadId: thread.id,
-              requestId: ApprovalRequestId.makeUnsafe(requestId),
-              answers: submission.answers,
-              createdAt: submission.createdAt,
-            });
-          }),
-        { requestKey: requestId },
-      );
-      return;
-    }
-
-    const answers = userInputDrafts[requestId];
-    if (!answers) {
-      return;
-    }
-
-    const normalizedAnswers = buildPendingUserInputAnswers(
-      request.questions,
-      Object.fromEntries(
-        request.questions.map((question) => [
-          question.id,
-          pendingUserInputDraftFromAnswer(question, answers[question.id]),
-        ]),
-      ),
-    );
-
-    if (normalizedAnswers === null) {
-      return;
-    }
-
-    await runMetaSync(
-      async () => {
-        ensureNativeApi();
-        await getOrchestration().dispatchCommand({
-          type: "thread.user-input.respond",
-          commandId: newCommandId(),
-          threadId: thread.id,
-          requestId: ApprovalRequestId.makeUnsafe(requestId),
-          answers: normalizedAnswers,
-          createdAt: new Date().toISOString(),
-        });
-        setUserInputDrafts((current) => {
-          const next = { ...current };
-          delete next[requestId];
-          return next;
-        });
-      },
-      { requestKey: requestId },
-    );
-  };
-
-  const openDiffDialog = async (dialogInput: {
-    title: string;
-    request: () => Promise<OrchestrationGetTurnDiffResult>;
-  }) => {
-    setDiffDialog({
-      title: dialogInput.title,
-      diff: "",
-      error: null,
-      isLoading: true,
-    });
-
-    try {
-      const result = await dialogInput.request();
-      setDiffDialog({
-        title: dialogInput.title,
-        diff: result.diff,
-        error: null,
-        isLoading: false,
-      });
-    } catch (error) {
-      setDiffDialog({
-        title: dialogInput.title,
-        diff: "",
-        error: toErrorMessage(error),
-        isLoading: false,
-      });
-    }
-  };
+  const {
+    handleApprovalDecision,
+    handleSubmitUserInput,
+    handleUserInputDraftChange,
+  } = useAssistantPendingRequestActions({
+    thread,
+    pendingUserInputs,
+    userInputDrafts,
+    setUserInputDrafts,
+    getOrchestration,
+    runMetaSync,
+  });
 
   const handleComposerChange = (nextValue: string, nextCursor: number) => {
-    setComposer(nextValue);
-    setComposerCursor(nextCursor);
+    setComposerState(nextValue, nextCursor);
   };
 
   const handleComposerCommandKey = (
@@ -2234,124 +2013,6 @@ export function useWorkbenchAssistantTileController(
     }
 
     return false;
-  };
-
-  const addComposerImages = useCallback(
-    (files: File[]) => {
-      if (files.length === 0) return;
-      if (pendingUserInputs.some((request) => request.responseMode !== "message")) {
-        setSendError("Attach images after answering pending questions.");
-        return;
-      }
-      const currentImageCount = composerImages.length;
-      const nextImages: ComposerImageDraft[] = [];
-      let nextImageCount = currentImageCount;
-      let error: string | null = null;
-
-      for (const file of files) {
-        if (!file.type.startsWith("image/")) {
-          error = `Unsupported file type for '${file.name}'. Attach image files only.`;
-          continue;
-        }
-        const rejection = providerImageRejection(selectedProvider, [
-          ...composerImages,
-          ...nextImages,
-          { mimeType: file.type, sizeBytes: file.size },
-        ]);
-        if (rejection) {
-          error = rejection;
-          continue;
-        }
-        if (file.size > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
-          const maxMb = Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024));
-          error = `'${file.name}' exceeds the ${maxMb}MB attachment limit.`;
-          continue;
-        }
-        if (nextImageCount >= PROVIDER_SEND_TURN_MAX_ATTACHMENTS) {
-          error = `You can attach up to ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS} images per message.`;
-          break;
-        }
-        nextImages.push({
-          id: newMessageId(),
-          name: file.name || "image",
-          mimeType: file.type,
-          sizeBytes: file.size,
-          previewUrl: "", // The durable-draft hook owns the preview URL lifecycle.
-          file,
-        });
-        nextImageCount += 1;
-      }
-
-      if (nextImages.length > 0) {
-        setComposerImages((current) => [...current, ...nextImages]);
-      }
-      if (error) {
-        setSendError(error);
-      }
-    },
-    [composerImages, pendingUserInputs, selectedProvider],
-  );
-
-  const removeComposerImage = useCallback((imageId: string) => {
-    setComposerImages((current) => {
-      const next: ComposerImageDraft[] = [];
-      for (const image of current) {
-        if (image.id === imageId) {
-          revokeBlobPreviewUrl(image.previewUrl);
-          continue;
-        }
-        next.push(image);
-      }
-      return next;
-    });
-  }, []);
-
-  /**
-   * Files dropped on the tile or picked from the composer. Images become
-   * attachments; everything else (a PDF, a CSV, a folder) is mentioned by path
-   * so the agent opens it from disk, because the provider attachment contract
-   * carries images only.
-   */
-  const addComposerFiles = useCallback(
-    (files: File[]) => {
-      if (files.length === 0) return;
-      // The composer is bound to the pending answer draft while a question is
-      // open, so anything written to the thread draft here would land offscreen.
-      if (pendingUserInputs.length > 0) {
-        setSendError("Attach files after answering pending questions.");
-        return;
-      }
-
-      const { images, mentionPaths, unresolvedNames } = partitionDroppedComposerFiles(files, {
-        resolvePath: window.electronAPI?.getPathForFile,
-        workspaceRoot: resolvedWorkspaceRoot,
-      });
-
-      if (mentionPaths.length > 0) {
-        const nextComposer = appendComposerMentions(composer, mentionPaths);
-        setComposer(nextComposer);
-        setComposerCursor(clampCollapsedComposerCursor(nextComposer, Number.POSITIVE_INFINITY));
-      }
-
-      addComposerImages(images);
-
-      if (unresolvedNames.length > 0) {
-        const names = unresolvedNames.map((name) => `'${name}'`).join(", ");
-        setSendError(
-          `Cozea could not read a local path for ${names}. Save the file to disk, then drop it in.`,
-        );
-      }
-    },
-    [addComposerImages, composer, pendingUserInputs.length, resolvedWorkspaceRoot],
-  );
-
-  const handleComposerPaste: ClipboardEventHandler<HTMLElement> = (event) => {
-    const files = Array.from(event.clipboardData.files);
-    if (files.length === 0) return;
-    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
-    if (imageFiles.length === 0) return;
-    event.preventDefault();
-    addComposerImages(imageFiles);
   };
 
   const toggleInteractionMode = async () => {
@@ -2519,70 +2180,26 @@ export function useWorkbenchAssistantTileController(
     });
   };
 
-  const composerStatus = (() => {
-    const historyError =
+  const composerStatus = renderAssistantComposerStatus({
+    historyError:
       draftError ??
       contextError ??
       (config && !canUseProvider
         ? "The original provider instance is unavailable. Reconnect or update it to continue."
-        : null);
-    if (historyError)
-      return (
-        <div role="status" className="px-4 py-2 text-xs text-destructive">
-          {historyError}
-        </div>
-      );
-    if (bindingError) {
-      return (
-        <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
-          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
-          <span className="line-clamp-2 min-w-0 flex-1">{bindingError}</span>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 shrink-0 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setBindingRevision((current) => current + 1)}
-          >
-            Retry
-          </Button>
-        </div>
-      );
-    }
-
-    if (sendError || requestError) {
-      return (
-        <div className="flex min-w-0 items-center gap-2 border-b border-destructive/30 bg-destructive/5 px-4 py-3 text-xs leading-normal text-destructive">
-          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
-          <span className="line-clamp-2 min-w-0 flex-1">{sendError ?? requestError}</span>
-          <ProviderRemediationAction
-            provider={selectedProvider}
-            message={sendError ?? requestError}
-            onResolved={() => setSendError(null)}
-          />
-        </div>
-      );
-    }
-
-    if (configError && !config) {
-      return (
-        <div className="flex min-w-0 items-center gap-2 border-b border-border/60 bg-secondary/50 px-4 py-3 text-xs leading-normal text-muted-foreground">
-          <HugeiconsIcon icon={__AlertCircleHugeIcon} className="h-3.5 w-3.5 shrink-0" />
-          <span className="line-clamp-2 min-w-0 flex-1">{configError}</span>
-        </div>
-      );
-    }
-
-    return null;
-  })();
+        : null),
+    bindingError,
+    operationError: sendError ?? requestError,
+    configError: !config ? configError : null,
+    provider: selectedProvider,
+    onRetryBinding: () => setBindingRevision((current) => current + 1),
+    onRemediationResolved: () => setSendError(null),
+  });
 
   return {
     chatTitle,
     showTitleSpinner,
     diffDialog,
-    closeDiffDialog: () => {
-      setDiffDialog(null);
-    },
+    closeDiffDialog,
     handleDeleteThread,
     historyBusy:
       shellNeedsAttention ||

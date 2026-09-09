@@ -39,6 +39,7 @@ import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitc
 import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
 import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
+import { saveLastAppRoute } from "@/lib/settings/settingsReturnRoute";
 
 const LazySettingsSidebar = lazy(() =>
   import("@/features/settings/ui/SettingsSidebar").then((module) => ({
@@ -137,6 +138,7 @@ export function ProjectLayout({
   // re-renders this layout (and everything under it) on every navigation,
   // including no-op clicks to the current URL.
   const pathname = useLocation({ select: (location) => location.pathname });
+  const currentHref = useLocation({ select: (location) => location.href });
   const stateProjectId = useLocation({
     select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectId ?? null,
   });
@@ -256,6 +258,10 @@ export function ProjectLayout({
     pathname.startsWith("/projects/settings/") ||
     pathname.startsWith("/projects/workspace/") ||
     pathname.startsWith("/projects/teams");
+  useEffect(() => {
+    if (isSettingsModeRoute) return;
+    saveLastAppRoute(currentHref);
+  }, [currentHref, isSettingsModeRoute]);
   const isStickySearchPage =
     pathname.endsWith("/store") ||
     pathname.includes("/settings/devapps");

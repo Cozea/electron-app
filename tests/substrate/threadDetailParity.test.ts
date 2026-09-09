@@ -34,7 +34,11 @@ const detail = () => useThreadDetailStore.getState().getThreadDetail("thread")!;
 
 describe("pinned thread detail parity", () => {
   beforeEach(() =>
-    useThreadDetailStore.setState({ byThreadId: {}, deletedSequenceByThreadId: {} }),
+    useThreadDetailStore.setState({
+      byThreadId: {},
+      deletedSequenceByThreadId: {},
+      evictedSequenceByThreadId: {},
+    }),
   );
 
   it.each([null, undefined])("rejects absent session payload %s without advancing state", (session) => {

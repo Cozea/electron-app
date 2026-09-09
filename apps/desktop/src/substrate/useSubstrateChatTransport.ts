@@ -52,7 +52,6 @@ function equalShadowStatus(a: SubstrateShadowBridgeStatus | null, b: SubstrateSh
     a.readyPath === b.readyPath && a.lastError === b.lastError &&
     a.features.rpcChat === b.features.rpcChat && a.features.providers === b.features.providers &&
     a.features.vcs === b.features.vcs && a.features.primary === b.features.primary &&
-    a.features.obsNdjson === b.features.obsNdjson &&
     a.features.inProcessAssistant === b.features.inProcessAssistant;
 }
 

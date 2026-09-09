@@ -26,6 +26,7 @@ import { useTranslation } from '@/lib/i18n'
 import { useGitChangesStore } from '@/features/source-control/model/gitChangesStore'
 import { useChangesSidebarStore } from '@/features/source-control/model/changesSidebarStore'
 import { useTheme } from '@/contexts/ThemeContext'
+import { resolveThemeColorMode } from '@/lib/theme'
 import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
 import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 import {
@@ -773,15 +774,7 @@ function scheduleSearchHighlight(node: HTMLElement, query: string): void {
 }
 
 function resolveChangesDiffThemeMode(theme: ReturnType<typeof useTheme>['theme']): 'light' | 'dark' {
-  if (theme === 'light' || theme === 'dark') {
-    return theme
-  }
-
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
-  }
-
-  return 'light'
+  return resolveThemeColorMode(theme)
 }
 
 const ChangesFileDiffBlock = memo(function ChangesFileDiffBlock(props: {

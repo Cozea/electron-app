@@ -7,7 +7,7 @@ import {
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
 } from "../composerInlineChip";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CommandLineIcon as __TerminalIconHugeIcon } from '@hugeicons/core-free-icons'
@@ -43,9 +43,9 @@ export function TerminalContextInlineChip(props: TerminalContextInlineChipProps)
           </span>
         }
       />
-      <TooltipPopup side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
+      <TooltipContent side="top" className="max-w-80 whitespace-pre-wrap leading-tight">
         {tooltipText}
-      </TooltipPopup>
+      </TooltipContent>
     </Tooltip>
   );
 }

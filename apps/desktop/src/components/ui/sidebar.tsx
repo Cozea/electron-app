@@ -38,6 +38,8 @@ const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
 const SIDEBAR_MAC_TOP_INSET_PX = 36
 const SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS = [0, 160, 320] as const
+export const SIDEBAR_TRANSITION_CLASS_NAME =
+  "duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -331,7 +333,8 @@ function Sidebar({
   return (
     <div
       className={cn(
-        "group peer relative block h-full shrink-0 text-sidebar-foreground transition-[width,flex-basis] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "group peer relative block h-full shrink-0 text-sidebar-foreground transition-[width,flex-basis]",
+        SIDEBAR_TRANSITION_CLASS_NAME,
         rootClassName
       )}
       data-state={state}
@@ -353,7 +356,8 @@ function Sidebar({
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          "relative w-(--sidebar-width) bg-transparent transition-[width]",
+          SIDEBAR_TRANSITION_CLASS_NAME,
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -364,7 +368,8 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         className={cn(
-          "absolute inset-y-0 z-10 flex h-full w-(--sidebar-width) transition-[left,right,width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          "absolute inset-y-0 z-10 flex h-full w-(--sidebar-width) transition-[left,right,width]",
+          SIDEBAR_TRANSITION_CLASS_NAME,
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",

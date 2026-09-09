@@ -16,9 +16,6 @@ export function normalizeWorkspaceId(
   return trimmed
 }
 
-/** @deprecated Use normalizeWorkspaceId. Kept for persisted-state migration code. */
-export const normalizeWorkspaceProjectPath = normalizeWorkspaceId
-
 export function buildLegacyWorkspaceIdentityKey(
   projectId: string | null | undefined,
   laneId?: string | null,
