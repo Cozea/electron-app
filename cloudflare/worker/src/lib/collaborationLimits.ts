@@ -1,3 +1,4 @@
+import { COLLABORATION_MAX_ENCODED_UPDATE, COLLABORATION_CHUNK_CHARS } from "../../../../shared/collaborationWire"
 export const COLLAB_MAX_FRAME_BYTES = 128 * 1024
 export const COLLAB_MAX_UPDATE_BYTES = 96 * 1024
 export const COLLAB_MAX_RETAINED_BYTES = 64 * 1024 * 1024
@@ -19,12 +20,12 @@ export function validateUpdateInput(update: {
   }
   if (typeof update.updateBinary !== 'string' || !update.updateBinary.length ||
       !/^[A-Za-z0-9+/]*={0,2}$/.test(update.updateBinary) ||
-      update.updateBinary.length > COLLAB_MAX_UPDATE_BYTES) {
+      update.updateBinary.length > COLLABORATION_MAX_ENCODED_UPDATE) {
     throw new Error('Encrypted update exceeds the supported frame limit or is invalid')
   }
   if (!Number.isFinite(update.timestamp) || update.timestamp < 0) throw new Error('Invalid update timestamp')
   // Includes record, index key and fixed metadata overhead; conservative by design.
-  return update.updateBinary.length + update.idempotencyKey.length * 2 + 1024
+  return update.updateBinary.length + update.idempotencyKey.length * 2 + 1024 + Math.ceil(update.updateBinary.length / COLLABORATION_CHUNK_CHARS) * 256
 }
 
 export function reserveUpdateBudget(usage: RetainedUsage, rate: UpdateRate | undefined, bytes: number, now: number) {

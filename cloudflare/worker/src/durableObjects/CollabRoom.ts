@@ -1,3 +1,6 @@
+import { RoomUpdateChunks, encodeStoredUpdate, readStoredUpdate, updateReceiptKey, type StoredSessionUpdate } from "./RoomUpdateChunks"
+import { COLLABORATION_PROTOCOL_REVISION, requireProtocolRevision } from "../../../../shared/collaborationProtocol"
+import { COLLABORATION_CHUNK_CHARS, collaborationDigest, splitCollaborationUpdate } from "../../../../shared/collaborationWire"
 import { RoomCheckpointStore, ROOM_COMPACTION_FLOOR_KEY } from "./RoomCheckpointStore"
 import { currentRoomAuthority } from "../lib/liveRoomAuthority"
 import { CollaborationProtocolError, parseCheckpointRequest, parseRoomAuthority, protocolRecord, protocolSequence, type RoomAuthority } from "../../../../shared/collaborationProtocol"
@@ -22,6 +25,7 @@ import type {
   PresenceSnapshotMessage,
   SyncRequestMessage,
   UpdatePushMessage,
+  UpdateChunkMessage,
 } from '../lib/protocol'
 import {
   COLLAB_PROTOCOL_VERSION,
@@ -51,15 +55,6 @@ interface PresenceEntry {
   clientId: string
   awarenessBinary: string
   expiresAt: number
-}
-
-interface StoredSessionUpdate {
-  seq: number
-  updateBinary: string
-  idempotencyKey: string
-  clientId: string
-  timestamp: number
-  retainedBytes?: number
 }
 
 const UPDATE_PREFIX = 'update:'
@@ -111,11 +106,13 @@ export class CollabRoom implements DurableObject {
   private readonly env: Env
   private updateQueue: Promise<void> = Promise.resolve()
   private readonly checkpoints: RoomCheckpointStore
+  private readonly updateChunks: RoomUpdateChunks
 
   constructor(state: DurableObjectState, env: Env) {
     this.state = state
     this.env = env
     this.checkpoints = new RoomCheckpointStore(state.storage)
+    this.updateChunks = new RoomUpdateChunks(state.storage)
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -148,8 +145,9 @@ export class CollabRoom implements DurableObject {
           return new Response(null, { status: 204 })
         }
         if (url.pathname === '/internal/close' && request.method === 'POST') {
-          await this.updateQueue
-          await this.state.storage.put("g3:closed", true)
+          const closing = this.updateQueue.then(() => this.state.storage.put("g3:closed", true))
+          this.updateQueue = closing.catch(() => undefined)
+          await closing
           for (const socket of this.state.getWebSockets()) socket.close(1000, 'Session closed')
           return new Response(null, { status: 204 })
         }
@@ -254,6 +252,7 @@ export class CollabRoom implements DurableObject {
         ? await this.getSessionHeadSequence()
         : Math.max(0, Math.floor(message.payload.knownSeq))
       if (roomSessionId) {
+        requireProtocolRevision(message.payload.collaborationRevision)
         if (!Number.isFinite(claims.exp) || claims.exp * 1000 <= Date.now()) throw new Error("Session token expired")
         const authority = await currentRoomAuthority(this.env, claims.sub, roomSessionId)
         if (authority.principalId !== claims.principalId || authority.projectId !== claims.projectId || authority.roomId !== claims.roomId) throw new Error("Current room authority changed")
@@ -279,6 +278,7 @@ export class CollabRoom implements DurableObject {
           roomId: claims.roomId,
           serverTime: Date.now(),
           headSeq,
+          ...(roomSessionId ? { collaborationRevision: COLLABORATION_PROTOCOL_REVISION } : {}),
           mediaClientId: attachment.mediaClientId,
           resyncRequired: headSeq > attachment.knownSeq,
         },
@@ -308,11 +308,20 @@ export class CollabRoom implements DurableObject {
     if (!message.payload || message.payload.roomId !== connection.roomId) {
       throw new Error('Message room does not match the authenticated socket')
     }
-    if (connection.sessionId && message.type !== 'update.push') await this.requireRoomAuthority(connection)
+    if (connection.sessionId && message.type !== 'update.push' && message.type !== 'update.chunk') await this.requireRoomAuthority(connection)
     switch (message.type) {
-      case 'sync.request':
-        await this.handleSyncRequest(socket, connection, message)
+      case 'sync.request': {
+        const operation = this.updateQueue.then(() => this.handleSyncRequest(socket, connection, message))
+        this.updateQueue = operation.catch(() => undefined)
+        await operation
         return
+      }
+      case 'update.chunk': {
+        const operation = this.updateQueue.then(() => this.handleUpdateChunk(socket, connection, message))
+        this.updateQueue = operation.catch(() => undefined)
+        await operation
+        return
+      }
       case 'update.push': {
         const operation = this.updateQueue.then(() => this.handleUpdatePush(socket, connection, message))
         // Keep serialization alive after failure, but report this operation to its sender.
@@ -332,6 +341,7 @@ export class CollabRoom implements DurableObject {
       case 'media.state':
         this.handleMediaState(socket, connection, message)
         return
+      default: throw new CollaborationProtocolError('UNKNOWN_OPERATION', 'Unsupported room message')
     }
   }
 
@@ -348,22 +358,13 @@ export class CollabRoom implements DurableObject {
       const entries = await this.state.storage.list<StoredSessionUpdate>({
         start: updateKey(message.payload.knownSeq + 1),
         end: 'update;',
-        limit: 1, // Bounded legacy-sized replay until chunked replay is installed.
+        limit: 1, // One bounded update per page; large payloads use bounded chunk frames.
       })
       const updates = [...entries.values()].sort((left, right) => left.seq - right.seq)
       if (known < headSeq && updates[0]?.seq !== known + 1) throw new CollaborationProtocolError("CHECKPOINT_REQUIRED", "The next canonical update is unavailable; reload the checkpoint", 409, true)
-      const toSeq = updates.at(-1)?.seq ?? message.payload.knownSeq
-      socket.send(stringifyMessage({
-        type: 'sync.delta',
-        payload: {
-          roomId: connection.roomId,
-          fromSeq: message.payload.knownSeq,
-          toSeq,
-          headSeq,
-          hasMore: toSeq < headSeq,
-          updatesBinary: updates.map((update) => update.updateBinary),
-        },
-      }))
+      const next = updates[0]
+      if (next) await this.sendCanonicalUpdate(socket, connection.roomId, next.seq, headSeq, await readStoredUpdate(this.state.storage, next))
+      else socket.send(stringifyMessage({ type: 'sync.delta', payload: { roomId: connection.roomId, fromSeq: known, toSeq: known, headSeq, hasMore: false, updatesBinary: [] } }))
       return
     }
 
@@ -414,17 +415,28 @@ export class CollabRoom implements DurableObject {
         persisted: true,
       },
     }))
-    this.broadcast({
-      type: 'sync.delta',
-      payload: {
-        roomId: connection.roomId,
-        fromSeq: result.seq - 1,
-        toSeq: result.seq,
-        headSeq: result.seq,
-        hasMore: false,
-        updatesBinary: [message.payload.updateBinary],
-      },
-    }, socket)
+    const headSeq = isV2Room(connection.roomId) ? await this.getSessionHeadSequence() : result.seq
+    for (const peer of this.state.getWebSockets()) {
+      if (peer === socket || attachmentOf(peer)?.roomId !== connection.roomId) continue
+      try { await this.sendCanonicalUpdate(peer, connection.roomId, result.seq, headSeq, message.payload.updateBinary) }
+      catch { try { peer.close(1011, 'Replay required') } catch { /* A closed peer cannot roll back a durable acknowledgement. */ } }
+    }
+  }
+
+  private async sendCanonicalUpdate(socket: WebSocket, roomId: string, sequence: number, headSeq: number, encoded: string): Promise<void> {
+    if (encoded.length > COLLABORATION_CHUNK_CHARS) {
+      for (const chunk of await splitCollaborationUpdate(`seq_${sequence}`, encoded)) socket.send(stringifyMessage({ type: "sync.chunk", payload: { roomId, sequence, headSeq, chunk } }))
+    } else socket.send(stringifyMessage({ type: "sync.delta", payload: { roomId, fromSeq: sequence - 1, toSeq: sequence, headSeq, hasMore: sequence < headSeq, updatesBinary: [encoded] } }))
+  }
+
+  private async handleUpdateChunk(socket: WebSocket, connection: SocketAttachment, message: UpdateChunkMessage): Promise<void> {
+    if (!connection.sessionId) throw new CollaborationProtocolError("PROTOCOL_MISMATCH", "Chunked updates require an explicit live session", 409)
+    const authority = await this.requireRoomAuthority(connection, true)
+    const encoded = await this.updateChunks.accept(authority, message.payload.chunk, message.payload.timestamp)
+    if (encoded === null) return
+    await this.handleUpdatePush(socket, connection, { type: "update.push", payload: { roomId: connection.roomId,
+      idempotencyKey: message.payload.chunk.id, updateBinary: encoded, timestamp: message.payload.timestamp, authorType: "user", authorId: connection.principalId } })
+    await this.updateChunks.finish(authority, message.payload.chunk.id)
   }
 
   private async persistSessionUpdate(
@@ -435,11 +447,18 @@ export class CollabRoom implements DurableObject {
     const retainedBytes = validateUpdateInput(message.payload)
     const envelope = validateEncryptedCollaborationEnvelope(message.payload.updateBinary, { roomId: authority.roomId, projectId: authority.projectId, kind: "yjs_update", idempotencyKey: message.payload.idempotencyKey })
     if (envelope.keyVersion !== authority.keyVersion) throw new CollaborationProtocolError("ENCRYPTION_KEY_STALE", "Update uses an old room key; reconcile retained local work", 409, true)
+    const receiptKey = updateReceiptKey(authority, message.payload.idempotencyKey)
+    const digest = await collaborationDigest(message.payload.updateBinary)
+    const accepted = await this.state.storage.get<{ sequence: number; digest: string }>(receiptKey)
+    if (accepted) {
+      if (accepted.digest !== digest) throw new CollaborationProtocolError("IDEMPOTENCY_MISMATCH", "An accepted update ID was reused with different bytes", 409)
+      return { seq: accepted.sequence }
+    }
     const idempotencyKey = `${IDEMPOTENCY_PREFIX}${message.payload.idempotencyKey}`
     const existing = await this.state.storage.get<number>(idempotencyKey)
     if (typeof existing === 'number') {
       const saved = await this.state.storage.get<StoredSessionUpdate>(updateKey(existing))
-      if (!saved || saved.updateBinary !== message.payload.updateBinary) {
+      if (!saved || await readStoredUpdate(this.state.storage, saved) !== message.payload.updateBinary) {
         throw new Error('Idempotency key was already used for another update')
       }
       return { seq: existing }
@@ -454,18 +473,22 @@ export class CollabRoom implements DurableObject {
     const metadata = protocolRecord(JSON.parse(new TextDecoder().decode(decodeCanonicalBase64(encodedEnvelope.aad, 8192))), "Update metadata")
     const initialization = fileInitializationOrigin(metadata.initialization)
     const receipt = initialization ? await this.checkpoints.initializationReceipt(authority, initialization, seq) : {}
-    const stored: StoredSessionUpdate = {
+    const prepared = await encodeStoredUpdate({
       seq,
       updateBinary: message.payload.updateBinary,
       idempotencyKey: message.payload.idempotencyKey,
       clientId: connection.clientId,
+      principalId: authority.principalId,
+      keyVersion: authority.keyVersion,
       timestamp: message.payload.timestamp,
       retainedBytes,
-    }
+    })
     await this.state.storage.put({
+      ...prepared.pieces,
+      [receiptKey]: { sequence: seq, digest },
       ...receipt,
       [HEAD_SEQUENCE_KEY]: seq,
-      [updateKey(seq)]: stored,
+      [updateKey(seq)]: prepared.update,
       [idempotencyKey]: seq,
       [RETAINED_USAGE_KEY]: budget.usage,
       [rateKey]: budget.rate,
@@ -477,6 +500,7 @@ export class CollabRoom implements DurableObject {
     if (!connection.sessionId || !connection.identityKey || !connection.expiresAt || connection.expiresAt <= Date.now()) throw new CollaborationProtocolError("SESSION_EXPIRED", "Session authority expired; refresh the connection", 401, true)
     if (await this.state.storage.get("g3:closed")) throw new CollaborationProtocolError("DEVICE_REVOKED", "This session is closed", 403)
     const authority = await currentRoomAuthority(this.env, connection.identityKey, connection.sessionId)
+    if (connection.expiresAt <= Date.now() || await this.state.storage.get("g3:closed")) throw new CollaborationProtocolError("SESSION_EXPIRED", "Session stopped while authority was being refreshed", 401, true)
     if (authority.principalId !== connection.principalId || authority.projectId !== connection.projectId || authority.roomId !== connection.roomId) throw new CollaborationProtocolError("SESSION_MISMATCH", "Socket authority does not match this room", 403)
     if (write && authority.role !== "editor") throw new CollaborationProtocolError("READ_ONLY", "Observers cannot submit shared updates", 403)
     if (write && authority.rotationRequired) throw new CollaborationProtocolError("KEY_ROTATION_REQUIRED", "Room key rotation must finish before accepting updates", 409, true)
@@ -631,7 +655,7 @@ export class CollabRoom implements DurableObject {
     while (true) {
       const entries = await this.state.storage.list<StoredSessionUpdate>({ prefix: UPDATE_PREFIX, start, limit: 256 })
       for (const update of entries.values()) {
-        usage.bytes += update.retainedBytes ?? update.updateBinary.length + update.idempotencyKey.length * 2 + 1024
+        usage.bytes += update.retainedBytes ?? (update.updateBinary?.length ?? update.totalChars ?? 0) + update.idempotencyKey.length * 2 + 1024
         usage.count += 1
       }
       if (entries.size < 256) break

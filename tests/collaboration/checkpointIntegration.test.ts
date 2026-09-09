@@ -20,12 +20,13 @@ vi.mock("convex/browser", () => ({ ConvexHttpClient: class {
   async mutation() { return null }
 } }))
 
-class MemoryStorage implements RoomStorage {
+export class MemoryStorage implements RoomStorage {
   data = new Map<string, unknown>()
   async get<T>(key: string): Promise<T | undefined> { return structuredClone(this.data.get(key)) as T | undefined }
   async put<T>(key: string, value: T): Promise<void>
   async put(entries: Record<string, unknown>): Promise<void>
   async put<T>(key: string | Record<string, unknown>, value?: T): Promise<void> {
+    for (const item of typeof key === "string" ? [value] : Object.values(key)) if (JSON.stringify(item).length > 128 * 1024) throw new Error("KV value exceeds production 128 KiB bound")
     if (typeof key === "string") this.data.set(key, structuredClone(value))
     else for (const [name, item] of Object.entries(key)) this.data.set(name, structuredClone(item))
   }

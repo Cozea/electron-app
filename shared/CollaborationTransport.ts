@@ -1,3 +1,4 @@
+import { COLLABORATION_PROTOCOL_REVISION, requireProtocolRevision } from "./collaborationProtocol"
 import { CollaborationChunkReceiver, COLLABORATION_CHUNK_CHARS, splitCollaborationUpdate, validateEncryptedCollaborationEnvelope, type CollaborationChunk } from "./collaborationWire"
 import * as Y from "yjs"
 import { AcknowledgedCollaborationState } from "./AcknowledgedCollaborationState"
@@ -157,6 +158,7 @@ export class CollabWsProvider {
   private mediaClientId: string | null = null
   private pendingAwareness = false
   private pendingUpdates = new Map<string, PendingUpdate>()
+  private readonly remoteAcknowledgements = new Map<string, number>()
   private incomingQueue: Promise<void> = Promise.resolve()
   private outgoingQueue: Promise<void> = Promise.resolve()
   private localPersistenceError: Error | null = null
@@ -436,6 +438,7 @@ export class CollabWsProvider {
       await this.outbox.enqueue({ id: pending.idempotencyKey, projectId: this.session.projectId, roomId: this.session.roomId,
         keyVersion: this.encryption.keyVersion, updateBinary: pending.updateBinary, timestamp: pending.timestamp })
     }
+    await this.retireCanonicalAcknowledgements()
     this.localPersistenceError = null
     if (connect) await this.connect()
   }
@@ -462,6 +465,7 @@ export class CollabWsProvider {
         type: "hello",
         payload: {
           protocolVersion: this.session.protocolVersion,
+          ...(this.session.sessionId ? { collaborationRevision: COLLABORATION_PROTOCOL_REVISION } : {}),
           clientType: this.clientType,
           projectId: this.session.projectId,
           roomId: this.session.roomId,
@@ -524,6 +528,7 @@ export class CollabWsProvider {
     }
 
     if (message.type === "ready") {
+      if (this.session.sessionId) requireProtocolRevision(payload.collaborationRevision)
       this.mediaClientId = typeof payload.mediaClientId === "string" ? payload.mediaClientId : null
       this.handshakeReady = true
       this.reconnectAttempt = 0
@@ -558,6 +563,7 @@ export class CollabWsProvider {
         await this.onApplied?.(sequence, encoded)
         this.knownSeq = sequence
       }
+      await this.retireCanonicalAcknowledgements()
       this.resolveReadyBarriers()
       if (payload.hasMore === true || updates.length === SYNC_PAGE_SIZE || this.knownSeq < this.targetHeadSeq) {
         this.requestSync()
@@ -568,9 +574,13 @@ export class CollabWsProvider {
     if (message.type === "update.ack") {
       const id = typeof payload.idempotencyKey === "string" ? payload.idempotencyKey : null
       if (id && payload.persisted === true && finiteSequence(payload.seq) !== null && this.pendingUpdates.has(id)) {
-        await this.outbox.acknowledge(id)
-        this.pendingUpdates.delete(id)
-        if (!this.pendingUpdates.size) for (const done of this.drainWaiters) done()
+        const sequence = finiteSequence(payload.seq)!
+        const previous = this.remoteAcknowledgements.get(id)
+        if (previous !== undefined && previous !== sequence) throw new Error("The room assigned two sequences to one update identity")
+        this.remoteAcknowledgements.set(id, sequence)
+        // A remote ACK is not a replacement for local recovery. Retire the
+        // outbox only once onApplied has durably saved the contiguous echo.
+        await this.retireCanonicalAcknowledgements()
 
         // An acknowledgement proves only that this local update was assigned a
         // server sequence. It does not prove that every earlier remote update
@@ -670,6 +680,16 @@ export class CollabWsProvider {
     }
   }
 
+  private async retireCanonicalAcknowledgements(): Promise<void> {
+    for (const [id, sequence] of this.remoteAcknowledgements) {
+      if (sequence > this.knownSeq) continue
+      await this.outbox.acknowledge(id)
+      this.pendingUpdates.delete(id)
+      this.remoteAcknowledgements.delete(id)
+    }
+    if (!this.pendingUpdates.size) for (const done of this.drainWaiters) done()
+  }
+
   private resolveReadyBarriers(): void {
     for (const [id, waiter] of this.barrierWaiters) {
       if (waiter.sequence === undefined || this.knownSeq < waiter.sequence) continue
@@ -691,7 +711,7 @@ export class CollabWsProvider {
     if (this.outgoingSuspended || this.canonicalOnly) return
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || !this.handshakeReady) return
     for (const update of [...this.pendingUpdates.values()].sort((a, b) => a.timestamp - b.timestamp)) {
-      await this.sendUpdate(update)
+      if (!this.remoteAcknowledgements.has(update.idempotencyKey)) await this.sendUpdate(update)
     }
   }
 

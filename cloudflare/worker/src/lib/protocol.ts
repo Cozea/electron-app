@@ -1,3 +1,4 @@
+import type { CollaborationChunk } from "../../../../shared/collaborationWire"
 export const COLLAB_PROTOCOL_VERSION = '2.1'
 const DEFAULT_ALLOWED_HEADERS = 'Content-Type, Authorization'
 const DEFAULT_ALLOWED_METHODS = 'GET, POST, OPTIONS'
@@ -18,6 +19,7 @@ export interface HelloMessage {
     sessionToken: string
     clientId: string
     knownSeq: number
+    collaborationRevision?: number
     clientType: 'web' | 'electron'
   }
 }
@@ -29,6 +31,7 @@ export interface ReadyMessage {
     serverTime: number
     headSeq: number
     resyncRequired: boolean
+    collaborationRevision?: number
     mediaClientId?: string
   }
 }
@@ -60,6 +63,15 @@ export interface UpdatePushMessage {
     authorId: string
     timestamp: number
   }
+}
+
+export interface UpdateChunkMessage {
+  type: "update.chunk"
+  payload: { roomId: string; chunk: CollaborationChunk; timestamp: number }
+}
+export interface SyncChunkMessage {
+  type: "sync.chunk"
+  payload: { roomId: string; sequence: number; headSeq: number; chunk: CollaborationChunk }
 }
 
 export interface UpdateAckMessage {
@@ -147,6 +159,7 @@ export type IncomingClientMessage =
   | HelloMessage
   | SyncRequestMessage
   | UpdatePushMessage
+  | UpdateChunkMessage
   | PresencePushMessage
   | BarrierRequestMessage
   | MediaSignalMessage
@@ -155,6 +168,7 @@ export type IncomingClientMessage =
 export type OutgoingServerMessage =
   | ReadyMessage
   | SyncDeltaMessage
+  | SyncChunkMessage
   | UpdateAckMessage
   | PresenceSnapshotMessage
   | PresenceRemoveMessage
