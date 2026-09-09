@@ -38,7 +38,6 @@ import { useProductTourStore } from "./productTourStore";
 import {
   isProductTourFinished,
   readProductTourProgress,
-  resetProductTourProgress,
   writeProductTourProgress,
   type ProductTourStatus,
 } from "./productTourStorage";
@@ -138,10 +137,8 @@ export function ProductTour() {
 
   const driverRef = useRef<Driver | null>(null);
   const startedRef = useRef(false);
-  const [startNonce, setStartNonce] = useState(0);
   /** True only while a tour is on screen, so the ring loop can stop. */
   const [isRunning, setIsRunning] = useState(false);
-  const handledRestartRef = useRef(0);
   /** Steps the running tour was built from. Fixed for the life of one run. */
   const activeStepsRef = useRef<ProductTourStep[]>([]);
   /** The pointing ring, and the element it currently surrounds. */
@@ -401,7 +398,6 @@ export function ProductTour() {
     needsOnboarding,
     prepareStep,
     projectsResolved,
-    startNonce,
     steps,
     t,
   ]);
@@ -461,25 +457,6 @@ export function ProductTour() {
     frame = requestAnimationFrame(track);
     return () => cancelAnimationFrame(frame);
   }, [advance, isRunning]);
-
-  // TEMPORARY, paired with ProductTourDebugTrigger. Replays the tour from the
-  // top on request. Remove alongside that button.
-  const restartRequest = useProductTourStore((state) => state.restartRequest);
-  useEffect(() => {
-    if (restartRequest === 0) return;
-    if (handledRestartRef.current === restartRequest) return;
-    handledRestartRef.current = restartRequest;
-
-    setIsRunning(false);
-    clearStepBindings();
-    arrowRef.current?.remove();
-    arrowRef.current = null;
-    driverRef.current?.destroy();
-    driverRef.current = null;
-    startedRef.current = false;
-    resetProductTourProgress();
-    setStartNonce((nonce) => nonce + 1);
-  }, [clearStepBindings, restartRequest]);
 
   /**
    * Hands the tour over to the create project dialog as soon as it opens, so

@@ -6,8 +6,6 @@ import {
 
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
-// PRODUCT TOUR DEBUG: temporary, remove before release.
-import { ProductTourDebugTrigger } from "@/features/tour/ProductTourDebugTrigger";
 import { cn } from "@/lib/utils";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControlsWidth";
@@ -128,19 +126,6 @@ export function UnifiedHeader({
     groups.push({ id: "page", label: "Page actions", priority: 100, content: rightAddon });
   }
 
-  /*
-   * PRODUCT TOUR DEBUG. TEMPORARY, REMOVE BEFORE RELEASE.
-   * Replays the first run tutorial on demand so it can be reviewed without
-   * wiping app data. Priority 120 keeps it above the overflow cut while
-   * testing. Delete this block, the import above, and
-   * features/tour/ProductTourDebugTrigger.tsx together.
-   */
-  groups.push({
-    id: "product-tour-debug",
-    label: "Run tutorial",
-    priority: 120,
-    content: <ProductTourDebugTrigger />,
-  });
 
   return (
     <div className={cn(headerLayoutClassName, "h-10 flex min-w-0 items-center titlebar-drag-region", shellHorizontalPadding, className)}>
