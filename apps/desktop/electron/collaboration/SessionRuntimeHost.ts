@@ -1,5 +1,6 @@
 import { COLLABORATION_PROTOCOL_REVISION } from "../../../../shared/collaborationProtocol"
 import path from "node:path"
+import { SessionCommandAdmission } from "./SessionCommandAdmission"
 import { inventoryRecoveryStorage } from "./RecoveryStorageBudget"
 import { compactVerifiedRecoveryStore } from "./RecoveryStorageCleanup"
 import { compactQuiescentInitializationBases } from "./InitializationBasisCleanup"
@@ -38,6 +39,9 @@ export class SessionRuntimeHost {
   private readonly keys: SessionKeyManager
   private readonly sessions = new Map<string, HostedSession>()
   private readonly opening = new Map<string, Promise<boolean>>()
+  private readonly commands = new SessionCommandAdmission()
+  private readonly departing = new Map<string, { end: boolean; promise: Promise<void> }>()
+  private readonly restarting = new Map<string, Promise<void>>()
   private openTail: Promise<unknown> = Promise.resolve()
   private shuttingDown = false
   private shutdownInFlight: Promise<void> | null = null
@@ -75,15 +79,60 @@ export class SessionRuntimeHost {
     if (!hosted) throw new Error("Join or resume the encrypted session first")
     return hosted.runtime
   }
+  withRuntime<T>(sessionId: string, operation: (runtime: CollaborationSessionRuntime) => Promise<T>): Promise<T> {
+    const hosted = this.sessions.get(sessionId)
+    if (!hosted?.ready) return Promise.reject(new Error("Session runtime is not ready to accept commands"))
+    // Capture the owner now. An accepted command cannot resolve its runtime
+    // later and accidentally target a replacement after Leave or restart.
+    return this.commands.run(sessionId, () => operation(hosted.runtime))
+  }
+
+  async prepareBinding(sessionId: string, sourceWorkspaceId: string) {
+    if (!await this.open(sessionId, sourceWorkspaceId)) throw new Error("Waiting for canonical encrypted session initialization")
+    const binding = await this.coordinator.getBinding(sessionId)
+    if (!binding || binding.sourceWorkspaceId !== sourceWorkspaceId || binding.state !== "active" || !this.sessions.get(sessionId)?.ready) throw new Error("Session workspace is not active for this source")
+    return binding
+  }
+
+  async leaveBinding(sessionId: string, end: boolean) {
+    await this.leave(sessionId, end)
+    const binding = await this.coordinator.getBinding(sessionId)
+    if (!binding) throw new Error("Retained session binding is unavailable")
+    return binding
+  }
+
+  adoptPublished(sessionId: string) {
+    return this.withRuntime(sessionId, runtime => {
+      const hosted = this.sessions.get(sessionId)!
+      const operation = hosted.publication.catch(() => {}).then(async () => {
+        const authority = await this.gateway.post<CollaborationWorkspaceAuthority>("/collab/v2/workspace-context", { sessionId })
+        await runtime.waitForSequence(authority.session.publishedThroughSequence)
+        await runtime.projectFiles()
+        const protectedPaths = runtime.files.files().flatMap(file => [file.path, ...(file.originalPath ? [file.originalPath] : [])])
+        const binding = await this.coordinator.adoptPublished(sessionId, await this.gateway.accessToken(), protectedPaths)
+        await runtime.checkpointPublished(authority.session.publishedThroughSequence)
+        this.changed(sessionId)
+        return binding
+      })
+      hosted.publication = operation.then(() => {}, error => runtime.reportRecoveryError(error))
+      return operation
+    })
+  }
+
   active(projectId: string): string | null { return [...this.sessions].find(([, value]) => value.projectId === projectId)?.[0] ?? null }
   async open(sessionId: string, sourceWorkspaceId: string): Promise<boolean> {
     if (this.shuttingDown) throw new Error("Session recovery is being saved before quit")
+    if (this.departing.has(sessionId)) throw new Error("Wait for Leave to finish before reopening the session")
     const pending = this.opening.get(sessionId)
     if (pending) return pending
     const hosted = this.sessions.get(sessionId)
     if (hosted?.ready) return true
     if (hosted) { await this.retry(sessionId); return this.sessions.get(sessionId)?.ready ?? false }
-    const operation = this.openTail.catch(() => {}).then(() => this.prepareRuntime(sessionId, sourceWorkspaceId)).finally(() => this.opening.delete(sessionId))
+    this.commands.resume(sessionId)
+    const operation = this.openTail.catch(() => {}).then(() => {
+      if (this.commands.isFenced(sessionId)) throw new Error("Session opening was cancelled before activation")
+      return this.prepareRuntime(sessionId, sourceWorkspaceId)
+    }).finally(() => this.opening.delete(sessionId))
     this.openTail = operation
     this.opening.set(sessionId, operation)
     return operation
@@ -150,7 +199,7 @@ export class SessionRuntimeHost {
         })
         void hosted.publication.catch(error => runtime.reportRecoveryError(error))
       },
-      onAuthorityFailure: () => { void this.suspendLocal(sessionId).catch(error => runtime.reportRecoveryError(error)) },
+      onAuthorityFailure: () => { if (this.sessions.get(sessionId)?.runtime === runtime) void this.suspendLocal(sessionId).catch(error => runtime.reportRecoveryError(error)) },
       onRecoveryRequired: () => { const hosted = this.sessions.get(sessionId); if (hosted) hosted.recoveryRequired = true },
     })
     const hosted: HostedSession = { runtime, projectId: binding.projectId, unsubscribe: runtime.subscribe(() => this.changed(sessionId)),
@@ -206,30 +255,44 @@ export class SessionRuntimeHost {
       const ready = await runtime.start()
       if (!ready) { await this.suspendLocal(sessionId); return false }
       await runtime.readyForWorkspace()
+      if (this.commands.isFenced(sessionId)) throw new Error("Session opening was cancelled before activation")
       if (offline) await this.coordinator.resumeOffline(sessionId, sourceWorkspaceId, true)
       else {
         await this.coordinator.activate(sessionId, await this.gateway.accessToken())
         await this.coordinator.adoptPublished(sessionId, await this.gateway.accessToken(), runtime.files.files().flatMap(file => [file.path, ...(file.originalPath ? [file.originalPath] : [])]))
       }
       await this.coordinator.recordRecoveryKey(sessionId, material.keyVersion)
+      if (this.commands.isFenced(sessionId)) throw new Error("Session opening was cancelled before native activation")
       await activateNativeWorkspaceRoot(workspace.projectRootPath)
+      if (this.commands.isFenced(sessionId)) throw new Error("Session opening was cancelled during native activation")
       hosted.ready = true
       return true
     } catch (error) { await this.suspendLocal(sessionId); throw error }
   }
 
-  private async restartSession(sessionId: string, sourceWorkspaceId: string): Promise<void> {
-    const hosted = this.sessions.get(sessionId)
-    if (!hosted) return
-    hosted.ready = false
-    clearInterval(hosted.timer)
-    await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
-    await hosted.maintenance?.catch(() => {})
-    await hosted.publication.catch(() => {})
-    await hosted.runtime.stop()
-    hosted.unsubscribe(); this.sessions.delete(sessionId)
-    this.changed(sessionId)
-    await this.open(sessionId, sourceWorkspaceId)
+  private restartSession(sessionId: string, sourceWorkspaceId: string): Promise<void> {
+    if (this.shuttingDown || this.departing.has(sessionId)) return Promise.reject(new Error("Session exit is in progress"))
+    const previous = this.restarting.get(sessionId)
+    if (previous) return previous
+    this.commands.fence(sessionId)
+    const operation = Promise.resolve().then(async () => {
+      await this.suspending.get(sessionId)?.catch(() => {})
+      const hosted = this.sessions.get(sessionId)
+      if (hosted) {
+        hosted.ready = false; clearInterval(hosted.timer)
+        await this.commands.drain(sessionId)
+        await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
+        await hosted.maintenance?.catch(() => {})
+        await hosted.publication.catch(() => {})
+        await hosted.runtime.stop()
+        hosted.unsubscribe()
+        if (this.sessions.get(sessionId) === hosted) this.sessions.delete(sessionId)
+        this.changed(sessionId)
+      }
+      if (!this.shuttingDown && !this.departing.has(sessionId)) await this.open(sessionId, sourceWorkspaceId)
+    }).finally(() => { if (this.restarting.get(sessionId) === operation) this.restarting.delete(sessionId) })
+    this.restarting.set(sessionId, operation)
+    return operation
   }
 
   async prepareCommit(input: { sessionId: string; binaryPaths: string[]; binaryReviews?: CollaborationBinarySelection[]; message: string; authorName: string; authorEmail: string }): Promise<PreparedCollaborationCommit> {
@@ -282,11 +345,13 @@ export class SessionRuntimeHost {
 
   private readonly suspending = new Map<string, Promise<void>>()
   private suspendLocal(sessionId: string): Promise<void> {
+    this.commands.fence(sessionId)
     const previous = this.suspending.get(sessionId)
     if (previous) return previous
     const operation = (async () => {
       const hosted = this.sessions.get(sessionId)
       if (hosted) { hosted.ready = false; clearInterval(hosted.timer) }
+      await this.commands.drain(sessionId)
       await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
       if (hosted) {
         await hosted.maintenance?.catch(() => {})
@@ -302,23 +367,41 @@ export class SessionRuntimeHost {
     return operation
   }
 
-  async leave(sessionId: string, end: boolean): Promise<void> {
-    if (end) await this.control("closeSession", { sessionId })
-    const hosted = this.sessions.get(sessionId)
-    if (hosted) { hosted.ready = false; clearInterval(hosted.timer) }
-    const workspaceId = await this.coordinator.suspendActions(sessionId)
-    try { await this.stopWorkspaceActions(workspaceId) }
-    catch (error) { hosted?.runtime.reportRecoveryError(error); throw error }
-    if (hosted) {
-      clearInterval(hosted.timer)
-      await hosted.maintenance?.catch(() => {})
-      await hosted.publication.catch(() => {})
-      await hosted.runtime.stop()
-      hosted.unsubscribe(); this.sessions.delete(sessionId)
-    }
-    await this.coordinator.leave(sessionId, end)
-    if (!end) await this.control("leaveSession", { sessionId }).catch(() => {})
-    this.changed(sessionId)
+  leave(sessionId: string, end: boolean): Promise<void> {
+    if (this.shuttingDown) return Promise.reject(new Error("Session recovery is being saved before quit"))
+    const previous = this.departing.get(sessionId)
+    if (previous) return end && !previous.end ? previous.promise.then(() => this.leave(sessionId, true)) : previous.promise
+    // Fence before the first await, including before a pending Open completes.
+    this.commands.fence(sessionId)
+    const current = this.sessions.get(sessionId)
+    if (current) { current.ready = false; clearInterval(current.timer) }
+    const operation = Promise.resolve().then(async () => {
+      await this.opening.get(sessionId)?.catch(() => {})
+      await this.restarting.get(sessionId)?.catch(() => {})
+      await this.suspending.get(sessionId)?.catch(() => {})
+      const hosted = this.sessions.get(sessionId)
+      if (hosted) { hosted.ready = false; clearInterval(hosted.timer) }
+      await this.commands.drain(sessionId)
+      const workspaceId = await this.coordinator.suspendActions(sessionId)
+      try { await this.stopWorkspaceActions(workspaceId) }
+      catch (error) { hosted?.runtime.reportRecoveryError(error); throw error }
+      if (hosted) {
+        await hosted.maintenance?.catch(() => {})
+        await hosted.publication.catch(() => {})
+        await hosted.runtime.stop()
+        hosted.unsubscribe()
+        if (this.sessions.get(sessionId) === hosted) this.sessions.delete(sessionId)
+      }
+      // End is sent only after local producers and durable work are stopped.
+      // A lost network reply leaves the retained binding retryable, never a
+      // destroyed runtime advertised as active.
+      if (end) await this.control("closeSession", { sessionId })
+      await this.coordinator.leave(sessionId, end)
+      if (!end) await this.control("leaveSession", { sessionId }).catch(() => {})
+      this.changed(sessionId)
+    }).finally(() => { if (this.departing.get(sessionId)?.promise === operation) this.departing.delete(sessionId) })
+    this.departing.set(sessionId, { end, promise: operation })
+    return operation
   }
 
   async recoveryInventory(): Promise<CollaborationRecoveryInventory> {
@@ -363,6 +446,11 @@ export class SessionRuntimeHost {
   }
 
   async retry(sessionId: string): Promise<void> {
+    if (this.shuttingDown || this.departing.has(sessionId)) throw new Error("Session exit is in progress")
+    const restarting = this.restarting.get(sessionId)
+    if (restarting) { await restarting; return }
+    await this.suspending.get(sessionId)
+    if (this.shuttingDown || this.departing.has(sessionId)) throw new Error("Session exit is in progress")
     const hosted = this.sessions.get(sessionId)
     if (hosted?.ready) { await hosted.runtime.retry(); return }
     const binding = await this.coordinator.getBinding(sessionId)
@@ -373,13 +461,17 @@ export class SessionRuntimeHost {
 
   shutdown(): Promise<void> {
     if (this.shutdownInFlight) return this.shutdownInFlight
+    this.commands.fenceAll()
     this.shuttingDown = true
     const operation = (async () => {
       // A join already in flight must finish before taking the shutdown census.
       // No new open or maintenance-triggered restart may enter after this fence.
       await this.openTail.catch(() => {})
       await Promise.allSettled(this.opening.values())
+      await Promise.allSettled(this.restarting.values())
+      await Promise.allSettled([...this.departing.values()].map(value => value.promise))
       for (const hosted of this.sessions.values()) { hosted.ready = false; clearInterval(hosted.timer) }
+      await this.commands.drainAll()
       await Promise.allSettled([...this.sessions.values()].flatMap(hosted => hosted.maintenance ? [hosted.maintenance] : []))
       for (const [sessionId, hosted] of this.sessions) {
         await this.stopWorkspaceActions(await this.coordinator.suspendActions(sessionId))
@@ -392,7 +484,7 @@ export class SessionRuntimeHost {
       }
     })()
     this.shutdownInFlight = operation
-    void operation.then(() => { this.shutdownInFlight = null }, () => { this.shutdownInFlight = null; this.shuttingDown = false })
+    void operation.then(() => { this.shutdownInFlight = null }, () => { this.shutdownInFlight = null; this.shuttingDown = false; this.commands.allowAfterShutdownFailure() })
     return operation
   }
 }

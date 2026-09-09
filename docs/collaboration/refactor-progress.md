@@ -22,8 +22,8 @@ Tests include fresh bootstrap, observer read/write distinction, checkpoint chunk
 | --- | --- |
 | P0 | Executable baseline and evidence established; full acceptance matrix still open |
 | P1 | Core checkpoint, file initialization, chunked transport and ACK durability connected and tested; further fault/rollout/flow-control coverage remains |
-| P2 | In progress: immutable publication baselines, retained prepared captures, repeated Git cycles; safe compaction still to implement |
-| P3 | Not implemented: off-main owner and complete lifecycle surface |
+| P2 | Publication manifests and checkpoint-covered compaction committed and regression-tested; full release matrix remains open |
+| P3 | In progress: admitted mutation surface and drainable lifecycle; utility-process owner and packaged epoch/crash tests remain |
 | P4 | Not implemented: transactional store/migration |
 | P5 | Not implemented: incremental document/projection and fair scheduling |
 | P6 | Not implemented: editor/control lifecycle |
@@ -48,3 +48,11 @@ A saved commit is not a test result. Candidate-tree validation is distinct from 
 - Routine checkpoint maintenance is independent of Git publication and inactive during an unchanged idle session. A lost compact response is retried even after the replacement became durable locally.
 - Local targeted integration validates actual WebSocket clients/room, real checkpoint client/gateway, interrupted deletion, delayed chunk retries, expired-reader checkpoints, post-checkpoint suffix replay, bounded deletion batches and lost compact responses. The local fixture initially lacks vendored T3 dependencies, so renderer/Electron/test-project typechecks must be verified by the candidate runner until that fixture is extended. Worker typecheck and lint pass locally. Existing triple-slash lint warnings remain in the test fixtures.
 - P3–P9 remain implementation work; none is declared complete by these regressions. Physical cross-device, packaged platform and production deployment validation are still not claimed.
+
+## P3 slice: one admitted mutation surface and drainable lifecycle
+
+- Production IPC uses the tested CollaborationCommandSurface for file edits, imports, recovery resolutions, Commit/Push, and old prepare/leave/adopt shapes. Old renderer tokens and protected-path arrays no longer reach those coordinator mutations. Generic renderer control cannot bypass host-owned close, leave or publication operations.
+- SessionCommandAdmission captures the runtime at admission and fences synchronously. Leave, restart, suspension and Quit drain already admitted work before destroying the owner. New work is rejected explicitly rather than accepted against a stopping/replacement runtime.
+- Leave waits for an in-flight Open/restart, is single-flight, retains failed writer/flush owners, and permits explicit retry. End is requested after local writers and the runtime stop. Opening checks cancellation around activation. Stale authority callbacks cannot suspend a replacement runtime.
+- Behavioral tests exercise the same registered adapters, actual host ordering with controlled dependencies, delayed writes, repeated Leave, writer/flush failure, Open/Leave overlap, Quit, and blocked bypass operations.
+- This completes a lifecycle-foundation slice, NOT all of P3. The utility-process engine, process epochs/ports and packaged crash tests remain. No Electron performance, full-suite, physical cross-device, merge or deployment claim is implied by candidate typechecks and targeted tests.

@@ -11,6 +11,7 @@ import { getTrustedDeviceGatewayBaseUrl } from "../services/DeviceGatewayPolicy"
 import { runGitCommand } from "../gitRuntime"
 import { SessionWorkspaceCoordinator } from "./SessionWorkspaceCoordinator"
 import { SessionRuntimeHost } from "./SessionRuntimeHost"
+import { createCollaborationCommandSurface } from "./CollaborationCommandSurface"
 import { AuthorizedRepositoryDownloader } from "./AuthorizedRepositoryDownloader"
 import { DeviceCollaborationGateway } from "./DeviceCollaborationGateway"
 import { WorkbenchSessionManager } from "../services/WorkbenchSessionManager"
@@ -104,6 +105,7 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     if (results.some(result => result.status === "rejected")) throw new Error("Session workspace shutdown was not fully acknowledged; retry Leave")
   })
   registerCollaborationShutdown(() => host.shutdown())
+  const commands = createCollaborationCommandSurface(host)
   const api: CollaborationDesktopAPI = {
     downloadRepository: input => downloader.download(input.projectId, input.slug),
     cancelDownload: async projectId => downloader.cancel(projectId),
@@ -111,42 +113,42 @@ export function registerCollaborationHandlers(ipcMain: IpcMain, userData: string
     runtime: {
       recoveryEntries: id => Promise.resolve(host.runtime(id).recoveryEntries()),
       recoveredFiles: id => Promise.resolve(host.runtime(id).recoveredFiles()),
-      resolveRecovered: input => host.runtime(input.sessionId).resolveRecovered(input),
+      resolveRecovered: commands.runtime.resolveRecovered,
       recoveryInventory: () => host.recoveryInventory(),
       cleanupRecovery: id => host.cleanupRecovery(id),
       setup: id => host.setup(id),
       resolve: input => host.resolve(input),
-      control: input => host.control(input.operation, input.args),
-      open: input => host.open(input.sessionId, input.sourceWorkspaceId),
+      control: commands.runtime.control,
+      open: commands.runtime.open,
       active: async projectId => host.active(projectId),
       snapshot: async id => host.runtime(id).snapshot(),
-      openFile: input => host.runtime(input.sessionId).openFile(input.path),
+      openFile: commands.runtime.openFile,
       editorState: async id => host.runtime(id).editorState(),
-      edit: input => host.runtime(input.sessionId).applyEditorUpdate(input.update),
-      createFile: input => host.runtime(input.sessionId).createFile(input.path, input.content),
-      renameFile: input => host.runtime(input.sessionId).renameFile(input.fileId, input.path),
-      deleteFile: input => host.runtime(input.sessionId).deleteFile(input.fileId),
-      restoreFile: input => host.runtime(input.sessionId).restoreFile(input.fileId, input.path),
+      edit: commands.runtime.edit,
+      createFile: commands.runtime.createFile,
+      renameFile: commands.runtime.renameFile,
+      deleteFile: commands.runtime.deleteFile,
+      restoreFile: commands.runtime.restoreFile,
       binaryCandidates: id => coordinator.inspectBinaryCandidates(id),
       reviewPrepared: input => coordinator.reviewPrepared(input.sessionId, input.commitSha),
-      commit: input => host.prepareCommit(input),
-      push: id => host.push(id),
+      commit: commands.runtime.commit,
+      push: commands.runtime.push,
       prepared: id => coordinator.getPrepared(id),
-      discard: id => host.discard(id),
-      importChanges: input => host.importChanges(input.sessionId, input.selected),
-      leave: input => host.leave(input.sessionId, input.end ?? false),
-      retry: id => host.retry(id),
+      discard: commands.runtime.discard,
+      importChanges: commands.runtime.importChanges,
+      leave: commands.runtime.leave,
+      retry: commands.runtime.retry,
       onChanged: () => { throw new Error("Subscriptions are provided by preload") },
     },
-    prepare: input => coordinator.prepare(input.sessionId, input.sourceWorkspaceId, input.accessToken),
-    leave: input => coordinator.leave(input.sessionId, input.ended),
+    prepare: commands.legacy.prepare,
+    leave: commands.legacy.leave,
     getBinding: id => coordinator.getBinding(id),
     bindingForWorkspace: id => coordinator.bindingForWorkspace(id),
     inspectImportableChanges: id => coordinator.inspectImportableChanges(id),
     readReviewedImport: input => coordinator.readReviewedImport(input.sessionId, input.selected, input.accessToken),
     prepareCommit: async () => { throw new Error("Use the main-owned acknowledged shared snapshot commit action") },
     pushPrepared: async () => { throw new Error("Review and push the exact prepared commit through the session runtime") },
-    adoptPublished: input => coordinator.adoptPublished(input.sessionId, input.accessToken, input.sharedPaths),
+    adoptPublished: commands.legacy.adoptPublished,
   }
   // Electron's normal preload is not installed in browser/DevApp guests.
   // Recheck the sender frame as defense in depth before local filesystem work.
