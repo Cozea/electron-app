@@ -994,6 +994,7 @@ export function ProjectSidebar({
                   isOnAppStore && SIDEBAR_PILL_ACTIVE_CLASS,
                   "[&>svg]:text-current",
                 )}
+                data-tour="nav-store"
                 onClick={handleOpenMarketplace}
               >
                 <HugeiconsIcon icon={__ShoppingBagHugeIcon} />
@@ -1007,6 +1008,7 @@ export function ProjectSidebar({
                   isOnAgentSkills && SIDEBAR_PILL_ACTIVE_CLASS,
                   "[&>svg]:text-current",
                 )}
+                data-tour="nav-builds"
                 onClick={handleOpenAgentSkills}
               >
                 <HugeiconsIcon icon={__FolderLibraryHugeIcon} />
@@ -1020,6 +1022,7 @@ export function ProjectSidebar({
                   isOnScheduledTasks && SIDEBAR_PILL_ACTIVE_CLASS,
                   "[&>svg]:text-current",
                 )}
+                data-tour="nav-schedules"
                 onClick={handleOpenScheduledTasks}
               >
                 <HugeiconsIcon icon={__ClockHugeIcon} />
@@ -1035,6 +1038,7 @@ export function ProjectSidebar({
                     isOnInbox && SIDEBAR_PILL_ACTIVE_CLASS,
                     "[&>svg]:text-current",
                   )}
+                  data-tour="nav-inbox"
                   onClick={handleOpenInbox}
                 >
                   <HugeiconsIcon icon={__InboxHugeIcon} />
@@ -1057,6 +1061,7 @@ export function ProjectSidebar({
               <button
                 type="button"
                 className="flex size-6 shrink-0 cursor-pointer items-center justify-center p-0 text-muted-foreground/75 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
+                data-tour="new-project"
                 onClick={(event) => void openProjectCreationMenu(event)}
                 aria-label={t('nav.newProject')}
               >

@@ -844,6 +844,67 @@ const es: Record<TranslationKey, string> = {
   "assistant.questions.sending": "Enviando…",
   "assistant.questions.retry": "Reintentar respuesta",
   "assistant.questions.send": "Enviar respuesta",
+
+  // ── Tutorial inicial del producto ───────────────────────────────────
+  "tour.progress": "{{current}} de {{total}}",
+  "tour.next": "Siguiente",
+  "tour.done": "Finalizar",
+  "tour.skip": "Omitir el tutorial",
+
+  "tour.project.title": "Empieza con un proyecto",
+  "tour.project.description": "Todo en Cozea ocurre dentro de un proyecto. Abre esto y elige un proyecto vacío.",
+  "tour.projectConfirm.title": "Créalo",
+  "tour.projectConfirm.description": "Dale un nombre y una carpeta al proyecto, y créalo.",
+  "tour.devapps.title": "DevApps",
+  "tour.devapps.description": "Puedes crear las tuyas y publicarlas para que toda tu organización pueda instalarlas.",
+  "tour.projectDevApps.title": "DevApps listas para usar",
+  "tour.projectDevApps.description": "Cada proyecto empieza con un conjunto de DevApps. Abre una y se ejecuta junto a tu trabajo.",
+  "tour.organizations.title": "Invita a tu equipo",
+  "tour.organizations.description": "Una organización te permite compartir DevApps y proyectos con quienes trabajas. Crea una.",
+  "tour.organizationsConfirm.title": "Ponle nombre",
+  "tour.organizationsConfirm.description": "Dale un nombre a la organización y créala.",
+  "tour.inbox.title": "Las invitaciones llegan aquí",
+  "tour.inbox.description": "Cada invitación que recibes llega aquí, de una organización o de un solo proyecto.",
+  "tour.store.title": "La tienda de DevApps",
+  "tour.store.description": "Todas las DevApps compartidas en tu organización viven en la tienda.",
+  "tour.storePage.title": "Publica e instala",
+  "tour.storePage.description": "Publica aquí lo que creas e instala lo que publican tus compañeros.",
+  "tour.defaultBuild.title": "Tu build predeterminado",
+  "tour.defaultBuild.description": "Un build es un conjunto de habilidades con nombre. Tu build predeterminado es todo lo que ya tienes activado.",
+  "tour.activateBuild.title": "Actívalo",
+  "tour.activateBuild.description": "Activar un build enciende sus habilidades y apaga las demás.",
+  "tour.providerBuilds.title": "Un build para cada proveedor",
+  "tour.providerBuilds.description": "Ten varios builds con habilidades distintas y elige cuál usa cada proveedor.",
+  "tour.schedules.title": "Tareas programadas",
+  "tour.schedules.description": "Dale a un agente una tarea y un horario, y Cozea la ejecuta por su cuenta.",
+
+  // Aperturas de sección.
+  "tour.section.projects.title": "Te damos la bienvenida a Cozea",
+  "tour.section.projects.description": "Nos alegra tenerte aquí. En cinco minutos sabrás moverte. Todo empieza con un proyecto, así que vamos con el tuyo.",
+  "tour.section.devapps.title": "DevApps",
+  "tour.section.devapps.description": "Pequeñas aplicaciones que se ejecutan junto a tu trabajo, y una tienda para compartirlas. ¿Las vemos?",
+  "tour.section.organizations.title": "Tu equipo",
+  "tour.section.organizations.description": "Las organizaciones son la forma de compartir trabajo con otras personas. ¿Creamos una?",
+  "tour.section.builds.title": "Agent builds",
+  "tour.section.builds.description": "Los builds deciden qué habilidades tienen tus agentes. Veamos los tuyos.",
+  "tour.section.schedules.title": "Tareas programadas",
+  "tour.section.schedules.description": "Trabajo que se ejecuta sin ti, con el horario que tú marques.",
+
+  // Pasos añadidos con el tutorial por secciones.
+  "tour.openSettings.title": "Abre tus ajustes",
+  "tour.openSettings.description": "Las organizaciones están en tus ajustes, detrás de este menú.",
+  "tour.settingsOrganizations.title": "Organizaciones",
+  "tour.settingsOrganizations.description": "Aquí creas una organización y gestionas quién pertenece a ella.",
+  "tour.leaveSettings.title": "Vuelve atrás",
+  "tour.leaveSettings.description": "Atrás te devuelve a tus proyectos y a la navegación principal.",
+
+  "tour.orgMembers.title": "Personas y permisos",
+  "tour.orgMembers.description": "Invita aquí a tu organización y decide qué puede hacer cada miembro.",
+  "tour.schedulesPage.title": "Cómo funciona un horario",
+  "tour.schedulesPage.description": "Escribe la tarea, elige cada cuánto se ejecuta y un agente la hace solo. Los resultados llegan a tu bandeja.",
+  "tour.section.done.title": "Todo listo",
+  "tour.section.done.description": "Eso es todo. Ve a construir algo. Que lo disfrutes.",
+
 } as const
 
 export default es

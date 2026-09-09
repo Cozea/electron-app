@@ -625,6 +625,7 @@ export function WorkbenchSelectionTile({
         </div>
       ) : (
         <div
+          data-tour="project-devapps"
           className={cn(
             "flex min-h-0 flex-1 flex-col overflow-hidden",
             centerSingletonSelectionLayout

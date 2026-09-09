@@ -8,6 +8,7 @@ import {
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
+import { useProductTourStore } from "@/features/tour/productTourStore"
 
 type ProjectCreationMenuAction = CreateProjectDialogMode
 
@@ -38,6 +39,7 @@ function resolveMenuPosition(event?: MouseEvent<HTMLElement>): { x: number; y: n
 export function useProjectCreationMenu() {
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
+  const isTourActive = useProductTourStore((state) => state.isActive)
 
   const openDirect = useCallback(
     (mode: CreateProjectDialogMode = "empty") => {
@@ -64,9 +66,27 @@ export function useProjectCreationMenu() {
       const selection = await showDesktopContextMenu<ProjectCreationMenuAction>(
         [
           { id: "empty", label: t("menu.emptyProject"), icon: getNativeMenuIcon("new-project") },
-          { id: "local", label: t("menu.importLocalFolder"), icon: getNativeMenuIcon("open-folder") },
-          { id: "devapp", label: t("menu.createNativeDevApp"), icon: getNativeMenuIcon("package") },
-          { id: "devapp-local", label: t("menu.openExistingDevApp"), icon: getNativeMenuIcon("open-project") },
+          // The tutorial teaches the empty project route. The rest stay visible
+          // so the menu still reads honestly, but cannot be chosen and send the
+          // tour somewhere it has no step for.
+          {
+            id: "local",
+            label: t("menu.importLocalFolder"),
+            icon: getNativeMenuIcon("open-folder"),
+            enabled: !isTourActive,
+          },
+          {
+            id: "devapp",
+            label: t("menu.createNativeDevApp"),
+            icon: getNativeMenuIcon("package"),
+            enabled: !isTourActive,
+          },
+          {
+            id: "devapp-local",
+            label: t("menu.openExistingDevApp"),
+            icon: getNativeMenuIcon("open-project"),
+            enabled: !isTourActive,
+          },
         ],
         resolveMenuPosition(event),
       )
@@ -87,7 +107,7 @@ export function useProjectCreationMenu() {
 
       openCreateProjectDialog({ mode: selection })
     },
-    [openCreateProjectDialog, t],
+    [isTourActive, openCreateProjectDialog, t],
   )
 
   return {
