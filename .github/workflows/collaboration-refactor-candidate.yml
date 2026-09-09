@@ -1,0 +1,65 @@
+name: Collaboration validated candidate
+
+on:
+  push:
+    branches: [refactor/collaboration-v2-end-to-end]
+    paths:
+      - 'scripts/collaboration/apply-refactor.mjs'
+      - 'scripts/collaboration/prepare-candidate.mjs'
+      - '.github/workflows/collaboration-refactor-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collaboration-validated-candidate
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[collab-candidate]') && github.repository == 'Cozea/electron-app' && github.ref == 'refs/heads/refactor/collaboration-v2-end-to-end'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+          submodules: false
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Bootstrap repository
+        run: bun run bootstrap
+      - name: Apply exact checked refactor transformations
+        run: node scripts/collaboration/apply-refactor.mjs
+      - name: Renderer TypeScript
+        run: bun run typecheck
+      - name: Electron TypeScript
+        run: bun run typecheck:electron
+      - name: Test TypeScript
+        run: bun run typecheck:tests
+      - name: Cloudflare TypeScript
+        run: bun run typecheck:cloudflare
+      - name: Lint
+        run: bun run lint
+      - name: Execute collaboration regressions
+        run: bunx vitest run tests/collaboration --reporter=default --reporter=json --outputFile=.agent/collaboration-evidence/candidate-tests.json
+      - name: Create validated Git objects without advancing a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: node scripts/collaboration/prepare-candidate.mjs
+      - name: Retain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-candidate-${{ github.sha }}
+          path: .agent/collaboration-evidence/
+          retention-days: 7
+          if-no-files-found: warn
