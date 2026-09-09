@@ -6,7 +6,7 @@ import type {
 
 import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectOpenTypes"
 import { isProjectDevAppLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
-import { resolveProjectSharedBranch } from "@/lib/git/projectRepositoryIntegration"
+import { resolveProjectRecordedDefaultBranch } from "@/lib/git/projectRepositoryIntegration"
 import { cn } from "@/lib/utils"
 import type { WorkbenchLaneSidebarSummary } from "@/lib/workbenchStore"
 
@@ -186,8 +186,35 @@ export function hasProjectSidebarChildren(
   )
 }
 
-export function resolveProjectCollabBranch(project: SidebarProjectItem): string {
-  return resolveProjectSharedBranch(project)
+/**
+ * Controls that own their own click inside a sidebar row: the expand chevron,
+ * the options menu, and anything interactive added to a row later. Kept as one
+ * list so a new control is covered without revisiting each row's click handler.
+ */
+export const SIDEBAR_ROW_INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, [role='button'], [role='menuitem']"
+
+/**
+ * Whether a click inside a sidebar row landed on a control that handles the
+ * click itself, rather than on the row background.
+ *
+ * Rows are clickable as a pointer affordance, so the row handler must not also
+ * fire when the chevron expands or the menu opens. Testing the event target is
+ * more durable than relying on every control to stop propagation, which the
+ * options menu never did.
+ */
+export function isSidebarRowInteractiveTarget(
+  target: Pick<Element, "closest"> | null | undefined,
+): boolean {
+  return Boolean(target?.closest(SIDEBAR_ROW_INTERACTIVE_SELECTOR))
+}
+
+/**
+ * Null when the project records no default branch, so lane resolution learns it
+ * from the repo rather than assuming "main" and stranding tiles in a branch lane.
+ */
+export function resolveProjectCollabBranch(project: SidebarProjectItem): string | null {
+  return resolveProjectRecordedDefaultBranch(project)
 }
 
 export function areSidebarProjectItemsEqual(

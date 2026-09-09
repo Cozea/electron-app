@@ -22,6 +22,7 @@ import {
   buildProjectBranchLaneState,
   readScopedProjectBranchSession,
   rememberProjectBranchSession,
+  resolveCollabBranchKnowledge,
   resolveLaneBranchKnowledge,
 } from '@/features/source-control/model/projectBranchSessionStore';
 import { publishGitRemoteStatus } from '@/features/source-control/model/gitRemoteStatusCache';
@@ -158,22 +159,19 @@ export function getGitStatusResource(workspaceId: string): KeyedResource<GitStat
 // 3. Project Lane State Resources
 const laneResources = new Map<string, KeyedResource<ProjectLaneState | null>>();
 
-function normalizeBranch(value: string | null | undefined, fallback = 'main'): string {
-  const trimmed = value?.trim();
-  return trimmed || fallback;
-}
-
 export function getProjectLaneResource(
   projectId: string,
   workspaceId: string | null,
   collabBranch: string | null
 ): KeyedResource<ProjectLaneState | null> {
-  const normalizedCollabBranch = normalizeBranch(collabBranch);
+  // null means "the project records no default branch" (local-only repo), not
+  // "main". The fetcher learns it instead of guessing; see below.
+  const recordedCollabBranch = collabBranch?.trim() || null;
   const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
   const key = buildResourceKey('projectLaneState', {
     projectId,
     workspaceId: normalizedWorkspaceId ?? 'unbound',
-    collabBranch: normalizedCollabBranch,
+    collabBranch: recordedCollabBranch ?? 'auto',
   });
 
   return getCachedResource(laneResources, key, () =>
@@ -186,10 +184,19 @@ export function getProjectLaneResource(
         let activeBranch: string;
 
         const gitRes = await getGitStatusResource(normalizedWorkspaceId).ensure(reason);
+
+        // Settle the collab branch before any lane id is built; see
+        // resolveCollabBranchKnowledge for why this must not be guessed.
+        const effectiveCollabBranch = resolveCollabBranchKnowledge({
+          recordedDefaultBranch: recordedCollabBranch,
+          storedCollabBranch: storedSession?.collabBranch ?? null,
+          statusResult: gitRes,
+        });
+
         const resolution = resolveLaneBranchKnowledge({
           statusResult: gitRes,
           storedBranch: storedSession?.activeBranch ?? null,
-          collabBranch: normalizedCollabBranch,
+          collabBranch: effectiveCollabBranch,
         });
         if (resolution.kind !== 'resolved') return null;
         activeBranch = resolution.branch;
@@ -197,7 +204,7 @@ export function getProjectLaneResource(
           rememberProjectBranchSession({
             projectId,
             branch: resolution.branch,
-            collabBranch: normalizedCollabBranch,
+            collabBranch: effectiveCollabBranch,
             workspaceId: normalizedWorkspaceId,
           });
         }
@@ -205,7 +212,7 @@ export function getProjectLaneResource(
         return buildProjectBranchLaneState({
           projectId,
           workspaceId: normalizedWorkspaceId,
-          collabBranch: normalizedCollabBranch,
+          collabBranch: effectiveCollabBranch,
           activeBranch,
         });
       },

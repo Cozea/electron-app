@@ -318,7 +318,7 @@ export function ProjectSidebar({
     [currentProjectId, sortedProjects],
   );
   const currentCollabBranch = React.useMemo(
-    () => (currentProjectItem ? resolveProjectCollabBranch(currentProjectItem) : "main"),
+    () => (currentProjectItem ? resolveProjectCollabBranch(currentProjectItem) : null),
     [currentProjectItem],
   );
   const {

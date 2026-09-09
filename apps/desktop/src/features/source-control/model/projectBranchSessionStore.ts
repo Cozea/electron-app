@@ -7,13 +7,18 @@ const LOCAL_LANE_PREFIX = "branch:"
 interface StoredProjectBranchSession {
   projectId: string
   activeBranch: string | null
-  collabBranch: string
+  /**
+   * Null means "not learned yet", which is different from "main". v2 records
+   * cannot be trusted here: they were written with a fabricated default, so the
+   * v3 migration clears the field and lets it be learned from the repo once.
+   */
+  collabBranch: string | null
   workspaceId: string | null
   updatedAt: number
 }
 
 interface StoredProjectBranchSessionState {
-  version: 2
+  version: 3
   sessions: Record<string, StoredProjectBranchSession>
 }
 
@@ -45,7 +50,7 @@ function normalizeProjectPath(workspaceId: string | null | undefined): string | 
 
 function buildInitialState(): StoredProjectBranchSessionState {
   return {
-    version: 2,
+    version: 3,
     sessions: {},
   }
 }
@@ -84,14 +89,33 @@ function readState(): StoredProjectBranchSessionState {
     }
 
     if (
-      parsed.version === 2 &&
+      parsed.version === 3 &&
       parsed.sessions &&
       typeof parsed.sessions === "object"
     ) {
       return {
-        version: 2,
+        version: 3,
         sessions: parsed.sessions as Record<string, StoredProjectBranchSession>,
       }
+    }
+
+    // v2 → v3: every v2 record's `collabBranch` was written by a build that
+    // fabricated "main" whenever the project recorded no default branch, so a
+    // local repo on `master` was persisted as though `main` were its shared
+    // branch. That poisons lane ids for the life of the record. Drop the field
+    // and keep `activeBranch`; the next successful git status relearns it.
+    if (
+      parsed.version === 2 &&
+      parsed.sessions &&
+      typeof parsed.sessions === "object"
+    ) {
+      const migrated = buildInitialState()
+      for (const [key, session] of Object.entries(
+        parsed.sessions as Record<string, StoredProjectBranchSession>,
+      )) {
+        migrated.sessions[key] = { ...session, collabBranch: null }
+      }
+      return migrated
     }
 
     const legacyProjects =
@@ -126,6 +150,8 @@ function readState(): StoredProjectBranchSessionState {
         ...rest,
         projectId: normalizedProjectId,
         workspaceId: normalizeProjectPath(legacyWorkspaceId),
+        // Same fabricated default as v2; relearn rather than carry it forward.
+        collabBranch: null,
       }
     }
 
@@ -202,6 +228,48 @@ export function resolveLaneBranchKnowledge(args: {
   }
 
   return { kind: "unresolved" }
+}
+
+/**
+ * Decide which branch the collab lane represents.
+ *
+ * Lane ids are the comparison `activeBranch === collabBranch`, so this operand
+ * must not be guessed any more than the other one: a local-only repo sitting on
+ * `master`, compared against a fabricated `main`, puts every open tile in a
+ * branch lane nothing else ever looks at.
+ *
+ * The order is deliberate:
+ *  - a branch the project records (a remote's default) is truth,
+ *  - otherwise the branch learned on an earlier pass, so the collab lane stays
+ *    where it was once established,
+ *  - otherwise, and only on a first sighting, whatever git currently reports.
+ *
+ * Re-reading git on every pass would instead make the checked-out branch the
+ * collab branch, and no branch lane could ever exist.
+ */
+export function resolveCollabBranchKnowledge(args: {
+  recordedDefaultBranch: string | null | undefined
+  storedCollabBranch: string | null | undefined
+  statusResult: GitStatusLike | null | undefined
+}): string {
+  const recorded = args.recordedDefaultBranch?.trim()
+  if (recorded) {
+    return recorded
+  }
+
+  const stored = args.storedCollabBranch?.trim()
+  if (stored) {
+    return stored
+  }
+
+  const fresh = args.statusResult?.success
+    ? args.statusResult.currentBranch?.trim()
+    : null
+  if (fresh) {
+    return fresh
+  }
+
+  return normalizeBranch(null)
 }
 
 export function resolveBranchSessionLaneBranch(
