@@ -1,3 +1,5 @@
+import { encodePublicationBasis, manifestFromPublicationBasis } from "./PublicationBasis"
+import type { PreparedCollaborationCommit } from "../../../../shared/collaborationDesktop"
 import * as Y from "yjs"
 import { Awareness } from "y-protocols/awareness"
 import { createHash, randomUUID } from "node:crypto"
@@ -36,6 +38,7 @@ interface SessionRuntimeOptions {
   changedPaths?: () => Promise<string[]>
   externalChanges?: () => Promise<import("../../../../shared/collaborationRuntime").ExternalWorkspaceChanges>
   offline?: boolean
+  readPublicationBasis?: (id: string, keyVersion: number) => Promise<{ encoded: string; roomKeyBase64: string } | null>
   beforeReplay?: (acknowledgedUpdate: Uint8Array, canonicalState: (sequence?: number) => Promise<Uint8Array>) => Promise<void>
 }
 
@@ -528,12 +531,45 @@ export class CollaborationSessionRuntime {
     } finally { candidate.destroy() }
   }
 
-  async captureCommit(): Promise<{ sequence: number; textChanges: CollaborationTextChange[] }> {
+  async captureCommit(context: { baseCommitSha: string; publishedCommitSha: string | null }): Promise<{ sequence: number; textChanges: CollaborationTextChange[]; publicationBasisId: string; publicationBasisKeyVersion: number }> {
+    // The fence covers work accepted before Commit, not future renderer input.
+    const acceptedEditorFence = this.editorQueue
+    await acceptedEditorFence
+    await this.projectFiles()
     if (this.projectionPaused) throw new Error("Resolve paused file synchronization before committing; local bytes were retained")
     const snapshot = await this.assertEditor().captureCommitState()
     const acknowledged = new SessionFileDocument(this.options.sessionId)
-    try { Y.applyUpdate(acknowledged.doc, snapshot.update); return { sequence: snapshot.sequence, textChanges: acknowledged.snapshotChanges() } }
-    finally { acknowledged.destroy() }
+    try {
+      Y.applyUpdate(acknowledged.doc, snapshot.update)
+      const published = acknowledged.publicationManifest(context.baseCommitSha)
+      if (context.publishedCommitSha && !published) throw new Error("The verified Git base lacks its published file baseline; recover the retained publication before preparing another commit")
+      const textChanges = acknowledged.snapshotChanges(published ?? undefined)
+      const basis = await encodePublicationBasis({ sessionId: this.options.sessionId, projectId: this.options.session.projectId, roomId: this.options.session.roomId, ...this.options.encryption }, context.baseCommitSha, snapshot.sequence, snapshot.update)
+      await this.options.store.savePublicationBasis(basis.id, basis.encoded)
+      return { sequence: snapshot.sequence, textChanges, publicationBasisId: basis.id, publicationBasisKeyVersion: this.options.encryption.keyVersion }
+    } finally { acknowledged.destroy() }
+  }
+
+  async publishPreparedManifest(prepared: PreparedCollaborationCommit): Promise<void> {
+    const provider = this.assertEditor()
+    const previous = this.files.publicationManifest(prepared.commitSha)
+    if (previous) {
+      if (previous.parentCommitSha !== prepared.parentCommitSha || previous.throughSequence !== prepared.throughSequence) throw new Error("Prepared publication identity changed")
+    } else {
+      const id = prepared.publicationBasisId, keyVersion = prepared.publicationBasisKeyVersion
+      if (!id || !keyVersion) throw new Error("This retained prepared commit predates publication baselines; retain it for explicit recovery rather than guessing file identities")
+      const material = keyVersion === this.options.encryption.keyVersion
+        ? { encoded: await this.options.store.readPublicationBasis(id), roomKeyBase64: this.options.encryption.roomKeyBase64 }
+        : await this.options.readPublicationBasis?.(id, keyVersion)
+      if (!material?.encoded) throw new Error("The prepared publication basis is unavailable; all local work was retained")
+      const manifest = await manifestFromPublicationBasis({ sessionId: this.options.sessionId, projectId: this.options.session.projectId, roomId: this.options.session.roomId, keyVersion, roomKeyBase64: material.roomKeyBase64 },
+        { id, parentCommitSha: prepared.parentCommitSha, sequence: prepared.throughSequence }, prepared.commitSha, material.encoded)
+      this.files.recordPublicationManifest(manifest)
+    }
+    await provider.flushLocalPersistence()
+    // The manifest joins canonical encrypted history before Push. Later text
+    // edits remain outside the prepared Git snapshot and keep their own clocks.
+    await provider.captureCommitState()
   }
 
   async waitForSequence(sequence: number): Promise<void> {

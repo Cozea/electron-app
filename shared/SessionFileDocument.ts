@@ -1,3 +1,4 @@
+import { changesFromPublishedBaseline, validatePublishedManifest, type SessionPublishedManifest } from "./collaborationPublication"
 import * as Y from "yjs"
 import DiffMatchPatch from "diff-match-patch"
 import type { CollaborationTextChange } from "./collaborationDesktop"
@@ -19,6 +20,8 @@ export interface SharedSessionFile {
  */
 export class SessionFileDocument {
   readonly doc: Y.Doc
+  private readonly sessionId: string
+  private readonly publicationManifests: Y.Map<SessionPublishedManifest>
   private readonly renameIntents: Y.Map<{ fileId: string; from: string; to: string }>
   private readonly paths: Y.Map<string>
   private readonly originalPaths: Y.Map<string>
@@ -29,6 +32,8 @@ export class SessionFileDocument {
   constructor(sessionId: string, doc?: Y.Doc) {
     this.doc = doc ?? new Y.Doc({ guid: `cozea:g3:${sessionId}`, gc: false })
     this.doc.gc = false
+    this.sessionId = sessionId
+    this.publicationManifests = this.doc.getMap("published-file-baselines")
     this.paths = this.doc.getMap("file-paths")
     this.renameIntents = this.doc.getMap("file-rename-intents")
     this.originalPaths = this.doc.getMap("file-origins")
@@ -165,17 +170,26 @@ export class SessionFileDocument {
     return conflicts
   }
 
-  snapshotChanges(): CollaborationTextChange[] {
+  publicationManifest(commitSha: string): SessionPublishedManifest | null {
+    const value = this.publicationManifests.get(commitSha)
+    return value ? validatePublishedManifest(value, { sessionId: this.sessionId, commitSha }) : null
+  }
+
+  recordPublicationManifest(value: SessionPublishedManifest): void {
+    const manifest = validatePublishedManifest(value, { sessionId: this.sessionId })
+    const existing = this.publicationManifest(manifest.commitSha)
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(manifest)) throw new Error("The same published commit has conflicting file identities")
+      return
+    }
+    this.doc.transact(() => this.publicationManifests.set(manifest.commitSha, manifest), "publication-manifest")
+  }
+
+  snapshotChanges(published?: SessionPublishedManifest): CollaborationTextChange[] {
     if (this.renameConflicts().length) throw new Error("Resolve competing shared renames before committing or projecting files")
     if (this.pathConflicts().length) throw new Error("Resolve shared path collisions before committing or projecting files")
-    const files = this.files()
-    const changes = new Map<string, CollaborationTextChange>()
-    for (const file of files) {
-      if (file.originalPath && (file.deleted || file.path !== file.originalPath)) changes.set(file.originalPath, { path: file.originalPath, content: null })
-      if (file.deleted && !file.originalPath) changes.set(file.path, { path: file.path, content: null })
-    }
-    for (const file of files) if (!file.deleted) changes.set(file.path, { path: file.path, content: file.content, executable: file.executable })
-    return [...changes.values()].sort((a, b) => a.path.localeCompare(b.path))
+    const baseline = published ? validatePublishedManifest(published, { sessionId: this.sessionId }) : undefined
+    return changesFromPublishedBaseline(this.files(), baseline)
   }
 
   checkpoint(): Uint8Array { return Y.encodeStateAsUpdate(this.doc) }

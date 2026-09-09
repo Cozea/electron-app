@@ -467,6 +467,7 @@ export class SessionWorkspaceCoordinator {
       const binding = await this.getBinding(input.sessionId)
       if (!binding || binding.baseCommitSha !== session.baseCommitSha) throw new Error("Adopt the published base before preparing a commit")
       const workspace = await this.workspace(binding)
+      if (input.publicationBasisId !== undefined && (!/^[A-Za-z0-9_-]{1,160}$/.test(input.publicationBasisId) || !Number.isSafeInteger(input.publicationBasisKeyVersion) || Number(input.publicationBasisKeyVersion) < 1)) throw new Error("Prepared publication capture identity is invalid")
       const previousRaw = await this.deps.read(preparedKey(input.sessionId))
       if (previousRaw) {
         const previous = JSON.parse(previousRaw) as PreparedCollaborationCommit
@@ -528,6 +529,7 @@ export class SessionWorkspaceCoordinator {
           generation: COLLABORATION_DATA_GENERATION, sessionId: session.id, parentCommitSha: session.baseCommitSha,
           commitSha: sha, throughSequence: input.throughSequence, leaseExpiresAt: session.commitLeaseExpiresAt,
           preparedAt: this.now(), state: "prepared",
+          ...(input.publicationBasisId ? { publicationBasisId: input.publicationBasisId, publicationBasisKeyVersion: input.publicationBasisKeyVersion } : {}),
         }
         await this.deps.write(preparedKey(session.id), JSON.stringify(prepared))
         return prepared

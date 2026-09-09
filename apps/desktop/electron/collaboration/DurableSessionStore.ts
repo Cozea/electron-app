@@ -81,6 +81,20 @@ export class DurableSessionStore implements CollaborationOutbox {
     }
   }
 
+  readPublicationBasis(id: string): Promise<string | null> {
+    if (!idPattern.test(id)) throw new Error("Invalid publication basis identity")
+    return this.serial(() => this.read<string>(`publication-basis-${id}.json`))
+  }
+  savePublicationBasis(id: string, encoded: string): Promise<void> {
+    if (!idPattern.test(id)) throw new Error("Invalid publication basis identity")
+    return this.serial(async () => {
+      const name = `publication-basis-${id}.json`
+      const previous = await this.read<string>(name)
+      if (previous && previous !== encoded) throw new Error("Prepared publication basis cannot be replaced")
+      if (!previous) await this.write(name, encoded)
+    })
+  }
+
   readInitializationBasis(id: string): Promise<string | null> {
     if (!idPattern.test(id)) throw new Error("Invalid initialization basis identity")
     return this.serial(() => this.read<string>(`initialization-basis-${id}.json`))

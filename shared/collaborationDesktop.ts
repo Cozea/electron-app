@@ -53,6 +53,8 @@ export interface PreparedCollaborationCommit {
   throughSequence: number
   leaseExpiresAt: number
   preparedAt: number
+  publicationBasisId?: string
+  publicationBasisKeyVersion?: number
   state: "prepared" | "pushed" | "published" | "discarded"
 }
 
@@ -60,6 +62,8 @@ export interface PrepareCollaborationCommitInput {
   sessionId: string
   accessToken: string
   throughSequence: number
+  publicationBasisId?: string
+  publicationBasisKeyVersion?: number
   textChanges: CollaborationTextChange[]
   binaryPaths: string[]
   binaryReviews?: CollaborationBinarySelection[]

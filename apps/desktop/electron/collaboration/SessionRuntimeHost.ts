@@ -119,6 +119,12 @@ export class SessionRuntimeHost {
       readBaseFile: relative => this.coordinator.readBaseFile(sessionId, relative),
       shouldTrackExternal: relative => this.coordinator.shouldTrackExternal(sessionId, relative),
       changedPaths: () => this.coordinator.changedPaths(sessionId),
+      readPublicationBasis: async (id, keyVersion) => {
+        const recovered = await this.keys.recoverKey(binding.projectId, sessionId, keyVersion)
+        if (!recovered) return null
+        const encoded = await new DurableSessionStore(this.root, material.session.roomId, keyVersion).readPublicationBasis(id)
+        return encoded ? { encoded, roomKeyBase64: recovered.roomKeyBase64 } : null
+      },
       externalChanges: () => this.coordinator.externalChanges(sessionId),
       beforeReplay: async (acknowledgedUpdate, canonicalState) => {
         const previous = []
@@ -235,9 +241,11 @@ export class SessionRuntimeHost {
       void this.control("renewCommitLease", { sessionId: input.sessionId }).catch(error => { renewalError = error }).finally(() => { renewing = false })
     }, 15_000)
     try {
-      const snapshot = await runtime.captureCommit()
+      const context = await this.gateway.post<CollaborationWorkspaceAuthority>("/collab/v2/workspace-context", { sessionId: input.sessionId })
+      const snapshot = await runtime.captureCommit({ baseCommitSha: context.session.baseCommitSha, publishedCommitSha: context.session.publishedCommitSha })
       if (renewalError) throw new Error("Commit lease could not be renewed; local edits remain recoverable")
-      const prepared = await this.coordinator.prepareCommit({ ...input, accessToken: await this.gateway.accessToken(), throughSequence: snapshot.sequence, textChanges: snapshot.textChanges })
+      const prepared = await this.coordinator.prepareCommit({ ...input, accessToken: await this.gateway.accessToken(), throughSequence: snapshot.sequence, textChanges: snapshot.textChanges, publicationBasisId: snapshot.publicationBasisId, publicationBasisKeyVersion: snapshot.publicationBasisKeyVersion })
+      await runtime.publishPreparedManifest(prepared)
       await this.control("markLocalCommitReady", { sessionId: input.sessionId, commitSha: prepared.commitSha, coveredThroughSequence: prepared.throughSequence })
       return prepared
     } finally { clearInterval(timer) }
@@ -248,9 +256,10 @@ export class SessionRuntimeHost {
     this.runtime(sessionId)
     const prepared = await this.coordinator.getPrepared(sessionId)
     if (!prepared || prepared.commitSha !== commitSha) throw new Error("The prepared commit changed; review the exact commit before pushing")
+    if (prepared.state === "discarded") throw new Error("This prepared commit was discarded")
+    if (prepared.state !== "published") await this.runtime(sessionId).publishPreparedManifest(prepared)
     // A completed publication can be recovered without acquiring a new lease.
     try { return await this.coordinator.pushPrepared(sessionId, await this.gateway.accessToken()) } catch { /* Reauthorize the exact prepared identity below. */ }
-    if (prepared.state === "discarded") throw new Error("This prepared commit was discarded")
     let session = await this.control<CollaborationSessionDescriptor>("getSession", { sessionId })
     if (!session) throw new Error("Session was not found")
     if (!session.pendingCommitSha && ["active", "commit_preparing"].includes(session.status) && session.baseCommitSha === prepared.parentCommitSha) {
