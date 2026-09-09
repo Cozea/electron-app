@@ -6,8 +6,15 @@ const readFile = vi.fn<
     content?: string
   }>
 >()
-const listDirectory = vi.fn(async () => ({ success: true, entries: [] as never[] }))
-const listFiles = vi.fn(async () => ({ success: false }))
+const listDirectory = vi.fn<
+  (options: { workspaceId: string; directory?: string | null }) => Promise<{
+    success: boolean
+    entries?: Array<{ name: string; type: 'file' | 'directory' }>
+  }>
+>()
+const listFiles = vi.fn<
+  (options: { workspaceId: string }) => Promise<{ success: boolean }>
+>()
 const getProjectCapabilities = vi.fn(async () => ({
   runtimes: [],
   devServer: { suggestions: [], requiresUserSelection: true },

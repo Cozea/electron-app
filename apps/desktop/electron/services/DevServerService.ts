@@ -532,7 +532,7 @@ export class DevServerService {
 
   public async stop(
     workspaceId: string,
-    laneId?: string | null,
+    _laneId?: string | null,
     exitCode = 0,
   ): Promise<{ success: boolean; error?: string }> {
     const runKey = buildRunKey(workspaceId)
