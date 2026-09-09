@@ -388,6 +388,7 @@ export function ProductTour() {
     prepareStep(resumeAt);
     instance.drive(resumeAt);
     setIsRunning(true);
+
   }, [
     advance,
     beginStep,
@@ -510,6 +511,13 @@ export function ProductTour() {
       arrowRef.current = null;
       driverRef.current?.destroy();
       driverRef.current = null;
+      /*
+       * Let a remount start again. StrictMode mounts, unmounts and remounts in
+       * development, and refs survive that cycle: leaving this set meant the
+       * teardown destroyed the tour and the remount then refused to restart it,
+       * so the tour recorded its first step and never appeared.
+       */
+      startedRef.current = false;
     };
   }, []);
 

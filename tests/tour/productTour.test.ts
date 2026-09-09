@@ -660,6 +660,21 @@ describe("product tour behaviour", () => {
     expect(resolveSectionProgress(PRODUCT_TOUR_STEPS).has("done-intro")).toBe(false);
   });
 
+  it("can start again after being torn down", () => {
+    // React.StrictMode mounts, unmounts and remounts in development, and refs
+    // survive that cycle. The teardown destroys the driver, so leaving the
+    // started flag set meant the remount refused to restart: the tour recorded
+    // its first step and never appeared on screen.
+    const teardown = tourSource.slice(tourSource.indexOf("Tear down if the app unmounts"));
+
+    expect(teardown).toContain("driverRef.current?.destroy()");
+    expect(teardown).toContain("startedRef.current = false");
+    // Order matters: the flag must clear in the same cleanup that destroys.
+    expect(teardown.indexOf("startedRef.current = false")).toBeGreaterThan(
+      teardown.indexOf("driverRef.current?.destroy()"),
+    );
+  });
+
   it("is mounted in the main window only", () => {
     expect(appSource).toContain("LazyProductTour");
     expect(appSource).toMatch(/\{!isSettingsWindow && \(\s*<Suspense fallback=\{null\}>/);
