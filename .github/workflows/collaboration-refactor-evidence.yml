@@ -1,0 +1,73 @@
+name: Collaboration refactor evidence
+
+on:
+  push:
+    branches: [refactor/collaboration-v2-end-to-end]
+    paths:
+      - 'shared/*ollaboration*'
+      - 'shared/SessionFileDocument.ts'
+      - 'apps/desktop/electron/collaboration/**'
+      - 'apps/desktop/src/features/collaboration/**'
+      - 'cloudflare/worker/src/**'
+      - 'tests/collaboration/**'
+      - 'scripts/collaboration/**'
+      - '.github/workflows/collaboration-refactor-evidence.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: collaboration-refactor-evidence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Bootstrap pinned dependencies
+        run: bun run bootstrap
+      - name: Record runtime and input identities
+        run: node scripts/collaboration/runtime-inventory.mjs
+      - name: Export explicitly requested executable fixture
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[collab-fixture]')
+        run: |
+          set -euo pipefail
+          fixture="$RUNNER_TEMP/collab-fixture"
+          mkdir -p "$fixture"
+          git archive --format=tar.gz --output="$fixture/source.tar.gz" HEAD
+          tar -czf "$fixture/dependencies.tar.gz" --exclude='node_modules/electron/dist' --exclude='node_modules/.cache' node_modules
+          cp "$(command -v node)" "$fixture/node"
+          cp "$(command -v bun)" "$fixture/bun"
+          cp .agent/collaboration-evidence/runtime.json "$fixture/runtime.json"
+          (cd "$fixture" && sha256sum source.tar.gz dependencies.tar.gz node bun > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[collab-fixture]')
+        with:
+          name: collaboration-executable-fixture-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-fixture/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - name: Collaboration behavioral tests
+        run: bunx vitest run tests/collaboration --reporter=default --reporter=json --outputFile=.agent/collaboration-evidence/tests.json
+      - name: Retain exact-revision evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collaboration-evidence-${{ github.sha }}
+          path: .agent/collaboration-evidence/
+          retention-days: 7
+          if-no-files-found: error
