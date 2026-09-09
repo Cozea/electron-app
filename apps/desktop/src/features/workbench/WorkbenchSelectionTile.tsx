@@ -25,6 +25,11 @@ import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
 import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  devAppViewTransitionName,
+  prefersReducedMotion,
+  startViewTransition,
+} from "@/lib/viewTransition"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
@@ -264,7 +269,10 @@ function SelectionLauncherButton({
         "group flex shrink-0 flex-col items-center gap-3 text-center transition-transform",
         "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
-      style={{ width: `${LAUNCHER_CONFIG.tileWidth}px` }}
+      style={{
+        width: `${LAUNCHER_CONFIG.tileWidth}px`,
+        viewTransitionName: devAppViewTransitionName(option.id),
+      }}
       title={option.description}
       onClick={() => onSelect(option)}
     >
@@ -310,6 +318,7 @@ function SelectionListButton({
         "group flex w-full items-center gap-4 bg-transparent px-4 py-3 text-left transition-colors",
         "hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
+      style={{ viewTransitionName: devAppViewTransitionName(option.id) }}
       title={option.description}
       onClick={() => onSelect(option)}
     >
@@ -462,20 +471,26 @@ export function WorkbenchSelectionTile({
     height: 0,
     itemCount: allOptions.length,
   }).fittingColumns
-  const useListView = rootColumnCapacity <= 2
+  const targetListView = rootColumnCapacity <= 2
+  // The rendered mode trails the measured one so the swap can go through a view
+  // transition. List rows and grid cells are different components, so nothing
+  // short of a snapshot can relate them; `devAppViewTransitionName` is what
+  // makes each app morph across the two rather than cross-fade as a new box.
+  const [useListView, setUseListView] = useState(targetListView)
+  const hasSettledInitialView = useRef(false)
+  useLayoutEffect(() => {
+    if (useListView === targetListView) return
+    // The first flip is the measurement arriving, not a resize the user made.
+    if (!hasSettledInitialView.current) {
+      hasSettledInitialView.current = true
+      setUseListView(targetListView)
+      return
+    }
+    startViewTransition(() => setUseListView(targetListView))
+  }, [targetListView, useListView])
   const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, isSingletonEmpty)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
-
-  const launcherContentWidth = useMemo(() => {
-    // Keep filter bar and launcher content width tied to available layout columns,
-    // not to current result count (prevents width jitter while searching).
-    const visibleColumns = Math.max(1, launcherLayout.columns)
-    return (
-      visibleColumns * densityConfig.cellWidth +
-      Math.max(0, visibleColumns - 1) * densityConfig.columnGap
-    )
-  }, [densityConfig.cellWidth, densityConfig.columnGap, launcherLayout.columns])
 
   const pagedOptions = useMemo(() => {
     const pages: DevAppManifest[][] = []
@@ -532,23 +547,20 @@ export function WorkbenchSelectionTile({
       pager.scrollTo({
         left: pageIndex * pager.clientWidth,
         top: 0,
-        behavior: "smooth",
+        behavior: prefersReducedMotion() ? "auto" : "smooth",
       })
       setCurrentPage(pageIndex)
     },
     [launcherPagerRef],
   )
 
-  const filterContentWidth = useListView
-    ? WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH
-    : launcherContentWidth
   const handleCategoryChange = useCallback(
     (category: CategoryTab) => {
       if (category === "Explore DevApps Store") {
         navigate("/projects/store")
         return
       }
-      setActiveCategory(category)
+      startViewTransition(() => setActiveCategory(category))
     },
     [navigate],
   )
@@ -566,6 +578,11 @@ export function WorkbenchSelectionTile({
     },
     [onChoose],
   )
+  // One width and one padding in both modes. Tying the bar to the grid's own
+  // column width aligned it with the icons, but made it re-step by a column's
+  // worth on every threshold -- and jump between 680px and 332px across the
+  // list/grid switch. 680 sits within 6px of the six-column grid, so the
+  // alignment survives where it is visible and the bar stops moving.
   const sharedFilterBar = (
     <SelectionFilterBar
       isMac={isMac}
@@ -575,8 +592,8 @@ export function WorkbenchSelectionTile({
       onSearchQueryChange={setSearchQuery}
       searchInputRef={searchInputRef}
       categories={categories}
-      contentWidth={useListView ? undefined : filterContentWidth}
-      flush={useListView}
+      contentWidth={WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}
+      flush={false}
     />
   )
 
@@ -584,11 +601,7 @@ export function WorkbenchSelectionTile({
     <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
       {useListView ? (
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-          <div className="shrink-0 px-3 pt-3 pb-1 md:px-6">
-            <div className="mx-auto w-full" style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}>
-              {sharedFilterBar}
-            </div>
-          </div>
+          {sharedFilterBar}
           <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1 w-full" viewportClassName="px-3 md:px-6">
             <div
               className="mx-auto flex w-full flex-col divide-y divide-border/60 py-2"
@@ -646,7 +659,7 @@ export function WorkbenchSelectionTile({
                 <div
                   ref={launcherPagerRef}
                   className={cn(
-                    "overflow-x-auto overflow-y-hidden scroll-smooth snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+                    "overflow-x-auto overflow-y-hidden scroll-smooth motion-reduce:scroll-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
                     centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
                   )}
                 >

@@ -56,7 +56,9 @@ async function runHeaderOverflowChecks() {
       style={{ paddingLeft: 70 }}
     />
   }
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 70))
+  // Must clear the slot collapse in ResponsiveHeaderRow: a group stays in the
+  // flow while it shrinks, so `data-overflowed` lands only once that finishes.
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 240))
   const checks: string[] = []
   const assert = (condition: boolean, message: string) => {
     if (!condition) throw new Error(message)

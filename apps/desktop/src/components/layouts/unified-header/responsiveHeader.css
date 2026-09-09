@@ -2,7 +2,11 @@
 .responsive-header-leading { display: flex; flex: none; align-items: center; }
 .responsive-header-title { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; }
 .responsive-header-title > * { min-width: 0; max-width: 100%; }
-.responsive-header-center { display: flex; flex: 1 1 0%; justify-content: center; min-width: 0; overflow: hidden; padding-inline: 6px; }
+/* `1 1 auto`, not `1 1 0%`: a zero basis contributes nothing to shrink
+   distribution, which left the title absorbing the row's entire deficit alone
+   and springing back the moment an action left. A content basis makes the
+   center shrink alongside it, halving the title's excursion. */
+.responsive-header-center { display: flex; flex: 1 1 auto; justify-content: center; min-width: 0; overflow: hidden; padding-inline: 6px; }
 .responsive-header-center > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .responsive-header-actions { display: flex; align-items: center; flex: none; }
 .responsive-header-slot { display: flex; flex: none; align-items: center; margin-left: 6px; }
@@ -11,6 +15,9 @@
 .responsive-header-group { display: flex; align-items: center; flex: none; width: max-content; }
 /* Hidden controls retain measurable natural widths without affecting the row. */
 .responsive-header-slot[data-overflowed] { position: absolute; visibility: hidden; pointer-events: none; margin: 0; }
+/* Only while a slot is collapsing or expanding: clipping at rest would cut off
+   any group content that escapes its box without a portal. */
+.responsive-header-slot[data-collapsing] { overflow: hidden; }
 .responsive-header-overflow { margin-left: 6px; }
 .responsive-header-overflow[hidden] { display: none; }
 .responsive-header-popup { max-width: calc(100vw - 24px); max-height: var(--available-height); overflow: auto; }

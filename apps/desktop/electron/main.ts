@@ -1442,6 +1442,15 @@ if (!gotTheLock) {
   })
 }
 
+// Electron defaults both to 0, so the window could be dragged below the point
+// where the app still reflows: the renderer's only floor is
+// `body { min-width: 320px }`, which overflows horizontally rather than
+// adapting. 480 stays clear of that floor and gives the header's overflow
+// budget a defined worst case, though it leaves only ~224px beside an expanded
+// 16rem sidebar.
+const MIN_WINDOW_WIDTH = 480
+const MIN_WINDOW_HEIGHT = 480
+
 function createWindow() {
   const isMac = process.platform === 'darwin'
   const isWindows = process.platform === 'win32'
@@ -1465,8 +1474,12 @@ function createWindow() {
   win = new BrowserWindow({
     x: mainWindowState.x,
     y: mainWindowState.y,
-    width: mainWindowState.width,
-    height: mainWindowState.height,
+    // Clamped, not just bounded: a profile saved before the minimum existed can
+    // restore a smaller size than these allow.
+    width: Math.max(mainWindowState.width, MIN_WINDOW_WIDTH),
+    height: Math.max(mainWindowState.height, MIN_WINDOW_HEIGHT),
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     show: false, // Hide initially for smooth launch
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
