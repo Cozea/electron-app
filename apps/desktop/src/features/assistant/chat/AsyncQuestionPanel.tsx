@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,8 +8,13 @@ import {
   togglePendingUserInputOptionSelection,
 } from "@/features/assistant/pendingUserInput";
 import { cn } from "@/lib/utils";
-import { questionDraftKey, useQuestionDraftStore } from "@/features/assistant/questionDraftStore";
+import {
+  questionDraftKey,
+  questionDrafts,
+  useQuestionDraftStore,
+} from "@/features/assistant/questionDraftStore";
 import type { PendingUserInput } from "@/features/assistant/chat/session-logic";
+import { useTranslation } from "@/lib/i18n";
 
 interface AsyncQuestionPanelProps {
   threadId: string;
@@ -25,9 +30,14 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
   responding,
   onSubmit,
 }: AsyncQuestionPanelProps) {
+  const { t } = useTranslation();
   const key = questionDraftKey(threadId, request);
   const draft = useQuestionDraftStore((state) => state.drafts[key]);
-  const frozen = responding || Boolean(draft?.submission);
+  const ready = useQuestionDraftStore((state) => state.ready);
+  useEffect(() => {
+    void questionDrafts.load().catch(() => undefined);
+  }, []);
+  const frozen = !ready || responding || Boolean(draft?.submission);
   const complete = request.questions.every(
     (question) =>
       resolvePendingUserInputAnswer(
@@ -36,14 +46,14 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
       ) !== null,
   );
   const setAnswer = (questionId: string, answer: string | string[]) =>
-    useQuestionDraftStore.getState().setAnswer(key, questionId, answer);
+    void useQuestionDraftStore.getState().setAnswer(key, questionId, answer);
   return (
     <section
-      aria-label="Questions from the agent"
+      aria-label={t("assistant.questions.label")}
       className="basis-full mb-2 max-h-[40vh] overflow-y-auto rounded-xl border border-border/60 bg-background/70 p-3 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 motion-reduce:animate-none"
     >
       <p className="mb-3 text-xs text-muted-foreground">
-        The agent can keep working while you answer.
+        {t("assistant.questions.hint")}
       </p>
       <div className="space-y-4">
         {request.questions.map((question) => {
@@ -88,8 +98,12 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
               ))}
               {question.allowCustomAnswer !== false ? (
                 <Textarea
-                  aria-label={`Answer: ${question.question}`}
-                  placeholder={question.options.length ? "Or write an answer" : "Your answer"}
+                  aria-label={`${t("assistant.questions.answerLabel")}: ${question.question}`}
+                  placeholder={
+                    question.options.length
+                      ? t("assistant.questions.customPlaceholder")
+                      : t("assistant.questions.answerPlaceholder")
+                  }
                   value={answerDraft.customAnswer ?? ""}
                   onChange={(event) => setAnswer(question.id, event.target.value)}
                   className="min-h-16 resize-y text-sm"
@@ -101,15 +115,21 @@ export const AsyncQuestionPanel = memo(function AsyncQuestionPanel({
       </div>
       <div className="mt-3 flex items-center justify-end gap-2">
         {draft?.submission && !responding ? (
-          <span className="text-xs text-muted-foreground">Retry sends the same answer.</span>
+          <span className="text-xs text-muted-foreground">
+            {t("assistant.questions.retryHint")}
+          </span>
         ) : null}
         <Button
           type="button"
           size="sm"
-          disabled={responding || !complete}
+          disabled={!ready || responding || !complete}
           onClick={() => void onSubmit(String(request.requestId))}
         >
-          {responding ? "Sending…" : draft?.submission ? "Retry answer" : "Send answer"}
+          {responding
+            ? t("assistant.questions.sending")
+            : draft?.submission
+              ? t("assistant.questions.retry")
+              : t("assistant.questions.send")}
         </Button>
       </div>
     </section>

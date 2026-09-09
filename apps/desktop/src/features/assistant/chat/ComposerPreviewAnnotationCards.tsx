@@ -7,7 +7,7 @@ import {
 } from "@/features/browser/elementContext"
 import { cn } from "@/lib/utils"
 
-import type { ComposerImageDraft } from "./CozeaChatSurface"
+import type { ComposerImageDraft } from "@/features/assistant/model/assistantComposerTypes"
 
 export function ComposerPreviewAnnotationCards(props: {
   readonly annotations: ReadonlyArray<PreviewAnnotationPayload>

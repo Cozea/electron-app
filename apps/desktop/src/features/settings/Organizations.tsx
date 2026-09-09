@@ -11,6 +11,7 @@ import { useMutation, useQuery } from "convex/react"
 
 import { api } from "../../../../../convex/_generated/api"
 import type { Id } from "../../../../../convex/_generated/dataModel"
+import { cleanConvexError } from "@/lib/convexError"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   SettingsGroup,
@@ -197,10 +198,7 @@ export function OrganizationSettingsTabs({
   )
 }
 
-function cleanConvexError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback
-  return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
-}
+
 
 interface WorkbenchTarget {
   projectId: string
@@ -356,7 +354,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
     <section>
       <SettingsSectionTitle>Recover group access</SettingsSectionTitle>
       <SettingsSectionDescription>
-        Redeem a one-time recovery code on this replacement device to rejoin your organization.
+        Redeem a code to recover organization access.
       </SettingsSectionDescription>
       <SettingsGroup>
         <SettingsRow isFirst>
@@ -371,7 +369,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
           <SettingsRowControl>
             <Button
               size="sm"
-              className="h-7 text-[11px]"
+              className="h-7 text-xs"
               disabled={busy || !recoveryCode.trim()}
               onClick={() =>
                 void run(async () => {
@@ -392,7 +390,6 @@ export function Organizations({ surface = "page", route: _route }: Organizations
     <SettingsPageBody surface={surface}>
       <SettingsPageHeader
         title={t("settings.nav.organizations")}
-        description={t("settings.organizations.description")}
       />
 
       {error ? <p className="mb-3 px-1 text-xs text-destructive">{error}</p> : null}
@@ -402,7 +399,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
         <section>
           <SettingsSectionTitle>Pending invitations</SettingsSectionTitle>
           <SettingsSectionDescription>
-            Accept only groups you recognize. Membership grants access to that group’s projects and DevApps.
+            Incoming organization invitations for this device.
           </SettingsSectionDescription>
           <SettingsGroup>
             {(incomingEnrollments ?? []).map((enrollment, index) => (
@@ -418,7 +415,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-xs"
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
@@ -430,7 +427,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                   </Button>
                   <Button
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-xs"
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
@@ -490,7 +487,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-[11px]"
+                  className="h-7 text-xs"
                   disabled={busy}
                   onClick={() => {
                     setIsCreatingOrg(false)
@@ -501,7 +498,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                 </Button>
                 <Button
                   size="sm"
-                  className="h-7 text-[11px]"
+                  className="h-7 text-xs"
                   disabled={busy || !principalId || !orgName.trim()}
                   onClick={() =>
                     void run(async () => {
@@ -604,18 +601,18 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                 <section>
                   <SettingsSectionTitle>Offline recovery</SettingsSectionTitle>
                   <SettingsSectionDescription>
-                    Create one recovery code, store it offline, and rotate it after use or suspected exposure.
+                    Offline backup codes for emergency recovery.
                   </SettingsSectionDescription>
                   <SettingsGroup>
                     <SettingsRow isFirst>
-                      <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
+                      <p className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
                         {generatedRecoveryCode ?? "No recovery code shown"}
                       </p>
                       <SettingsRowControl className="gap-2">
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 text-[11px]"
+                          className="h-7 text-xs"
                           disabled={busy}
                           onClick={() =>
                             void run(async () => {
@@ -630,7 +627,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             onClick={() => void copyId(generatedRecoveryCode)}
                           >
                             {copiedId === generatedRecoveryCode ? t("common.copied") : t("common.copy")}
@@ -702,7 +699,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             disabled={busy}
                             onClick={() => {
                               setIsInvitingDevice(false)
@@ -714,7 +711,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                           <Button
                             type="submit"
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             disabled={busy || !deviceIdentityId.trim()}
                           >
                             {t("settings.organizations.invite")}
@@ -850,7 +847,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             disabled={busy}
                             onClick={() =>
                               void run(async () => {
@@ -901,7 +898,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-medium text-foreground">{app.name}</p>
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {t("settings.organizations.version")} {app.activeRelease.version}
                               {app.activeRelease.runtimeKind === "service"
                                 ? ` · Service · ${app.activeRelease.framework}`
@@ -912,7 +909,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                         <SettingsRowControl className="gap-2">
                           <Button
                             size="sm"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             onClick={() => {
                               const workbench = useProjectWorkbenchStore.getState()
                               const target = resolveWorkbenchTarget(
@@ -951,7 +948,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-7 text-[11px]"
+                              className="h-7 text-xs"
                               disabled={busy}
                               onClick={() =>
                                 void run(async () => {

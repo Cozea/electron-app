@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react"
+import { cleanConvexError } from "@/lib/convexError"
 import { useParams } from "@/lib/router"
 import { useMutation, useQuery } from "convex/react"
 
@@ -21,10 +22,7 @@ import {
   Link01Icon as __Link2HugeIcon,
 } from "@hugeicons/core-free-icons"
 
-function cleanConvexError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback
-  return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback
-}
+
 
 export function ProjectJoinPage() {
   const navigate = useViewTransitionNavigate()

@@ -10,10 +10,9 @@ const sharedButton = source("apps/desktop/src/components/ui/button.tsx");
 const sharedInput = source("apps/desktop/src/components/ui/input.tsx");
 const sharedToggle = source("apps/desktop/src/components/ui/toggle.tsx");
 const sharedSwitch = source("apps/desktop/src/components/ui/switch.tsx");
-const assistantButton = source("apps/desktop/src/features/assistant/ui/button.tsx");
-const assistantInput = source("apps/desktop/src/features/assistant/ui/input.tsx");
 const compactWindowHook = source("apps/desktop/src/hooks/use-mobile.ts");
 const unifiedHeader = source("apps/desktop/src/components/layouts/UnifiedHeader.tsx");
+const responsiveHeader = source("apps/desktop/src/components/layouts/unified-header/ResponsiveHeaderRow.tsx");
 const dockviewCanvas = source("apps/desktop/src/features/workbench/WorkbenchDockviewCanvas.tsx");
 const tileChrome = source("apps/desktop/src/features/workbench/WorkbenchTileChrome.tsx");
 const geometryCss = source("apps/desktop/src/features/workbench/adaptiveDesktopGeometry.css");
@@ -33,13 +32,8 @@ describe("adaptive desktop geometry", () => {
     for (const primitive of [sharedButton, sharedInput, sharedToggle, sharedSwitch]) {
       expect(primitive).not.toMatch(/\bsm:(?:h-|size-|min-w-|\[--thumb-size)/);
     }
-    for (const primitive of [assistantButton, assistantInput]) {
-      expect(primitive).not.toMatch(/\bsm:(?:h-|size-|leading-)/);
-    }
-
     // Input modality, not viewport width, owns coarse-pointer hit areas.
     expect(sharedButton).toContain("pointer-coarse:after:min-h-11");
-    expect(assistantButton).toContain("pointer-coarse:after:min-h-11");
   });
 
   it("names narrow-window shell behavior as compact desktop geometry", () => {
@@ -51,9 +45,11 @@ describe("adaptive desktop geometry", () => {
   it("gives the global title bar a compact-window pressure policy", () => {
     // Center identity/content yields before actionable left/right chrome. This
     // keeps the title bar one row high and avoids collisions with OS controls.
-    expect(unifiedHeader).toContain('data-unified-header-center="true"');
-    expect(unifiedHeader).toContain("max-md:hidden");
-    expect(unifiedHeader).toContain('data-unified-header-actions="true"');
+    expect(responsiveHeader).toContain('data-unified-header-center="true"');
+    expect(unifiedHeader).toContain("<ResponsiveHeaderRow");
+    expect(responsiveHeader).toContain("resolveHeaderOverflow");
+    expect(unifiedHeader).not.toContain("max-md:hidden");
+    expect(responsiveHeader).toContain('data-unified-header-actions="true"');
     expect(unifiedHeader).toContain("h-10");
   });
 

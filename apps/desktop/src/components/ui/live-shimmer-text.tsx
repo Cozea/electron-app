@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from "react"
+import { memo, type ReactNode, type Ref } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -23,6 +23,8 @@ export const LiveShimmerText = memo(function LiveShimmerText(props: {
   children: ReactNode
   className?: string
   title?: string
+  /** The rendered base text owns overflow measurements, not its clipped wrapper. */
+  textRef?: Ref<HTMLSpanElement>
   /** Resting colour; must be the faded one, or the band will not show. */
   baseClassName?: string
   /** Colour of the travelling band; must be stronger than the base. */
@@ -41,7 +43,7 @@ export const LiveShimmerText = memo(function LiveShimmerText(props: {
       )}
       title={props.title}
     >
-      <span className={cn("block truncate", baseClassName)}>{props.children}</span>
+      <span ref={props.textRef} className={cn("block truncate", baseClassName)}>{props.children}</span>
       <span
         aria-hidden
         className="cozea-live-shimmer-focus pointer-events-none absolute inset-y-0 select-none"

@@ -12,36 +12,36 @@ This runbook is the canonical loop for keeping Cozea feeling like a fast desktop
 
 ## Setup
 
-1. Start the app with performance diagnostics:
+1. Start the app normally:
    - `bun run dev:perf:modern`
 2. For baseline comparison:
    - `bun run dev:perf:baseline`
 3. Open renderer DevTools and keep the Performance panel ready.
-4. Keep console output visible for `[BootTiming]`, `[Jank][LoAF]`, and `[Jank][LongTask]` entries.
-5. Summarize saved Chrome traces with:
+4. Summarize saved Chrome traces with:
    - `bun run perf:trace-summary -- tmp/cozea-cold-boot-trace.json.json.gz`
-6. After production builds, summarize renderer chunk weight with:
+5. After production builds, summarize renderer chunk weight with:
    - `bun run perf:bundle-summary`
-7. For the LegendList agent timeline experiment, enable optional list diagnostics in DevTools:
-   - `localStorage.setItem("cozea:legend-list-agent-timeline:debug", "1")`
-   - Recycling is enabled by default and can be disabled with `localStorage.setItem("cozea:legend-list-agent-timeline:recycle", "0")`.
+6. LegendList timeline debug callbacks are removed. Recycling remains enabled by default and can be disabled with `localStorage.setItem("cozea:legend-list-agent-timeline:recycle", "0")`.
+
+Automatic jank logging is removed. Record renderer long tasks and frame timing
+through DevTools Performance.
 
 ## Capture Scenarios
 
 1. Cold boot:
    - Start from no running Electron process.
    - Record until the first workspace is interactive.
-   - Compare `cozea:renderer:entry-to-first-frame` and `[BootTiming] main-window-ready-to-show`.
+   - Compare the renderer/main-process work visible in the trace before the first interactive frame.
 2. Rapid workspace switching:
    - Switch through at least five projects, including one project with restored tiles.
-   - Watch `cozea:interaction:project-switch` measures.
+   - Measure from the navigation input through the first stable destination frame.
    - Confirm old workspace UI does not flash a full-page loading state.
 3. Tile opening:
    - Open Browser, Terminal, Dev Server, Mobile Simulator, and an assistant tile.
-   - Watch `cozea:interaction:workbench-add-tile` and `cozea:interaction:workbench-open-singleton-tile`.
+   - Inspect scripting, layout, paint, and long animation frames while the tile opens.
 4. Tile restore:
    - Relaunch into a project with multiple saved tiles.
-   - Watch `cozea:interaction:workbench-restore-tiles`.
+   - Inspect scripting, layout, paint, and long animation frames during restoration.
 5. Background multitasking:
    - Leave a terminal, dev server, or assistant running.
    - Switch away for several minutes.
@@ -49,8 +49,7 @@ This runbook is the canonical loop for keeping Cozea feeling like a fast desktop
 
 ## What To Compare
 
-- Main-process boot timings.
-- Renderer first-frame timing.
+- Main-process and renderer startup work in the captured trace.
 - Long animation frames over 50ms, especially those with script attribution.
 - Long tasks over 50ms.
 - Workspace host count and which workspaces remain hosted.
@@ -66,5 +65,5 @@ For each run, include:
 - Electron version.
 - Scenario name.
 - Largest LoAF and LongTask durations.
-- Notable `cozea:*` measures from the Performance panel.
+- Notable long tasks, long animation frames, layout work, and React commits.
 - Whether any visible loading fallback appeared during project switch or tile restore.

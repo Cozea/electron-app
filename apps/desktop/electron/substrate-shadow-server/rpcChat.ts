@@ -10,7 +10,6 @@ import {
   SUBSTRATE_RPC_CHAT_FLAG,
   SUBSTRATE_T3_PIN_SHA,
 } from "../substrate/constants";
-import { getSharedSubstrateNdjsonWriter } from "../substrate/obs";
 import {
   bootstrapSubstrateProviderRegistry,
   type SubstrateProviderDriverRegistry,
@@ -193,7 +192,6 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
     }
   }
 
-  const obs = getSharedSubstrateNdjsonWriter({ env });
   const turns = new Map<string, RpcChatTurn>();
   const wss = new WebSocketServer({ noServer: true });
 
@@ -235,14 +233,6 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
       const instance = await providerRegistry.materialize({
         driverKind: input.providerId,
       });
-      obs.writeSpan({
-        name: "substrate.provider.materialize",
-        attrs: {
-          driverKind: instance.driverKind,
-          instanceId: instance.instanceId,
-          implementation: instance.implementation,
-        },
-      });
       const state = await instance.snapshot.run();
       if (
         instance.live &&
@@ -251,14 +241,6 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
       ) {
         try {
           const liveResult = await instance.live.sendTurn({ text: input.text });
-          obs.writeSpan({
-            name: "substrate.provider.live_turn",
-            attrs: {
-              driverKind: instance.driverKind,
-              instanceId: instance.instanceId,
-              status: liveResult.status,
-            },
-          });
           const replyPreview =
             liveResult.replyText.trim().length > 0
               ? liveResult.replyText
@@ -277,13 +259,6 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
               error instanceof Error ? error.message : String(error)
             }`,
           );
-          obs.writeSpan({
-            name: "substrate.provider.live_turn_failed",
-            attrs: {
-              driverKind: instance.driverKind,
-              error: error instanceof Error ? error.message : String(error),
-            },
-          });
         }
       }
 
@@ -303,13 +278,6 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      obs.writeSpan({
-        name: "substrate.provider.materialize_failed",
-        attrs: {
-          driverKind: input.providerId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      });
       return null;
     }
   }
@@ -443,15 +411,6 @@ export function attachRpcChat(options: AttachRpcChatOptions): RpcChatHandle {
 
         turns.set(turn.turnId, turn);
 
-        obs.writeSpan({
-          name: "substrate.rpc.chat.send_accepted",
-          attrs: {
-            turnId: turn.turnId,
-            mode: turn.mode,
-            providersEnabled,
-            ...(turn.providerId ? { providerId: turn.providerId } : {}),
-          },
-        });
 
         sendJson(ws, {
           type: "res",

@@ -148,8 +148,7 @@ export function isTerminalLinkActivation(
   platform = typeof navigator === "undefined" ? "" : navigator.platform,
 ): boolean {
   if (platform.length === 0) return false;
-  const isMac = platform.toLowerCase().includes('mac') || platform.toLowerCase().includes('darwin')
-  return isMac
+  return isMacPlatform(platform)
     ? event.metaKey && !event.ctrlKey
     : event.ctrlKey && !event.metaKey;
 }
@@ -172,3 +171,4 @@ export function resolvePathLinkTarget(rawPath: string, cwd: string): string {
   if (!line) return resolvedPath;
   return `${resolvedPath}:${line}${column ? `:\${column}` : ""}`;
 }
+import { isMacPlatform } from "@/lib/platform"

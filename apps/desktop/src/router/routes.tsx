@@ -13,7 +13,8 @@ import type { TranslationKey } from "@/lib/i18n/en";
 import { RouteLoading } from "@/router/RouteLoading";
 import { Outlet } from "@/lib/router";
 import { ProjectLayout } from "@/features/projects/layouts/ProjectLayout";
-import { LocalNavigationReady } from '@/lib/performance/localNavigation';
+import { destinationModules } from "@/app/navigation/destinationModules";
+import { settingsModules } from "@/lib/settings/settingsModules";
 
 function createLazyRouteComponent(
   loader: () => Promise<{ default: ComponentType }>,
@@ -25,7 +26,6 @@ function createLazyRouteComponent(
     return (
       <Suspense fallback={<RouteLoading labelKey={labelKey} />}>
         <LazyComponent />
-        <LocalNavigationReady destination={labelKey.replace('routeLoading.', '')} />
       </Suspense>
     );
   }
@@ -49,21 +49,21 @@ const LegacyProjectRedirectPage = createLazyRouteComponent(
 );
 const ProjectsLaunchPage = createLazyRouteComponent(
   () =>
-    import("@/features/projects/pages/ProjectsLaunchPage").then((module) => ({
+    destinationModules.projects().then((module) => ({
       default: module.ProjectsLaunchPage,
     })),
   "routeLoading.projects",
 );
 const ProjectWorkbenchPage = createLazyRouteComponent(
   () =>
-    import("@/features/projects/pages/ProjectWorkbenchPage").then((module) => ({
+    destinationModules.workbench().then((module) => ({
       default: module.ProjectWorkbenchPage,
     })),
   "routeLoading.workbench",
 );
 const TasksPage = createLazyRouteComponent(
   () =>
-    import("@/features/tasks/pages/TasksPage").then((module) => ({
+    destinationModules.tasks().then((module) => ({
       default: module.TasksPage,
     })),
   "routeLoading.tasks",
@@ -84,70 +84,70 @@ const ProjectTeamPage = createLazyRouteComponent(
 );
 const AppStorePage = createLazyRouteComponent(
   () =>
-    import("@/features/devapps/pages/AppStorePage").then((module) => ({
+    destinationModules.store().then((module) => ({
       default: module.AppStorePage,
     })),
   "routeLoading.store",
 );
 const AgentSkillsPage = createLazyRouteComponent(
   () =>
-    import("@/features/projects/pages/AgentSkillsPage").then((module) => ({
+    destinationModules.skills().then((module) => ({
       default: module.AgentSkillsPage,
     })),
   "routeLoading.agentSkills",
 );
 const InboxPage = createLazyRouteComponent(
   () =>
-    import("@/features/inbox/pages/InboxPage").then((module) => ({
+    destinationModules.inbox().then((module) => ({
       default: module.InboxPage,
     })),
   "routeLoading.inbox",
 );
 const NewProject = createLazyRouteComponent(
   () =>
-    import("@/pages/NewProject").then((module) => ({
+    destinationModules.newProject().then((module) => ({
       default: module.default,
     })),
   "routeLoading.newProject",
 );
 const Account = createLazyRouteComponent(
   () =>
-    import("@/features/settings/Account").then((module) => ({
+    settingsModules.account().then((module) => ({
       default: module.Account,
     })),
   "routeLoading.account",
 );
 const Appearance = createLazyRouteComponent(
   () =>
-    import("@/features/settings/Appearance").then((module) => ({
+    settingsModules.appearance().then((module) => ({
       default: module.Appearance,
     })),
   "routeLoading.appearance",
 );
 const Organizations = createLazyRouteComponent(
   () =>
-    import("@/features/settings/Organizations").then((module) => ({
+    settingsModules.organizations().then((module) => ({
       default: module.Organizations,
     })),
   "routeLoading.organizations",
 );
 const DevAppSettings = createLazyRouteComponent(
   () =>
-    import("@/features/settings/DevAppSettings").then((module) => ({
+    settingsModules.devapps().then((module) => ({
       default: module.DevAppSettings,
     })),
   "routeLoading.devapps",
 );
 const Tooling = createLazyRouteComponent(
   () =>
-    import("@/features/settings/Tooling").then((module) => ({
+    settingsModules.tooling().then((module) => ({
       default: module.Tooling,
     })),
   "routeLoading.tooling",
 );
 const ComputerUse = createLazyRouteComponent(
   () =>
-    import("@/features/settings/ComputerUse").then((module) => ({
+    settingsModules.computerUse().then((module) => ({
       default: module.ComputerUse,
     })),
   "routeLoading.computerUse",

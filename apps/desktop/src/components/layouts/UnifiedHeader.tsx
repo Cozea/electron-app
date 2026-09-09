@@ -5,7 +5,6 @@ import {
 } from "react";
 
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import { LayoutToggles } from "@/components/layouts/LayoutToggles";
 import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
 import { cn } from "@/lib/utils";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
@@ -13,6 +12,8 @@ import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControl
 import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChangesButton";
 import { WorkbenchHeaderEditorControl } from "@/features/workbench/WorkbenchHeaderEditorControl";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
+
+import { ResponsiveHeaderRow, type HeaderActionGroup } from "./unified-header/ResponsiveHeaderRow";
 
 const LazyHeaderProjectShareButton = lazy(() =>
   import("./unified-header/HeaderProjectShareButton").then((module) => ({
@@ -75,7 +76,6 @@ export function UnifiedHeader({
     layoutMode === "embedded" &&
     shouldApplyLeftWindowControlsInset &&
     sidebar != null &&
-    !sidebar.isMobile &&
     sidebar.state === "expanded";
   // Transparent surface: the header sits above the content area in a flex
   // column (nothing scrolls beneath it), and a distinct tint/border made it
@@ -86,178 +86,57 @@ export function UnifiedHeader({
       : layoutMode === "embedded"
         ? "relative z-40 w-full shrink-0"
         : "fixed top-0 left-0 right-0 z-40";
-  const macHeaderControlsBuffer =
-    shouldApplyLeftWindowControlsInset && !relaxMacTitlebarLeadingPadding ? 16 : 0;
-
   const windowControlsInsetPadding =
     shouldApplyLeftWindowControlsInset && !relaxMacTitlebarLeadingPadding
-      ? windowChrome.compactLeftInset
+      ? windowChrome.titlebarLeadingSpace
       : 0;
   const rightFrameInset = shouldShowWindowsCaptionSpacer ? 0 : contentInsetRight;
   const headerContentStyle = {
-    paddingLeft: contentInsetLeft + windowControlsInsetPadding + macHeaderControlsBuffer,
+    paddingLeft: contentInsetLeft + windowControlsInsetPadding,
     paddingRight: rightFrameInset,
   };
   /** Embedded shell: tighter trailing edge so header actions sit nearer the window border. */
   const shellHorizontalPadding =
     layoutMode === "embedded"
-      ? cn(relaxMacTitlebarLeadingPadding ? "pl-2" : "pl-4", "pr-1.5")
+      ? "pl-2 pr-1.5"
       : "pl-4 pr-2";
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
 
-  const collaborationControl = projectInviteContext ? (
-    <div className="flex min-w-0 items-center gap-1.5">
-      {(() => {
-        const parts: ReactNode[] = [];
-        if (editorProjectPath) {
-          parts.push(
-            <WorkbenchHeaderEditorControl key="open-in-editor" workspaceId={editorProjectPath} />,
-          );
-        }
-        if (projectInviteContext.projectId) {
-          parts.push(
-            <HeaderProjectChangesButton key="changes" projectId={projectInviteContext.projectId} />,
-          );
-        }
-        if (!hideShare) {
-          parts.push(
-            <Suspense key="share" fallback={<HeaderShareButtonFallback />}>
-              <LazyHeaderProjectShareButton
-                projectId={projectInviteContext.projectId}
-                projectName={projectInviteContext.projectName}
-              />
-            </Suspense>,
-          );
-        }
-        if (parts.length === 0) return null;
-        return parts;
-      })()}
-    </div>
-  ) : null;
-
-  if (isTabsPrimaryLayout) {
-    return (
-      <div
-        className={cn(
-          headerLayoutClassName,
-          "h-10 flex items-center px-2 titlebar-drag-region transition-[padding] duration-200 ease-out",
-          className,
-        )}
-      >
-        {centerAddon && (
-          <div
-            className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center max-md:hidden"
-            style={headerContentStyle}
-            data-unified-header-center="true"
-          >
-            <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center justify-center">
-              {centerAddon}
-            </div>
-          </div>
-        )}
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 right-0 z-[5] flex items-center justify-center"
-          style={headerContentStyle}
-        >
-          <div className="pointer-events-auto titlebar-no-drag flex min-w-0 items-center">
-            {compactHeaderActions ? (
-              <div className="shared-header-action-pills inline-flex min-w-0 items-center">
-                {header}
-              </div>
-            ) : (
-              <div className="flex min-w-0 items-center">{header}</div>
-            )}
-            {preSearchAddon && (
-              <div className="flex items-center shrink-0 ml-1">{preSearchAddon}</div>
-            )}
-          </div>
-        </div>
-        <div className="flex h-10 w-full items-stretch gap-0.5" style={headerContentStyle}>
-          <div className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag">
-            <ProjectShellTitleBarLeft />
-          </div>
-          <div className="min-h-0 min-w-0 flex-1" aria-hidden="true" />
-          <div
-            className="flex min-w-0 shrink-0 items-center gap-2 max-md:gap-1 titlebar-no-drag"
-            data-unified-header-actions="true"
-          >
-            {collaborationControl}
-            <LayoutToggles />
-            {rightAddon && (
-              <>
-                <div className="flex items-center">{rightAddon}</div>
-              </>
-            )}
-            {shouldShowWindowsCaptionSpacer && (
-              <>
-                <div
-                  aria-hidden="true"
-                  className="h-7 shrink-0 flex-none"
-                  style={{ width: windowsCaptionSpacerWidth }}
-                />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+  const groups: HeaderActionGroup[] = [];
+  if (preSearchAddon) {
+    groups.push({ id: "presence", label: "Collaboration", priority: 10, placement: "leading", content: preSearchAddon });
+  }
+  if (projectInviteContext) {
+    if (projectInviteContext.projectId) {
+      groups.push({ id: "changes", label: "Changes", priority: 80,
+        content: <HeaderProjectChangesButton projectId={projectInviteContext.projectId} /> });
+    }
+    if (editorProjectPath) {
+      groups.push({ id: "editor", label: "Open in editor", priority: 30,
+        content: <WorkbenchHeaderEditorControl workspaceId={editorProjectPath} /> });
+    }
+    if (!hideShare) {
+      groups.push({ id: "share", label: "Share project", priority: 20,
+        content: <Suspense fallback={<HeaderShareButtonFallback />}>
+          <LazyHeaderProjectShareButton projectId={projectInviteContext.projectId} projectName={projectInviteContext.projectName} />
+        </Suspense> });
+    }
+  }
+  if (rightAddon) {
+    groups.push({ id: "page", label: "Page actions", priority: 100, content: rightAddon });
   }
 
   return (
-    <div
-      className={cn(
-        headerLayoutClassName,
-        "h-10 flex items-center titlebar-drag-region transition-[padding] duration-200 ease-out",
-        shellHorizontalPadding,
-        className,
-      )}
-    >
-      {centerAddon && (
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 right-0 z-10 flex items-center justify-center max-md:hidden"
-          style={headerContentStyle}
-          data-unified-header-center="true"
-        >
-          <div className="pointer-events-auto titlebar-no-drag flex min-w-0 max-w-[52vw] items-center justify-center">
-            {centerAddon}
-          </div>
-        </div>
-      )}
-      <div className="flex h-10 w-full items-stretch gap-3 max-md:gap-1.5" style={headerContentStyle}>
-        <div className="flex min-w-0 shrink-0 items-center gap-1.5 titlebar-no-drag">
-          <ProjectShellTitleBarLeft />
-          {compactHeaderActions ? (
-            <div className="shared-header-action-pills flex min-w-0 items-center">{header}</div>
-          ) : (
-            header
-          )}
-          {preSearchAddon && <div className="flex shrink-0 items-center">{preSearchAddon}</div>}
-        </div>
-        <div className="min-h-0 min-w-0 flex-1" aria-hidden="true" />
-        <div
-          className="flex min-w-0 shrink-0 items-center gap-0.5 titlebar-no-drag"
-          data-unified-header-actions="true"
-        >
-          <div className="flex min-w-0 items-center gap-2 max-md:gap-1">
-            {collaborationControl}
-            <LayoutToggles />
-            {rightAddon && (
-              <>
-                <div className="flex items-center">{rightAddon}</div>
-              </>
-            )}
-            {shouldShowWindowsCaptionSpacer && (
-              <>
-                <div
-                  aria-hidden="true"
-                  className="h-7 shrink-0 flex-none"
-                  style={{ width: windowsCaptionSpacerWidth }}
-                />
-              </>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className={cn(headerLayoutClassName, "h-10 flex min-w-0 items-center titlebar-drag-region", shellHorizontalPadding, className)}>
+      <ResponsiveHeaderRow
+        leading={<ProjectShellTitleBarLeft />}
+        title={isTabsPrimaryLayout ? undefined : header}
+        center={centerAddon ?? (isTabsPrimaryLayout ? header : undefined)}
+        groups={groups}
+        style={headerContentStyle}
+        trailingWidth={shouldShowWindowsCaptionSpacer ? windowsCaptionSpacerWidth : 0}
+        compact={compactHeaderActions}
+      />
     </div>
   );
 }

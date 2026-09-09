@@ -5,8 +5,8 @@ import {
   type AccountUsageLimitWindow,
   formatUsageLimitReset,
 } from "../lib/usageLimits";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -108,7 +108,7 @@ export function ContextWindowMeter(props: {
     return (
       <Tooltip>
         <TooltipTrigger render={ringContent} />
-        <TooltipPopup
+        <TooltipContent
           side="top"
           align="end"
           sideOffset={8}
@@ -119,7 +119,7 @@ export function ContextWindowMeter(props: {
             contextPercentage={usage.usedPercentage}
             windows={accountUsageWindows}
           />
-        </TooltipPopup>
+        </TooltipContent>
       </Tooltip>
     );
   }
@@ -174,7 +174,7 @@ export function ContextWindowMeter(props: {
             {!hidePercentage ? (
               <span
                 className={cn(
-                  "min-w-0 text-[9px] font-medium tabular-nums text-muted-foreground",
+                  "min-w-0 text-2xs font-medium tabular-nums text-muted-foreground",
                   "leading-none",
                 )}
               >
@@ -186,8 +186,7 @@ export function ContextWindowMeter(props: {
           </button>
         }
       />
-      <PopoverPopup
-        tooltipStyle
+      <PopoverContent
         side="top"
         align="end"
         className="w-[19rem] max-w-[calc(100vw-1rem)] px-3 py-3"
@@ -197,7 +196,7 @@ export function ContextWindowMeter(props: {
           contextPercentage={usage.usedPercentage}
           windows={accountUsageWindows}
         />
-      </PopoverPopup>
+      </PopoverContent>
     </Popover>
   );
 }

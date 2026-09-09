@@ -3,6 +3,7 @@ import { T3OrchestrationClient } from "@cozea/client-runtime";
 import type { OrchestrationEvent } from "@cozea/assistant-contracts";
 
 import {
+  retainThreadDetail,
   useThreadDetailStore,
   type ThreadDetailRecord,
 } from "@/features/assistant/model/threadDetailStore";
@@ -78,6 +79,11 @@ export function useTileThreadStream(threadId: string | null | undefined): Thread
   const detail = useThreadDetailStore((state) =>
     threadId ? (state.byThreadId[threadId] ?? null) : null,
   );
+
+  useEffect(() => {
+    if (!threadId) return;
+    return retainThreadDetail(threadId);
+  }, [threadId]);
 
   useEffect(() => {
     if (

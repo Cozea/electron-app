@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import * as Y from 'yjs'
+import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
@@ -66,10 +67,7 @@ export interface ProjectSettingsPageProps {
   onRequestClose?: (() => void) | null
 }
 
-function cleanConvexError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback
-  return raw.replace(/^\[CONVEX.*?\]\s*/, '').replace(/\s*Called by client$/, '') || fallback
-}
+
 
 interface ActiveRecoveryKit {
   roomId: string
@@ -770,7 +768,6 @@ export function ProjectSettingsPage({
             <div className="w-full min-h-full px-8 sm:px-10 pt-6 pb-12 mx-auto max-w-4xl">
               <SettingsPageHeader
                 title={project.name}
-                description={project.description || undefined}
               />
               <div className="w-full space-y-6">
                 <section>
@@ -858,14 +855,14 @@ export function ProjectSettingsPage({
                               </span>
                             ) : null}
                           </div>
-                          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
                             {t('settings.desc.localDevAppIdentity')}
                           </p>
                         </div>
                         <Button
                           type="button"
                           variant="outline"
-                          className="h-7 shrink-0 bg-background/50 text-[11px]"
+                          className="h-7 shrink-0 bg-background/50 text-xs"
                           onClick={() => {
                             setDevAppIdentityError(null)
                             setShowDevAppIdentityDialog(true)
@@ -884,11 +881,11 @@ export function ProjectSettingsPage({
                   <SettingsGroup>
                     <div className="px-4 py-3">
                       <p className="text-xs font-medium text-foreground">{t('settings.label.collabTitle')}</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {t('settings.desc.collabTitle')}
                       </p>
                     </div>
-                    <div className="px-4 py-3 text-[11px] text-muted-foreground">
+                    <div className="px-4 py-3 text-xs text-muted-foreground">
                       {collabSessionResult.status === 'loading' ? t('settings.collab.loading') : null}
                       {collabSessionResult.status === 'error' ? (
                         <span className="text-destructive">{collabSessionResult.error ?? t('settings.collab.error')}</span>
@@ -939,7 +936,7 @@ export function ProjectSettingsPage({
                         <SettingsRowControl>
                           <Button
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             disabled={pendingRequestCount === 0 || collabAction === 'share'}
                             onClick={() => {
                               void handleSharePendingDevices()
@@ -962,7 +959,7 @@ export function ProjectSettingsPage({
                         <SettingsRowControl>
                           <Button
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             disabled={collabAction === 'generate-recovery'}
                             onClick={() => {
                               void handleGenerateRecoveryKit()
@@ -985,7 +982,7 @@ export function ProjectSettingsPage({
                         <SettingsRowControl>
                           <Button
                             variant="outline"
-                            className="h-7 text-[11px]"
+                            className="h-7 text-xs"
                             disabled={collabAction === 'rotate' || !collaborationDevices || collaborationDevices.length === 0}
                             onClick={() => {
                               void handleRotateRoomKey()
@@ -1008,7 +1005,7 @@ export function ProjectSettingsPage({
                         <SettingsRowControl>
                           <Button
                             variant="ghost"
-                            className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
                             disabled={collabAction === 'reset'}
                             onClick={async () => {
                               const result = await window.electronAPI.dialog.showMessageBox({
@@ -1035,7 +1032,7 @@ export function ProjectSettingsPage({
                       <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
                         <div className="flex min-w-0 flex-col gap-0.5">
                           <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoverWithCode')}</Label>
-                          <p className="truncate text-[11px] text-muted-foreground">
+                          <p className="truncate text-xs text-muted-foreground">
                             {t('settings.collab.recoverWithCodeDesc')}
                           </p>
                         </div>
@@ -1050,7 +1047,7 @@ export function ProjectSettingsPage({
                           />
                           <Button
                             variant="outline"
-                            className="h-8 text-[11px]"
+                            className="h-8 text-xs"
                             disabled={collabAction === 'recover' || recoveryCodeInput.trim().length === 0}
                             onClick={() => {
                               void handleRecoverWithCode()
@@ -1079,7 +1076,7 @@ export function ProjectSettingsPage({
                                 {device.displayName}
                                 {device.identityKey === currentIdentityKey ? ` · ${t('settings.collab.thisDevice')}` : ''}
                               </p>
-                              <p className="truncate text-[11px] text-muted-foreground">
+                              <p className="truncate text-xs text-muted-foreground">
                                 {device.platform} · {device.encryptionFingerprint.slice(0, 12)}
                                 {device.hasPendingRequest ? ` · ${t('settings.collab.waitingForKey')}` : ''}
                                 {device.revokedAt ? ` · ${t('settings.collab.revoked')}` : ''}
@@ -1141,7 +1138,7 @@ export function ProjectSettingsPage({
                       <SettingsRowControl>
                         <Button
                           variant="outline"
-                          className="h-7 text-[11px] text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
+                          className="h-7 text-xs text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
                           disabled={!principalId || !isManager || project.status === 'archived' || isArchiving}
                           onClick={async () => {
                             const result = await window.electronAPI.dialog.showMessageBox({
@@ -1172,7 +1169,7 @@ export function ProjectSettingsPage({
                         <Button
                           variant="destructive"
                           disabled={!principalId || isDeleting}
-                          className="h-7 text-[11px]"
+                          className="h-7 text-xs"
                           onClick={async () => {
                             const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
                               projectId: String(project._id),

@@ -2,10 +2,10 @@ import { type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** Header for top of settings pages (large clean title + optional description) */
+/** Header for top of settings pages (large clean title) */
 export function SettingsPageHeader({
   title,
-  description,
+  description: _description,
   className,
 }: {
   title: ReactNode;
@@ -13,11 +13,8 @@ export function SettingsPageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-6 px-1 space-y-1", className)}>
-      <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
-      {description ? (
-        <p className="text-xs text-muted-foreground/80">{description}</p>
-      ) : null}
+    <div className={cn("mb-6 px-1", className)}>
+      <h1 className="text-settings-title font-bold tracking-tight text-foreground">{title}</h1>
     </div>
   );
 }
@@ -58,7 +55,7 @@ export function SettingsSectionTitle({
   return (
     <h2
       className={cn(
-        "mb-2 flex items-center gap-1.5 px-1 text-xs font-semibold tracking-tight",
+        "mb-2 flex items-center gap-1.5 px-1 text-sm font-semibold tracking-tight",
         variant === "danger" ? "text-destructive" : "text-foreground",
         className,
       )}
@@ -71,7 +68,7 @@ export function SettingsSectionTitle({
 /** One line under section title */
 export function SettingsSectionDescription({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("mb-2.5 px-1 text-[11px] text-muted-foreground/80", className)}>{children}</p>
+    <p className={cn("mb-2.5 px-1 text-sm text-muted-foreground/80", className)}>{children}</p>
   );
 }
 
@@ -152,8 +149,10 @@ export function SettingsRowLabel({
       ) : (
         <span className="text-sm font-medium text-foreground">{title}</span>
       )}
+      {/* The description sits at the title's 13px: at 13/12 the size step was
+        * too small to read as hierarchy, so weight and colour carry it. */}
       {description ? (
-        <p className={cn("text-xs leading-relaxed text-muted-foreground/80 mt-0.5", descriptionClassName)}>{description}</p>
+        <p className={cn("text-sm leading-relaxed text-muted-foreground/80 mt-0.5", descriptionClassName)}>{description}</p>
       ) : null}
     </div>
   );
@@ -185,10 +184,10 @@ export function SettingsFooterActions({ children, className }: { children: React
 
 /** Inputs aligned like settings (right, compact, flat borderless) */
 export const settingsInlineInputClass =
-  "h-7 max-w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent";
+  "h-7 max-w-full border-0 border-none bg-transparent px-0 text-sm font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent";
 
 export const settingsInlineInputWidth = "w-[280px] max-w-full";
 
 /** Native `<select>` in settings / create-project rows (compact rounded control). */
 export const settingsNativeSelectClass =
-  "h-8 max-w-full rounded-lg border border-border/60 bg-background/50 px-2.5 text-xs text-foreground shadow-xs outline-none focus:outline-none focus:ring-1 focus:ring-ring dark:bg-muted/40 cursor-pointer";
+  "h-8 max-w-full rounded-lg border border-border/60 bg-background/50 px-2.5 text-sm text-foreground shadow-xs outline-none focus:outline-none focus:ring-1 focus:ring-ring dark:bg-muted/40 cursor-pointer";

@@ -3,7 +3,7 @@ export const computerUseTranslations = {
     'settings.computerUse.macosOnly': 'Computer Use is currently available on macOS only.',
     'settings.computerUse.advancedTitle': 'Advanced interaction',
     'settings.computerUse.advancedDescription':
-      "Background and accessibility-targeted actions remain preferred. Physical pointer fallback is only used when an agent explicitly requests the global click method.",
+      'Physical cursor control and fallback behavior.',
     'settings.computerUse.allowGlobalPointerFallback': 'Allow physical pointer fallback',
     'settings.computerUse.allowGlobalPointerFallbackDescription':
       'Permit the explicitly authorized global pointer path to move and click the system cursor when targeted interaction is not appropriate. Off by default.',

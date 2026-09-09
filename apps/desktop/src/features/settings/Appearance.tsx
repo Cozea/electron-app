@@ -97,8 +97,7 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
     <SettingsPageBody surface={surface}>
       <SettingsPageHeader title={t("settings.nav.appearance")} />
       <section>
-        <SettingsSectionTitle>{t("settings.appearance.language")}</SettingsSectionTitle>
-        <SettingsSectionDescription>{t("settings.appearance.languageDesc")}</SettingsSectionDescription>
+        <SettingsSectionTitle>{t("settings.appearance.localization")}</SettingsSectionTitle>
         <SettingsGroup>
           <SettingsRow isFirst>
             <SettingsRowLabel
@@ -163,7 +162,7 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
       <section>
         <SettingsSectionTitle>Project Icons</SettingsSectionTitle>
         <SettingsSectionDescription>
-          Activate retro arcade icon sets for projects in the sidebar. When all sets are disabled, projects use clean library folder icons.
+          Retro pixel icons for sidebar projects.
         </SettingsSectionDescription>
         <SettingsGroup>
           {PROJECT_ICON_SETS.map((setMeta, index) => {

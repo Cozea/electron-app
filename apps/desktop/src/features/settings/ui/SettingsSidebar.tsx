@@ -1,6 +1,5 @@
 import * as React from "react"
 
-import { NavUser } from "@/components/nav-user"
 import {
   SidebarContent,
   SidebarFooter,
@@ -21,12 +20,14 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon } from '@hugeicons/core-free-icons'
 import { useTranslation } from '@/lib/i18n'
+import { getLastAppRoute } from "@/lib/settings/settingsReturnRoute"
 
 /** Content-only: renders inside the persistent AppSidebarShell. */
 interface SettingsSidebarProps {
   user?: {
     displayName?: string | null
     avatarUrl?: string | null
+    identityKey?: string | null
   } | null
 }
 
@@ -78,6 +79,11 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
       .sort((a, b) => b.length - a.length)[0] ?? null
   const isSubRoute = !directSectionRoute && Boolean(parentSectionRoute)
 
+  const handleBack = React.useCallback(() => {
+    const returnTarget = getLastAppRoute(user?.identityKey)
+    navigate(returnTarget)
+  }, [navigate, user?.identityKey])
+
   return (
     <>
       <SidebarContent className="gap-0 px-2 py-3">
@@ -85,7 +91,7 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
           <button
             type="button"
             className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
-            onClick={() => navigate("/projects")}
+            onClick={handleBack}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
             <span className="truncate">{t('common.back')}</span>
@@ -107,7 +113,7 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
                     icon={item.surface.icon}
                     label={item.label}
                     isActive={isActive}
-                    onClick={() => navigate(href)}
+                    onClick={() => navigate(href, { replace: true })}
                   />
                 )
               })}
@@ -116,23 +122,21 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
         ))}
       </SidebarContent>
 
-      <SidebarSeparator />
-      <SidebarFooter className="gap-3 p-3">
-        {isSubRoute && parentSectionRoute ? (
-          <button
-            type="button"
-            className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
-            onClick={() => navigate(parentSectionRoute)}
-          >
-            <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
-            <span className="truncate">{t('common.back')}</span>
-          </button>
-        ) : (
-          <div>
-            <NavUser user={user} />
-          </div>
-        )}
-      </SidebarFooter>
+      {isSubRoute && parentSectionRoute ? (
+        <>
+          <SidebarSeparator />
+          <SidebarFooter className="gap-3 p-3">
+            <button
+              type="button"
+              className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
+              onClick={() => navigate(parentSectionRoute)}
+            >
+              <HugeiconsIcon icon={__ArrowLeftHugeIcon} />
+              <span className="truncate">{t('common.back')}</span>
+            </button>
+          </SidebarFooter>
+        </>
+      ) : null}
     </>
   )
 }

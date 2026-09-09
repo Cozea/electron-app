@@ -23,7 +23,12 @@ function Tooltip({ ...props }: React.ComponentProps<typeof BaseTooltip.Root>) {
 
 function TooltipTrigger({ asChild, children, ...props }: React.ComponentProps<typeof BaseTooltip.Trigger> & { asChild?: boolean }) {
   if (asChild) {
-    return <BaseTooltip.Trigger render={children as any} {...props} />
+    return (
+      <BaseTooltip.Trigger
+        render={children as React.ComponentProps<typeof BaseTooltip.Trigger>["render"]}
+        {...props}
+      />
+    )
   }
   return <BaseTooltip.Trigger {...props}>{children}</BaseTooltip.Trigger>
 }
@@ -35,12 +40,16 @@ function TooltipContent({
   align = "center",
   sideOffset = 4,
   ...props
-}: React.ComponentProps<typeof BaseTooltip.Popup> & { side?: string; align?: string; sideOffset?: number }) {
+}: React.ComponentProps<typeof BaseTooltip.Popup> & {
+  side?: React.ComponentProps<typeof BaseTooltip.Positioner>["side"]
+  align?: React.ComponentProps<typeof BaseTooltip.Positioner>["align"]
+  sideOffset?: number
+}) {
   return (
     <BaseTooltip.Portal>
       <BaseTooltip.Positioner
-        side={side as any}
-        align={align as any}
+        side={side}
+        align={align}
         sideOffset={sideOffset}
         className="z-[var(--cozea-layer-tooltip)] max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
       >

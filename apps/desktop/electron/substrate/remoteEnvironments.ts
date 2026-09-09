@@ -82,8 +82,3 @@ export function listSubstrateRemoteEnvironments(input?: {
 
   return environments;
 }
-
-/** @deprecated Use listSubstrateRemoteEnvironments */
-export function listSubstrateRemoteEnvironmentStubs(): ReadonlyArray<SubstrateRemoteEnvironmentDescriptor> {
-  return listSubstrateRemoteEnvironments();
-}

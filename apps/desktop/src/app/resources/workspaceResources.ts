@@ -25,7 +25,7 @@ import {
   resolveLaneBranchKnowledge,
 } from '@/features/source-control/model/projectBranchSessionStore';
 import { publishGitRemoteStatus } from '@/features/source-control/model/gitRemoteStatusCache';
-import { normalizeWorkspaceProjectPath } from '@/lib/workspaceIdentity';
+import { normalizeWorkspaceId } from '@/lib/workspaceIdentity';
 
 const MAX_RESOURCE_ENTRIES = 128;
 
@@ -169,7 +169,7 @@ export function getProjectLaneResource(
   collabBranch: string | null
 ): KeyedResource<ProjectLaneState | null> {
   const normalizedCollabBranch = normalizeBranch(collabBranch);
-  const normalizedWorkspaceId = normalizeWorkspaceProjectPath(workspaceId);
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
   const key = buildResourceKey('projectLaneState', {
     projectId,
     workspaceId: normalizedWorkspaceId ?? 'unbound',
@@ -221,7 +221,7 @@ export function getProjectLaneResource(
 export function invalidateProjectLaneState(projectId: string, workspaceId?: string | null): void {
   const normalizedWorkspaceId = workspaceId === undefined
     ? undefined
-    : (normalizeWorkspaceProjectPath(workspaceId) ?? 'unbound');
+    : (normalizeWorkspaceId(workspaceId) ?? 'unbound');
   for (const [key, res] of laneResources.entries()) {
     const parts = readResourceParts(key);
     if (

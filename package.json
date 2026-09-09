@@ -18,7 +18,7 @@
     "dev": "bun run prepare:t3-runtime && bun run prepare:local-automation:debug && bun run prepare:devapp-runtime:debug && unset ELECTRON_RUN_AS_NODE && bun run --cwd apps/desktop dev",
     "dev:chrome-devtools": "unset ELECTRON_RUN_AS_NODE && bun run --cwd apps/desktop dev:chrome-devtools",
     "dev:perf:modern": "unset ELECTRON_RUN_AS_NODE && bun run --cwd apps/desktop dev",
-    "dev:perf:baseline": "unset ELECTRON_RUN_AS_NODE && VITE_FF_DATA_ROUTER=0 VITE_FF_VIEW_TRANSITIONS=0 VITE_FF_PRIORITIZED_SCHEDULING=0 VITE_FF_REACT_COMPILER=0 VITE_FF_ROLLDOWN_BUILD=0 VITE_FF_JANK_DIAGNOSTICS=0 VITE_FF_CONTENT_VISIBILITY=0 VITE_FF_OFFSCREEN_SCREENSHOT=0 VITE_FF_UTILITY_PROCESS_MANIFEST=0 bun run --cwd apps/desktop dev",
+    "dev:perf:baseline": "unset ELECTRON_RUN_AS_NODE && VITE_FF_PRIORITIZED_SCHEDULING=0 VITE_FF_REACT_COMPILER=0 VITE_FF_ROLLDOWN_BUILD=0 VITE_FF_OFFSCREEN_SCREENSHOT=0 bun run --cwd apps/desktop dev",
     "perf:runbook": "echo 'See docs/perf-runbook.md'",
     "perf:trace-summary": "bun run scripts/summarize-perf-trace.mjs",
     "perf:bundle-summary": "bun run scripts/summarize-renderer-bundles.mjs",

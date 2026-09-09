@@ -146,6 +146,7 @@ const es: Record<TranslationKey, string> = {
   "settings.appearance.reduceMotion": "Reducir movimiento",
   "settings.appearance.reduceMotionDesc":
     "Minimizar animaciones para accesibilidad",
+  "settings.appearance.localization": "Localización",
   "settings.appearance.language": "Idioma",
   "settings.appearance.languageDesc":
     "Elige el idioma de la aplicación",
@@ -315,6 +316,8 @@ const es: Record<TranslationKey, string> = {
 
   // ── Workbench Selection Tile (Add dev app) ───────────────────────────
   "workbench.selection.letsWorkOn": "Vamos a trabajar en",
+  "workbench.selection.thisProject": "este proyecto",
+  "workbench.selection.goToPage": "Ir a la página",
   "workbench.selection.exploreStore": "Explorar Tienda DevApps",
   "workbench.selection.searchTools": "Buscar herramientas",
   "workbench.selection.searchPlaceholder": "Buscar...",
@@ -832,6 +835,15 @@ const es: Record<TranslationKey, string> = {
   "inbox.declined": "Invitación rechazada",
   "inbox.invitedBy": "Invitado por",
   "inbox.deviceInvitations": "Invitaciones de dispositivos",
+  "assistant.questions.label": "Preguntas del agente",
+  "assistant.questions.hint": "El agente puede seguir trabajando mientras respondes.",
+  "assistant.questions.answerLabel": "Respuesta",
+  "assistant.questions.customPlaceholder": "O escribe una respuesta",
+  "assistant.questions.answerPlaceholder": "Tu respuesta",
+  "assistant.questions.retryHint": "Reintentar envía la misma respuesta.",
+  "assistant.questions.sending": "Enviando…",
+  "assistant.questions.retry": "Reintentar respuesta",
+  "assistant.questions.send": "Enviar respuesta",
 } as const
 
 export default es

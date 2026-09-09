@@ -53,8 +53,8 @@ const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(functio
         placeholder={placeholder}
         aria-label={ariaLabel ?? (typeof placeholder === "string" ? placeholder : "Search")}
         className={cn(
-          "bg-muted pl-9 text-sm",
-          sizeVariant === "compact" ? "h-9 rounded-lg" : "h-11 rounded-search",
+          "bg-muted pl-9 text-sm h-9",
+          sizeVariant === "compact" ? "rounded-lg" : "rounded-search",
           value && "pr-9",
           className,
         )}

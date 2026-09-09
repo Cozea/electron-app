@@ -16,6 +16,7 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../../convex/_generated/api";
 
+import { cleanConvexErrorMessage } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -690,9 +691,7 @@ export function ProjectSidebar({
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         const fallback = t("orgDevApp.publish.failed");
-        const detail = (error instanceof Error ? error.message : fallback)
-          .replace(/^\[CONVEX.*?\]\s*/, "")
-          .replace(/\s*Called by client$/, "");
+        const detail = cleanConvexErrorMessage(error instanceof Error ? error.message : fallback);
         await window.electronAPI.dialog.showMessageBox({
           type: "error",
           title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
@@ -844,9 +843,7 @@ export function ProjectSidebar({
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to archive project";
-        const cleanMessage = message
-          .replace(/^\[CONVEX.*?\]\s*/, "")
-          .replace(/\s*Called by client$/, "");
+        const cleanMessage = cleanConvexErrorMessage(message);
         await window.electronAPI.dialog.showMessageBox({
           type: "error",
           title: "Archive Failed",
@@ -883,9 +880,7 @@ export function ProjectSidebar({
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to restore project";
-        const cleanMessage = message
-          .replace(/^\[CONVEX.*?\]\s*/, "")
-          .replace(/\s*Called by client$/, "");
+        const cleanMessage = cleanConvexErrorMessage(message);
         await window.electronAPI.dialog.showMessageBox({
           type: "error",
           title: "Restore Failed",
@@ -963,20 +958,27 @@ export function ProjectSidebar({
       <SidebarHeader className="gap-2 px-2 pt-2.5 pb-1.5">
         <div className="flex items-center justify-between px-1.5">
           <div className="flex items-baseline gap-1.5 select-none">
-            <span className="text-lg font-semibold tracking-tight text-foreground">Cozea</span>
-            <span className="text-lg font-normal tracking-tight text-muted-foreground/50">Alpha</span>
+            <span className="text-[18px] font-semibold tracking-tight text-foreground">Cozea</span>
+            <span className="text-[18px] font-normal tracking-tight text-muted-foreground/50">Alpha</span>
           </div>
         </div>
         <button
           type="button"
           onClick={() => openCommandPalette()}
-          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-search border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-xs text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-search border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-sm text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={t('nav.search')}
         >
           <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground" />
           <span className="font-normal">{t('nav.search')}</span>
-          <kbd className="ml-auto pointer-events-none inline-flex select-none items-center font-mono text-[11px] font-normal text-muted-foreground/50 tracking-wider">
-            {isMac ? "⌘K" : "Ctrl K"}
+          <kbd className="ml-auto pointer-events-none inline-flex select-none items-center gap-0.5 font-mono text-xs font-normal text-muted-foreground/50 tracking-wider">
+            {isMac ? (
+              <>
+                <span className="font-sans text-[14px] leading-none">⌘</span>
+                <span>K</span>
+              </>
+            ) : (
+              "Ctrl K"
+            )}
           </kbd>
         </button>
       </SidebarHeader>
@@ -1095,11 +1097,11 @@ export function ProjectSidebar({
                 );
               })
             ) : isProjectsLoading ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
+              <div className="px-3 py-2 text-sm text-muted-foreground">
                 {t('projects.projectsSyncing')}
               </div>
             ) : sortedProjects.length === 0 ? (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
+              <div className="px-3 py-2 text-sm text-muted-foreground">
                 {t('projects.createToGetStarted')}
               </div>
             ) : (
@@ -1168,7 +1170,7 @@ export function ProjectSidebar({
             <Button
               type="button"
               variant="ghost"
-              className="h-7 w-full justify-start gap-2 rounded-md px-2 text-xs font-normal"
+              className="h-7 w-full justify-start gap-2 rounded-md px-2 text-sm font-normal"
               onClick={() => navigate(`${buildProjectPath(currentProjectId)}/workbench`)}
             >
               <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/80" />

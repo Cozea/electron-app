@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
+import { prepareComposerImageAttachments } from "@/features/workbench/assistant/useAssistantComposerAttachments"
 
 const controllerSource = readFileSync(
   resolve(
@@ -28,16 +29,19 @@ function sourceBetween(source: string, startMarker: string, endMarker: string): 
 
 describe("agent composer image attachments", () => {
   it("accepts images before a fresh tile has created its first thread", () => {
-    const addComposerImages = sourceBetween(
-      controllerSource,
-      "const addComposerImages = useCallback(",
-      "const removeComposerImage = useCallback(",
-    )
+    const image = new File([new Uint8Array([1, 2, 3])], "pixel.png", {
+      type: "image/png",
+    })
+    const prepared = prepareComposerImageAttachments([image], [], "codex")
 
-    expect(addComposerImages).not.toContain("if (!thread) return")
-    expect(addComposerImages).toContain(
-      "setComposerImages((current) => [...current, ...nextImages])",
-    )
+    expect(prepared.error).toBeNull()
+    expect(prepared.images).toHaveLength(1)
+    expect(prepared.images[0]).toMatchObject({
+      name: "pixel.png",
+      mimeType: "image/png",
+      sizeBytes: 3,
+      file: image,
+    })
 
     const bootstrapThread = controllerSource.indexOf(
       "// --- Fix 6: Bootstrap pattern --- create thread on first send if needed",
@@ -50,7 +54,7 @@ describe("agent composer image attachments", () => {
     expect(readComposerImages).toBeGreaterThan(bootstrapThread)
   })
 
-  it("forwards files dropped anywhere on the chat surface to the attachment callback", () => {
+  it("keeps the chat-surface drop forwarding architecture wired", () => {
     const dropHandler = sourceBetween(
       chatSurfaceSource,
       "const handleSurfaceDrop =",

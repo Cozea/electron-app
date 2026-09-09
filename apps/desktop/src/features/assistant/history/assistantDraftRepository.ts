@@ -35,13 +35,94 @@ export interface AssistantDraftStorage {
   write(puts: AssistantContentDraft[], deletes: string[]): Promise<void>;
 }
 
+interface PersistedDraftImageReference {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  blobKey: string;
+}
+
+interface PersistedDraftImageBlob extends PersistedDraftImageReference {
+  key: string;
+  draftKey: string;
+  blob: Blob;
+}
+
+type PersistedDraftMetadata = Omit<AssistantContentDraft, "images"> & {
+  images: PersistedDraftImageReference[];
+};
+
+const DRAFT_DATABASE_NAME = "cozea-assistant-drafts";
+const DRAFT_DATABASE_VERSION = 2;
+const DRAFT_STORE = "drafts";
+const DRAFT_ATTACHMENT_STORE = "attachments";
+const DRAFT_ATTACHMENT_DRAFT_INDEX = "draftKey";
+
+function attachmentBlobKey(draftKey: string, imageId: string): string {
+  return JSON.stringify([draftKey, imageId]);
+}
+
+function attachmentSignature(image: Pick<PersistedDraftImage, "id" | "name" | "mimeType" | "sizeBytes">): string {
+  return JSON.stringify([image.id, image.name, image.mimeType, image.sizeBytes]);
+}
+
+function draftMetadata(record: AssistantContentDraft): PersistedDraftMetadata {
+  return {
+    ...record,
+    images: record.images.map((image) => ({
+      id: image.id,
+      name: image.name,
+      mimeType: image.mimeType,
+      sizeBytes: image.sizeBytes,
+      blobKey: attachmentBlobKey(record.key, image.id),
+    })),
+  };
+}
+
 export function createIndexedDbDraftStorage(): AssistantDraftStorage {
   let connection: Promise<IDBDatabase> | null = null;
+  const knownAttachmentSignatures = new Map<string, string>();
   const open = () =>
     (connection ??= new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("cozea-assistant-drafts", 1);
-      request.onupgradeneeded = () =>
-        request.result.createObjectStore("drafts", { keyPath: "key" });
+      const request = indexedDB.open(DRAFT_DATABASE_NAME, DRAFT_DATABASE_VERSION);
+      request.onupgradeneeded = (event) => {
+        const db = request.result;
+        const transaction = request.transaction;
+        const drafts = db.objectStoreNames.contains(DRAFT_STORE)
+          ? transaction?.objectStore(DRAFT_STORE)
+          : db.createObjectStore(DRAFT_STORE, { keyPath: "key" });
+        const attachments = db.objectStoreNames.contains(DRAFT_ATTACHMENT_STORE)
+          ? transaction?.objectStore(DRAFT_ATTACHMENT_STORE)
+          : db.createObjectStore(DRAFT_ATTACHMENT_STORE, { keyPath: "key" });
+        if (attachments && !attachments.indexNames.contains(DRAFT_ATTACHMENT_DRAFT_INDEX)) {
+          attachments.createIndex(DRAFT_ATTACHMENT_DRAFT_INDEX, "draftKey", { unique: false });
+        }
+        // v1 stored Blobs inline. Move them inside the same upgrade transaction
+        // and replace the draft row only after every attachment put is queued.
+        if (event.oldVersion < 2 && drafts && attachments) {
+          const cursorRequest = drafts.openCursor();
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) return;
+            const legacy = cursor.value as AssistantContentDraft;
+            if (Array.isArray(legacy.images)) {
+              const metadata = draftMetadata(legacy);
+              for (const image of legacy.images) {
+                const blobKey = attachmentBlobKey(legacy.key, image.id);
+                attachments.put({
+                  ...image,
+                  key: blobKey,
+                  blobKey,
+                  draftKey: legacy.key,
+                } satisfies PersistedDraftImageBlob);
+              }
+              cursor.update(metadata);
+            }
+            cursor.continue();
+          };
+        }
+      };
       request.onerror = () => {
         connection = null;
         reject(request.error);
@@ -58,9 +139,34 @@ export function createIndexedDbDraftStorage(): AssistantDraftStorage {
     async list() {
       const db = await open();
       return new Promise((resolve, reject) => {
-        const tx = db.transaction("drafts", "readonly");
-        const request = tx.objectStore("drafts").getAll();
-        tx.oncomplete = () => resolve(request.result as AssistantContentDraft[]);
+        const tx = db.transaction([DRAFT_STORE, DRAFT_ATTACHMENT_STORE], "readonly");
+        const draftsRequest = tx.objectStore(DRAFT_STORE).getAll();
+        const attachmentsRequest = tx.objectStore(DRAFT_ATTACHMENT_STORE).getAll();
+        tx.oncomplete = () => {
+          const attachments = attachmentsRequest.result as PersistedDraftImageBlob[];
+          const blobsByKey = new Map(attachments.map((image) => [image.key, image]));
+          knownAttachmentSignatures.clear();
+          for (const image of attachments) {
+            knownAttachmentSignatures.set(image.key, attachmentSignature(image));
+          }
+          resolve(
+            (draftsRequest.result as PersistedDraftMetadata[]).map((draft) => ({
+              ...draft,
+              images: draft.images.flatMap((reference) => {
+                const stored = blobsByKey.get(reference.blobKey);
+                return stored
+                  ? [{
+                      id: reference.id,
+                      name: reference.name,
+                      mimeType: reference.mimeType,
+                      sizeBytes: reference.sizeBytes,
+                      blob: stored.blob,
+                    }]
+                  : [];
+              }),
+            })),
+          );
+        };
         tx.onabort = () => reject(tx.error);
         tx.onerror = () => reject(tx.error);
       });
@@ -68,12 +174,54 @@ export function createIndexedDbDraftStorage(): AssistantDraftStorage {
     async write(puts, deletes) {
       const db = await open();
       await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction("drafts", "readwrite");
-        const store = tx.objectStore("drafts");
-        for (const key of deletes) store.delete(key);
-        for (const record of puts) store.put(record);
+        const tx = db.transaction([DRAFT_STORE, DRAFT_ATTACHMENT_STORE], "readwrite");
+        const store = tx.objectStore(DRAFT_STORE);
+        const attachmentStore = tx.objectStore(DRAFT_ATTACHMENT_STORE);
+        const attachmentIndex = attachmentStore.index(DRAFT_ATTACHMENT_DRAFT_INDEX);
+        const signatureUpdates = new Map<string, string | null>();
+        const deleteAttachments = (draftKey: string, keep: ReadonlySet<string>) => {
+          const request = attachmentIndex.openKeyCursor(IDBKeyRange.only(draftKey));
+          request.onsuccess = () => {
+            const cursor = request.result;
+            if (!cursor) return;
+            const key = String(cursor.primaryKey);
+            if (!keep.has(key)) {
+              attachmentStore.delete(cursor.primaryKey);
+              signatureUpdates.set(key, null);
+            }
+            cursor.continue();
+          };
+        };
+        for (const key of deletes) {
+          store.delete(key);
+          deleteAttachments(key, new Set());
+        }
+        for (const record of puts) {
+          const metadata = draftMetadata(record);
+          store.put(metadata);
+          const keep = new Set(metadata.images.map((image) => image.blobKey));
+          deleteAttachments(record.key, keep);
+          for (const image of record.images) {
+            const key = attachmentBlobKey(record.key, image.id);
+            const signature = attachmentSignature(image);
+            if (knownAttachmentSignatures.get(key) === signature) continue;
+            attachmentStore.put({
+              ...image,
+              key,
+              blobKey: key,
+              draftKey: record.key,
+            } satisfies PersistedDraftImageBlob);
+            signatureUpdates.set(key, signature);
+          }
+        }
         // Request success is not durability: wait for the transaction commit.
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = () => {
+          for (const [key, signature] of signatureUpdates) {
+            if (signature === null) knownAttachmentSignatures.delete(key);
+            else knownAttachmentSignatures.set(key, signature);
+          }
+          resolve();
+        };
         tx.onabort = () => reject(tx.error);
         tx.onerror = () => reject(tx.error);
       });
@@ -94,7 +242,7 @@ export function hasDraftContent(draft: AssistantContentDraft): boolean {
 export function createAssistantDraftRepository(storage: AssistantDraftStorage) {
   const store = create<DraftCache>(() => ({ drafts: {}, ready: false, error: null }));
   let hydration: Promise<void> | null = null;
-  let queue: Promise<void> = Promise.resolve();
+  let persistence: Promise<void> | null = null;
   const adoptions = new Map<
     string,
     { key: string; threadId: string; assistantProjectId: string }
@@ -107,11 +255,6 @@ export function createAssistantDraftRepository(storage: AssistantDraftStorage) {
     store.setState({
       error: error instanceof Error ? error.message : "Could not save this draft on this device.",
     });
-  const enqueue = (operation: () => Promise<void>) => {
-    const task = queue.then(operation);
-    queue = task.catch(failure);
-    return task;
-  };
   const load = () =>
     (hydration ??= storage
       .list()
@@ -130,34 +273,49 @@ export function createAssistantDraftRepository(storage: AssistantDraftStorage) {
         failure(error);
         throw error;
       }));
+  const persistDirty = async () => {
+    const records = [...dirty].flatMap((key) =>
+      store.getState().drafts[key] ? [store.getState().drafts[key]] : [],
+    );
+    const deletes = [...pendingDeletes];
+    if (records.length === 0 && deletes.length === 0) return;
+
+    await storage.write(records, deletes);
+    for (const key of deletes) pendingDeletes.delete(key);
+    for (const record of records) {
+      if (store.getState().drafts[record.key] === record) dirty.delete(record.key);
+    }
+    if (!dirty.size && !pendingDeletes.size) store.setState({ error: null });
+  };
+  const ensurePersistence = (): Promise<void> => {
+    if (persistence) return persistence;
+    const attempt = (async () => {
+      await Promise.resolve();
+      while (dirty.size || pendingDeletes.size) await persistDirty();
+    })();
+    persistence = attempt;
+    void attempt.then(
+      () => {
+        if (persistence === attempt) persistence = null;
+      },
+      (error) => {
+        if (persistence === attempt) persistence = null;
+        failure(error);
+      },
+    );
+    return attempt;
+  };
   const save = (input: AssistantContentDraft) => {
     const adoption = adoptions.get(input.key);
     const record = adoption ? { ...input, ...adoption } : input;
     if (removed.has(record.key)) return;
     dirty.add(record.key);
     store.setState((state) => ({ drafts: { ...state.drafts, [record.key]: record } }));
-    void enqueue(async () => {
-      await storage.write([record], []);
-      if (store.getState().drafts[record.key] === record) dirty.delete(record.key);
-      if (!dirty.size) store.setState({ error: null });
-    }).catch(() => {});
+    void ensurePersistence().catch(() => {});
   };
   const flush = async () => {
     await load();
-    await queue;
-    if (dirty.size || pendingDeletes.size) {
-      const records = [...dirty].flatMap((key) =>
-        store.getState().drafts[key] ? [store.getState().drafts[key]] : [],
-      );
-      const deletes = [...pendingDeletes];
-      await enqueue(async () => {
-        await storage.write(records, deletes);
-        for (const key of deletes) pendingDeletes.delete(key);
-        for (const record of records)
-          if (store.getState().drafts[record.key] === record) dirty.delete(record.key);
-      });
-    }
-    if (dirty.size) return flush();
+    while (dirty.size || pendingDeletes.size || persistence) await ensurePersistence();
     store.setState({ error: null });
   };
   const remove = async (keys: string[]) => {
@@ -199,7 +357,7 @@ export function createAssistantDraftRepository(storage: AssistantDraftStorage) {
       await flush();
     },
     async clearSubmitted(key: string, revision: number) {
-      await queue;
+      if (persistence) await persistence;
       const draft = store.getState().drafts[key];
       if (!draft || draft.revision !== revision) return;
       // Retain context/preferences but not the acknowledged message.

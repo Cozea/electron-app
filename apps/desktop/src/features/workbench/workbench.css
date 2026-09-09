@@ -14,8 +14,8 @@
 
 .cozea-workbench-dockview-theme {
   --dv-floating-box-shadow: none;
-  --dv-tabs-and-actions-container-font-size: 12px;
-  --dv-tab-font-size: 12px;
+  --dv-tabs-and-actions-container-font-size: 13px;
+  --dv-tab-font-size: 13px;
   --dv-spacing-padding: 8px;
   --dv-border-radius: 12px;
   --dv-overlay-z-index: var(--cozea-layer-dockview-float-base);
@@ -137,7 +137,7 @@
   .cozea-workbench-dockview-theme
   .dv-resize-container-with-titlebar
   .dv-groupview,
-.dark .cozea-workbench-dockview-theme .dv-resize-container-with-titlebar .dv-groupview,
+.theme-dark .cozea-workbench-dockview-theme .dv-resize-container-with-titlebar .dv-groupview,
 .cozea-workbench-dockview-theme--dark
   .dv-resize-container-with-titlebar
   .dv-groupview {
@@ -155,7 +155,7 @@
   .cozea-workbench-dockview-theme
   .dv-resize-container-with-titlebar
   .dv-groupview::before,
-.dark
+.theme-dark
   .cozea-workbench-dockview-theme
   .dv-resize-container-with-titlebar
   .dv-groupview::before,
@@ -176,7 +176,7 @@
     0 6px 20px rgb(0 0 0 / 0.07) !important;
 }
 
-.dark .cozea-workbench-dockview-theme .dv-resize-container-with-titlebar,
+.theme-dark .cozea-workbench-dockview-theme .dv-resize-container-with-titlebar,
 .cozea-workbench-dockview-theme--dark .dv-resize-container-with-titlebar,
 :root:not(.light)
   .cozea-workbench-dockview-theme
@@ -243,7 +243,7 @@
 
 /* Dark themes: faint hairline perimeter border, ambient 3D drop shadow, and a razor-thin
    top specular highlight line tracing the upper rim and rounded corners. */
-.dark .cozea-workbench-dockview-theme .dv-groupview,
+.theme-dark .cozea-workbench-dockview-theme .dv-groupview,
 .cozea-workbench-dockview-theme--dark .dv-groupview,
 :root:not(.light) .cozea-workbench-dockview-theme .dv-groupview {
   border: 0.5px solid color-mix(in oklch, var(--foreground) 7%, transparent) !important;
@@ -253,7 +253,7 @@
     0 8px 24px -4px rgb(0 0 0 / 0.6) !important;
 }
 
-.dark .cozea-workbench-dockview-theme .dv-groupview::before,
+.theme-dark .cozea-workbench-dockview-theme .dv-groupview::before,
 .cozea-workbench-dockview-theme--dark .dv-groupview::before,
 :root:not(.light) .cozea-workbench-dockview-theme .dv-groupview::before {
   content: "";
@@ -389,7 +389,7 @@
   animation: cozea-context-menu-in 120ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.dark .cozea-workbench-dockview-theme .dv-context-menu,
+.theme-dark .cozea-workbench-dockview-theme .dv-context-menu,
 .cozea-workbench-dockview-theme--dark .dv-context-menu {
   border-color: color-mix(in oklch, var(--border) 90%, transparent);
   box-shadow:

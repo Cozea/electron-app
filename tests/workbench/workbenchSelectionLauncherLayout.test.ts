@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  areWorkbenchSelectionLauncherLayoutsEqual,
   computeWorkbenchSelectionLauncherLayout,
   WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT,
   WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH,
@@ -113,5 +114,21 @@ describe("workbenchSelectionLauncherLayout", () => {
 
     expect(layout.fittingColumns).toBe(4)
     expect(layout.columns).toBe(2)
+  })
+
+  it("compares the semantic layout fields used by React state", () => {
+    const layout = computeWorkbenchSelectionLauncherLayout({
+      width: 500,
+      height: 240,
+      itemCount: 10,
+    })
+
+    expect(areWorkbenchSelectionLauncherLayoutsEqual(layout, { ...layout })).toBe(true)
+    expect(
+      areWorkbenchSelectionLauncherLayoutsEqual(layout, {
+        ...layout,
+        pageCount: layout.pageCount + 1,
+      }),
+    ).toBe(false)
   })
 })

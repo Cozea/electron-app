@@ -36,10 +36,10 @@ const badgeVariants = cva(
         square: "rounded-sm",
       },
       size: {
-        default: "h-4.5 min-w-4.5 px-[calc(--spacing(1)-1px)] text-sm",
-        sm: "h-4 min-w-4 px-[calc(--spacing(1)-1px)] text-xs",
-        lg: "h-5.5 min-w-5.5 px-[calc(--spacing(1.5)-1px)] text-sm",
-        pill: "h-5 px-2.5 text-[10px]",
+        default: "h-4.5 min-w-4.5 px-2 text-2xs font-medium leading-none",
+        sm: "h-4 min-w-4 px-1.5 text-2xs font-medium leading-none",
+        lg: "h-5.5 min-w-5.5 px-2.5 text-xs font-medium",
+        pill: "h-5 px-2.5 text-2xs font-medium leading-none",
       },
     },
     defaultVariants: {

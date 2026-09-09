@@ -119,6 +119,10 @@ The fast agent-facing summary lives here; the fuller operator guide is in `docs/
 Workflow file: `.github/workflows/release.yml`
 CircleCI workflow file: `.circleci/config.yml`
 
+GitHub Actions signing gates use the `mac_signing` step's `signing` output for
+certificate import, publish-secret validation, and notarization. Signing defaults
+off until that step resolves the certificate configuration or forced-unsigned mode.
+
 ### How To Cut a Release (Example)
 
 ```shell

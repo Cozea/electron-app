@@ -1,6 +1,6 @@
 import { type ApprovalRequestId, type ProviderApprovalDecision } from "@cozea/assistant-contracts";
 import { memo } from "react";
-import { Button } from "../ui/button";
+import { Button } from "@/components/ui/button";
 
 interface ComposerPendingApprovalActionsProps {
   options?: ReadonlyArray<{ decision: ProviderApprovalDecision; label: string; warning?: string }>;

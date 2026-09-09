@@ -19,11 +19,38 @@ export interface ComputeWorkbenchSelectionLauncherLayoutOptions {
   maxRows?: number
 }
 
-export const WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH = 112
-export const WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT = 118
-export const WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP = 28
-export const WORKBENCH_SELECTION_LAUNCHER_ROW_GAP = 24
-export const WORKBENCH_SELECTION_LAUNCHER_MAX_COLUMNS = 6
+export const WORKBENCH_SELECTION_LAUNCHER_LAYOUT = {
+  cellWidth: 96,
+  cellHeight: 102,
+  columnGap: 22,
+  rowGap: 18,
+  maxColumns: 6,
+} as const
+
+export const WORKBENCH_SELECTION_LAUNCHER_CELL_WIDTH =
+  WORKBENCH_SELECTION_LAUNCHER_LAYOUT.cellWidth
+export const WORKBENCH_SELECTION_LAUNCHER_CELL_HEIGHT =
+  WORKBENCH_SELECTION_LAUNCHER_LAYOUT.cellHeight
+export const WORKBENCH_SELECTION_LAUNCHER_COLUMN_GAP =
+  WORKBENCH_SELECTION_LAUNCHER_LAYOUT.columnGap
+export const WORKBENCH_SELECTION_LAUNCHER_ROW_GAP =
+  WORKBENCH_SELECTION_LAUNCHER_LAYOUT.rowGap
+export const WORKBENCH_SELECTION_LAUNCHER_MAX_COLUMNS =
+  WORKBENCH_SELECTION_LAUNCHER_LAYOUT.maxColumns
+
+export function areWorkbenchSelectionLauncherLayoutsEqual(
+  left: WorkbenchSelectionLauncherLayout,
+  right: WorkbenchSelectionLauncherLayout,
+): boolean {
+  return (
+    left.fittingColumns === right.fittingColumns &&
+    left.fittingRows === right.fittingRows &&
+    left.columns === right.columns &&
+    left.rows === right.rows &&
+    left.itemsPerPage === right.itemsPerPage &&
+    left.pageCount === right.pageCount
+  )
+}
 
 export function computeWorkbenchSelectionLauncherLayout({
   width,

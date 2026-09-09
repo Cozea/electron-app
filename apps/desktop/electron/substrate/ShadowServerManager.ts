@@ -179,9 +179,6 @@ export class ShadowServerManager {
         COZEA_COMPUTER_USE_ENABLED: "1",
         COZEA_COMPUTER_USE_DISABLED_TOOLS: "",
         ...(this.t3BaseDir ? { COZEA_T3_SERVER_BASE_DIR: this.t3BaseDir } : {}),
-        ...(process.env.COZEA_OBS_NDJSON_PATH
-          ? { COZEA_OBS_NDJSON_PATH: process.env.COZEA_OBS_NDJSON_PATH }
-          : {}),
       },
     });
     this.child = child;

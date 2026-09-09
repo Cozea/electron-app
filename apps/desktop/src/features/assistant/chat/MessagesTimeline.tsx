@@ -1,3 +1,4 @@
+import { workEntryPreview, workEntryPreviewDuplicatesSingleChangedFile, workEntryRawCommand, liveWorkEntryLabel, isRunningWorkEntry, isCommandLikeWorkEntry, toolWorkEntryHeading, workEntryStatusBadge, buildWorkEntryExpandedBody } from "./workEntryPresentation";
 import { MessageAttachments } from "./MessageAttachments";
 import {
   type MessageId,
@@ -20,14 +21,11 @@ import {
   type RefObject,
   type ReactNode,
   type SVGProps,
-  type SyntheticEvent,
 } from "react";
 import {
   LegendList,
-  type LegendListMetrics,
   type LegendListRef,
   type LegendListRenderItemProps,
-  type OnViewableItemsChangedInfo,
 } from "@legendapp/list/react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -99,7 +97,6 @@ import {
   shouldAutoExpandChangedFiles,
 } from "./changedFilesPresentation";
 import { VscodeEntryIcon } from "./VscodeEntryIcon";
-import { commandProgramName } from "./shellCommandProgram";
 import { normalizeToolRowPresentation } from "./toolDetailPresentation";
 import { DiffStatLabel, hasNonZeroStat } from "./DiffStatLabel";
 import { MessageCopyButton } from "./MessageCopyButton";
@@ -197,12 +194,10 @@ interface MessagesTimelineProps {
   onOpenArtifact?: (artifactId: string) => void;
 }
 
-const LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY = "cozea:legend-list-agent-timeline:debug";
 const LEGEND_LIST_AGENT_TIMELINE_RECYCLE_KEY = "cozea:legend-list-agent-timeline:recycle";
 const LEGEND_LIST_DRAW_DISTANCE_PX = 1_200;
 const LEGEND_LIST_DEFAULT_HEIGHT_PX = 640;
 const LEGEND_LIST_DEFAULT_WIDTH_PX = 720;
-const LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX = 48;
 const LEGEND_LIST_TAIL_PADDING_PX = 16;
 /** LegendList's `refScrollView` hands over an API object; dig out the scrolling element. */
 function resolveScrollViewElement(scrollView: unknown): HTMLElement | null {
@@ -225,10 +220,6 @@ function readLegendListBooleanPreference(key: string, fallback: boolean): boolea
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   return fallback;
-}
-
-function shouldLogLegendListDiagnostics(): boolean {
-  return readLegendListBooleanPreference(LEGEND_LIST_AGENT_TIMELINE_DIAGNOSTICS_KEY, false);
 }
 
 function shouldRecycleLegendListItems(): boolean {
@@ -637,55 +628,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
-  // LegendList types `onLoad` as an intersection with the DOM handler, so accept both shapes.
-  const onLegendListLoad = useCallback(
-    (info: { elapsedTimeInMs: number } | SyntheticEvent<HTMLDivElement>) => {
-      if (!shouldLogLegendListDiagnostics()) return;
-      if (!("elapsedTimeInMs" in info)) return;
-      console.info("[LegendList][AgentTimeline] load", {
-        elapsedTimeInMs: info.elapsedTimeInMs,
-      });
-    },
-    [],
-  );
-  const onLegendListMetricsChange = useCallback((metrics: LegendListMetrics) => {
-    if (!shouldLogLegendListDiagnostics()) return;
-    console.info("[LegendList][AgentTimeline] metrics", {
-      ...metrics,
-    });
-  }, []);
-  const onLegendListItemSizeChanged = useCallback(
-    (info: {
-      size: number;
-      previous: number;
-      index: number;
-      itemKey: string;
-      itemData: TimelineRow;
-    }) => {
-      if (!shouldLogLegendListDiagnostics()) return;
-      const delta = Math.abs(info.size - info.previous);
-      if (delta < LEGEND_LIST_ITEM_SIZE_CHANGE_LOG_THRESHOLD_PX) return;
-      console.info("[LegendList][AgentTimeline] item-size", {
-        delta,
-        index: info.index,
-        itemKey: info.itemKey,
-        kind: info.itemData.kind,
-        previous: info.previous,
-        size: info.size,
-      });
-    },
-    [],
-  );
-  const onLegendListViewableItemsChanged = useCallback(
-    (info: OnViewableItemsChangedInfo<TimelineRow>) => {
-      if (!shouldLogLegendListDiagnostics()) return;
-      console.info("[LegendList][AgentTimeline] viewable", {
-        changed: info.changed.length,
-        viewable: info.viewableItems.length,
-      });
-    },
-    [],
-  );
   const onToggleAllDirectories = useCallback((turnId: TurnId) => {
     setAllDirectoriesExpandedByTurnId((current) => ({
       ...current,
@@ -928,7 +870,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             <p className="truncate text-xs font-medium text-foreground">
                               {annotation.comment || annotation.title}
                             </p>
-                            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
                               {[
                                 annotation.targetSummary,
                                 annotation.styleChanges.length
@@ -988,7 +930,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
                     <div className="flex items-center justify-end gap-2 px-1 pt-0.5 text-xs text-muted-foreground/60 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
                       {row.message.createdAt ? (
-                        <span className="select-none text-[11px] tabular-nums">
+                        <span className="select-none text-xs tabular-nums">
                           {formatMessageRelativeTime(row.message.createdAt)}
                         </span>
                       ) : null}
@@ -1249,22 +1191,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             shouldRestorePosition: shouldRestoreVisiblePosition,
           }}
           recycleItems={recycleItems}
-          onEndReached={() => {
-            if (shouldLogLegendListDiagnostics()) {
-              console.info("[LegendList][AgentTimeline] end-reached");
-            }
-          }}
-          onEndReachedThreshold={0.2}
-          onItemSizeChanged={onLegendListItemSizeChanged}
-          onLoad={onLegendListLoad}
-          onMetricsChange={onLegendListMetricsChange}
-          onStartReached={() => {
-            if (shouldLogLegendListDiagnostics()) {
-              console.info("[LegendList][AgentTimeline] start-reached");
-            }
-          }}
-          onStartReachedThreshold={0.2}
-          onViewableItemsChanged={onLegendListViewableItemsChanged}
           className="app-scrollbar scroll-fade-y h-full min-h-0 w-full overflow-x-hidden overscroll-y-contain [overflow-anchor:none] px-3 sm:px-5"
           contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
           contentContainerStyle={contentContainerStyle}
@@ -1552,68 +1478,15 @@ function workToneIcon(
   };
 }
 
-function workEntryPreview(
-  workEntry: Pick<TimelineWorkEntry, "detail" | "command" | "changedFiles">,
-  workspaceRoot: string | undefined,
-) {
-  if (workEntry.command) return workEntry.command;
-  if (workEntry.detail) return workEntry.detail;
-  if ((workEntry.changedFiles?.length ?? 0) === 0) return null;
-  const [firstPath] = workEntry.changedFiles ?? [];
-  if (!firstPath) return null;
-  const displayPath = formatWorkspaceRelativePath(firstPath, workspaceRoot);
-  return workEntry.changedFiles!.length === 1
-    ? displayPath
-    : `${displayPath} +${workEntry.changedFiles!.length - 1} more`;
-}
 
-function normalizePathLikeValue(value: string): string {
-  return value.trim().replace(/\\/g, "/");
-}
 
-function workEntryPreviewDuplicatesSingleChangedFile(
-  workEntry: Pick<TimelineWorkEntry, "changedFiles">,
-  preview: string | null,
-  workspaceRoot: string | undefined,
-): boolean {
-  if (!preview) return false;
-  if ((workEntry.changedFiles?.length ?? 0) !== 1) return false;
-  const [firstPath] = workEntry.changedFiles ?? [];
-  if (!firstPath) return false;
-  const displayPath = formatWorkspaceRelativePath(firstPath, workspaceRoot);
-  const normalizedPreview = normalizePathLikeValue(preview);
-  return (
-    normalizedPreview === normalizePathLikeValue(firstPath) ||
-    normalizedPreview === normalizePathLikeValue(displayPath)
-  );
-}
 
-function workEntryRawCommand(
-  workEntry: Pick<TimelineWorkEntry, "command" | "rawCommand">,
-): string | null {
-  const rawCommand = workEntry.rawCommand?.trim();
-  if (!rawCommand || !workEntry.command) {
-    return null;
-  }
-  return rawCommand === workEntry.command.trim() ? null : rawCommand;
-}
 
 /**
  * A running command is described by the program it invokes ("Running bun"),
  * which stays readable where the full command line does not. Falls back to the
  * normal preview when the command cannot be parsed confidently.
  */
-function liveWorkEntryLabel(
-  workEntry: TimelineWorkEntry,
-  workspaceRoot: string | undefined,
-): string {
-  const command = workEntry.command?.trim();
-  if (command) {
-    const program = commandProgramName(command);
-    return program ? `Running ${program}` : "Running command";
-  }
-  return workEntryPreview(workEntry, workspaceRoot) ?? toolWorkEntryHeading(workEntry);
-}
 
 function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   if (workEntry.status === "failed") return CircleAlertIcon;
@@ -1642,89 +1515,11 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
   return workToneIcon(workEntry.tone).icon;
 }
 
-function isRunningWorkEntry(
-  workEntry: Pick<TimelineWorkEntry, "activityKind" | "status">,
-): boolean {
-  return workEntry.activityKind === "tool.progress" || workEntry.status === "inProgress";
-}
 
-function isCommandLikeWorkEntry(
-  workEntry: Pick<TimelineWorkEntry, "requestKind" | "itemType" | "command">,
-): boolean {
-  return (
-    workEntry.requestKind === "command" ||
-    workEntry.itemType === "command_execution" ||
-    Boolean(workEntry.command)
-  );
-}
 
-function capitalizePhrase(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return value;
-  }
-  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
-}
 
-function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {
-  if (isCommandLikeWorkEntry(workEntry)) {
-    if (isRunningWorkEntry(workEntry)) return "Running command";
-    if (workEntry.status === "failed") return "Command failed";
-    return "Ran command";
-  }
-  if (workEntry.status === "failed") {
-    if (!workEntry.toolTitle) {
-      return `Failed to ${normalizeCompactToolLabel(workEntry.label).toLowerCase()}`;
-    }
-    return `Failed to ${normalizeCompactToolLabel(workEntry.toolTitle).toLowerCase()}`;
-  }
-  if (!workEntry.toolTitle) {
-    return capitalizePhrase(normalizeCompactToolLabel(workEntry.label));
-  }
-  return capitalizePhrase(normalizeCompactToolLabel(workEntry.toolTitle));
-}
 
-function workEntryStatusBadge(workEntry: TimelineWorkEntry): {
-  label: string;
-  className: string;
-} | null {
-  if (workEntry.status === "cancelled") {
-    return {
-      label: "Cancelled",
-      className: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    };
-  }
-  if (
-    workEntry.activityKind === "runtime.warning" ||
-    workEntry.activityKind === "config.warning" ||
-    workEntry.activityKind === "deprecation.notice"
-  ) {
-    return {
-      label: "Warning",
-      className: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-    };
-  }
-  if (workEntry.activityKind === "runtime.error") {
-    return {
-      label: "Error",
-      className: "border-destructive/35 bg-destructive/10 text-destructive",
-    };
-  }
-  if (workEntry.activityKind === "model.rerouted") {
-    return {
-      label: "Rerouted",
-      className: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-    };
-  }
-  if (isRunningWorkEntry(workEntry) && !isCommandLikeWorkEntry(workEntry)) {
-    return null;
-  }
-  return null;
-}
 
-function sameDisplayedText(left: string, right: string): boolean {
-  return left.replace(/\s+/gu, " ").trim() === right.replace(/\s+/gu, " ").trim();
-}
 
 /**
  * Content for the expanded row, or null when there is nothing to add.
@@ -1733,55 +1528,6 @@ function sameDisplayedText(left: string, right: string): boolean {
  * row does not already say. Echoing the command or path back at the reader is
  * not worth a chevron.
  */
-function buildWorkEntryExpandedBody(
-  workEntry: TimelineWorkEntry,
-  workspaceRoot: string | undefined,
-  options: {
-    /** Text already visible on the collapsed row. */
-    readonly displayedText: string;
-    /** Changed files already listed as chips beneath the row. */
-    readonly changedFilesVisible: boolean;
-    /** Detail was a raw `Tool: {json}` payload that the row replaced. */
-    readonly detailIsRawPayload: boolean;
-  },
-): string | null {
-  const blocks: string[] = [];
-  const alreadyShown = (value: string) => sameDisplayedText(value, options.displayedText);
-
-  // An MCP call is otherwise opaque: the row shows only the tool name, so the
-  // structured payload is genuinely additional.
-  if (workEntry.itemType === "mcp_tool_call" && workEntry.toolData !== undefined) {
-    try {
-      blocks.push(`MCP call\n${JSON.stringify(workEntry.toolData, null, 2)}`);
-    } catch {
-      // Cyclic or non-serializable payloads simply do not get a block.
-    }
-  }
-
-  // Worth showing only when it differs from the command on the row — a wrapper
-  // like `env -C /repo bun test` displayed as `bun test`.
-  const rawCommand = workEntryRawCommand(workEntry);
-  if (rawCommand && !alreadyShown(rawCommand)) {
-    blocks.push(rawCommand);
-  }
-
-  // Raw tool payloads are never re-shown: the row already renders what they mean.
-  if (!options.detailIsRawPayload) {
-    const detail = workEntry.detail?.trim();
-    if (detail && !alreadyShown(detail) && detail !== rawCommand) {
-      blocks.push(detail);
-    }
-  }
-
-  if (!options.changedFilesVisible && (workEntry.changedFiles?.length ?? 0) > 0) {
-    const paths = workEntry
-      .changedFiles!.map((filePath) => formatWorkspaceRelativePath(filePath, workspaceRoot))
-      .join("\n");
-    if (!alreadyShown(paths)) blocks.push(paths);
-  }
-
-  return blocks.length > 0 ? blocks.join("\n\n") : null;
-}
 
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   compact?: boolean;
@@ -1952,7 +1698,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <p
             className={cn(
-              "truncate text-[11px] leading-5",
+              "truncate text-xs leading-5",
               workEntry.status === "failed" ? "text-destructive" : "text-muted-foreground/75",
               isCommand && "font-mono",
             )}
@@ -1976,7 +1722,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           {normalizedPresentation?.stat &&
           hasNonZeroStat(normalizedPresentation.stat) &&
           !isLive ? (
-            <span className="shrink-0 font-mono text-[10px] tabular-nums">
+            <span className="shrink-0 font-mono text-2xs tabular-nums">
               <DiffStatLabel
                 additions={normalizedPresentation.stat.additions}
                 deletions={normalizedPresentation.stat.deletions}
@@ -2002,7 +1748,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         {statusBadge ? (
           <span
             className={cn(
-              "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-[9px] font-medium leading-4",
+              "inline-flex shrink-0 items-center rounded-full border px-1.5 py-px text-2xs font-medium leading-none",
               statusBadge.className,
             )}
           >
@@ -2022,7 +1768,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
       ) : null}
       {expanded && expandedBody ? (
         <div className="mt-1 ml-7 border-l border-border/45 pl-3 pt-0.5">
-          <pre className="max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground/75 select-text">
+          <pre className="max-h-64 cursor-text overflow-auto whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-muted-foreground/75 select-text">
             {expandedBody}
           </pre>
         </div>
@@ -2044,7 +1790,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             const turnId = workEntry.turnId;
             const canOpenDiff = Boolean(onOpenTurnDiff && turnId);
             const chipClassName = cn(
-              "inline-flex max-w-48 items-center gap-1 rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/75",
+              "inline-flex max-w-48 items-center gap-1 rounded-md border border-border/55 bg-background/75 px-1.5 py-0.5 font-mono text-xs text-muted-foreground/75",
               canOpenDiff &&
                 "cursor-pointer transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             );
@@ -2084,7 +1830,7 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             );
           })}
           {(workEntry.changedFiles?.length ?? 0) > CHANGED_FILES_PREVIEW_FILE_LIMIT && (
-            <span className="px-1 text-[10px] text-muted-foreground/55">
+            <span className="px-1 text-xs text-muted-foreground/55">
               +{(workEntry.changedFiles?.length ?? 0) - CHANGED_FILES_PREVIEW_FILE_LIMIT}
             </span>
           )}

@@ -3,6 +3,7 @@ import { useConvex, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../../convex/_generated/api"
+import { FilterChip } from "@/components/ui/filter-chip"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { DevAppStoreRow } from "@/features/devapps/components/DevAppStoreRow"
 import { STORE_ORGANIZATION_ACCENT_CLASS } from "@/features/devapps/components/devAppStoreAccent"
@@ -508,17 +509,12 @@ export function AppStorePage() {
             {(["builtin", "organization"] as const).map((tab) => {
               const isActive = scope === tab;
               return (
-                <button
+                <FilterChip
                   key={tab}
                   type="button"
-                  aria-pressed={isActive}
                   onClick={() => setParam("scope", tab === "builtin" ? null : tab)}
-                  className={cn(
-                    "cursor-pointer rounded-full px-3 py-1 text-[11px] font-medium transition-colors inline-flex items-center gap-1.5",
-                    isActive
-                      ? "bg-secondary text-foreground shadow-xs"
-                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                  )}
+                  active={isActive}
+                  className="inline-flex items-center gap-1.5"
                 >
                   <span>
                     {tab === "builtin"
@@ -530,7 +526,7 @@ export function AppStorePage() {
                       {matchCounts[tab]}
                     </span>
                   ) : null}
-                </button>
+                </FilterChip>
               );
             })}
           </div>

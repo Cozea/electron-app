@@ -8,15 +8,10 @@ definitions:
         NODE_OPTIONS: "--max-old-space-size=4096"
         COZEA_UPDATE_PROVIDER: "generic"
         COZEA_UPDATER_CHANNEL: "latest"
-        VITE_FF_DATA_ROUTER: "1"
-        VITE_FF_VIEW_TRANSITIONS: "1"
         VITE_FF_PRIORITIZED_SCHEDULING: "1"
         VITE_FF_REACT_COMPILER: "1"
         VITE_FF_ROLLDOWN_BUILD: "1"
-        VITE_FF_JANK_DIAGNOSTICS: "1"
-        VITE_FF_CONTENT_VISIBILITY: "1"
         VITE_FF_OFFSCREEN_SCREENSHOT: "1"
-        VITE_FF_UTILITY_PROCESS_MANIFEST: "1"
 
   triggering:
     main_push: &main_push

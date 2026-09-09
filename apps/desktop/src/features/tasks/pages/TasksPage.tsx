@@ -1,34 +1,105 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useMutation, useQuery } from 'convex/react'
-import type { Id } from '../../../../../../convex/_generated/dataModel'
-
-import { api } from '../../../../../../convex/_generated/api'
-import { useAuth } from '@/contexts/AuthContext'
-import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
-import { openProjectFileInExternalEditor } from '@/features/settings/model/externalEditorPreference'
-import { buildProjectPath } from '@/contexts/project/projectRoutes'
 import {
-
-  type TaskOverlayLocationState,
-  type TaskOverlayPayload,
-} from '@/features/tasks/model/taskFocusOverlay'
-import type { ProjectScannedRoute } from '@shared/electronApiTypes'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { GroupedVirtuoso } from 'react-virtuoso'
-import { useTranslation } from '@/lib/i18n'
-import { useViewTransitionNavigate } from '@/lib/navigation'
-import { cn } from '@/lib/utils'
-import { getFileIcon } from '@/lib/fileExplorer/fileIcons'
-import { useOptionalProjectSyncContext } from '@/contexts/project/ProjectSyncContext'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+  useMutation,
+  useQuery,
+} from 'convex/react';
+import type {
+  Id,
+} from '../../../../../../convex/_generated/dataModel';
+
+import {
+  api,
+} from '../../../../../../convex/_generated/api';
+import {
+  TaskListRow,
+} from "@/features/tasks/components/TaskListRow";
+import {
+  getManualTaskStorageKey,
+  getTaskMigrationFlagStorageKey,
+  normalizeSearchValue,
+  createTaskId,
+  getInitials,
+  createDefaultManualTaskMarkers,
+  getClaimantIdentityKey,
+  getDisplayFirstName,
+  createDraftMarkerRows,
+  parseMarkerRowsInput,
+  inferBoardStatusFromMarkers,
+  deadlineDateToTimestamp,
+  getFileSelectionPriority,
+  createFileContextAttachment,
+  createPageContextAttachment,
+  createStoredContextAttachment,
+  resolveMarkers,
+  readStoredManualTasks,
+  getPrimaryAssigneeRecord,
+  buildAssigneeClaimants,
+} from '@/features/tasks/model/taskBoardModel';
+import type {
+  BoardStatus,
+  ProjectPlanPageRecord,
+  ManualTaskClaimantRecord,
+  SharedManualTaskRecord,
+  TaskClaimantCandidate,
+  ClaimantMemberSourceRecord,
+  TaskContextAttachment,
+  BoardItem,
+} from '@/features/tasks/model/taskBoardModel';
+import {
+  useAuth,
+} from '@/contexts/AuthContext';
+import {
+  useAccessibleProject,
+} from '@/contexts/project/useAccessibleProject';
+
+import {
+  buildProjectPath,
+} from '@/contexts/project/projectRoutes';
+
+import type {
+  ProjectScannedRoute,
+} from '@shared/electronApiTypes';
+import {
+  ScrollArea,
+} from '@/components/ui/scroll-area';
+import {
+  GroupedVirtuoso,
+} from 'react-virtuoso';
+import {
+  useTranslation,
+} from '@/lib/i18n';
+import {
+  useViewTransitionNavigate,
+} from '@/lib/navigation';
+import {
+  cn,
+} from '@/lib/utils';
+import {
+  asHugeIcon,
+} from '@/lib/icons/asHugeIcon';
+import {
+  getFileIcon,
+} from '@/lib/fileExplorer/fileIcons';
+import {
+  useOptionalProjectSyncContext,
+} from '@/contexts/project/ProjectSyncContext';
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from '@/components/ui/avatar';
+import {
+  Badge,
+} from '@/components/ui/badge';
+import {
+  Button,
+} from '@/components/ui/button';
+
+
 import {
   Dialog,
   DialogClose,
@@ -37,7 +108,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
+} from '@/components/ui/dialog';
 import {
   Empty,
   EmptyContent,
@@ -45,139 +116,43 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from '@/components/ui/empty'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { AppOverlayPortal } from '@/components/ui/app-overlay-portal'
+} from '@/components/ui/empty';
+import {
+  Input,
+} from '@/components/ui/input';
+import {
+  Label,
+} from '@/components/ui/label';
+import {
+  Textarea,
+} from '@/components/ui/textarea';
+import {
+  AppOverlayPortal,
+} from '@/components/ui/app-overlay-portal';
+import {
+  resolveAvailableTaskContextKind,
+  selectDefaultTaskContext,
+} from '@/features/tasks/model/taskContextSelection';
 
-import { HugeiconsIcon } from '@hugeicons/react'
-import { Add01Icon as __PlusHugeIcon, Cancel01Icon as __XHugeIcon, CheckmarkCircle02Icon as __CheckCircle2HugeIcon, ChevronDoubleCloseIcon as __ChevronDownHugeIcon, Clock01Icon as __Clock3HugeIcon, ComputerActivityIcon as __AppWindowHugeIcon, Delete02Icon as __Trash2HugeIcon, DocumentAttachmentIcon as __FileTextHugeIcon, LeftToRightListBulletIcon as __ListTodoHugeIcon, SquareArrowDownRightIcon as __ArrowUpRightHugeIcon } from '@hugeicons/core-free-icons'
+import {
+  HugeiconsIcon,
+} from '@hugeicons/react';
+import {
+  Add01Icon as __PlusHugeIcon,
+  Cancel01Icon as __XHugeIcon,
+  CheckmarkCircle02Icon as __CheckCircle2HugeIcon,
+  ChevronDoubleCloseIcon as __ChevronDownHugeIcon,
+  Clock01Icon as __Clock3HugeIcon,
+  ComputerActivityIcon as __AppWindowHugeIcon,
+  Delete02Icon as __Trash2HugeIcon,
+  DocumentAttachmentIcon as __FileTextHugeIcon,
+  LeftToRightListBulletIcon as __ListTodoHugeIcon,
+} from '@hugeicons/core-free-icons';
 
-const CheckCircle2 = (props: any) => <HugeiconsIcon icon={__CheckCircle2HugeIcon} {...props} />
-const Clock3 = (props: any) => <HugeiconsIcon icon={__Clock3HugeIcon} {...props} />
-const ListTodo = (props: any) => <HugeiconsIcon icon={__ListTodoHugeIcon} {...props} />
+const CheckCircle2 = asHugeIcon(__CheckCircle2HugeIcon)
+const Clock3 = asHugeIcon(__Clock3HugeIcon)
+const ListTodo = asHugeIcon(__ListTodoHugeIcon)
 
-type BoardStatus = 'planned' | 'active' | 'done'
-type BoardSource = 'manual' | 'page' | 'entity' | 'build' | 'lock'
-
-interface ProjectPlanPageRecord {
-  id: string
-  name: string
-  route: string
-  type: string
-  purpose?: string
-  actions?: string[]
-}
-
-interface ManualTaskMarkerRecord {
-  id: string
-  label: string
-}
-
-interface ManualTaskClaimantRecord {
-  id: string
-  name: string
-  identityKey?: string
-  avatarUrl?: string | null
-}
-
-interface ManualTaskRecord {
-  id: string
-  title: string
-  description: string
-  status: BoardStatus
-  createdAt: number
-  deadlineDate?: string
-  claimants?: ManualTaskClaimantRecord[]
-  markers?: ManualTaskMarkerRecord[]
-  checkedMarkerIds?: string[]
-}
-
-interface ManualTaskAssigneeRecord {
-  principalId?: string
-  name: string
-  identityKey?: string
-  avatarUrl?: string | null
-}
-
-interface ManualTaskContextRecord {
-  kind: 'file' | 'page'
-  value: string
-  label: string
-  title: string
-}
-
-interface SharedManualTaskRecord {
-  taskKey: string
-  title: string
-  description: string
-  status: BoardStatus
-  createdAt: number
-  updatedAt: number
-  deadlineDate?: string
-  assignee?: ManualTaskAssigneeRecord
-  context: ManualTaskContextRecord
-  markers: ManualTaskMarkerRecord[]
-  checkedMarkerIds: string[]
-}
-
-interface TaskMarkerDefinition {
-  id: string
-  label: string
-  defaultChecked: boolean
-}
-
-interface TaskMarker {
-  id: string
-  label: string
-  checked: boolean
-}
-
-interface TaskClaimant {
-  id: string
-  name: string
-  avatarUrl?: string | null
-}
-
-interface TaskClaimantCandidate {
-  id: string
-  name: string
-  identityKey: string
-  avatarUrl?: string | null
-  searchText: string
-}
-
-interface ClaimantMemberSourceRecord {
-  principalId: string
-  identityKey: string
-  displayName: string
-  avatarUrl?: string | null
-}
-
-interface TaskContextAttachment {
-  kind: 'file' | 'page'
-  value: string
-  label: string
-  href?: string
-  title: string
-}
-
-interface BoardItem {
-  id: string
-  storageId: string
-  title: string
-  description: string
-  status: BoardStatus
-  source: BoardSource
-  href?: string
-  createdAt?: number
-  deadlineTimestamp?: number | null
-  markers: TaskMarker[]
-  claimants: TaskClaimant[]
-  context: TaskContextAttachment
-  files?: string[]
-}
 
 interface TasksPageProps {
   presentation?: 'modal' | 'embedded'
@@ -221,543 +196,8 @@ const STATUS_META: Record<
   },
 }
 
-function getManualTaskStorageKey(projectId: string): string {
-  return `cozea:project-task-board:${projectId}`
-}
 
-function getTaskMigrationFlagStorageKey(projectId: string): string {
-  return `cozea:project-task-board-migrated:${projectId}`
-}
 
-function normalizeSearchValue(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9/]+/g, ' ').trim()
-}
-
-function createTaskId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-  return `${Date.now()}-${Math.round(Math.random() * 1_000_000)}`
-}
-
-function getInitials(name: string): string {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
-
-  return initials || '?'
-}
-
-function normalizeManualTaskMarkers(value: unknown): ManualTaskMarkerRecord[] {
-  if (!Array.isArray(value)) return createDefaultManualTaskMarkers()
-
-  const markers = value.flatMap((item, index) => {
-    if (typeof item === 'string') {
-      const label = item.trim()
-      if (!label) return []
-      return [{ id: `marker-${index}`, label }]
-    }
-
-    if (!item || typeof item !== 'object') return []
-
-    const candidate = item as Partial<ManualTaskMarkerRecord>
-    if (typeof candidate.label !== 'string') return []
-
-    const label = candidate.label.trim()
-    if (!label) return []
-
-    return [
-      {
-        id: typeof candidate.id === 'string' && candidate.id.trim().length > 0
-          ? candidate.id
-          : `marker-${index}`,
-        label,
-      },
-    ]
-  })
-
-  return markers.length > 0 ? markers : createDefaultManualTaskMarkers()
-}
-
-function createDefaultManualTaskMarkers(t?: any): ManualTaskMarkerRecord[] {
-  return [
-    { id: 'scope', label: t ? t('tasks.markers.scope') : 'Scope the work' },
-    { id: 'build', label: t ? t('tasks.markers.implement') : 'Implement the task' },
-    { id: 'review', label: t ? t('tasks.markers.review') : 'Review and ship' },
-  ]
-}
-
-function getClaimantIdentityKey(claimant: {
-  id?: string
-  identityKey?: string | null
-  name?: string | null
-}): string {
-  const identityKey = claimant.identityKey?.trim().toLowerCase()
-  if (identityKey) return `device:${identityKey}`
-
-  const id = claimant.id?.trim()
-  if (id) return `id:${id}`
-
-  const name = claimant.name?.trim().toLowerCase()
-  return `name:${name || '?'}`
-}
-
-function getDisplayFirstName(name: string): string {
-  const normalized = name.trim()
-  if (!normalized) return ''
-
-  return normalized.split(/\s+/)[0] ?? normalized
-}
-
-function normalizeManualTaskClaimants(value: unknown): ManualTaskClaimantRecord[] {
-  if (!Array.isArray(value)) return []
-
-  const seen = new Set<string>()
-
-  return value.flatMap((item, index) => {
-    if (typeof item === 'string') {
-      const name = item.trim()
-      if (!name) return []
-
-      const key = getClaimantIdentityKey({ name })
-      if (seen.has(key)) return []
-      seen.add(key)
-
-      return [
-        {
-          id: `claimant-${index}-${normalizeSearchValue(name).replace(/\s+/g, '-') || index}`,
-          name,
-        },
-      ]
-    }
-
-    if (!item || typeof item !== 'object') return []
-
-    const candidate = item as Partial<ManualTaskClaimantRecord>
-    if (typeof candidate.name !== 'string') return []
-
-    const name = candidate.name.trim()
-    if (!name) return []
-
-    const identityKey =
-      typeof candidate.identityKey === 'string' && candidate.identityKey.trim().length > 0
-        ? candidate.identityKey.trim().toLowerCase()
-        : undefined
-    const key = getClaimantIdentityKey({
-      id: candidate.id,
-      identityKey,
-      name,
-    })
-
-    if (seen.has(key)) return []
-    seen.add(key)
-
-    return [
-      {
-        id:
-          typeof candidate.id === 'string' && candidate.id.trim().length > 0
-            ? candidate.id
-            : `claimant-${index}-${normalizeSearchValue(name).replace(/\s+/g, '-') || index}`,
-        name,
-        identityKey,
-        avatarUrl:
-          typeof candidate.avatarUrl === 'string' && candidate.avatarUrl.trim().length > 0
-            ? candidate.avatarUrl
-            : null,
-      },
-    ]
-  })
-}
-
-function createDraftMarkerRows(): string[] {
-  return createDefaultManualTaskMarkers().map((marker) => marker.label)
-}
-
-function parseMarkerRowsInput(values: string[]): ManualTaskMarkerRecord[] {
-  const markers = values
-    .map((marker) => marker.trim())
-    .filter(Boolean)
-    .map((label, index) => ({
-      id: `custom-${index}-${normalizeSearchValue(label).replace(/\s+/g, '-') || index}`,
-      label,
-    }))
-
-  return markers.length > 0 ? markers : createDefaultManualTaskMarkers()
-}
-
-function inferBoardStatusFromMarkers(markers: Array<Pick<TaskMarker, 'checked'>>): BoardStatus {
-  if (markers.length === 0) return 'planned'
-
-  const checkedCount = markers.filter((marker) => marker.checked).length
-
-  if (checkedCount === 0) return 'planned'
-  if (checkedCount === markers.length) return 'done'
-
-  return 'active'
-}
-
-function deadlineDateToTimestamp(deadlineDate?: string): number | null {
-  if (!deadlineDate) return null
-  const timestamp = new Date(`${deadlineDate}T12:00:00`).getTime()
-  return Number.isFinite(timestamp) ? timestamp : null
-}
-
-function truncatePath(path: string, maxLength = 34): string {
-  if (path.length <= maxLength) return path
-  const parts = path.split('/').filter(Boolean)
-  const fileName = parts[parts.length - 1] ?? path
-  if (fileName.length + 4 >= maxLength) {
-    return `...${fileName.slice(-(maxLength - 3))}`
-  }
-  return `.../${fileName}`
-}
-
-function getFileSelectionPriority(filePath: string): number {
-  const normalized = filePath.replace(/\\/g, '/')
-
-  if (normalized.startsWith('src/pages/')) return 0
-  if (normalized.startsWith('src/')) return 1
-  if (normalized.startsWith('convex/')) return 2
-  if (normalized.startsWith('server/src/')) return 3
-  return 4
-}
-
-function getDeadlineMeta(deadlineTimestamp: number | null | undefined, t: any): {
-  label: string
-  className: string
-} {
-  if (!deadlineTimestamp) {
-    return {
-      label: t('tasks.deadline.none'),
-      className: 'text-muted-foreground',
-    }
-  }
-
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diffDays = Math.ceil((deadlineTimestamp - today.getTime()) / 86_400_000)
-
-  if (diffDays < 0) {
-    return {
-      label: t('tasks.deadline.overdue').replace('{days}', String(Math.abs(diffDays))),
-      className: 'text-rose-700 dark:text-rose-400',
-    }
-  }
-
-  if (diffDays === 0) {
-    return {
-      label: t('tasks.deadline.today'),
-      className: 'text-amber-700 dark:text-amber-400',
-    }
-  }
-
-  if (diffDays === 1) {
-    return {
-      label: t('tasks.deadline.tomorrow'),
-      className: 'text-amber-700 dark:text-amber-400',
-    }
-  }
-
-  return {
-    label: t('tasks.deadline.daysLeft').replace('{days}', String(diffDays)),
-    className: 'text-foreground',
-  }
-}
-
-function createFileContextAttachment(
-  filePath: string,
-): TaskContextAttachment {
-  return {
-    kind: 'file',
-    value: filePath,
-    label: truncatePath(filePath, 26),
-    title: filePath,
-  }
-}
-
-function createPageContextAttachment(
-  page: Pick<ProjectPlanPageRecord, 'name' | 'route'>,
-  projectPagesPath: string,
-): TaskContextAttachment {
-  const routeLabel = page.route?.trim() || page.name
-  return {
-    kind: 'page',
-    value: page.route?.trim() || '',
-    label: truncatePath(routeLabel, 26),
-    href: page.route
-      ? `${projectPagesPath}?route=${encodeURIComponent(page.route)}`
-      : projectPagesPath,
-    title: page.route ? `${page.name} · ${page.route}` : page.name,
-  }
-}
-
-function createStoredContextAttachment(
-  context: ManualTaskContextRecord,
-  projectPagesPath: string,
-): TaskContextAttachment {
-  if (context.kind === 'page') {
-    const route = context.value.trim()
-    return {
-      kind: 'page',
-      value: route,
-      label: context.label || truncatePath(route || context.title || 'Preview', 26),
-      href: route ? `${projectPagesPath}?route=${encodeURIComponent(route)}` : projectPagesPath,
-      title: context.title || route || 'Preview',
-    }
-  }
-
-  const filePath = context.value.trim()
-  return {
-    kind: 'file',
-    value: filePath,
-    label: context.label || truncatePath(filePath, 26),
-    title: context.title || filePath,
-  }
-}
-
-function resolveMarkers(
-  definitions: TaskMarkerDefinition[],
-  checkedIdsOverride: string[] | undefined,
-): TaskMarker[] {
-  const checkedIds = new Set(
-    checkedIdsOverride ?? definitions.filter((marker) => marker.defaultChecked).map((marker) => marker.id),
-  )
-
-  return definitions.map((marker) => ({
-    id: marker.id,
-    label: marker.label,
-    checked: checkedIds.has(marker.id),
-  }))
-}
-
-function readStoredManualTasks(projectId: string): ManualTaskRecord[] {
-  if (typeof window === 'undefined') return []
-
-  try {
-    const raw = window.localStorage.getItem(getManualTaskStorageKey(projectId))
-    if (!raw) return []
-
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-
-    return parsed.flatMap((item) => {
-      if (!item || typeof item !== 'object') return []
-
-      const candidate = item as Partial<ManualTaskRecord>
-      if (
-        typeof candidate.id !== 'string' ||
-        typeof candidate.title !== 'string' ||
-        typeof candidate.description !== 'string' ||
-        typeof candidate.createdAt !== 'number'
-      ) {
-        return []
-      }
-
-      return [
-        {
-          id: candidate.id,
-          title: candidate.title,
-          description: candidate.description,
-          status:
-            candidate.status === 'planned' ||
-            candidate.status === 'active' ||
-            candidate.status === 'done'
-              ? candidate.status
-              : 'planned',
-          createdAt: candidate.createdAt,
-          deadlineDate:
-            typeof candidate.deadlineDate === 'string' && candidate.deadlineDate.length > 0
-              ? candidate.deadlineDate
-              : undefined,
-          claimants: normalizeManualTaskClaimants(candidate.claimants),
-          markers: normalizeManualTaskMarkers(candidate.markers),
-          checkedMarkerIds: Array.isArray(candidate.checkedMarkerIds)
-            ? candidate.checkedMarkerIds.filter((markerId): markerId is string => typeof markerId === 'string' && markerId.length > 0)
-            : [],
-        },
-      ]
-    })
-  } catch {
-    return []
-  }
-}
-
-function getPrimaryAssigneeRecord(
-  claimants: ManualTaskClaimantRecord[],
-): ManualTaskAssigneeRecord | undefined {
-  const primary = claimants[0]
-  if (!primary) return undefined
-
-  return {
-    principalId: primary.id,
-    name: primary.name,
-    identityKey: primary.identityKey,
-    avatarUrl: primary.avatarUrl ?? null,
-  }
-}
-
-function buildAssigneeClaimants(
-  assignee: ManualTaskAssigneeRecord | undefined,
-  prefix: string,
-): TaskClaimant[] {
-  if (!assignee) return []
-
-  return [
-    {
-      id:
-        assignee.principalId ||
-        `${prefix}-${normalizeSearchValue(assignee.name).replace(/\s+/g, '-') || 'assignee'}`,
-      name: assignee.name,
-      avatarUrl: assignee.avatarUrl ?? null,
-    },
-  ]
-}
-
-function TaskListRow({
-  item,
-  projectId,
-  workspaceId,
-  onToggleMarker,
-  t,
-}: {
-  item: BoardItem
-  projectId: string
-  workspaceId: string | null
-  onToggleMarker: (item: BoardItem, markerId: string) => void
-  t: any
-}) {
-  const navigate = useViewTransitionNavigate()
-  const [isOpen, setIsOpen] = useState(item.status !== 'done')
-  const deadlineMeta = getDeadlineMeta(item.deadlineTimestamp, t)
-  const fileIconName = item.context.title.split('/').filter(Boolean).pop() ?? item.context.title
-  const taskOverlay: TaskOverlayPayload = {
-    projectId,
-    storageId: item.storageId,
-    source: item.source,
-    title: item.title,
-    description: item.description,
-    context: {
-      kind: item.context.kind,
-      value: item.context.value,
-      label: item.context.label,
-      title: item.context.title,
-    },
-    markers: item.markers,
-  }
-  const navigationState: TaskOverlayLocationState = {
-    taskOverlay,
-  }
-
-  async function openContext(): Promise<void> {
-    if (item.context.kind === 'file') {
-      const result = await openProjectFileInExternalEditor({
-        filePath: item.context.value,
-        workspaceId,
-      })
-      if (!result.success) {
-        console.error('[TasksPage] Failed to open file in external editor', result.error)
-      }
-      return
-    }
-
-    if (!item.context.href) return
-    navigate(item.context.href, { state: navigationState })
-  }
-
-  return (
-    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="border-b border-border/50 py-3 last:border-b-0">
-      <div className="flex items-start gap-2">
-        <CollapsibleTrigger render={
-          <button
-            type="button"
-            className="group flex min-w-0 flex-1 items-start gap-3 text-left"
-            aria-label={`${isOpen ? t('tasks.action.collapse') : t('tasks.action.expand')} task ${item.title}`}
-          >
-            <HugeiconsIcon icon={__ChevronDownHugeIcon}
-              className={cn(
-                'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-[transform,opacity] duration-200 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-data-[state=open]:opacity-100',
-                !isOpen && '-rotate-90',
-              )}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <h3 className="truncate text-[15px] font-normal leading-5 text-foreground">
-                  {item.title}
-                </h3>
-
-                <span className={cn('inline-flex items-center gap-1.5', deadlineMeta.className)} title={deadlineMeta.label}>
-                  <Clock3 className="h-3.5 w-3.5" />
-                  {deadlineMeta.label}
-                </span>
-
-                <span title={item.context.title} className="inline-flex min-w-0 items-center gap-1.5">
-                  {item.context.kind === 'file' ? (
-                    getFileIcon(fileIconName, { className: 'h-3.5 w-3.5' })
-                  ) : (
-                    <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5 shrink-0" />
-                  )}
-                  <span className="truncate">{item.context.label}</span>
-                </span>
-
-                <span className="truncate">
-                  {item.claimants.length > 0
-                    ? t('tasks.assignee.assignedTo').replace('{names}', item.claimants.map((claimant) => claimant.name).join(', '))
-                    : t('tasks.assignee.unassigned')}
-                </span>
-              </div>
-            </div>
-          </button>
-        } />
-
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="-mr-1 -mt-1 shrink-0"
-          onClick={(event) => {
-            event.stopPropagation()
-            void openContext()
-          }}
-          aria-label={`Open ${item.context.title}`}
-        >
-          <HugeiconsIcon icon={__ArrowUpRightHugeIcon} className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <CollapsibleContent>
-        <div className="space-y-3 pl-7 pt-3">
-          {item.description ? (
-            <p className="text-sm leading-6 text-muted-foreground">{item.description}</p>
-          ) : null}
-
-          <ul className="space-y-2">
-            {item.markers.map((marker) => (
-              <li key={marker.id}>
-                <label className="flex cursor-pointer items-start gap-3">
-                  <Checkbox
-                    checked={marker.checked}
-                    onCheckedChange={() => onToggleMarker(item, marker.id)}
-                    aria-label={marker.label}
-                  />
-                  <span
-                    className={cn(
-                      'text-sm leading-6',
-                      marker.checked ? 'text-muted-foreground line-through' : 'text-foreground',
-                    )}
-                  >
-                    {marker.label}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  )
-}
 
 export function TasksPage({
   presentation = 'modal',
@@ -787,7 +227,7 @@ export function TasksPage({
   const [draftDeadlineDate, setDraftDeadlineDate] = useState('')
   const [draftContextKind, setDraftContextKind] = useState<'file' | 'page'>('page')
   const [draftPageContextValue, setDraftPageContextValue] = useState('')
-  const [draftFileContextValue, setDraftFileContextValue] = useState('convex/schema.ts')
+  const [draftFileContextValue, setDraftFileContextValue] = useState('')
   const [draftContextSearch, setDraftContextSearch] = useState('')
   const [draftClaimants, setDraftClaimants] = useState<ManualTaskClaimantRecord[]>([])
   const [draftClaimantSearch, setDraftClaimantSearch] = useState('')
@@ -871,17 +311,6 @@ export function TasksPage({
       searchTerms.every((term) => candidate.searchText.includes(term)),
     )
   }, [claimantCandidates, draftClaimantSearch, selectedDraftClaimantKeys])
-  const defaultManualTaskContext = useMemo<TaskContextAttachment | null>(() => {
-    if (!project) return null
-
-    const planPages = (projectArtifacts?.generatedPlan?.pages ?? []) as ProjectPlanPageRecord[]
-
-    if (planPages[0]) {
-      return createPageContextAttachment(planPages[0], projectPagesPath)
-    }
-
-    return createFileContextAttachment('convex/schema.ts')
-  }, [project, projectArtifacts?.generatedPlan?.pages, projectPagesPath])
   const pageContextOptions = useMemo<TaskContextAttachment[]>(() => {
     const options: TaskContextAttachment[] = []
     const seen = new Set<string>()
@@ -923,6 +352,10 @@ export function TasksPage({
         })
         .map((filePath) => createFileContextAttachment(filePath)),
     [draftProjectFiles],
+  )
+  const defaultManualTaskContext = useMemo<TaskContextAttachment | null>(
+    () => selectDefaultTaskContext(pageContextOptions, fileContextOptions),
+    [fileContextOptions, pageContextOptions],
   )
   const filteredPageContextOptions = useMemo(() => {
     const searchTerms = normalizeSearchValue(draftContextSearch)
@@ -1046,6 +479,12 @@ export function TasksPage({
       setDraftFileContextValue(fileContextOptions[0].value)
     }
   }, [draftFileContextValue, fileContextOptions])
+
+  useEffect(() => {
+    setDraftContextKind((current) =>
+      resolveAvailableTaskContextKind(current, pageContextOptions.length, fileContextOptions.length),
+    )
+  }, [fileContextOptions.length, pageContextOptions.length])
 
   useEffect(() => {
     if (
@@ -1249,7 +688,7 @@ export function TasksPage({
     setDraftFileContextValue(
       defaultManualTaskContext?.kind === 'file'
         ? defaultManualTaskContext.value
-        : 'convex/schema.ts',
+        : '',
     )
     setDraftContextSearch('')
     setDraftClaimants([])

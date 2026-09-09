@@ -1,0 +1,16 @@
+.responsive-header-row { display: flex; align-items: center; width: 100%; min-width: 0; }
+.responsive-header-leading { display: flex; flex: none; align-items: center; }
+.responsive-header-title { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; }
+.responsive-header-title > * { min-width: 0; max-width: 100%; }
+.responsive-header-center { display: flex; flex: 1 1 0%; justify-content: center; min-width: 0; overflow: hidden; padding-inline: 6px; }
+.responsive-header-center > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.responsive-header-actions { display: flex; align-items: center; flex: none; }
+.responsive-header-slot { display: flex; flex: none; align-items: center; margin-left: 6px; }
+.responsive-header-slot:empty { margin-left: 0; }
+.responsive-header-slot:has(> .responsive-header-group:empty) { margin-left: 0; }
+.responsive-header-group { display: flex; align-items: center; flex: none; width: max-content; }
+/* Hidden controls retain measurable natural widths without affecting the row. */
+.responsive-header-slot[data-overflowed] { position: absolute; visibility: hidden; pointer-events: none; margin: 0; }
+.responsive-header-overflow { margin-left: 6px; }
+.responsive-header-overflow[hidden] { display: none; }
+.responsive-header-popup { max-width: calc(100vw - 24px); max-height: var(--available-height); overflow: auto; }

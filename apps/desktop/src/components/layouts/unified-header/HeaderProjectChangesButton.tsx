@@ -73,7 +73,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
         <Button
           type="button"
           variant="ghost"
-          className={`h-7 sm:h-7 gap-1 shrink-0 rounded-md px-3 shadow-none hover:bg-muted/40 hover:text-foreground ${isSidebarOpen ? "bg-muted/40 text-foreground" : "bg-transparent text-muted-foreground"}`}
+          className={`h-7 sm:h-7 gap-1 shrink-0 rounded-md px-2.5 shadow-none hover:bg-muted/40 hover:text-foreground ${isSidebarOpen ? "bg-muted/40 text-foreground" : "bg-transparent text-muted-foreground"}`}
           aria-label={isSidebarOpen ? "Close changes" : "Open changes"}
           onMouseEnter={prewarmChanges}
           onFocus={prewarmChanges}
@@ -91,7 +91,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
             sidebarActions.toggle();
           }}
         >
-          <span className="inline-flex items-center gap-1 text-[9px] tabular-nums">
+          <span className="inline-flex items-center gap-1 font-sans text-sm font-medium leading-none">
             <span className="text-success">+{diffStats.additions}</span>
             <span className="text-destructive">-{diffStats.deletions}</span>
           </span>

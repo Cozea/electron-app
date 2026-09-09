@@ -33,10 +33,7 @@ export const PROJECT_INVITE_ROLE_OPTIONS: Array<{ value: ProjectInviteRole; labe
   { value: "viewer", label: "Viewer" },
 ];
 
-export function cleanConvexError(error: unknown, fallback: string): string {
-  const raw = error instanceof Error ? error.message : fallback;
-  return raw.replace(/^\[CONVEX.*?\]\s*/, "").replace(/\s*Called by client$/, "") || fallback;
-}
+
 
 export function getLinkPermissionDescription(role: ProjectInviteRole): string {
   switch (role) {

@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { settingsModules } from '@/lib/settings/settingsModules'
-import { beginLocalNavigation } from '@/lib/performance/localNavigation'
 import {
   getSettingsSurfaceRoute,
   resolveSettingsSurfaceFromRoute,
@@ -91,7 +90,6 @@ export const useSettingsDrawerStore = create<SettingsDrawerState>((set) => ({
   route: DEFAULT_ROUTE,
 
   open: (section = DEFAULT_SECTION) => {
-    beginLocalNavigation(section)
     void settingsModules[section]().catch(() => undefined)
     set({
       isOpen: true,
@@ -102,7 +100,6 @@ export const useSettingsDrawerStore = create<SettingsDrawerState>((set) => ({
 
   openFromRoute: (route) => {
     const parsed = parseSettingsRoute(route)
-    beginLocalNavigation(parsed.section)
     void settingsModules[parsed.section]().catch(() => undefined)
     const routeWithQuery = parsed.query ? `${parsed.path}?${parsed.query}` : parsed.path
     set({

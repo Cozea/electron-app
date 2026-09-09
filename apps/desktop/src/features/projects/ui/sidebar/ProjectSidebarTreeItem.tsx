@@ -10,7 +10,7 @@ import { featureFlags } from "@/lib/featureFlags"
 import { useAuth } from "@/contexts/AuthContext"
 import { useConvex } from "convex/react"
 import { prefetchProjectSwitch } from "@/features/projects/lib/projectSwitchPrefetch"
-import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
+import { useElementOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { useWorkspaceSnapshotEntry } from "@/features/workspace/useWorkspaceCatalogSnapshot"
 import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
 import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
@@ -46,8 +46,6 @@ import {
   ArrowRight01Icon as __ChevronRightHugeIcon,
   MoreVerticalIcon as __EllipsisVerticalHugeIcon,
 } from '@hugeicons/core-free-icons'
-
-const SIDEBAR_PROJECT_LABEL_FONT = "13px Inter"
 
 async function showNativeSidebarMenu<T extends string>(
   event: React.MouseEvent<HTMLElement>,
@@ -157,13 +155,9 @@ export const ProjectSidebarTreeItem = React.memo(
     })
     const isProjectRowActive = isSidebarActivityLive(projectRowActivity)
 
-    const { containerRef: projectRowRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
-      font: SIDEBAR_PROJECT_LABEL_FONT,
-    })
-    const projectNameTitle = React.useMemo(() => {
-      const reservedWidth = 18 + 8 + 24 + 8 + 8
-      return getOverflowTitle(project.name, reservedWidth)
-    }, [getOverflowTitle, project.name])
+    const { elementRef: projectNameRef, overflowTitle: projectNameTitle } =
+      useElementOverflowTitleFor<HTMLSpanElement>(project.name)
+    const projectRowRef = React.useRef<HTMLDivElement | null>(null)
 
     const handleProjectOpenClick = React.useCallback((e: React.MouseEvent) => {
       e.stopPropagation();
@@ -401,7 +395,7 @@ export const ProjectSidebarTreeItem = React.memo(
           <div className="flex min-h-7 min-w-0 flex-1 items-center gap-1.5">
             <button
               type="button"
-              className="group flex min-h-7 min-w-0 max-w-full shrink cursor-pointer items-center gap-2 text-left text-xs font-normal text-muted-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
+              className="group flex min-h-7 min-w-0 max-w-full flex-1 cursor-pointer items-center gap-2 text-left text-sm font-medium text-sidebar-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
               onClick={handleProjectOpenClick}
               aria-label={`Open ${project.name}`}
             >
@@ -411,16 +405,25 @@ export const ProjectSidebarTreeItem = React.memo(
                 isActive={isProjectRowActive}
               />
               {isProjectRowActive ? (
-                <LiveShimmerText
-                  className="font-normal"
+                <span
+                  className="min-w-0 flex-1 overflow-hidden"
                   title={projectNameTitle}
-                  baseClassName="text-sidebar-foreground/45"
-                  sweepClassName="text-sidebar-foreground"
                 >
-                  {project.name}
-                </LiveShimmerText>
+                  <LiveShimmerText
+                    textRef={projectNameRef}
+                    className="w-full font-normal"
+                    baseClassName="text-sidebar-foreground/45"
+                    sweepClassName="text-sidebar-foreground"
+                  >
+                    {project.name}
+                  </LiveShimmerText>
+                </span>
               ) : (
-                <span className="truncate font-normal" title={projectNameTitle}>
+                <span
+                  ref={projectNameRef}
+                  className="block min-w-0 flex-1 truncate font-normal"
+                  title={projectNameTitle}
+                >
                   {project.name}
                 </span>
               )}

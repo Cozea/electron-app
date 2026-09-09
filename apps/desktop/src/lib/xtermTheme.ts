@@ -1,24 +1,13 @@
 import { WebglAddon } from '@xterm/addon-webgl'
 import type { Terminal } from '@xterm/xterm'
+import { getNavigatorPlatform, isMacPlatform } from '@/lib/platform'
 
-const ROOT_THEME_SELECTOR = '.dark, .navy, .wine, .clay, .forest'
-
-function isMacPlatform(): boolean {
-  if (typeof navigator === 'undefined') {
-    return false
-  }
-
-  const userAgentDataPlatform = (
-    navigator as Navigator & { userAgentData?: { platform?: string } }
-  ).userAgentData?.platform
-  const platform = userAgentDataPlatform ?? navigator.platform ?? ''
-  return /mac/i.test(platform)
-}
+const ROOT_THEME_SELECTOR = '.theme-dark'
 
 /** Primary SF Mono stack (parity with t3-style embedded terminals; falls back cross-platform). */
 export const XTERM_FONT_FAMILY =
   `"SF Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace${
-    isMacPlatform() ? ', AppleBraille' : ''
+    isMacPlatform(getNavigatorPlatform()) ? ', AppleBraille' : ''
   }`
 
 /** Slightly relaxed line height for readability (matches common desktop terminal drawers). */

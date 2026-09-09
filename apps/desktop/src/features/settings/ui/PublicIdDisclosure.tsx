@@ -37,7 +37,7 @@ export function PublicIdDisclosure({
 
   if (!value) {
     return (
-      <p className={cn("mt-0.5 text-[11px] text-muted-foreground", className)}>
+      <p className={cn("mt-0.5 text-xs text-muted-foreground", className)}>
         {loadingLabel ?? t("common.loading")}
       </p>
     )
@@ -46,7 +46,7 @@ export function PublicIdDisclosure({
   return (
     <div className={cn("mt-0.5 flex min-w-0 items-center gap-1.5", className)}>
       {isRevealed ? (
-        <code className="min-w-0 truncate text-[11px] text-muted-foreground">
+        <code className="min-w-0 truncate text-xs text-muted-foreground">
           {value}
         </code>
       ) : (
@@ -54,7 +54,7 @@ export function PublicIdDisclosure({
           type="button"
           variant="ghost"
           size="sm"
-          className="-ml-2 h-7 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+          className="-ml-2 h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
           aria-expanded={false}
           aria-label={`${t("settings.publicId.show")} ${label}`}
           onClick={(event) => {

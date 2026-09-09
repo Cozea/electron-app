@@ -3,6 +3,7 @@ import { useConvex, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../convex/_generated/api"
+import { FilterChip } from "@/components/ui/filter-chip"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   SettingsGroup,
@@ -25,7 +26,7 @@ import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { SearchInput } from "@/components/ui/search-input"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 
@@ -290,7 +291,6 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
         <div className="flex items-start justify-between gap-4 mb-4">
           <SettingsPageHeader
             title={t("settings.devapps.title")}
-            description={t("settings.devapps.description")}
             className="mb-0"
           />
           {surface === "drawer" ? (
@@ -318,61 +318,47 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
       {/* Sticky Filter Tabs & Search Bar */}
       <div
         className={cn(
-          "sticky z-20 bg-background/95 pt-3 pb-2.5 backdrop-blur-md",
+          "sticky z-20 bg-background/95 pt-3 pb-2.5 backdrop-blur-md space-y-3",
           surface === "drawer" ? "top-[-1.75rem] -mx-8 px-8" : "top-[-1.5rem] -mx-8 sm:-mx-10 px-8 sm:px-10",
         )}
       >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-1">
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-hide py-0.5">
-            {(
-              [
-                { id: "all", label: t("settings.devapps.tabAll"), count: counts.all },
-                { id: "installed", label: t("settings.devapps.tabInstalled"), count: counts.installed },
-                { id: "builtin", label: t("settings.devapps.tabBuiltin"), count: counts.builtin },
-                { id: "assistants", label: t("settings.devapps.tabAssistants"), count: counts.assistants },
-              ] as const
-            ).map((tab) => {
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
+        <SearchInput
+          value={searchQuery}
+          onValueChange={setSearchQuery}
+          onClear={() => setSearchQuery("")}
+          placeholder={t("appStore.searchPlaceholder")}
+        />
+
+        <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+          {(
+            [
+              { id: "all", label: t("settings.devapps.tabAll"), count: counts.all },
+              { id: "installed", label: t("settings.devapps.tabInstalled"), count: counts.installed },
+              { id: "builtin", label: t("settings.devapps.tabBuiltin"), count: counts.builtin },
+              { id: "assistants", label: t("settings.devapps.tabAssistants"), count: counts.assistants },
+            ] as const
+          ).map((tab) => {
+            const isActive = activeTab === tab.id
+            return (
+              <FilterChip
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                active={isActive}
+                className="inline-flex items-center gap-1.5"
+              >
+                <span>{tab.label}</span>
+                <span
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                    isActive
-                      ? "bg-secondary text-foreground shadow-xs"
-                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    "text-[10px] tabular-nums",
+                    isActive ? "text-foreground/80 font-semibold" : "text-muted-foreground/70",
                   )}
                 >
-                  <span>{tab.label}</span>
-                  <span
-                    className={cn(
-                      "text-[10px] tabular-nums",
-                      isActive ? "text-foreground/80 font-semibold" : "text-muted-foreground/70",
-                    )}
-                  >
-                    {tab.count}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-
-          <div className="relative w-full sm:w-56">
-            <HugeiconsIcon
-              icon={__SearchHugeIcon}
-              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/70"
-              aria-hidden
-            />
-            <Input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("appStore.searchPlaceholder")}
-              className="h-8 rounded-search bg-muted/60 pl-8 pr-3 text-xs"
-            />
-          </div>
+                  {tab.count}
+                </span>
+              </FilterChip>
+            )
+          })}
         </div>
       </div>
 

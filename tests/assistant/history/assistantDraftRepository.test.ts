@@ -37,9 +37,11 @@ function record(patch: Partial<AssistantContentDraft> = {}): AssistantContentDra
 function memoryStorage() {
   const rows = new Map<string, AssistantContentDraft>();
   let fail = false;
+  let writes = 0;
   const storage: AssistantDraftStorage = {
     list: async () => [...rows.values()].map((row) => structuredClone(row)),
     write: async (puts, deletes) => {
+      writes += 1;
       if (fail) throw new Error("Storage quota exceeded");
       for (const key of deletes) rows.delete(key);
       for (const row of puts) rows.set(row.key, structuredClone(row));
@@ -51,6 +53,7 @@ function memoryStorage() {
     fail: (value: boolean) => {
       fail = value;
     },
+    writeCount: () => writes,
   };
 }
 
@@ -202,5 +205,47 @@ describe("durable assistant drafts", () => {
     await loading;
     await repo.flush();
     expect(repo.store.getState().drafts["draft:a"]?.text).toBe("new");
+  });
+
+  it("coalesces synchronous edits into the latest durable record", async () => {
+    const backend = memoryStorage();
+    const repo = createAssistantDraftRepository(backend.storage);
+    await repo.load();
+
+    for (let revision = 1; revision <= 100; revision += 1) {
+      repo.save(record({ text: "x".repeat(revision), cursor: revision, revision }));
+    }
+    await repo.flush();
+
+    expect(backend.writeCount()).toBe(1);
+    expect(backend.rows.get("draft:a")?.text).toBe("x".repeat(100));
+  });
+
+  it("keeps one follow-up transaction behind slow storage", async () => {
+    const backend = memoryStorage();
+    let releaseFirstWrite: (() => void) | undefined;
+    let firstWrite = true;
+    const originalWrite = backend.storage.write;
+    backend.storage.write = async (puts, deletes) => {
+      if (firstWrite) {
+        firstWrite = false;
+        await new Promise<void>((resolve) => {
+          releaseFirstWrite = resolve;
+        });
+      }
+      await originalWrite(puts, deletes);
+    };
+    const repo = createAssistantDraftRepository(backend.storage);
+    await repo.load();
+    repo.save(record({ revision: 1 }));
+    await Promise.resolve();
+    for (let revision = 2; revision <= 100; revision += 1) {
+      repo.save(record({ text: String(revision), revision }));
+    }
+    releaseFirstWrite?.();
+    await repo.flush();
+
+    expect(backend.writeCount()).toBe(2);
+    expect(backend.rows.get("draft:a")?.text).toBe("100");
   });
 });

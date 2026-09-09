@@ -14,7 +14,6 @@ export interface SubstrateShadowFeatureFlags {
   readonly providers: boolean
   readonly vcs: boolean
   readonly primary: boolean
-  readonly obsNdjson: boolean
   readonly inProcessAssistant: boolean
 }
 

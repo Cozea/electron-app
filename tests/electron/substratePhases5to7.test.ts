@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { classifyIpcChannel } from "../../apps/desktop/electron/substrate/ipcAllowlist";
 import { readSubstrateFeatureFlags } from "../../apps/desktop/electron/substrate/flags";
-import { listSubstrateRemoteEnvironmentStubs } from "../../apps/desktop/electron/substrate/remoteEnvironments";
+import { listSubstrateRemoteEnvironments } from "../../apps/desktop/electron/substrate/remoteEnvironments";
 
 describe("substrate feature flags (phases 5–6)", () => {
   it("defaults all spine flags on", () => {
@@ -12,7 +12,6 @@ describe("substrate feature flags (phases 5–6)", () => {
     expect(flags.providers).toBe(true);
     expect(flags.vcs).toBe(true);
     expect(flags.primary).toBe(true);
-    expect(flags.obsNdjson).toBe(true);
     expect(flags.t3Server).toBe(true);
   });
 
@@ -22,19 +21,16 @@ describe("substrate feature flags (phases 5–6)", () => {
       COZEA_SUBSTRATE_PRIMARY: "1",
       COZEA_SUBSTRATE_RPC_CHAT: "1",
       COZEA_SUBSTRATE_PROVIDERS: "1",
-      COZEA_OBS_NDJSON: "1",
     });
     const features = {
       rpcChat: flags.rpcChat,
       providers: flags.providers,
       vcs: flags.vcs,
       primary: flags.primary,
-      obsNdjson: flags.obsNdjson,
       inProcessAssistant: false,
     };
     expect(features.inProcessAssistant).toBe(false);
     expect(features.primary).toBe(true);
-    expect(features.obsNdjson).toBe(true);
     expect(flags.shadowServer.enabled).toBe(true);
   });
 });
@@ -55,7 +51,7 @@ describe("phase 5 ipc allowlist", () => {
 
 describe("phase 6 remote environment stubs", () => {
   it("lists local primary and non-ready SSH/WSL catalog entries", () => {
-    const envs = listSubstrateRemoteEnvironmentStubs();
+    const envs = listSubstrateRemoteEnvironments();
     expect(envs.some((env) => env.kind === "local")).toBe(true);
     expect(envs.some((env) => env.kind === "ssh" && !env.ready)).toBe(true);
     expect(envs.some((env) => env.kind === "wsl")).toBe(true);

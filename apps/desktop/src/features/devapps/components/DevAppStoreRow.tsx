@@ -63,7 +63,7 @@ export function DevAppStoreRow({
           <p className="truncate text-[13px] leading-tight font-medium text-foreground">{app.name}</p>
           {badge}
         </div>
-        <p className="truncate text-[12px] leading-tight text-muted-foreground mt-1">
+        <p className="mt-1 truncate text-xs leading-tight text-muted-foreground">
           {app.description || meta}
         </p>
       </div>

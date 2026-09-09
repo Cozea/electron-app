@@ -53,12 +53,9 @@ describe("empty-folder illustration follows the theme", () => {
     expect(active).toBeGreaterThan(flap)
   })
 
-  it("never uses the dark: variant, which cannot reach the tinted themes", () => {
-    // `@custom-variant dark (&:is(.dark *))` matches only `.dark`, and
-    // applyThemeClass swaps in exactly one mutually exclusive theme class, so a
-    // `dark:` utility is silently inert under navy/wine/clay/forest.
-    expect(stylesheet).toContain("@custom-variant dark (&:is(.dark *))")
-    expect(themeModule).toContain("root.classList.remove(...ALL_THEMES)")
+  it("uses the shared dark color-mode marker for every dark palette", () => {
+    expect(stylesheet).toContain("@custom-variant dark (&:is(.theme-dark *))")
+    expect(themeModule).toContain("DARK_COLOR_MODE_CLASS")
     expect(emptyFolder).not.toMatch(/\bdark:/)
   })
 

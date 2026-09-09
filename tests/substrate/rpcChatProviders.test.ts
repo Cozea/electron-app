@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -8,10 +5,6 @@ import WebSocket from "ws";
 import { SubstrateChatClient } from "@cozea/client-runtime";
 import { createShadowHttpServer } from "../../apps/desktop/electron/substrate-shadow-server/createShadowHttpServer";
 import { attachRpcChat } from "../../apps/desktop/electron/substrate-shadow-server/rpcChat";
-import {
-  getSharedSubstrateNdjsonWriter,
-  resetSharedSubstrateNdjsonWriterForTests,
-} from "../../apps/desktop/electron/substrate/obs";
 import {
   bootstrapSubstrateProviderRegistry,
   SubstrateProviderDriverRegistry,
@@ -24,7 +17,6 @@ describe("rpc chat provider-backed mode (phase 2+3)", () => {
     while (cleanup.length > 0) {
       await cleanup.pop()?.();
     }
-    resetSharedSubstrateNdjsonWriterForTests();
   });
 
   it("keeps echo/bridge when providers flag is off", async () => {
@@ -53,21 +45,6 @@ describe("rpc chat provider-backed mode (phase 2+3)", () => {
   });
 
   it("routes chat.send through provider registry when providers enabled", async () => {
-    const ndjsonPath = path.join(
-      os.tmpdir(),
-      `cozea-substrate-obs-test-${Date.now()}.ndjson`,
-    );
-    cleanup.push(async () => {
-      fs.rmSync(ndjsonPath, { force: true });
-    });
-
-    resetSharedSubstrateNdjsonWriterForTests();
-    getSharedSubstrateNdjsonWriter({
-      forceEnable: true,
-      filePath: ndjsonPath,
-      env: { COZEA_OBS_NDJSON: "1" },
-    });
-
     const registry = bootstrapSubstrateProviderRegistry({
       forceEnable: true,
       openCodeHooks: {
@@ -109,7 +86,7 @@ describe("rpc chat provider-backed mode (phase 2+3)", () => {
       rpcChatEnabled: true,
       providersEnabled: true,
       providerRegistry: registry,
-      env: { COZEA_SUBSTRATE_PROVIDERS: "1", COZEA_OBS_NDJSON: "1" },
+      env: { COZEA_SUBSTRATE_PROVIDERS: "1" },
     });
     cleanup.push(async () => {
       rpc.dispose();
@@ -130,11 +107,6 @@ describe("rpc chat provider-backed mode (phase 2+3)", () => {
     expect(smoke.send.providerId).toBe("opencode");
     expect(smoke.send.replyPreview).toContain("substrate-provider:opencode");
     expect(smoke.events.some((event) => event._tag === "completed")).toBe(true);
-
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const ndjson = fs.readFileSync(ndjsonPath, "utf8");
-    expect(ndjson).toContain("substrate.provider.materialize");
-    expect(ndjson).toContain("substrate.rpc.chat.send_accepted");
   });
 
   it("falls back to echo/bridge when materialize fails", async () => {

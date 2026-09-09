@@ -126,8 +126,10 @@ are enabled.
 ### 8. macOS application/window lifetime
 
 - Explicit application quit is tracked independently from ordinary window close.
-- On macOS, closing the ordinary main window now hides/preserves that BrowserWindow instead of
-  destroying the renderer and triggering the legacy `window-all-closed` app-service teardown.
+- On macOS, closing the ordinary main window hides/preserves that BrowserWindow.
+- Shared DevApp, preview and automation services are disposed once on application quit;
+  a last-window close alone does not dispose them on macOS. Windows/Linux last-window
+  closure requests ordinary quit through the same cleanup path.
 - Dock/application activation resurfaces and focuses the same main shell; its workbench, renderer
   state and app-level services were never destroyed.
 - Running Terminal and Dev Server processes therefore continue naturally while the window is hidden.

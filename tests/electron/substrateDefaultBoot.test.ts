@@ -10,7 +10,6 @@ describe("default boot (flags on)", () => {
     expect(flags.providers).toBe(true);
     expect(flags.vcs).toBe(true);
     expect(flags.primary).toBe(true);
-    expect(flags.obsNdjson).toBe(true);
     expect(flags.t3Server).toBe(true);
   });
 
@@ -21,7 +20,6 @@ describe("default boot (flags on)", () => {
       COZEA_SUBSTRATE_PROVIDERS: "0",
       COZEA_SUBSTRATE_VCS: "0",
       COZEA_SUBSTRATE_PRIMARY: "0",
-      COZEA_OBS_NDJSON: "0",
       COZEA_T3_SERVER: "0",
     });
     expect(flags.shadowServer.enabled).toBe(false);
@@ -29,7 +27,6 @@ describe("default boot (flags on)", () => {
     expect(flags.providers).toBe(false);
     expect(flags.vcs).toBe(false);
     expect(flags.primary).toBe(false);
-    expect(flags.obsNdjson).toBe(false);
     expect(flags.t3Server).toBe(false);
   });
 });

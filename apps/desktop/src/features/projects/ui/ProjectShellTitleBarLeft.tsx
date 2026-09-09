@@ -1,6 +1,6 @@
 "use client";
 
-import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { SIDEBAR_TRANSITION_CLASS_NAME, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 /**
@@ -8,21 +8,23 @@ import { cn } from "@/lib/utils";
  * Shared by the workbench and any route that uses the same shell but does not call `useProjectHeader`.
  */
 export function ProjectShellTitleBarLeft() {
-  const { isMobile, openMobile, state } = useSidebar();
-  const sidebarChromeOpen = isMobile ? openMobile : state === "expanded";
-  const showTitlebarTrigger = isMobile ? !openMobile : state === "collapsed";
-
-  if (!showTitlebarTrigger) return null;
+  const { open } = useSidebar();
+  const showTitlebarTrigger = !open;
 
   return (
-    <div className="workbench-header-toolbar flex min-w-0 items-center">
+    <div
+      data-sidebar-header-toggle={showTitlebarTrigger ? "visible" : "hidden"}
+      aria-hidden={!showTitlebarTrigger}
+      inert={!showTitlebarTrigger}
+      className={cn(
+        "workbench-header-toolbar flex min-w-0 shrink-0 items-center overflow-hidden transition-[width,opacity]",
+        SIDEBAR_TRANSITION_CLASS_NAME,
+        showTitlebarTrigger ? "w-8.5 opacity-100" : "w-0 opacity-0",
+      )}
+    >
       <SidebarTrigger
-        className={cn(
-          "h-7 w-7 shrink-0 rounded-md",
-          sidebarChromeOpen
-            ? "text-muted-foreground/75 hover:bg-sidebar-accent hover:text-foreground"
-            : "text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground",
-        )}
+        aria-label="Expand sidebar"
+        className="h-7 w-7 shrink-0 rounded-md text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground"
       />
     </div>
   );

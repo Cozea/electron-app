@@ -35,6 +35,7 @@
     }
 
     document.documentElement.classList.add(theme)
+    if (theme !== 'light') document.documentElement.classList.add('theme-dark')
 
     // Inline color-scheme bridges the window until the stylesheet loads: it
     // keeps Chromium's default canvas dark for dark themes even while the

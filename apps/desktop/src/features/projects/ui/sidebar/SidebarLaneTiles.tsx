@@ -24,7 +24,7 @@ import {
   isLatestTurnSettled,
 } from "@/features/assistant/chat/session-logic"
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text"
-import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
+import { useElementOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { cn, formatRelativeTimeLabel } from "@/lib/utils"
 import {
   hasProjectSidebarChildren,
@@ -55,7 +55,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { BrainCircuitIcon as __BrainCircuitHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
 
 const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[4px]"
-const SIDEBAR_LANE_LABEL_FONT = "13px Inter"
 
 function SurfaceTileGlyph(props: {
   favicon?: string | null
@@ -358,7 +357,7 @@ function AgentStatusPill(props: { threadId?: string | null }) {
   if (!statusPill) return null
 
   return (
-    <span className={cn("inline-flex items-center gap-1 text-[10px]", statusPill.colorClass)} title={statusPill.label}>
+    <span className={cn("inline-flex items-center gap-1 text-2xs font-medium", statusPill.colorClass)} title={statusPill.label}>
       {statusPill.label === "Working" || statusPill.label === "Connecting" ? (
         <div className="loader" />
       ) : (
@@ -401,7 +400,7 @@ function AgentTimeLabel(props: { threadId?: string | null }) {
   return (
     <span
       className={cn(
-        "text-[10px] ml-auto shrink-0",
+        "text-[12px] ml-auto shrink-0",
         "text-muted-foreground/40 group-hover:text-foreground/72 dark:group-hover:text-foreground/82 transition-colors"
       )}
     >
@@ -434,22 +433,30 @@ function TileActivityIndicator(props: { activity: SidebarActivity; label: string
 function TileRowLabel(props: {
   activity: SidebarActivity
   title: string
-  overflowTitle?: string
 }) {
+  const { elementRef, overflowTitle } = useElementOverflowTitleFor<HTMLSpanElement>(
+    props.title,
+  )
+
   if (isSidebarActivityLive(props.activity)) {
     return (
-      <LiveShimmerText
-        className="min-w-0 flex-1"
-        title={props.overflowTitle}
-        baseClassName="text-sidebar-foreground/45"
-        sweepClassName="text-sidebar-foreground"
+      <span
+        className="min-w-0 flex-1 overflow-hidden"
+        title={overflowTitle}
       >
-        {props.title}
-      </LiveShimmerText>
+        <LiveShimmerText
+          textRef={elementRef}
+          className="w-full"
+          baseClassName="text-sidebar-foreground/45"
+          sweepClassName="text-sidebar-foreground"
+        >
+          {props.title}
+        </LiveShimmerText>
+      </span>
     )
   }
   return (
-    <span className="min-w-0 flex-1 truncate" title={props.overflowTitle}>
+    <span ref={elementRef} className="min-w-0 flex-1 truncate" title={overflowTitle}>
       {props.title}
     </span>
   )
@@ -458,10 +465,9 @@ function TileRowLabel(props: {
 function AgentTileRow(props: {
   tile: WorkbenchSidebarAssistantTileSummary
   isActiveTile: boolean
-  overflowTitle?: string
   onOpen: () => void
 }) {
-  const { tile, isActiveTile, overflowTitle, onOpen } = props
+  const { tile, isActiveTile, onOpen } = props
   const threadSelector = useMemo(
     () => createAssistantThreadSelectorById(tile.threadId),
     [tile.threadId],
@@ -487,7 +493,7 @@ function AgentTileRow(props: {
           provider={tile.provider}
           className={cn("size-[18px] shrink-0", providerGlyphColorClass(tile.provider, isActiveTile))}
         />
-        <TileRowLabel activity={activity} title={tile.title} overflowTitle={overflowTitle} />
+        <TileRowLabel activity={activity} title={tile.title} />
         <AgentTimeLabel threadId={tile.threadId} />
       </div>
     </button>
@@ -498,10 +504,9 @@ function SurfaceTileRow(props: {
   tile: WorkbenchSidebarSurfaceTileSummary
   isActiveTile: boolean
   devServerStatus?: DevServerStatus
-  overflowTitle?: string
   onOpen: () => void
 }) {
-  const { tile, isActiveTile, devServerStatus, overflowTitle, onOpen } = props
+  const { tile, isActiveTile, devServerStatus, onOpen } = props
 
   // The built-in Dev Server surface is driven by the lane's run store; every
   // other surface publishes its own state from inside the tile.
@@ -539,7 +544,7 @@ function SurfaceTileRow(props: {
             isActiveTile && "text-[var(--sidebar-pill-hover-fg)]",
           )}
         />
-        <TileRowLabel activity={activity} title={tile.title} overflowTitle={overflowTitle} />
+        <TileRowLabel activity={activity} title={tile.title} />
       </div>
     </button>
   )
@@ -570,32 +575,17 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
   const surfaces = activeLaneSummary?.surfaces ?? []
   const resolvedActiveTileId = activeSelectionLevel === "tile" ? activeTileId : null
   const headlessDevServerActivity = resolveDevServerActivity(activeDevServerStatus)
-  const { containerRef: rootRef, getOverflowTitle } = usePretextOverflowTitleFor<HTMLDivElement>({
-    font: SIDEBAR_LANE_LABEL_FONT,
-  })
-
   if (!hasProjectSidebarChildren(activeLaneSummary, hasHeadlessDevServer)) {
     return null
   }
 
-  const shouldShowAgentTitle = (title: string): boolean => {
-    const reservedWidth = 24 + 12 + 84
-    return Boolean(getOverflowTitle(title, reservedWidth))
-  }
-
-  const shouldShowSurfaceTitle = (title: string): boolean => {
-    const reservedWidth = 24 + 12
-    return Boolean(getOverflowTitle(title, reservedWidth))
-  }
-
   return (
-    <div ref={rootRef} className="w-full space-y-0.5 pt-0.5">
+    <div className="w-full space-y-0.5 pt-0.5">
       {agents.map((tile) => (
         <AgentTileRow
           key={tile.id}
           tile={tile}
           isActiveTile={resolvedActiveTileId === tile.id}
-          overflowTitle={shouldShowAgentTitle(tile.title) ? tile.title : undefined}
           onOpen={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         />
       ))}
@@ -605,7 +595,6 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
           tile={tile}
           isActiveTile={resolvedActiveTileId === tile.id}
           devServerStatus={activeDevServerStatus}
-          overflowTitle={shouldShowSurfaceTitle(tile.title) ? tile.title : undefined}
           onOpen={() => onOpenLaneWorkbench({ focusTileId: tile.id })}
         />
       ))}

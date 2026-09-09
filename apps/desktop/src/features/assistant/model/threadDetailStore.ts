@@ -44,10 +44,178 @@ export interface ThreadDetailRecord {
 interface ThreadDetailStoreState {
   readonly byThreadId: Record<string, ThreadDetailRecord>;
   readonly deletedSequenceByThreadId: Record<string, number>;
+  readonly evictedSequenceByThreadId: Record<string, number>;
   getThreadDetail: (threadId: string | null | undefined) => ThreadDetailRecord | null;
   ingestSnapshot: (threadId: string, snapshot: unknown) => void;
   applyEvent: (threadId: string, event: NativeEvent | OrchestrationEvent) => void;
   resetThread: (threadId: string) => void;
+}
+
+export interface ThreadDetailCachePolicy {
+  readonly maxInactiveEntries: number;
+  readonly maxApproximateBytes: number;
+}
+
+export interface ThreadDetailCacheDiagnostics {
+  readonly retainedEntries: number;
+  readonly inactiveEntries: number;
+  readonly approximateBytes: number;
+  readonly overBudgetWithPinnedEntries: boolean;
+}
+
+const DEFAULT_THREAD_DETAIL_CACHE_POLICY: ThreadDetailCachePolicy = {
+  maxInactiveEntries: 24,
+  maxApproximateBytes: 32 * 1024 * 1024,
+};
+
+let threadDetailCachePolicy = DEFAULT_THREAD_DETAIL_CACHE_POLICY;
+let accessSequence = 0;
+let mappedMessageCount = 0;
+const retainCounts = new Map<string, number>();
+const lastAccessByThreadId = new Map<string, number>();
+
+function touchThreadDetail(threadId: string): void {
+  lastAccessByThreadId.set(threadId, ++accessSequence);
+}
+
+function activityRequestId(activity: OrchestrationThreadActivity): string | null {
+  const payload = asRecord(activity.payload);
+  return typeof payload?.requestId === "string" ? payload.requestId : null;
+}
+
+function hasPendingUserAction(record: ThreadDetailRecord): boolean {
+  const openApprovals = new Set<string>();
+  const openQuestions = new Set<string>();
+  for (const activity of record.activities) {
+    const requestId = activityRequestId(activity);
+    if (!requestId) continue;
+    if (activity.kind === "approval.requested") openApprovals.add(requestId);
+    else if (activity.kind === "approval.resolved") openApprovals.delete(requestId);
+    else if (activity.kind === "user-input.requested") openQuestions.add(requestId);
+    else if (activity.kind === "user-input.resolved") openQuestions.delete(requestId);
+  }
+  return openApprovals.size > 0 || openQuestions.size > 0;
+}
+
+function isThreadDetailPinned(threadId: string, record: ThreadDetailRecord): boolean {
+  return (
+    (retainCounts.get(threadId) ?? 0) > 0 ||
+    record.isStreaming ||
+    record.canonical.session?.status === "starting" ||
+    record.canonical.session?.status === "running" ||
+    record.canonical.latestTurn?.state === "running" ||
+    hasPendingUserAction(record)
+  );
+}
+
+function approximateThreadDetailBytes(record: ThreadDetailRecord): number {
+  let characters = record.threadId.length + (record.error?.length ?? 0);
+  for (const message of record.messages) {
+    characters += message.id.length + message.text.length + message.createdAt.length;
+    for (const attachment of message.attachments ?? []) {
+      characters += attachment.id.length + attachment.name.length + attachment.mimeType.length;
+    }
+  }
+  for (const activity of record.activities) {
+    characters += activity.id.length + activity.kind.length + activity.summary.length;
+  }
+  for (const plan of record.proposedPlans) characters += plan.id.length + plan.planMarkdown.length;
+  for (const summary of record.turnDiffSummaries) {
+    characters += summary.turnId.length;
+    for (const file of summary.files) characters += file.path.length;
+  }
+  // Most retained payload is JavaScript UTF-16 text. This intentionally stays
+  // approximate so cache accounting never serializes activity payloads on the
+  // streaming path.
+  return characters * 2 + 1024;
+}
+
+function trimThreadDetailCache(): void {
+  const state = useThreadDetailStore.getState();
+  const rows = Object.entries(state.byThreadId).map(([threadId, record]) => ({
+    threadId,
+    record,
+    bytes: approximateThreadDetailBytes(record),
+    pinned: isThreadDetailPinned(threadId, record),
+    lastAccess: lastAccessByThreadId.get(threadId) ?? 0,
+  }));
+  let approximateBytes = rows.reduce((total, row) => total + row.bytes, 0);
+  let inactiveEntries = rows.filter((row) => !row.pinned).length;
+  if (
+    inactiveEntries <= threadDetailCachePolicy.maxInactiveEntries &&
+    approximateBytes <= threadDetailCachePolicy.maxApproximateBytes
+  ) {
+    return;
+  }
+
+  const candidates = rows.filter((row) => !row.pinned).sort((a, b) => a.lastAccess - b.lastAccess);
+  const byThreadId = { ...state.byThreadId };
+  const evictedSequenceByThreadId = { ...state.evictedSequenceByThreadId };
+  let changed = false;
+  for (const candidate of candidates) {
+    if (
+      inactiveEntries <= threadDetailCachePolicy.maxInactiveEntries &&
+      approximateBytes <= threadDetailCachePolicy.maxApproximateBytes
+    ) {
+      break;
+    }
+    delete byThreadId[candidate.threadId];
+    evictedSequenceByThreadId[candidate.threadId] = Math.max(
+      evictedSequenceByThreadId[candidate.threadId] ?? 0,
+      candidate.record.lastSequence,
+    );
+    lastAccessByThreadId.delete(candidate.threadId);
+    approximateBytes -= candidate.bytes;
+    inactiveEntries -= 1;
+    changed = true;
+  }
+  if (changed) useThreadDetailStore.setState({ byThreadId, evictedSequenceByThreadId });
+}
+
+export function retainThreadDetail(threadId: string): () => void {
+  retainCounts.set(threadId, (retainCounts.get(threadId) ?? 0) + 1);
+  touchThreadDetail(threadId);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const next = (retainCounts.get(threadId) ?? 1) - 1;
+    if (next > 0) retainCounts.set(threadId, next);
+    else retainCounts.delete(threadId);
+    touchThreadDetail(threadId);
+    trimThreadDetailCache();
+  };
+}
+
+export function configureThreadDetailCache(
+  policy: Partial<ThreadDetailCachePolicy>,
+): () => void {
+  const previous = threadDetailCachePolicy;
+  threadDetailCachePolicy = { ...threadDetailCachePolicy, ...policy };
+  trimThreadDetailCache();
+  return () => {
+    threadDetailCachePolicy = previous;
+  };
+}
+
+export function getThreadDetailCacheDiagnostics(): ThreadDetailCacheDiagnostics {
+  const rows = Object.entries(useThreadDetailStore.getState().byThreadId);
+  const inactiveEntries = rows.filter(([threadId, record]) => !isThreadDetailPinned(threadId, record)).length;
+  const approximateBytes = rows.reduce(
+    (total, [, record]) => total + approximateThreadDetailBytes(record),
+    0,
+  );
+  return {
+    retainedEntries: rows.length,
+    inactiveEntries,
+    approximateBytes,
+    overBudgetWithPinnedEntries:
+      approximateBytes > threadDetailCachePolicy.maxApproximateBytes && inactiveEntries === 0,
+  };
+}
+
+export function getThreadDetailProjectionDiagnostics(): { readonly mappedMessageCount: number } {
+  return { mappedMessageCount };
 }
 
 const EMPTY_THREAD_DETAIL: ThreadDetailRecord = {
@@ -100,6 +268,7 @@ function sessionError(snapshot: Record<string, unknown>): string | null {
 }
 
 function mapMessage(raw: unknown): ChatMessage {
+  mappedMessageCount += 1;
   const m = raw as Record<string, unknown>;
   const attachments = Array.isArray(m.attachments)
     ? m.attachments.map((a: unknown) => {
@@ -288,26 +457,73 @@ function normalizeSnapshot(raw: Record<string, unknown>, threadId: string): Thre
   }
 }
 
-function project(canonical: ThreadDetailState, current?: ThreadDetailRecord, snapshot = false) {
+function messageId(raw: OrchestrationMessage): MessageId {
+  return raw.id;
+}
+
+function project(
+  canonical: ThreadDetailState,
+  current?: ThreadDetailRecord,
+  snapshot = false,
+  changedMessageId: string | null = null,
+) {
   const unchangedMessages =
     !snapshot && current && canonical.messages === current.canonical.messages;
-  const previous = new Map(
-    !unchangedMessages && current
-      ? current.canonical.messages.map((m, i) => [m, current.messages[i]!])
-      : [],
-  );
-  const previousById = new Map(
-    !unchangedMessages && current ? current.messages.map((m) => [m.id, m]) : [],
-  );
-  const messages = unchangedMessages
-    ? current.messages
-    : canonical.messages.map((m) => {
-        const reused = !snapshot && previous.get(m);
-        if (reused) return reused;
-        const mapped = mapMessage(m);
-        if (!snapshot) markLiveText(mapped, previousById.get(mapped.id));
+  let messages: ChatMessage[];
+  if (unchangedMessages) {
+    messages = current.messages;
+  } else if (
+    !snapshot &&
+    current &&
+    changedMessageId !== null &&
+    canonical.messages.length >= current.messages.length &&
+    canonical.messages.length <= current.messages.length + 1
+  ) {
+    const currentIndex = current.messages.findIndex((message) => message.id === changedMessageId);
+    const canonicalIndex = canonical.messages.findIndex(
+      (message) => messageId(message) === changedMessageId,
+    );
+    const updatesExisting =
+      currentIndex >= 0 &&
+      canonicalIndex === currentIndex &&
+      canonical.messages.length === current.messages.length;
+    const appendsNew =
+      currentIndex < 0 &&
+      canonicalIndex === canonical.messages.length - 1 &&
+      canonical.messages.length === current.messages.length + 1;
+    if (updatesExisting || appendsNew) {
+      const mapped = mapMessage(canonical.messages[canonicalIndex]!);
+      markLiveText(mapped, updatesExisting ? current.messages[currentIndex] : undefined);
+      messages = updatesExisting
+        ? current.messages.map((message, index) => (index === currentIndex ? mapped : message))
+        : [...current.messages, mapped];
+    } else {
+      const previousById = new Map(current.messages.map((message) => [message.id, message]));
+      messages = canonical.messages.map((message) => {
+        const mapped = mapMessage(message);
+        markLiveText(mapped, previousById.get(mapped.id));
         return mapped;
       });
+    }
+  } else {
+    const previousById = new Map(
+      !snapshot && current ? current.messages.map((message) => [message.id, message]) : [],
+    );
+    const previousCanonicalById = new Map(
+      !snapshot && current
+        ? current.canonical.messages.map((message) => [messageId(message), message])
+        : [],
+    );
+    messages = canonical.messages.map((message) => {
+      const previous = !snapshot ? previousById.get(messageId(message)) : undefined;
+      if (previous && previousCanonicalById.get(previous.id) === message) {
+        return previous;
+      }
+      const mapped = mapMessage(message);
+      if (!snapshot) markLiveText(mapped, previous);
+      return mapped;
+    });
+  }
   if (snapshot) markSnapshotText(messages);
   return {
     messages,
@@ -329,7 +545,13 @@ function project(canonical: ThreadDetailState, current?: ThreadDetailRecord, sna
 export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) => ({
   byThreadId: {},
   deletedSequenceByThreadId: {},
-  getThreadDetail: (threadId) => (threadId ? (get().byThreadId[threadId] ?? null) : null),
+  evictedSequenceByThreadId: {},
+  getThreadDetail: (threadId) => {
+    if (!threadId) return null;
+    const detail = get().byThreadId[threadId] ?? null;
+    if (detail) touchThreadDetail(threadId);
+    return detail;
+  },
   ingestSnapshot: (threadId, snapshot) => {
     if (!snapshot || typeof snapshot !== "object") return;
     const envelope = asRecord(snapshot)!;
@@ -339,8 +561,10 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
         : null;
     set((state) => {
       const current = state.byThreadId[threadId];
+      const evictedSequence = state.evictedSequenceByThreadId[threadId] ?? 0;
       if (current && snapshotSequence !== null && snapshotSequence < current.lastSequence)
         return state;
+      if (!current && snapshotSequence !== null && snapshotSequence < evictedSequence) return state;
       const deletedSequence = state.deletedSequenceByThreadId[threadId];
       if (
         deletedSequence !== undefined &&
@@ -352,6 +576,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
         delete next[threadId];
         return {
           byThreadId: next,
+          evictedSequenceByThreadId: state.evictedSequenceByThreadId,
           deletedSequenceByThreadId: {
             ...state.deletedSequenceByThreadId,
             [threadId]: snapshotSequence ?? current?.lastSequence ?? 0,
@@ -376,8 +601,11 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
       const isStreaming = sessionIsStreaming(raw, projected.messages);
       const deletedSequenceByThreadId = { ...state.deletedSequenceByThreadId };
       delete deletedSequenceByThreadId[threadId];
+      const evictedSequenceByThreadId = { ...state.evictedSequenceByThreadId };
+      delete evictedSequenceByThreadId[threadId];
       return {
         deletedSequenceByThreadId,
+        evictedSequenceByThreadId,
         byThreadId: {
           ...state.byThreadId,
           [threadId]: {
@@ -394,12 +622,17 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
         },
       };
     });
+    touchThreadDetail(threadId);
+    trimThreadDetailCache();
   },
-  applyEvent: (threadId, incoming) =>
+  applyEvent: (threadId, incoming) => {
     set((state) => {
       const current = state.byThreadId[threadId] ?? { ...EMPTY_THREAD_DETAIL, threadId };
       const eventSequence = readSequence(incoming.sequence);
       if (eventSequence > 0 && eventSequence <= current.lastSequence) return state;
+      const evictedSequence = state.evictedSequenceByThreadId[threadId] ?? 0;
+      if (!state.byThreadId[threadId] && eventSequence > 0 && eventSequence <= evictedSequence)
+        return state;
       const deletedSequence = state.deletedSequenceByThreadId[threadId];
       if (
         deletedSequence !== undefined &&
@@ -409,6 +642,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
       if (incoming.aggregateId && incoming.aggregateId !== threadId) return state;
       let canonical = current.canonical;
       let event = incoming;
+      let changedMessageId: string | null = null;
       // Explicit compatibility defaults for the old substrate's partial events.
       switch (event.type) {
         case "thread.archived":
@@ -432,6 +666,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
           break;
         case "thread.message-sent": {
           const message = normalizeMessage(event.payload);
+          changedMessageId = message.id;
           event = { ...event, payload: { ...event.payload, ...message, messageId: message.id } };
           break;
         }
@@ -463,6 +698,7 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
         delete next[threadId];
         return {
           byThreadId: next,
+          evictedSequenceByThreadId: state.evictedSequenceByThreadId,
           deletedSequenceByThreadId: {
             ...state.deletedSequenceByThreadId,
             [threadId]: eventSequence,
@@ -500,14 +736,17 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
       }
       const deletedSequenceByThreadId = { ...state.deletedSequenceByThreadId };
       delete deletedSequenceByThreadId[threadId];
+      const evictedSequenceByThreadId = { ...state.evictedSequenceByThreadId };
+      delete evictedSequenceByThreadId[threadId];
       return {
         deletedSequenceByThreadId,
+        evictedSequenceByThreadId,
         byThreadId: {
           ...state.byThreadId,
           [threadId]: {
             ...current,
             canonical,
-            ...project(canonical, current),
+            ...project(canonical, current, false, changedMessageId),
             lastSequence: Math.max(current.lastSequence, eventSequence),
             isStreaming,
             turnSettled,
@@ -515,13 +754,20 @@ export const useThreadDetailStore = create<ThreadDetailStoreState>((set, get) =>
           },
         },
       };
-    }),
+    });
+    touchThreadDetail(threadId);
+    trimThreadDetailCache();
+  },
   resetThread: (threadId) =>
     set((state) => {
       const next = { ...state.byThreadId };
       delete next[threadId];
       const deletedSequenceByThreadId = { ...state.deletedSequenceByThreadId };
       delete deletedSequenceByThreadId[threadId];
-      return { byThreadId: next, deletedSequenceByThreadId };
+      const evictedSequenceByThreadId = { ...state.evictedSequenceByThreadId };
+      delete evictedSequenceByThreadId[threadId];
+      lastAccessByThreadId.delete(threadId);
+      retainCounts.delete(threadId);
+      return { byThreadId: next, deletedSequenceByThreadId, evictedSequenceByThreadId };
     }),
 }));

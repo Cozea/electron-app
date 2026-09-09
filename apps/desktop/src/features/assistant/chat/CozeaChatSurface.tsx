@@ -1,3 +1,4 @@
+import { type ComposerPathMenuItem, buildComposerPathMenuItems, filterSlashItems, planTitleFromMarkdown, toPendingUserInputDraftAnswers } from "./composerMenuModel";
 import {
   ApprovalRequestId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -29,6 +30,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { motion, useReducedMotion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -83,10 +85,7 @@ import {
   type ComposerPromptEditorHandle,
 } from "@/features/assistant/chat/ComposerPromptEditor";
 import { ComposerPreviewAnnotationCards } from "@/features/assistant/chat/ComposerPreviewAnnotationCards";
-import {
-  INITIAL_COMPOSER_EXPANSION_STATE,
-  nextComposerExpansionState,
-} from "@/features/assistant/chat/composerExpansion";
+import { useInlineComposerPromptWidth } from "@/features/assistant/chat/inlineComposerPromptWidth";
 import {
   detectComposerTrigger,
   replaceTextRange,
@@ -98,12 +97,10 @@ import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWind
 import type { AccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits";
 import {
   buildPendingUserInputAnswers,
-  pendingUserInputDraftFromAnswer,
   togglePendingUserInputOptionSelection,
   resolvePendingUserInputAnswer,
   derivePendingUserInputProgress,
   findFirstUnansweredPendingUserInputQuestionIndex,
-  type PendingUserInputDraftAnswer,
 } from "@/features/assistant/pendingUserInput";
 import { type Thread } from "@/features/assistant/model/types";
 import { useElementPointerHover } from "@/hooks/useElementPointerHover";
@@ -126,7 +123,11 @@ import {
   Mic01Icon as __Mic01IconHugeIcon,
 } from "@hugeicons/core-free-icons";
 
-export type UserInputAnswerDrafts = Record<string, Record<string, string | string[]>>;
+import type {
+  ComposerImageDraft,
+  ProviderModelOptionsByProvider,
+  UserInputAnswerDrafts,
+} from "@/features/assistant/model/assistantComposerTypes";
 
 export type ComposerMode = "debug" | "plan" | "ask" | "default" | null;
 
@@ -157,30 +158,6 @@ function DebugBugIcon({ className }: { className?: string }) {
   );
 }
 
-export interface ProviderModelOptionsByProvider {
-  antigravity: ReadonlyArray<{ slug: string; name: string }>;
-  codex: ReadonlyArray<{ slug: string; name: string }>;
-  claudeAgent: ReadonlyArray<{ slug: string; name: string }>;
-  cursor: ReadonlyArray<{ slug: string; name: string }>;
-  opencode: ReadonlyArray<{ slug: string; name: string }>;
-}
-
-export interface ComposerImageDraft {
-  id: string;
-  name: string;
-  mimeType: string;
-  sizeBytes: number;
-  previewUrl: string;
-  file?: File;
-}
-
-type ComposerPathMenuItem = {
-  id: string;
-  type: "path";
-  path: string;
-  kind: "file" | "directory";
-  description: string;
-};
 
 type ComposerSlashMenuItem =
   | {
@@ -221,82 +198,14 @@ type ComposerMenuItem = ComposerPathMenuItem | ComposerSlashMenuItem | ComposerS
 const DOCKED_COMPOSER_SCROLL_CLEARANCE_PX = 4;
 const DOCKED_COMPOSER_FALLBACK_SCROLL_INSET_PX = 128;
 const MODEL_PICKER_PANEL_TRANSITION_MS = 150;
+const COMPOSER_LAYOUT_TRANSITION = {
+  duration: COMPOSER_DOCK_TRANSITION_MS / 1000,
+  ease: [0, 0, 0.2, 1] as const,
+};
 
-function includesNormalized(value: string, query: string): boolean {
-  return value.toLowerCase().includes(query.toLowerCase());
-}
 
-function parentPathOf(projectPath: string): string {
-  const normalizedPath = projectPath.replace(/\\/g, "/");
-  const index = normalizedPath.lastIndexOf("/");
-  return index > 0 ? normalizedPath.slice(0, index) : "";
-}
 
-function buildComposerPathMenuItems(
-  files: ReadonlyArray<{ path: string }>,
-  query: string,
-  limit = 80,
-): ComposerPathMenuItem[] {
-  const normalizedQuery = query.trim();
-  const includeAll = normalizedQuery.length === 0 || normalizedQuery === ".";
-  const byPath = new Map<string, ComposerPathMenuItem>();
 
-  const addItem = (projectPath: string, kind: ComposerPathMenuItem["kind"]) => {
-    const normalizedPath = projectPath.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
-    if (!normalizedPath || byPath.has(`${kind}:${normalizedPath}`)) {
-      return;
-    }
-
-    if (
-      !includeAll &&
-      !includesNormalized(normalizedPath, normalizedQuery) &&
-      !includesNormalized(basenameOfPath(normalizedPath), normalizedQuery)
-    ) {
-      return;
-    }
-
-    byPath.set(`${kind}:${normalizedPath}`, {
-      id: `${kind}:${normalizedPath}`,
-      type: "path",
-      path: normalizedPath,
-      kind,
-      description: parentPathOf(normalizedPath),
-    });
-  };
-
-  for (const file of files) {
-    const normalizedPath = file.path.replace(/\\/g, "/").replace(/^\/+/, "").trim();
-    if (!normalizedPath) continue;
-
-    const parts = normalizedPath.split("/").filter(Boolean);
-    for (let index = 1; index < parts.length; index += 1) {
-      addItem(parts.slice(0, index).join("/"), "directory");
-    }
-    addItem(normalizedPath, "file");
-  }
-
-  return Array.from(byPath.values())
-    .sort((left, right) => {
-      if (left.kind !== right.kind) {
-        return left.kind === "directory" ? -1 : 1;
-      }
-      return left.path.localeCompare(right.path);
-    })
-    .slice(0, limit);
-}
-
-function filterSlashItems<T extends { label: string; description: string }>(
-  items: ReadonlyArray<T>,
-  query: string,
-): T[] {
-  const normalizedQuery = query.trim().replace(/^\/+/, "").toLowerCase();
-  if (!normalizedQuery) return [...items];
-  return items.filter(
-    (item) =>
-      includesNormalized(item.label, normalizedQuery) ||
-      includesNormalized(item.description, normalizedQuery),
-  );
-}
 
 interface CozeaChatSurfaceProps {
   isChatVisible?: boolean;
@@ -416,40 +325,7 @@ function resolveTimelineTheme(): "light" | "dark" {
   return "light";
 }
 
-function planTitleFromMarkdown(markdown: string): string | null {
-  const lines = markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
 
-  if (lines.length === 0) {
-    return null;
-  }
-
-  const heading = lines.find((line) => line.startsWith("#"));
-  if (!heading) {
-    return null;
-  }
-
-  const normalized = heading.replace(/^#+\s*/, "").trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function toPendingUserInputDraftAnswers(
-  request: PendingUserInput | null,
-  drafts: Record<string, string | string[]> | undefined,
-): Record<string, PendingUserInputDraftAnswer> {
-  if (!request) {
-    return {};
-  }
-
-  const next: Record<string, PendingUserInputDraftAnswer> = {};
-  for (const question of request.questions) {
-    const value = drafts?.[question.id];
-    next[question.id] = pendingUserInputDraftFromAnswer(question, value);
-  }
-  return next;
-}
 
 function renderSendIcon(isBusy: boolean) {
   if (isBusy) {
@@ -683,9 +559,18 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     ? (questionCursors[activeQuestionCursorKey] ??
       collapseExpandedComposerCursor(composerValue, composerValue.length))
     : props.composerCursor;
-  const [composerExpansionState, setComposerExpansionState] = useState(
-    INITIAL_COMPOSER_EXPANSION_STATE,
-  );
+  const [wouldWrapInline, setWouldWrapInline] = useState(false);
+  const {
+    shellRef: composerShellRef,
+    leftClusterRef: composerLeftClusterRef,
+    modeChipRef: composerModeChipRef,
+    rightClusterRef: composerRightClusterRef,
+    inlinePromptWidthPx,
+  } = useInlineComposerPromptWidth();
+  const reduceComposerMotion = useReducedMotion();
+  const composerLayoutTransition = reduceComposerMotion
+    ? { duration: 0 }
+    : COMPOSER_LAYOUT_TRANSITION;
 
   const composerExpandedCursor = useMemo(
     () => expandCollapsedComposerCursor(composerValue, composerCursor),
@@ -1534,42 +1419,38 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     hasAttachments || hasActiveComposerHeader || props.composerStatus,
   );
   const hasExplicitLineBreak = composerValue.includes("\n");
+  // A pure function of what is in the composer. `wouldWrapInline` is measured at
+  // the inline width in both arrangements, so it cannot disagree with itself the
+  // way a measurement of the live prompt could -- which is what lets the shell
+  // collapse back on the same evidence it expanded on.
   const isStackedComposer = Boolean(
-    hasStructuralComposerContent || hasExplicitLineBreak || composerExpansionState.isMultiLine,
-  );
-  const handleMeasuredComposerLinesChange = useCallback(
-    (measuredLines: number, promptLength: number) => {
-      setComposerExpansionState((current) =>
-        nextComposerExpansionState(current, measuredLines, promptLength),
-      );
-    },
-    [],
+    hasStructuralComposerContent || hasExplicitLineBreak || wouldWrapInline,
   );
 
   const resolvedPlaceholder = useMemo(() => {
     if (isComposerApprovalState) {
       return (
-        activePendingApproval?.detail ?? (t as any)("assistant.chat.placeholder.resolveApproval")
+        activePendingApproval?.detail ?? t("assistant.chat.placeholder.resolveApproval")
       );
     }
     if (activePendingProgress) {
-      return (t as any)("assistant.chat.placeholder.customAnswer");
+      return t("assistant.chat.placeholder.customAnswer");
     }
     if (showPlanFollowUpPrompt) {
-      return (t as any)("assistant.chat.placeholder.planFeedback");
+      return t("assistant.chat.placeholder.planFeedback");
     }
     if (props.isInterrupting) {
       return props.isForceStopAvailable
-        ? (t as any)("assistant.chat.placeholder.forceStop")
-        : (t as any)("assistant.chat.placeholder.stopping");
+        ? t("assistant.chat.placeholder.forceStop")
+        : t("assistant.chat.placeholder.stopping");
     }
     if (props.runtimeErrorMessage) {
-      return (t as any)("assistant.chat.placeholder.runtimeUnavailable");
+      return t("assistant.chat.placeholder.runtimeUnavailable");
     }
-    if (phase === "error") return (t as any)("assistant.chat.placeholder.error");
-    if (phase === "interrupted") return (t as any)("assistant.chat.placeholder.interrupted");
-    if (phase === "stopped") return (t as any)("assistant.chat.placeholder.stopped");
-    if (phase === "disconnected") return (t as any)("assistant.chat.placeholder.disconnected");
+    if (phase === "error") return t("assistant.chat.placeholder.error");
+    if (phase === "interrupted") return t("assistant.chat.placeholder.interrupted");
+    if (phase === "stopped") return t("assistant.chat.placeholder.stopped");
+    if (phase === "disconnected") return t("assistant.chat.placeholder.disconnected");
     if (activeMode === "debug") {
       return "Debug and troubleshoot issues...";
     }
@@ -1579,7 +1460,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     if (activeMode === "ask") {
       return "Ask anything about this project...";
     }
-    return (t as any)("assistant.chat.placeholder.default");
+    return t("assistant.chat.placeholder.default");
   }, [
     isComposerApprovalState,
     activePendingApproval?.detail,
@@ -2050,14 +1931,18 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         </div>
       ) : null}
 
-      {/* One surface and one editor subtree at every size. CSS order and
-       * flex-basis move the same controls beneath the prompt once it wraps;
-       * the Lexical editor never remounts, so focus and selection survive
-       * both expansion and collapse. */}
-      <div
+      {/* Resolve the final geometry once, then interpolate its presentation.
+       * Padding must not transition: intermediate widths feed back into line
+       * measurement. Position projection keeps the same editor and controls
+       * moving with the shell without stretching the text. */}
+      <motion.div
+        ref={composerShellRef}
+        layout
+        transition={{ layout: composerLayoutTransition }}
         data-chat-composer-layout={isStackedComposer ? "stacked" : "inline"}
+        style={{ borderRadius: 24 }}
         className={cn(
-          "relative flex min-h-0 flex-wrap border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-radius,padding,background-color,border-color,box-shadow] duration-150 dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
+          "relative flex min-h-0 flex-wrap border border-black/[0.11] bg-[var(--assistant-composer-surface)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[background-color,border-color,box-shadow] duration-150 dark:border-white/[0.08] dark:shadow-[0_2px_12px_rgba(0,0,0,0.35),0_1px_2px_rgba(0,0,0,0.2)]",
           isStackedComposer
             ? "items-end gap-x-2 gap-y-1.5 rounded-3xl p-2.5"
             : "items-center gap-1.5 rounded-full p-1.5",
@@ -2187,7 +2072,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         ) : null}
 
         {!activePendingApproval ? (
-          <div
+          <motion.div
+            ref={composerLeftClusterRef}
+            layout="position"
+            transition={{ layout: composerLayoutTransition }}
             data-chat-composer-actions="left"
             className={cn(
               "flex min-w-0 shrink-0 items-center",
@@ -2195,21 +2083,26 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             )}
           >
             {renderPlusDropdown()}
-          </div>
+          </motion.div>
         ) : null}
 
         {composerModeChip ? (
-          <div
+          <motion.div
+            ref={composerModeChipRef}
+            layout="position"
+            transition={{ layout: composerLayoutTransition }}
             className={cn(
               "flex min-w-0 items-center gap-1.5",
               isStackedComposer ? "order-1 basis-full px-1" : "order-2 shrink-0",
             )}
           >
             {composerModeChip}
-          </div>
+          </motion.div>
         ) : null}
 
-        <div
+        <motion.div
+          layout="position"
+          transition={{ layout: composerLayoutTransition }}
           data-chat-composer-prompt="true"
           className={cn(
             "min-w-0",
@@ -2224,7 +2117,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             skills={props.providerSnapshot?.skills ?? []}
             terminalContexts={props.terminalContexts}
             onRemoveTerminalContext={props.onRemoveTerminalContext}
-            onMeasuredLinesChange={handleMeasuredComposerLinesChange}
+            inlineMeasureWidthPx={inlinePromptWidthPx}
+            onInlineWrapChange={setWouldWrapInline}
             onChange={handleComposerChange}
             onCommandKeyDown={handleComposerCommandKey}
             onPaste={props.onComposerPaste}
@@ -2232,10 +2126,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             className="min-h-[var(--composer-line-height)] max-h-[calc(var(--composer-line-height)*10)] py-0 overflow-y-auto"
             disabled={composerDisabled}
           />
-        </div>
+        </motion.div>
 
         {!activePendingApproval ? (
-          <div
+          <motion.div
+            ref={composerRightClusterRef}
+            layout="position"
+            transition={{ layout: composerLayoutTransition }}
             data-chat-composer-actions="right"
             className={cn(
               "order-4 ml-auto flex min-w-0 shrink items-center gap-1.5",
@@ -2260,9 +2157,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               onOpenChange={handleModelPickerOpenChange}
             />
             {renderSendOrStopButton()}
-          </div>
+          </motion.div>
         ) : null}
-      </div>
+      </motion.div>
     </form>
   );
 
