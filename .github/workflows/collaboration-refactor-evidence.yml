@@ -46,21 +46,53 @@ jobs:
         run: |
           set -euo pipefail
           fixture="$RUNNER_TEMP/collab-fixture"
-          mkdir -p "$fixture"
-          git archive --format=tar.gz --output="$fixture/source.tar.gz" HEAD
+          mkdir -p "$fixture/core" "$fixture/deps-a" "$fixture/deps-b" "$fixture/deps-c"
+          git archive --format=tar.gz --output="$fixture/core/source.tar.gz" HEAD
+          git -C vendor/t3code archive --format=tar.gz --output="$fixture/core/t3-source.tar.gz" HEAD
+          git -C vendor/t3code diff --binary > "$fixture/core/t3.patch"
           tar -czf "$fixture/dependencies.tar.gz" --exclude='node_modules/electron/dist' --exclude='node_modules/.cache' node_modules
-          cp "$(command -v node)" "$fixture/node"
-          cp "$(command -v bun)" "$fixture/bun"
-          cp .agent/collaboration-evidence/runtime.json "$fixture/runtime.json"
-          (cd "$fixture" && sha256sum source.tar.gz dependencies.tar.gz node bun > SHA256SUMS)
+          split -b 240M -d "$fixture/dependencies.tar.gz" "$fixture/dependencies.part"
+          mv "$fixture/dependencies.part00" "$fixture/deps-a/"
+          if test -f "$fixture/dependencies.part01"; then mv "$fixture/dependencies.part01" "$fixture/deps-b/"; fi
+          if test -f "$fixture/dependencies.part02"; then mv "$fixture/dependencies.part02" "$fixture/deps-c/"; fi
+          test ! -f "$fixture/dependencies.part03"
+          cp "$(command -v node)" "$fixture/core/node"
+          cp "$(command -v bun)" "$fixture/core/bun"
+          cp .agent/collaboration-evidence/runtime.json "$fixture/core/runtime.json"
+          (cd "$fixture/core" && sha256sum source.tar.gz t3-source.tar.gz t3.patch node bun > SHA256SUMS)
+          sha256sum "$fixture/dependencies.tar.gz" | cut -d' ' -f1 > "$fixture/core/dependencies.sha256"
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push' && contains(github.event.head_commit.message, '[collab-fixture]')
         with:
-          name: collaboration-executable-fixture-${{ github.sha }}
-          path: ${{ runner.temp }}/collab-fixture/
+          name: collaboration-fixture-core-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-fixture/core/
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[collab-fixture]')
+        with:
+          name: collaboration-fixture-deps-a-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-fixture/deps-a/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[collab-fixture]')
+        with:
+          name: collaboration-fixture-deps-b-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-fixture/deps-b/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[collab-fixture]')
+        with:
+          name: collaboration-fixture-deps-c-${{ github.sha }}
+          path: ${{ runner.temp }}/collab-fixture/deps-c/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: ignore
       - name: Collaboration behavioral tests
         run: bunx vitest run tests/collaboration --reporter=default --reporter=json --outputFile=.agent/collaboration-evidence/tests.json
       - name: Retain exact-revision evidence
