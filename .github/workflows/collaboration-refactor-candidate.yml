@@ -3,10 +3,6 @@ name: Collaboration validated candidate
 on:
   push:
     branches: [refactor/collaboration-v2-end-to-end]
-    paths:
-      - 'scripts/collaboration/apply-refactor.mjs'
-      - 'scripts/collaboration/prepare-candidate.mjs'
-      - '.github/workflows/collaboration-refactor-candidate.yml'
   workflow_dispatch:
 
 permissions:
@@ -35,22 +31,33 @@ jobs:
         with:
           node-version: '22'
       - name: Bootstrap repository
-        run: bun run bootstrap
+        run: |
+          mkdir -p .agent/collaboration-evidence
+          if ! bun run bootstrap > .agent/collaboration-evidence/bootstrap.log 2>&1; then tail -100 .agent/collaboration-evidence/bootstrap.log; exit 1; fi
+          node scripts/collaboration/runtime-inventory.mjs
       - name: Apply exact checked refactor transformations
-        run: node scripts/collaboration/apply-refactor.mjs
+        id: apply
+        run: node scripts/collaboration/apply-refactor.mjs && node scripts/collaboration/fix-candidate.mjs
       - name: Renderer TypeScript
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         run: bun run typecheck
       - name: Electron TypeScript
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         run: bun run typecheck:electron
       - name: Test TypeScript
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         run: bun run typecheck:tests
       - name: Cloudflare TypeScript
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         run: bun run typecheck:cloudflare
       - name: Lint
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         run: bun run lint
       - name: Execute collaboration regressions
+        if: ${{ !cancelled() && steps.apply.outcome == 'success' }}
         run: bunx vitest run tests/collaboration --reporter=default --reporter=json --outputFile=.agent/collaboration-evidence/candidate-tests.json
       - name: Create validated Git objects without advancing a branch
+        if: ${{ success() }}
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_HEAD: ${{ github.sha }}
