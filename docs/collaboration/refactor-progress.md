@@ -1,36 +1,38 @@
 # Collaboration refactor implementation ledger
 
-Approved: 2026-09-09. Baseline: `509ce3f32b38afcdfd675035e4432ebb3090adb3`, PR #141.
+Approved: 2026-09-09. Original baseline: `509ce3f32b38afcdfd675035e4432ebb3090adb3`, PR #141, branch `refactor/collaboration-v2-end-to-end`.
 
-## Decisions
+## Fixed scope
 
-Preserve Electron/React/T3, the device-principal model, catalog-owned isolated workspaces, explicit session lanes, the pinned Yjs version, encryption, and separate Commit/Push. Implement the approved P0–P9 plan on the existing PR branch. Do not merge or deploy. No native UI rewrite, speculative document sharding, live arbitrary binary replication, or media implementation.
+Preserve Electron/React/T3, device principals, catalog-owned isolated workspaces, explicit session lanes, pinned Yjs, encryption and separate Commit/Push. No merge or deployment. No native UI rewrite, speculative document sharding, arbitrary live binary replication or media implementation.
 
-The target is one utility-process canonical engine, renderer session mirrors, explicit live/published/projected baselines, a dedicated encrypted-payload Node-SQLite store, revision-aware managed agent operations, incremental projection, scoped recovery, and a complete session lifecycle.
+Target: one utility-process canonical engine; renderer session mirrors; explicit live/published/projected baselines; dedicated encrypted-payload Node-SQLite storage; revision-aware agents; incremental projection; scoped recovery; complete session lifecycle.
 
-## Phase status
+## Saved implementation and evidence
 
-| Phase | Scope | Status |
-| --- | --- | --- |
-| P0 | Executable baseline, pinned runtime inventory and acceptance evidence | Started: fixture and runtime tests added; results must be attached to the actual commit |
-| P1 | Complete checkpoint/update/initialization protocol and authority | Not implemented |
-| P2 | Publication manifests and checkpoint-safe compaction | Not implemented |
-| P3 | Single lifecycle owner and off-main engine | Not implemented |
-| P4 | Transactional store and copy/verify/switch migration | Not implemented |
-| P5 | Incremental documents, projection and bounded replay | Not implemented |
-| P6 | Stable editor mirror and control UI lifecycle | Not implemented |
-| P7 | Revision-aware agents, operation groups and isolated tasks | Not implemented |
-| P8 | Scoped/offline recovery, readiness and session completion | Not implemented |
-| P9 | Integrated, packaged, cross-device and rollout validation | Not implemented |
+- `b1570d0`, `7e92e72`: P0 runtime tests, executable fixture and evidence workflow. Node SQLite/Yjs baseline tests pass. The local execution service became unresponsive after fixture transfer; subsequent candidates are executed in Actions instead.
+- `1515b481dbdf13b1e102883853f660eeae2a1b02`: real desktop -> gateway -> room checkpoint protocol; elected durable upload/file-initialization leases; observer reads; protocol revision validation; admission-time authority; Git publication no longer deletes replay history. Candidate run `34301733740` tested exact tree `f9d4069bc6e18918a899a02f3b256b4f2207f442`: four typechecks, lint, 8 targeted tests pass. One lint warning for an ambient test reference.
+- `f18bba493c0b0c84a8ad21f1d172deffba1c004a`: large update upload/replay, bounded durable chunk assembly, exact retry identity, local outbox retained until canonical persistence, socket revision negotiation. Candidate run `34302759025` tested exact tree `5892a618c118f586c41a3913c1dd73a415e2eb4a`: four typechecks, lint, 15 targeted tests pass. Two ambient-reference lint warnings. Real local WebSockets connect the actual provider and room; tests mock external Convex authority and emulate Durable Object storage with production per-value/batch bounds.
 
-## Evidence rules
+Tests include fresh bootstrap, observer read/write distinction, checkpoint chunks, mismatched protocol rejection, file lease takeover, preservation on publication, large Unicode updates to concurrent/late clients, offline recovery after ACK-before-echo, delayed local persistence, room re-instantiation mid-upload, same-ID retry, revoked established sockets, bounded staging and checksum mismatch.
 
-A commit is not a test result. A CI pass is not packaged or cross-device evidence. Record exact SHAs, commands, runtime versions, OS/architecture and artifacts. Do not mark acceptance cases passed merely because their interfaces exist. Source-string tests are architectural checks, not protocol tests.
+## Remaining phase status
 
-The execution container initially has Node 22.16 but no repository dependencies or outbound DNS. The reproducible fixture workflow exports only tracked repository source and dependency files, never .git, credentials, environment files or runner configuration. It enables executable local testing without replacing the pinned dependencies. The fixture is generated only for an explicitly marked branch commit and expires after one day.
+| Phase | Status |
+| --- | --- |
+| P0 | Executable baseline and evidence established; full acceptance matrix still open |
+| P1 | Core checkpoint, file initialization, chunked transport and ACK durability connected and tested; further fault/rollout/flow-control coverage remains |
+| P2 | In progress: immutable publication baselines, retained prepared captures, repeated Git cycles; safe compaction still to implement |
+| P3 | Not implemented: off-main owner and complete lifecycle surface |
+| P4 | Not implemented: transactional store/migration |
+| P5 | Not implemented: incremental document/projection and fair scheduling |
+| P6 | Not implemented: editor/control lifecycle |
+| P7 | Not implemented: revision-aware agents and operation groups |
+| P8 | Not implemented: scoped/offline recovery and readiness/workflow |
+| P9 | Not implemented: packaged/cross-device/platform/rollout release evidence |
 
-## Acceptance cases to close
+## Delivery constraints
 
-T01 fresh bootstrap; T02 initialization election/crash; T03 observer reads; T04 bounded chunks; T05 retries/ordering; T06 established-socket authority changes; T07 repeated rename/publication; T08 create/delete/recreate/modes; T09 capture fence; T10 lost publication response; T11 reconnect below compaction floor; T12 process crashes; T13 producer drain; T14 migration interruption; T15 quota/corrupt/disk-full; T16 incremental edit costs; T17 idle feedback; T18 replay/generator fairness; T19 platform/cross-volume disk safety; T20 editor composition/undo; T21 repeated commit lifecycle; T22 stale identities; T23 no document-induced control queries; T24 real agent baseline; T25 operation groups/snapshots; T26 isolated change-set review; T27 compensating revert; T28 scoped conflicts; T29 offline recovery/readiness; T30 compatible rollout/rollback.
+The temporary candidate workflow applies reviewed exact transformations, runs checks, uploads Git blobs, and verifies the resulting tree equals `git write-tree`. It never updates a branch. The connector explicitly creates the commit and advances the branch without force. Remove the temporary recipes at final cleanup; they are an execution adapter, not production architecture.
 
-All T01–T30 remain unverified until their behavioral evidence is recorded.
+A saved commit is not a test result. Candidate-tree validation is distinct from the final commit's full-suite/build run. Unit/provider integration is not packaged or physical cross-device evidence. Do not mark all T01–T30 complete from the targeted cases above. No production deployment has been performed.

@@ -5,137 +5,127 @@ const edit = (name, transform) => { const before = readFileSync(name, "utf8"); c
 const replace = (source, before, after) => { const at = source.indexOf(before); if (at < 0 || source.indexOf(before, at + before.length) >= 0) throw new Error(`Exact anchor changed: ${before.slice(0, 100)}`); return source.slice(0, at) + after + source.slice(at + before.length); };
 const create = (name, content) => { if (existsSync(name)) throw new Error(`File already exists: ${name}`); mkdirSync(path.dirname(name), { recursive: true }); writeFileSync(name, content); changed.add(name); };
 
-edit("cloudflare/worker/src/lib/protocol.ts", source => {
-  source = 'import type { CollaborationChunk } from "../../../../shared/collaborationWire"\n' + source;
-  source = replace(source, '    knownSeq: number\n    clientType:', '    knownSeq: number\n    collaborationRevision?: number\n    clientType:');
-  source = replace(source, '    resyncRequired: boolean', '    resyncRequired: boolean\n    collaborationRevision?: number');
-  source = replace(source, 'export interface UpdateAckMessage {', 'export interface UpdateChunkMessage {\n  type: "update.chunk"\n  payload: { roomId: string; chunk: CollaborationChunk; timestamp: number }\n}\nexport interface SyncChunkMessage {\n  type: "sync.chunk"\n  payload: { roomId: string; sequence: number; headSeq: number; chunk: CollaborationChunk }\n}\n\nexport interface UpdateAckMessage {');
-  source = replace(source, '  | UpdatePushMessage\n', '  | UpdatePushMessage\n  | UpdateChunkMessage\n');
-  return replace(source, '  | SyncDeltaMessage\n', '  | SyncDeltaMessage\n  | SyncChunkMessage\n');
+edit("shared/SessionFileDocument.ts", source => {
+  source = 'import { changesFromPublishedBaseline, validatePublishedManifest, type SessionPublishedManifest } from "./collaborationPublication"\n' + source;
+  source = replace(source, '  readonly doc: Y.Doc', '  readonly doc: Y.Doc\n  private readonly sessionId: string\n  private readonly publicationManifests: Y.Map<SessionPublishedManifest>');
+  source = replace(source, '    this.doc.gc = false', '    this.doc.gc = false\n    this.sessionId = sessionId\n    this.publicationManifests = this.doc.getMap("published-file-baselines")');
+  const begin = source.indexOf('  snapshotChanges(): CollaborationTextChange[] {');
+  const end = source.indexOf('\n  checkpoint():', begin);
+  if (begin < 0 || end < 0) throw new Error("Snapshot generator anchor changed");
+  return source.slice(0, begin) + String.raw`  publicationManifest(commitSha: string): SessionPublishedManifest | null {
+    const value = this.publicationManifests.get(commitSha)
+    return value ? validatePublishedManifest(value, { sessionId: this.sessionId, commitSha }) : null
+  }
+
+  recordPublicationManifest(value: SessionPublishedManifest): void {
+    const manifest = validatePublishedManifest(value, { sessionId: this.sessionId })
+    const existing = this.publicationManifest(manifest.commitSha)
+    if (existing) {
+      if (JSON.stringify(existing) !== JSON.stringify(manifest)) throw new Error("The same published commit has conflicting file identities")
+      return
+    }
+    this.doc.transact(() => this.publicationManifests.set(manifest.commitSha, manifest), "publication-manifest")
+  }
+
+  snapshotChanges(published?: SessionPublishedManifest): CollaborationTextChange[] {
+    if (this.renameConflicts().length) throw new Error("Resolve competing shared renames before committing or projecting files")
+    if (this.pathConflicts().length) throw new Error("Resolve shared path collisions before committing or projecting files")
+    const baseline = published ? validatePublishedManifest(published, { sessionId: this.sessionId }) : undefined
+    return changesFromPublishedBaseline(this.files(), baseline)
+  }
+` + source.slice(end);
 });
 
-edit("cloudflare/worker/src/lib/collaborationLimits.ts", source => {
-  source = 'import { COLLABORATION_MAX_ENCODED_UPDATE, COLLABORATION_CHUNK_CHARS } from "../../../../shared/collaborationWire"\n' + source;
-  source = replace(source, "update.updateBinary.length > COLLAB_MAX_UPDATE_BYTES", "update.updateBinary.length > COLLABORATION_MAX_ENCODED_UPDATE");
-  return replace(source, 'return update.updateBinary.length + update.idempotencyKey.length * 2 + 1024', 'return update.updateBinary.length + update.idempotencyKey.length * 2 + 1024 + Math.ceil(update.updateBinary.length / COLLABORATION_CHUNK_CHARS) * 256');
+edit("shared/collaborationDesktop.ts", source => {
+  source = replace(source, '  preparedAt: number\n', '  preparedAt: number\n  publicationBasisId?: string\n  publicationBasisKeyVersion?: number\n');
+  return replace(source, '  throughSequence: number\n  textChanges:', '  throughSequence: number\n  publicationBasisId?: string\n  publicationBasisKeyVersion?: number\n  textChanges:');
 });
 
-edit("cloudflare/worker/src/durableObjects/CollabRoom.ts", source => {
-  source = 'import { RoomUpdateChunks, encodeStoredUpdate, readStoredUpdate, updateReceiptKey, type StoredSessionUpdate } from "./RoomUpdateChunks"\nimport { COLLABORATION_PROTOCOL_REVISION, requireProtocolRevision } from "../../../../shared/collaborationProtocol"\nimport { COLLABORATION_CHUNK_CHARS, collaborationDigest, splitCollaborationUpdate } from "../../../../shared/collaborationWire"\n' + source;
-  source = replace(source, '  UpdatePushMessage,', '  UpdatePushMessage,\n  UpdateChunkMessage,');
-  const startType = source.indexOf('interface StoredSessionUpdate {');
-  const endType = source.indexOf("const UPDATE_PREFIX", startType);
-  if (startType < 0 || endType < 0) throw new Error("Stored update anchor changed");
-  source = source.slice(0, startType) + source.slice(endType);
-  source = replace(source, '  private readonly checkpoints: RoomCheckpointStore', '  private readonly checkpoints: RoomCheckpointStore\n  private readonly updateChunks: RoomUpdateChunks');
-  source = replace(source, '    this.checkpoints = new RoomCheckpointStore(state.storage)', '    this.checkpoints = new RoomCheckpointStore(state.storage)\n    this.updateChunks = new RoomUpdateChunks(state.storage)');
-  source = replace(source, '      if (roomSessionId) {\n', '      if (roomSessionId) {\n        requireProtocolRevision(message.payload.collaborationRevision)\n');
-  source = replace(source, '          headSeq,\n          mediaClientId:', '          headSeq,\n          ...(roomSessionId ? { collaborationRevision: COLLABORATION_PROTOCOL_REVISION } : {}),\n          mediaClientId:');
-  source = replace(source, "if (connection.sessionId && message.type !== 'update.push')", "if (connection.sessionId && message.type !== 'update.push' && message.type !== 'update.chunk')");
-  source = replace(source, "      case 'sync.request':\n        await this.handleSyncRequest(socket, connection, message)\n        return", String.raw`      case 'sync.request': {
-        const operation = this.updateQueue.then(() => this.handleSyncRequest(socket, connection, message))
-        this.updateQueue = operation.catch(() => undefined)
-        await operation
-        return
-      }
-      case 'update.chunk': {
-        const operation = this.updateQueue.then(() => this.handleUpdateChunk(socket, connection, message))
-        this.updateQueue = operation.catch(() => undefined)
-        await operation
-        return
-      }`);
-  source = replace(source, "        this.handleMediaState(socket, connection, message)\n        return\n    }", "        this.handleMediaState(socket, connection, message)\n        return\n      default: throw new CollaborationProtocolError('UNKNOWN_OPERATION', 'Unsupported room message')\n    }");
-  const startSync = source.indexOf('      const toSeq = updates.at(-1)?.seq ?? message.payload.knownSeq');
-  const endSync = source.indexOf('\n      return\n    }', startSync);
-  if (startSync < 0 || endSync < 0) throw new Error("Replay anchor changed");
-  source = source.slice(0, startSync) + String.raw`      const next = updates[0]
-      if (next) await this.sendCanonicalUpdate(socket, connection.roomId, next.seq, headSeq, await readStoredUpdate(this.state.storage, next))
-      else socket.send(stringifyMessage({ type: 'sync.delta', payload: { roomId: connection.roomId, fromSeq: known, toSeq: known, headSeq, hasMore: false, updatesBinary: [] } }))` + source.slice(endSync);
-  source = replace(source, 'limit: 1, // Bounded legacy-sized replay until chunked replay is installed.', 'limit: 1, // One bounded update per page; large payloads use bounded chunk frames.');
-  const startBroadcast = source.indexOf('    this.broadcast({\n      type: \'sync.delta\'', source.indexOf('  private async handleUpdatePush('));
-  const endBroadcast = source.indexOf('\n  private async persistSessionUpdate(', startBroadcast);
-  if (startBroadcast < 0 || endBroadcast < 0) throw new Error("Live broadcast anchor changed");
-  source = source.slice(0, startBroadcast) + String.raw`    const headSeq = isV2Room(connection.roomId) ? await this.getSessionHeadSequence() : result.seq
-    for (const peer of this.state.getWebSockets()) {
-      if (peer === socket || attachmentOf(peer)?.roomId !== connection.roomId) continue
-      try { await this.sendCanonicalUpdate(peer, connection.roomId, result.seq, headSeq, message.payload.updateBinary) }
-      catch { try { peer.close(1011, 'Replay required') } catch { /* A closed peer cannot roll back a durable acknowledgement. */ } }
-    }
+edit("apps/desktop/electron/collaboration/DurableSessionStore.ts", source => replace(source, '  readInitializationBasis(id: string): Promise<string | null> {', String.raw`  readPublicationBasis(id: string): Promise<string | null> {
+    if (!idPattern.test(id)) throw new Error("Invalid publication basis identity")
+    return this.serial(() => this.read<string>(` + '`publication-basis-${id}.json`' + String.raw`))
+  }
+  savePublicationBasis(id: string, encoded: string): Promise<void> {
+    if (!idPattern.test(id)) throw new Error("Invalid publication basis identity")
+    return this.serial(async () => {
+      const name = ` + '`publication-basis-${id}.json`' + String.raw`
+      const previous = await this.read<string>(name)
+      if (previous && previous !== encoded) throw new Error("Prepared publication basis cannot be replaced")
+      if (!previous) await this.write(name, encoded)
+    })
   }
 
-  private async sendCanonicalUpdate(socket: WebSocket, roomId: string, sequence: number, headSeq: number, encoded: string): Promise<void> {
-    if (encoded.length > COLLABORATION_CHUNK_CHARS) {
-      for (const chunk of await splitCollaborationUpdate(` + '`seq_${sequence}`' + String.raw`, encoded)) socket.send(stringifyMessage({ type: "sync.chunk", payload: { roomId, sequence, headSeq, chunk } }))
-    } else socket.send(stringifyMessage({ type: "sync.delta", payload: { roomId, fromSeq: sequence - 1, toSeq: sequence, headSeq, hasMore: sequence < headSeq, updatesBinary: [encoded] } }))
+  readInitializationBasis(id: string): Promise<string | null> {`));
+
+edit("apps/desktop/electron/collaboration/CollaborationSessionRuntime.ts", source => {
+  source = 'import { encodePublicationBasis, manifestFromPublicationBasis } from "./PublicationBasis"\nimport type { PreparedCollaborationCommit } from "../../../../shared/collaborationDesktop"\n' + source;
+  source = replace(source, '  offline?: boolean\n', '  offline?: boolean\n  readPublicationBasis?: (id: string, keyVersion: number) => Promise<{ encoded: string; roomKeyBase64: string } | null>\n');
+  const begin = source.indexOf('  async captureCommit():');
+  const end = source.indexOf('\n  async waitForSequence(', begin);
+  if (begin < 0 || end < 0) throw new Error("Runtime commit capture anchor changed");
+  return source.slice(0, begin) + String.raw`  async captureCommit(context: { baseCommitSha: string; publishedCommitSha: string | null }): Promise<{ sequence: number; textChanges: CollaborationTextChange[]; publicationBasisId: string; publicationBasisKeyVersion: number }> {
+    // The fence covers work accepted before Commit, not future renderer input.
+    const acceptedEditorFence = this.editorQueue
+    await acceptedEditorFence
+    await this.projectFiles()
+    if (this.projectionPaused) throw new Error("Resolve paused file synchronization before committing; local bytes were retained")
+    const snapshot = await this.assertEditor().captureCommitState()
+    const acknowledged = new SessionFileDocument(this.options.sessionId)
+    try {
+      Y.applyUpdate(acknowledged.doc, snapshot.update)
+      const published = acknowledged.publicationManifest(context.baseCommitSha)
+      if (context.publishedCommitSha && !published) throw new Error("The verified Git base lacks its published file baseline; recover the retained publication before preparing another commit")
+      const textChanges = acknowledged.snapshotChanges(published ?? undefined)
+      const basis = await encodePublicationBasis({ sessionId: this.options.sessionId, projectId: this.options.session.projectId, roomId: this.options.session.roomId, ...this.options.encryption }, context.baseCommitSha, snapshot.sequence, snapshot.update)
+      await this.options.store.savePublicationBasis(basis.id, basis.encoded)
+      return { sequence: snapshot.sequence, textChanges, publicationBasisId: basis.id, publicationBasisKeyVersion: this.options.encryption.keyVersion }
+    } finally { acknowledged.destroy() }
   }
 
-  private async handleUpdateChunk(socket: WebSocket, connection: SocketAttachment, message: UpdateChunkMessage): Promise<void> {
-    if (!connection.sessionId) throw new CollaborationProtocolError("PROTOCOL_MISMATCH", "Chunked updates require an explicit live session", 409)
-    const authority = await this.requireRoomAuthority(connection, true)
-    const encoded = await this.updateChunks.accept(authority, message.payload.chunk, message.payload.timestamp)
-    if (encoded === null) return
-    await this.handleUpdatePush(socket, connection, { type: "update.push", payload: { roomId: connection.roomId,
-      idempotencyKey: message.payload.chunk.id, updateBinary: encoded, timestamp: message.payload.timestamp, authorType: "user", authorId: connection.principalId } })
-    await this.updateChunks.finish(authority, message.payload.chunk.id)
-  }
-` + source.slice(endBroadcast);
-  source = replace(source, '    const idempotencyKey = `${IDEMPOTENCY_PREFIX}${message.payload.idempotencyKey}`', String.raw`    const receiptKey = updateReceiptKey(authority, message.payload.idempotencyKey)
-    const digest = await collaborationDigest(message.payload.updateBinary)
-    const accepted = await this.state.storage.get<{ sequence: number; digest: string }>(receiptKey)
-    if (accepted) {
-      if (accepted.digest !== digest) throw new CollaborationProtocolError("IDEMPOTENCY_MISMATCH", "An accepted update ID was reused with different bytes", 409)
-      return { seq: accepted.sequence }
+  async publishPreparedManifest(prepared: PreparedCollaborationCommit): Promise<void> {
+    const provider = this.assertEditor()
+    const previous = this.files.publicationManifest(prepared.commitSha)
+    if (previous) {
+      if (previous.parentCommitSha !== prepared.parentCommitSha || previous.throughSequence !== prepared.throughSequence) throw new Error("Prepared publication identity changed")
+    } else {
+      const id = prepared.publicationBasisId, keyVersion = prepared.publicationBasisKeyVersion
+      if (!id || !keyVersion) throw new Error("This retained prepared commit predates publication baselines; retain it for explicit recovery rather than guessing file identities")
+      const material = keyVersion === this.options.encryption.keyVersion
+        ? { encoded: await this.options.store.readPublicationBasis(id), roomKeyBase64: this.options.encryption.roomKeyBase64 }
+        : await this.options.readPublicationBasis?.(id, keyVersion)
+      if (!material?.encoded) throw new Error("The prepared publication basis is unavailable; all local work was retained")
+      const manifest = await manifestFromPublicationBasis({ sessionId: this.options.sessionId, projectId: this.options.session.projectId, roomId: this.options.session.roomId, keyVersion, roomKeyBase64: material.roomKeyBase64 },
+        { id, parentCommitSha: prepared.parentCommitSha, sequence: prepared.throughSequence }, prepared.commitSha, material.encoded)
+      this.files.recordPublicationManifest(manifest)
     }
-    const idempotencyKey = ` + '`${IDEMPOTENCY_PREFIX}${message.payload.idempotencyKey}`');
-  source = replace(source, '      if (!saved || saved.updateBinary !== message.payload.updateBinary)', '      if (!saved || await readStoredUpdate(this.state.storage, saved) !== message.payload.updateBinary)');
-  source = replace(source, '    const stored: StoredSessionUpdate = {', '    const prepared = await encodeStoredUpdate({');
-  source = replace(source, '      clientId: connection.clientId,\n      timestamp:', '      clientId: connection.clientId,\n      principalId: authority.principalId,\n      keyVersion: authority.keyVersion,\n      timestamp:');
-  source = replace(source, '      retainedBytes,\n    }\n    await this.state.storage.put({', '      retainedBytes,\n    })\n    await this.state.storage.put({\n      ...prepared.pieces,\n      [receiptKey]: { sequence: seq, digest },');
-  source = replace(source, '      [updateKey(seq)]: stored,', '      [updateKey(seq)]: prepared.update,');
-  source = replace(source, 'update.retainedBytes ?? update.updateBinary.length + update.idempotencyKey.length * 2 + 1024', 'update.retainedBytes ?? (update.updateBinary?.length ?? update.totalChars ?? 0) + update.idempotencyKey.length * 2 + 1024');
-  source = replace(source, '    const authority = await currentRoomAuthority(this.env, connection.identityKey, connection.sessionId)\n', '    const authority = await currentRoomAuthority(this.env, connection.identityKey, connection.sessionId)\n    if (connection.expiresAt <= Date.now() || await this.state.storage.get("g3:closed")) throw new CollaborationProtocolError("SESSION_EXPIRED", "Session stopped while authority was being refreshed", 401, true)\n');
-  source = replace(source, '          await this.updateQueue\n          await this.state.storage.put("g3:closed", true)', '          const closing = this.updateQueue.then(() => this.state.storage.put("g3:closed", true))\n          this.updateQueue = closing.catch(() => undefined)\n          await closing');
+    await provider.flushLocalPersistence()
+    // The manifest joins canonical encrypted history before Push. Later text
+    // edits remain outside the prepared Git snapshot and keep their own clocks.
+    await provider.captureCommitState()
+  }
+` + source.slice(end);
+});
+
+edit("apps/desktop/electron/collaboration/SessionRuntimeHost.ts", source => {
+  source = replace(source, '      changedPaths: () => this.coordinator.changedPaths(sessionId),', String.raw`      changedPaths: () => this.coordinator.changedPaths(sessionId),
+      readPublicationBasis: async (id, keyVersion) => {
+        const recovered = await this.keys.recoverKey(binding.projectId, sessionId, keyVersion)
+        if (!recovered) return null
+        const encoded = await new DurableSessionStore(this.root, material.session.roomId, keyVersion).readPublicationBasis(id)
+        return encoded ? { encoded, roomKeyBase64: recovered.roomKeyBase64 } : null
+      },`);
+  source = replace(source, '      const snapshot = await runtime.captureCommit()', '      const context = await this.gateway.post<CollaborationWorkspaceAuthority>("/collab/v2/workspace-context", { sessionId: input.sessionId })\n      const snapshot = await runtime.captureCommit({ baseCommitSha: context.session.baseCommitSha, publishedCommitSha: context.session.publishedCommitSha })');
+  source = replace(source, 'throughSequence: snapshot.sequence, textChanges: snapshot.textChanges })', 'throughSequence: snapshot.sequence, textChanges: snapshot.textChanges, publicationBasisId: snapshot.publicationBasisId, publicationBasisKeyVersion: snapshot.publicationBasisKeyVersion })\n      await runtime.publishPreparedManifest(prepared)');
+  source = replace(source, '    // A completed publication can be recovered without acquiring a new lease.', '    if (prepared.state === "discarded") throw new Error("This prepared commit was discarded")\n    if (prepared.state !== "published") await this.runtime(sessionId).publishPreparedManifest(prepared)\n    // A completed publication can be recovered without acquiring a new lease.');
   return source;
 });
 
-edit("shared/CollaborationTransport.ts", source => {
-  source = 'import { COLLABORATION_PROTOCOL_REVISION, requireProtocolRevision } from "./collaborationProtocol"\n' + source;
-  source = replace(source, '  private pendingUpdates = new Map<string, PendingUpdate>()', '  private pendingUpdates = new Map<string, PendingUpdate>()\n  private readonly remoteAcknowledgements = new Map<string, number>()');
-  source = replace(source, '          protocolVersion: this.session.protocolVersion,', '          protocolVersion: this.session.protocolVersion,\n          ...(this.session.sessionId ? { collaborationRevision: COLLABORATION_PROTOCOL_REVISION } : {}),');
-  source = replace(source, '    if (message.type === "ready") {', '    if (message.type === "ready") {\n      if (this.session.sessionId) requireProtocolRevision(payload.collaborationRevision)');
-  source = replace(source, '      this.resolveReadyBarriers()\n      if (payload.hasMore', '      await this.retireCanonicalAcknowledgements()\n      this.resolveReadyBarriers()\n      if (payload.hasMore');
-  source = replace(source, '        await this.outbox.acknowledge(id)\n        this.pendingUpdates.delete(id)\n        if (!this.pendingUpdates.size) for (const done of this.drainWaiters) done()', String.raw`        const sequence = finiteSequence(payload.seq)!
-        const previous = this.remoteAcknowledgements.get(id)
-        if (previous !== undefined && previous !== sequence) throw new Error("The room assigned two sequences to one update identity")
-        this.remoteAcknowledgements.set(id, sequence)
-        // A remote ACK is not a replacement for local recovery. Retire the
-        // outbox only once onApplied has durably saved the contiguous echo.
-        await this.retireCanonicalAcknowledgements()`);
-  source = replace(source, '  private resolveReadyBarriers(): void {', String.raw`  private async retireCanonicalAcknowledgements(): Promise<void> {
-    for (const [id, sequence] of this.remoteAcknowledgements) {
-      if (sequence > this.knownSeq) continue
-      await this.outbox.acknowledge(id)
-      this.pendingUpdates.delete(id)
-      this.remoteAcknowledgements.delete(id)
-    }
-    if (!this.pendingUpdates.size) for (const done of this.drainWaiters) done()
-  }
-
-  private resolveReadyBarriers(): void {`);
-  source = replace(source, '      await this.sendUpdate(update)\n    }\n  }', '      if (!this.remoteAcknowledgements.has(update.idempotencyKey)) await this.sendUpdate(update)\n    }\n  }');
-  source = replace(source, '    this.localPersistenceError = null\n    if (connect)', '    await this.retireCanonicalAcknowledgements()\n    this.localPersistenceError = null\n    if (connect)');
-  return source;
+edit("apps/desktop/electron/collaboration/SessionWorkspaceCoordinator.ts", source => {
+  source = replace(source, '      const previousRaw = await this.deps.read(preparedKey(input.sessionId))', '      if (input.publicationBasisId !== undefined && (!/^[A-Za-z0-9_-]{1,160}$/.test(input.publicationBasisId) || !Number.isSafeInteger(input.publicationBasisKeyVersion) || Number(input.publicationBasisKeyVersion) < 1)) throw new Error("Prepared publication capture identity is invalid")\n      const previousRaw = await this.deps.read(preparedKey(input.sessionId))');
+  return replace(source, '          preparedAt: this.now(), state: "prepared",', '          preparedAt: this.now(), state: "prepared",\n          ...(input.publicationBasisId ? { publicationBasisId: input.publicationBasisId, publicationBasisKeyVersion: input.publicationBasisKeyVersion } : {}),');
 });
 
-edit("tests/collaboration/checkpointIntegration.test.ts", source => {
-  source = replace(source, 'class MemoryStorage implements RoomStorage {', 'export class MemoryStorage implements RoomStorage {');
-  return replace(source, '    if (typeof key === "string") this.data.set(key, structuredClone(value))', '    for (const item of typeof key === "string" ? [value] : Object.values(key)) if (JSON.stringify(item).length > 128 * 1024) throw new Error("KV value exceeds production 128 KiB bound")\n    if (typeof key === "string") this.data.set(key, structuredClone(value))');
-});
-
-// Tests are created in a separate source module to keep the candidate recipe
-// reviewable. They use the actual provider and real room protocol over sockets.
-const tests = readFileSync("scripts/collaboration/transport-tests.template", "utf8");
-create("tests/collaboration/transportIntegration.test.ts", tests);
+create("tests/collaboration/publicationBaseline.test.ts", readFileSync("scripts/collaboration/publication-tests.template", "utf8"));
 mkdirSync(".agent/collaboration-evidence", { recursive: true });
-writeFileSync(".agent/collaboration-candidate.json", JSON.stringify({ message: "fix: persist bounded update chunks and retain local edits until canonical durability", paths: [...changed] }, null, 2));
-console.log(`Prepared ${changed.size} transport transformations for real protocol validation.`);
+writeFileSync(".agent/collaboration-candidate.json", JSON.stringify({ message: "refactor: capture immutable published file baselines across commit cycles", paths: [...changed] }, null, 2));
+console.log(`Prepared ${changed.size} publication transformations.`);
