@@ -12,6 +12,12 @@ interface DockviewBrowserSurfaceVisualPresentation {
 
 export interface DockviewBrowserSurfacePresentation extends DockviewBrowserSurfaceVisualPresentation {
   readonly subscribePositionChanges: (listener: () => void) => () => void;
+  /**
+   * The panel's Dockview group element. Always-rendered panel content lives in
+   * an overlay layer outside the group, so this -- not the content's own DOM --
+   * is what says whether a panel is floating and at which level.
+   */
+  readonly resolveLayoutAnchor: () => HTMLElement | null;
 }
 
 export function resolveDockviewBrowserSurfaceLayer(
@@ -109,6 +115,8 @@ export function useDockviewBrowserSurfacePresentation(
     [containerApi, panelApi],
   );
 
+  const resolveLayoutAnchor = useCallback(() => panelApi.group?.element ?? null, [panelApi]);
+
   useLayoutEffect(() => {
     const update = () => {
       const next = readPanelPresentation(panelApi);
@@ -131,7 +139,7 @@ export function useDockviewBrowserSurfacePresentation(
   }, [containerApi, panelApi]);
 
   return useMemo(
-    () => ({ ...presentation, subscribePositionChanges }),
-    [presentation, subscribePositionChanges],
+    () => ({ ...presentation, subscribePositionChanges, resolveLayoutAnchor }),
+    [presentation, subscribePositionChanges, resolveLayoutAnchor],
   );
 }

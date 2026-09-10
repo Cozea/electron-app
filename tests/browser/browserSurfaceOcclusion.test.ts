@@ -402,6 +402,33 @@ describe("BrowserSurfaceOcclusionCoordinator", () => {
     expect(models.setOrder).toHaveBeenLastCalledWith(["rt_b", "rt_a"]);
   });
 
+  it("reads Dockview placement from the layout anchor, not the slot's own ancestry", () => {
+    // The live structure: Dockview's always-rendered panels draw their content
+    // in an overlay layer outside the group, so the slot is not inside its own
+    // floating container. Only the group element is.
+    const { coordinator, elements, models, settle } = makeHarness();
+    const terminalFloat = floatingGroup(0, rect(100, 100, 700, 400));
+    const browserFloat = floatingGroup(1, rect(300, 150, 320, 280));
+    elements.push(terminalFloat, browserFloat);
+    const browserGroup = new FakeElement({ rect: rect(300, 150, 320, 280), parent: browserFloat });
+    const renderLayer = new FakeElement({ rect: rect(301, 180, 318, 250) });
+    coordinator.register("rt_browser", slot(rect(301, 180, 318, 250), renderLayer), makeModel(), {
+      resolveLayoutAnchor: () => browserGroup,
+    });
+    coordinator.register("rt_docked", slot(rect(0, 0, 1000, 700)), makeModel());
+
+    settle();
+    // The floating browser is Dockview's front-most group: nothing covers it.
+    expect(coordinator.getState("rt_browser").blocked).toBe(false);
+    expect(coordinator.getState("rt_docked").reason).toBe("floating");
+    expect(models.setOrder).toHaveBeenLastCalledWith(["rt_docked", "rt_browser"]);
+
+    // Bring the terminal forward: now it covers the floating browser.
+    terminalFloat.attributes["aria-level"] = "2";
+    settle();
+    expect(coordinator.getState("rt_browser").reason).toBe("floating");
+  });
+
   it("publishes native order only when it changes", () => {
     const { coordinator, models, settle } = makeHarness();
     coordinator.register("rt_a", slot(rect(0, 0, 400, 400)), makeModel());

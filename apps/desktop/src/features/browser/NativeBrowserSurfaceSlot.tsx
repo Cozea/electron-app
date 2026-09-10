@@ -38,6 +38,11 @@ export interface NativeBrowserSurfaceSlotProps {
   readonly className?: string;
   /** Layout sources outside this element, such as Dockview panel movement. */
   readonly subscribePositionChanges?: (listener: () => void) => () => void;
+  /**
+   * The element whose ancestry says where the surface sits in Dockview. The
+   * slot itself cannot say: always-rendered panels draw outside their group.
+   */
+  readonly resolveLayoutAnchor?: () => HTMLElement | null;
   readonly onModelReady?: (model: BrowserSurfaceModel) => void;
 }
 
@@ -47,6 +52,7 @@ export function NativeBrowserSurfaceSlot({
   cornerRadius = 0,
   className,
   subscribePositionChanges,
+  resolveLayoutAnchor,
   onModelReady,
 }: NativeBrowserSurfaceSlotProps) {
   const elementRef = useRef<HTMLDivElement | null>(null);
@@ -55,8 +61,8 @@ export function NativeBrowserSurfaceSlot({
   // Read inside measurement without making it an effect dependency: a corner
   // radius change should move the surface on the next layout signal, not re-run
   // the whole lifecycle and re-acquire the model.
-  const presentationRef = useRef({ cornerRadius });
-  presentationRef.current = { cornerRadius };
+  const presentationRef = useRef({ cornerRadius, resolveLayoutAnchor });
+  presentationRef.current = { cornerRadius, resolveLayoutAnchor };
 
   const modelRef = useRef<BrowserSurfaceModel | null>(null);
   const occlusion = useBrowserSurfaceOcclusion(descriptor.runtimeTabId);
@@ -80,6 +86,7 @@ export function NativeBrowserSurfaceSlot({
       descriptor.runtimeTabId,
       element,
       model,
+      { resolveLayoutAnchor: () => presentationRef.current.resolveLayoutAnchor?.() ?? null },
     );
 
     const scheduler = new BrowserSurfaceLayoutScheduler({

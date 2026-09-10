@@ -264,7 +264,11 @@ export class BrowserSurfaceOcclusionCoordinator {
   /** Insertion order is registration order, the stable tie-breaker for native order. */
   private readonly registrations = new Map<
     string,
-    { readonly element: OcclusionElement; readonly model: OccludableModel }
+    {
+      readonly element: OcclusionElement;
+      readonly model: OccludableModel;
+      readonly resolveLayoutAnchor: (() => OcclusionElement | null) | undefined;
+    }
   >();
   /** Slots that went away; resolved on the next pass unless a slot claims them again. */
   private readonly detached = new Map<string, OccludableModel>();
@@ -282,9 +286,20 @@ export class BrowserSurfaceOcclusionCoordinator {
     this.models = options.models;
   }
 
-  /** Claim occlusion handling for a native surface's slot element. */
-  register(runtimeTabId: string, element: OcclusionElement, model: OccludableModel): () => void {
-    const registration = { element, model };
+  /**
+   * Claim occlusion handling for a native surface's slot element.
+   *
+   * `resolveLayoutAnchor` names the element whose ancestry says where the
+   * surface sits in Dockview -- its group. It is resolved on every pass, since
+   * a tile moved to another group has another group element.
+   */
+  register(
+    runtimeTabId: string,
+    element: OcclusionElement,
+    model: OccludableModel,
+    options: { readonly resolveLayoutAnchor?: () => OcclusionElement | null } = {},
+  ): () => void {
+    const registration = { element, model, resolveLayoutAnchor: options.resolveLayoutAnchor };
     // A slot remounting in the same tick -- a Dockview move -- takes over from
     // the one that just left, without an unoccluded frame in between.
     this.detached.delete(runtimeTabId);
@@ -324,12 +339,20 @@ export class BrowserSurfaceOcclusionCoordinator {
     }
     this.detached.clear();
 
-    const entries = Array.from(this.registrations);
-    const surfaces: OcclusionSurface[] = entries.map(([runtimeTabId, { element }]) => {
-      const floatingGroup = element.closest(FLOATING_GROUP_SELECTOR);
+    // Placement is read from each surface's layout anchor -- its Dockview group
+    // -- because Dockview's always-rendered panels draw their content in a
+    // separate overlay layer, outside the group and its floating container.
+    // Judged by the slot's own ancestry, every such browser would look docked.
+    const entries = Array.from(this.registrations, ([runtimeTabId, registration]) => ({
+      runtimeTabId,
+      registration,
+      anchor: registration.resolveLayoutAnchor?.() ?? null,
+    }));
+    const surfaces: OcclusionSurface[] = entries.map(({ runtimeTabId, registration, anchor }) => {
+      const floatingGroup = (anchor ?? registration.element).closest(FLOATING_GROUP_SELECTOR);
       return {
         runtimeTabId,
-        rect: element.getBoundingClientRect(),
+        rect: registration.element.getBoundingClientRect(),
         floatingLevel: floatingGroup ? readFloatingLevel(floatingGroup) : null,
       };
     });
@@ -345,16 +368,20 @@ export class BrowserSurfaceOcclusionCoordinator {
         rect: element.getBoundingClientRect(),
         containedSurfaces: new Set(
           entries
-            .filter(([, registration]) => element.contains(registration.element))
-            .map(([runtimeTabId]) => runtimeTabId),
+            .filter(
+              ({ registration, anchor }) =>
+                element.contains(registration.element) ||
+                (anchor !== null && element.contains(anchor)),
+            )
+            .map(({ runtimeTabId }) => runtimeTabId),
         ),
         ...(reason === "floating" ? { floatingLevel: readFloatingLevel(element) } : {}),
       });
     }
 
     const occlusion = computeBrowserSurfaceOcclusion(surfaces, overlays);
-    for (const [runtimeTabId, { model }] of entries) {
-      this.apply(runtimeTabId, model, occlusion.get(runtimeTabId) ?? null);
+    for (const { runtimeTabId, registration } of entries) {
+      this.apply(runtimeTabId, registration.model, occlusion.get(runtimeTabId) ?? null);
     }
 
     const order = computeNativeSurfaceOrder(surfaces);

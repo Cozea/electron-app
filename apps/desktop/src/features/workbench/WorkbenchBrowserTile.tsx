@@ -217,6 +217,7 @@ export function WorkbenchBrowserTile({
             cornerRadius={resolveDockviewBrowserSurfaceNativeRadius(surfacePresentation.borderRadius)}
             stackingLayer={surfacePresentation.stackingLayer}
             subscribePositionChanges={surfacePresentation.subscribePositionChanges}
+            resolveLayoutAnchor={surfacePresentation.resolveLayoutAnchor}
             className="absolute inset-0 size-full"
           />
           ) : null}

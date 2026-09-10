@@ -27,6 +27,8 @@ export interface BrowserSurfaceBackendSlotProps {
   readonly className?: string;
   readonly fitSourceContent?: boolean;
   readonly subscribePositionChanges?: (listener: () => void) => () => void;
+  /** Where the surface sits in Dockview; native backend only. */
+  readonly resolveLayoutAnchor?: () => HTMLElement | null;
 }
 
 function LegacyBrowserSurfaceSlot({
@@ -57,7 +59,14 @@ export function BrowserSurfaceBackendSlot(props: BrowserSurfaceBackendSlotProps)
   const backend = expectedBackendForState(migrationStateFor(props.descriptor.kind));
 
   if (backend === "main-webcontentsview") {
-    const { descriptor, visible, cornerRadius, className, subscribePositionChanges } = props;
+    const {
+      descriptor,
+      visible,
+      cornerRadius,
+      className,
+      subscribePositionChanges,
+      resolveLayoutAnchor,
+    } = props;
     return (
       <NativeBrowserSurfaceSlot
         descriptor={descriptor}
@@ -65,6 +74,7 @@ export function BrowserSurfaceBackendSlot(props: BrowserSurfaceBackendSlotProps)
         {...(cornerRadius === undefined ? {} : { cornerRadius })}
         {...(className === undefined ? {} : { className })}
         {...(subscribePositionChanges === undefined ? {} : { subscribePositionChanges })}
+        {...(resolveLayoutAnchor === undefined ? {} : { resolveLayoutAnchor })}
       />
     );
   }
