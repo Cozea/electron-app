@@ -6,6 +6,7 @@ import {
   toNativeRect,
   type BrowserSurfaceBounds,
 } from "../../shared/browserSurfaceLayout";
+import { resolveDockviewBrowserSurfaceNativeRadius } from "../../apps/desktop/src/features/browser/useDockviewBrowserSurfaceLayer";
 
 /**
  * The migration's performance case rests on this: however many sources dirty a
@@ -222,5 +223,25 @@ describe("browser surface bounds contract", () => {
       width: 1,
       height: 1,
     });
+  });
+});
+
+describe("resolveDockviewBrowserSurfaceNativeRadius", () => {
+  it("reads the rounded corners a top-header tile actually states", () => {
+    // A native view rounds by one number, so reading only the first of the
+    // four CSS corners means "no rounding" for every header position whose
+    // value happens to begin with a zero -- which is the default one.
+    expect(resolveDockviewBrowserSurfaceNativeRadius("0 0 12px 12px")).toBe(12);
+  });
+
+  it("reads them for every other header position too", () => {
+    expect(resolveDockviewBrowserSurfaceNativeRadius("12px 12px 0 0")).toBe(12);
+    expect(resolveDockviewBrowserSurfaceNativeRadius("0 12px 12px 0")).toBe(12);
+    expect(resolveDockviewBrowserSurfaceNativeRadius("12px 0 0 12px")).toBe(12);
+  });
+
+  it("leaves a square tile square", () => {
+    expect(resolveDockviewBrowserSurfaceNativeRadius("0 0 0 0")).toBe(0);
+    expect(resolveDockviewBrowserSurfaceNativeRadius("")).toBe(0);
   });
 });

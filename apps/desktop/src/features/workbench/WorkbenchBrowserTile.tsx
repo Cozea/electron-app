@@ -14,7 +14,10 @@ import {
   resolveBrowserWorkbenchSessionKey,
 } from "@/features/browser/browserSurfaceIdentity";
 import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore";
-import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
+import {
+  resolveDockviewBrowserSurfaceNativeRadius,
+  useDockviewBrowserSurfacePresentation,
+} from "@/features/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
 import { useProjectWorkbenchStore } from "@/lib/workbenchStore";
@@ -171,7 +174,7 @@ export function WorkbenchBrowserTile({
             descriptor={descriptor}
             visible={surfaceVisible}
             borderRadius={surfacePresentation.borderRadius}
-            cornerRadius={Number.parseFloat(surfacePresentation.borderRadius) || 0}
+            cornerRadius={resolveDockviewBrowserSurfaceNativeRadius(surfacePresentation.borderRadius)}
             stackingLayer={surfacePresentation.stackingLayer}
             nativeOrder={surfacePresentation.stackingLayer}
             subscribePositionChanges={surfacePresentation.subscribePositionChanges}

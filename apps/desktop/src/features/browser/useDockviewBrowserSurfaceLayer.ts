@@ -70,6 +70,27 @@ function readPanelPresentation(
  * ladder advances by two for each level, leaving the intervening layer free
  * for content hosted outside the Dockview DOM tree.
  */
+/**
+ * The single radius a native view can actually round by.
+ *
+ * `setBorderRadius` takes one number, so the four-corner CSS value a tile
+ * states cannot be expressed natively. The largest corner is used: rounding a
+ * corner that wanted a square one leaves a small notch against the tile chrome,
+ * while leaving the outer corners square leaves the page visibly overhanging
+ * the tile it sits in, which is the worse of the two.
+ *
+ * Reading only the first value would silently mean "no rounding at all" for
+ * every header position whose CSS happens to start with a zero.
+ */
+export function resolveDockviewBrowserSurfaceNativeRadius(borderRadius: string): number {
+  let largest = 0;
+  for (const corner of borderRadius.split(/\s+/)) {
+    const parsed = Number.parseFloat(corner);
+    if (Number.isFinite(parsed) && parsed > largest) largest = parsed;
+  }
+  return largest;
+}
+
 export function useDockviewBrowserSurfacePresentation(
   panelApi: DockviewPanelApi,
   containerApi: DockviewApi,
