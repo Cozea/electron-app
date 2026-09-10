@@ -86,8 +86,19 @@ const { BrowserSurfaceNativeHost } = await import(
 
 const makeWindow = () => {
   const children: unknown[] = [];
+  // The host watches the window's own renderer, so the fake window has to be
+  // able to report that its document went away.
+  const rendererListeners = new Map<string, (...args: never[]) => void>();
   return {
     isDestroyed: () => false,
+    webContents: {
+      on: vi.fn((event: string, listener: (...args: never[]) => void) => {
+        rendererListeners.set(event, listener);
+      }),
+      emit: (event: string, ...args: unknown[]) =>
+        rendererListeners.get(event)?.(...(args as never[])),
+      listenerCount: (event: string) => (rendererListeners.has(event) ? 1 : 0),
+    },
     contentView: {
       children,
       addChildView: vi.fn((view: unknown) => {
@@ -339,5 +350,85 @@ describe("BrowserSurfaceNativeHost", () => {
     await host.releaseAll();
 
     expect(host.list()).toHaveLength(0);
+  });
+});
+
+describe("BrowserSurfaceNativeHost renderer lifecycle", () => {
+  const makeHost = (window: ReturnType<typeof makeWindow>) =>
+    new BrowserSurfaceNativeHost({
+      sessions: { resolve: () => ({}) as never } as never,
+      getWindow: () => window as never,
+    });
+
+  it("drops surfaces when the renderer document is replaced", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    const view = await host.ensureSurface(descriptor());
+
+    // A reloaded renderer mints new runtimeTabIds, so it can never name these
+    // surfaces again: left alone they keep painting over the workbench and no
+    // tile can close them.
+    window.webContents.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: false,
+    });
+    await Promise.resolve();
+
+    expect(host.has("rt_1")).toBe(false);
+    expect(view.isDisposed).toBe(true);
+    expect(window.contentView.children).toHaveLength(0);
+  });
+
+  it("keeps surfaces across a same-document navigation", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    await host.ensureSurface(descriptor());
+
+    // pushState and fragment navigation keep renderer memory, so the tiles
+    // still own their surfaces.
+    window.webContents.emit("did-start-navigation", {
+      isMainFrame: true,
+      isSameDocument: true,
+    });
+    await Promise.resolve();
+
+    expect(host.has("rt_1")).toBe(true);
+  });
+
+  it("keeps surfaces when a subframe navigates", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    await host.ensureSurface(descriptor());
+
+    window.webContents.emit("did-start-navigation", {
+      isMainFrame: false,
+      isSameDocument: false,
+    });
+    await Promise.resolve();
+
+    expect(host.has("rt_1")).toBe(true);
+  });
+
+  it("drops surfaces when the renderer crashes", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    await host.ensureSurface(descriptor());
+
+    // A crashed renderer never gets to announce anything, so waiting to be told
+    // would leak every surface it owned.
+    window.webContents.emit("render-process-gone");
+    await Promise.resolve();
+
+    expect(host.has("rt_1")).toBe(false);
+  });
+
+  it("watches the renderer once, not once per surface", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    await host.ensureSurface(descriptor("rt_1"));
+    await host.ensureSurface(descriptor("rt_2"));
+    await host.ensureSurface(descriptor("rt_3"));
+
+    expect(window.webContents.listenerCount("did-start-navigation")).toBe(1);
   });
 });

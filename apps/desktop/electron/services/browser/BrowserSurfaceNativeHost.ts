@@ -30,9 +30,38 @@ export interface BrowserSurfaceNativeHostOptions {
 export class BrowserSurfaceNativeHost {
   private readonly surfaces = new Map<string, BrowserSurfaceView>();
   private readonly options: BrowserSurfaceNativeHostOptions;
+  private readonly watchedRenderers = new WeakSet<Electron.WebContents>();
 
   constructor(options: BrowserSurfaceNativeHostOptions) {
     this.options = options;
+  }
+
+  /**
+   * Drop every surface when the window's renderer document goes away.
+   *
+   * A `runtimeTabId` exists only in renderer memory, and a reloaded renderer
+   * mints fresh ones, so it can neither name nor release the surfaces it asked
+   * for before the reload. Those views stay parented to the window and keep
+   * painting over the workbench, and closing the tile that used to own one
+   * releases the surface created after the reload instead.
+   *
+   * Main owns these browsers (INV-001), so noticing the renderer leave is
+   * main's job rather than something to trust the renderer to announce -- a
+   * crashed renderer never gets to announce anything at all.
+   */
+  private watchHostRenderer(window: BrowserWindow): void {
+    const contents = window.webContents;
+    if (this.watchedRenderers.has(contents)) return;
+    this.watchedRenderers.add(contents);
+
+    contents.on("did-start-navigation", (details) => {
+      // Same-document navigation keeps the renderer's memory, and with it every
+      // runtimeTabId, so the surfaces are still owned and must not be dropped.
+      if (details.isMainFrame && !details.isSameDocument) void this.releaseAll();
+    });
+    contents.on("render-process-gone", () => {
+      void this.releaseAll();
+    });
   }
 
   has(runtimeTabId: string): boolean {
@@ -60,6 +89,7 @@ export class BrowserSurfaceNativeHost {
     if (existing && !existing.isDisposed) return existing;
 
     const window = this.options.getWindow();
+    if (window && !window.isDestroyed()) this.watchHostRenderer(window);
     if (!window || window.isDestroyed()) {
       // Explicit failure rather than a surface that exists but never paints
       // (INV-013).
