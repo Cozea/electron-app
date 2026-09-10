@@ -56,6 +56,7 @@ export class BrowserSurfaceView {
   private occluded = false;
   private disposed = false;
   private lastBounds: BrowserSurfaceBounds | null = null;
+  private lastBorderRadius: number | null = null;
 
   constructor(options: BrowserSurfaceViewOptions) {
     this.runtimeTabId = options.runtimeTabId;
@@ -101,18 +102,26 @@ export class BrowserSurfaceView {
   }
 
   /**
-   * Apply a rectangle measured by the renderer.
+   * Apply native presentation state measured by the renderer.
    *
-   * Unchanged rectangles are dropped here as well as renderer-side, since a
-   * repeated `setBounds` still crosses into the compositor.
+   * Bounds and radius are deduplicated independently. A floating/docked chrome
+   * transition can change corner radius without moving the rectangle, and that
+   * update must still reach the native view.
    */
   layout(bounds: BrowserSurfaceBounds, borderRadius = 0): void {
     if (this.disposed) return;
-    if (sameBounds(this.lastBounds, bounds)) return;
+    const boundsChanged = !sameBounds(this.lastBounds, bounds);
+    const radiusChanged = this.lastBorderRadius !== borderRadius;
+    if (!boundsChanged && !radiusChanged) return;
 
-    this.lastBounds = { ...bounds };
-    this.view.setBorderRadius(borderRadius);
-    this.view.setBounds({ ...bounds });
+    if (radiusChanged) {
+      this.lastBorderRadius = borderRadius;
+      this.view.setBorderRadius(borderRadius);
+    }
+    if (boundsChanged) {
+      this.lastBounds = { ...bounds };
+      this.view.setBounds({ ...bounds });
+    }
     this.hasBeenLaidOut = true;
     this.reconcileVisibility();
   }
