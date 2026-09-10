@@ -128,7 +128,11 @@ placement, so main reads `webContents.getZoomFactor()` on the window it owns.
 ### Interactive acceptance still owed
 
 These need a running workbench and are not covered by the suite. Until they
-pass, the parity columns above stay `native-pending`:
+pass, the parity columns above stay `native-pending`.
+
+With the move verified, the defining invariant now holds for mount, unmount,
+move, resize, hide and return. Float and popout remain unverified and are
+expected to misbehave while D4 and D5 stand.
 
 - PH3-A: open a tile, navigate, back/forward, reload, title, favicon,
   find-in-page, zoom, DevTools, close and reopen.
@@ -139,10 +143,12 @@ pass, the parity columns above stay `native-pending`:
 - PH3-E: a tile restored from a persisted layout, not one opened by hand, and a
   round trip to another top-level route and back. Both are currently broken by
   D1 and were never covered by the original PH3-A pass.
-- Drag a tile between groups and confirm `webContentsId` is unchanged
-  afterwards. This is the half of the defining invariant that synthetic input
-  cannot drive: Dockview uses HTML5 drag-and-drop, which ignores injected mouse
-  events, so it needs a human hand.
+- ~~Drag a tile between groups and confirm `webContentsId` is unchanged~~
+  **PASSED 2026-09-10.** A browser tile moved to another group kept
+  `webContentsId` 8, never stopped drawing (`was: true` straight through), and
+  re-laid-out from 492px to 991px wide in one step. Unsubmitted text in the page
+  survived, which a rebuilt browser could not have preserved. Driven by hand:
+  synthetic mouse events cannot trigger HTML5 drag-and-drop.
 
 `bun run smoke:native-browser-surface` already covers navigation, history,
 reload, title, zoom, DevTools and the storage-parity half of PH3-D against real
@@ -201,18 +207,33 @@ above the surface.
 Deliberately not fixed yet. Doing it properly means deciding what counts as an
 overlapping overlay and who owns that computation, which is Phase 4 work.
 
-### D3 - Mid-drag gaps and overhangs
+### D3 - The surface trails the tile through any continuous resize
 
-During a Dockview drag the surface chases the moving placeholder over IPC, so it
-lags behind the tile (black gaps) and paints outside it and over the drop
-indicator (overhang). Same root cause as D2: nothing occludes during a drag.
+Any gesture that resizes a browser tile continuously leaves the native view
+behind the pane edge for the duration of the drag: a black gap on the growing
+side, page painted past the tile boundary on the shrinking side. It settles
+correctly on release. Confirmed for the splitter between two tiles, and for
+dragging the OS window edge; the sidebar splitter is the same path.
 
-The hook points already exist in `useWorkbenchDockviewRuntime.ts`
-(`onWillDragPanel`, `onWillDragGroup`), plus a `dragend` listener for the
-cancelled-drag case, since `onDidDrop` only fires on a successful drop.
+Moving a panel between groups is *not* affected, which is the tell: that gesture
+has no continuous phase, so the surface relands once at its new rectangle.
 
-Held back because hiding every browser tile for the duration of any drag is a
-visible behaviour change that should be chosen deliberately.
+This is latency, not layering, and it is not the same root cause as D2. The DOM
+pane resizes synchronously in the renderer while the surface's new rectangle has
+to be measured, coalesced to a frame, and carried across an IPC boundary before
+main can call `setBounds`. The native layer is therefore always at least one
+round trip behind a continuously moving edge, and at drag frequency that reads
+as tearing.
+
+Occluding during the drag would hide the symptom but also hide the page exactly
+while the user is sizing it to fit, which is the wrong trade for this gesture --
+unlike an overlay, where hiding is the correct answer. The real options are to
+shorten the path geometry travels, or to accept the trail and make it less
+visible. Neither is decided.
+
+That the OS window resize reproduces it too rules out anything Dockview-specific
+and confirms the shape of the problem: it is not about which widget is being
+dragged, only about the rectangle changing every frame.
 
 ### D4 - Floating group order is computed and then ignored
 
