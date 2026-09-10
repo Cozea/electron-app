@@ -133,6 +133,33 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'out/renderer')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
+/**
+ * Whether a packaged renderer URL may reach privileged IPC.
+ *
+ * This used to require the frame URL to be exactly `RENDERER_DIST/index.html`,
+ * which cannot hold: the renderer is a single page app on a `file:` URL, and
+ * the router rewrites `location.pathname` whenever a route is restored or
+ * entered. A saved workbench route is applied with `history.replaceState`
+ * before bootstrap even runs, so the very first persistence call arrived from
+ * `file:///p/<id>/workbench` and was rejected. The packaged app then failed to
+ * start with "could not initialize its local desktop state".
+ *
+ * Development never saw it, because that path compares origin instead, and an
+ * origin ignores the pathname.
+ *
+ * Callers pair this with checks that the sender is the trusted window's own
+ * main frame, so what remains here is rejecting a main frame that navigated
+ * off `file:` altogether.
+ *
+ * Deliberately loosened for alpha, with Kelyan's agreement. It is weaker than
+ * the original intent: any `file:` document in that frame now qualifies. See
+ * `.agent/TODO-renderer-trust-check.md` before this ships anywhere that needs
+ * a real trust boundary, such as an enterprise server.
+ */
+function isTrustedPackagedRendererURL(parsed: URL): boolean {
+  return parsed.protocol === 'file:'
+}
+
 const DEFAULT_PROTOCOL = VITE_DEV_SERVER_URL ? 'cozea-dev' : 'cozea'
 const PROTOCOL = process.env.COZEA_PROTOCOL || DEFAULT_PROTOCOL
 const LEGACY_PROTOCOL = 'cozea'
@@ -1820,7 +1847,7 @@ registerDesktopPersistenceHandlers(ipcMain, {
     try {
       const parsed = new URL(url)
       if (VITE_DEV_SERVER_URL) return parsed.origin === new URL(VITE_DEV_SERVER_URL).origin
-      return parsed.protocol === 'file:' && fileURLToPath(parsed) === path.join(RENDERER_DIST, 'index.html')
+      return isTrustedPackagedRendererURL(parsed)
     } catch { return false }
   },
 })
@@ -1831,7 +1858,7 @@ registerWorkbenchSessionHandlers(ipcMain, {
     try {
       const parsed = new URL(url)
       if (VITE_DEV_SERVER_URL) return parsed.origin === new URL(VITE_DEV_SERVER_URL).origin
-      return parsed.protocol === 'file:' && fileURLToPath(parsed) === path.join(RENDERER_DIST, 'index.html')
+      return isTrustedPackagedRendererURL(parsed)
     } catch { return false }
   },
   browserSurfaces: {
