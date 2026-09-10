@@ -35,11 +35,18 @@ export function BrowserSurfaceSlot({
     const update = () => {
       const rect = element.getBoundingClientRect();
       const presentation = presentationRef.current;
+      // Round the edges and derive the size from them. Rounding x and width
+      // independently puts the right edge at `round(x) + round(width)`, which is
+      // not `round(x + width)` -- so a tile at a fractional x (the normal case
+      // with fractional panel splits) left a systematic one-pixel seam between
+      // the guest content and the tile behind it.
+      const left = Math.round(rect.left);
+      const top = Math.round(rect.top);
       const nextRect = {
-        x: Math.round(rect.x),
-        y: Math.round(rect.y),
-        width: Math.max(1, Math.round(rect.width)),
-        height: Math.max(1, Math.round(rect.height)),
+        x: left,
+        y: top,
+        width: Math.max(1, Math.round(rect.right) - left),
+        height: Math.max(1, Math.round(rect.bottom) - top),
       };
       const presented = lease.present(
         nextRect,
@@ -68,17 +75,22 @@ export function BrowserSurfaceSlot({
     };
     updateRef.current = update;
     update();
-    const observer = new ResizeObserver(update);
+    // Every trigger below fires once per frame while the user drags. The
+    // ResizeObserver and the window resize listener both fire for a window
+    // resize, so the uncoalesced version did two synchronous layout reads and
+    // two store writes per slot per frame; the capture-phase scroll listener
+    // fires for every scroll anywhere in the app.
+    const observer = new ResizeObserver(scheduleUpdate);
     observer.observe(element);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("scroll", scheduleUpdate, true);
     const unsubscribePositionChanges = subscribePositionChanges?.(scheduleUpdate);
     return () => {
       unsubscribePositionChanges?.();
       if (frameId !== null) window.cancelAnimationFrame(frameId);
       observer.disconnect();
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("scroll", scheduleUpdate, true);
       if (updateRef.current === update) updateRef.current = null;
       lease.release();
     };
