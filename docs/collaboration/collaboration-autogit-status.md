@@ -165,3 +165,96 @@ Exit-gate evidence:
 - Critical assertions tested and passing (branch equality, single active workbench, local idle independence, rebase explicit action)
 - No production path forced to adopt incorrect compatibility semantics
 
+---
+
+## P02 — Standalone projectd and local client protocol
+
+Status: complete
+
+Baseline:
+- base commit: `2fd158ef` (P01 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Yjs text document model: [apps/desktop/src/lib/yjs/YjsProjectDoc.ts](apps/desktop/src/lib/yjs/YjsProjectDoc.ts) and [shared/yjsCore.ts](shared/yjsCore.ts)
+- Yjs runtime provider & lifecycle: [apps/desktop/src/contexts/YjsProjectContext.tsx](apps/desktop/src/contexts/YjsProjectContext.tsx) via [apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx](apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx)
+- Filesystem observation: [apps/desktop/electron/projectWatcher.ts](apps/desktop/electron/projectWatcher.ts)
+- Git sync services: [apps/desktop/electron/services/gitSyncService.ts](apps/desktop/electron/services/gitSyncService.ts)
+- Direct Git execution: [apps/desktop/electron/gitRuntime.ts](apps/desktop/electron/gitRuntime.ts)
+- Collaboration session transport: [cloudflare/worker/src/routes/collabSession.ts](cloudflare/worker/src/routes/collabSession.ts), [cloudflare/worker/src/durableObjects/CollabRoom.ts](cloudflare/worker/src/durableObjects/CollabRoom.ts)
+
+Production owners after:
+- Same live production runtime owners (P02 introduces the standalone background daemon and local client protocol without migrating active collaboration workloads yet)
+- Daemon & protocol packages established:
+  - Protocol & client: [packages/projectd-protocol/](packages/projectd-protocol/)
+  - Background daemon: [apps/projectd/](apps/projectd/)
+  - CLI control tool: `cozea-projectctl` in [apps/projectd/src/cli.ts](apps/projectd/src/cli.ts)
+  - Electron main client bridge: [apps/desktop/electron/projectd/](apps/desktop/electron/projectd/)
+
+Files created:
+- [packages/projectd-protocol/package.json](packages/projectd-protocol/package.json)
+- [packages/projectd-protocol/src/index.ts](packages/projectd-protocol/src/index.ts) (protocol types, error codes, framing decoder)
+- [packages/projectd-protocol/src/client.ts](packages/projectd-protocol/src/client.ts) (Unix-socket ProjectdClient with auto-handshake and request/subscription support)
+- [apps/projectd/package.json](apps/projectd/package.json)
+- [apps/projectd/tsconfig.json](apps/projectd/tsconfig.json)
+- [apps/projectd/src/main.ts](apps/projectd/src/main.ts) (daemon entrypoint with signal handlers)
+- [apps/projectd/src/cli.ts](apps/projectd/src/cli.ts) (cozea-projectctl CLI implementation)
+- [apps/projectd/src/server/ProjectdServer.ts](apps/projectd/src/server/ProjectdServer.ts) (Unix domain socket server, single-instance lock, permission 0600, request dispatch, event broadcast, and graceful shutdown)
+- [apps/desktop/electron/projectd/ProjectdClient.ts](apps/desktop/electron/projectd/ProjectdClient.ts) (Electron main client bridge)
+- [apps/desktop/electron/projectd/ProjectdServiceRegistration.ts](apps/desktop/electron/projectd/ProjectdServiceRegistration.ts) (non-blocking lifecycle connection in Electron main)
+- [apps/desktop/electron/projectd/registerProjectdHandlers.ts](apps/desktop/electron/projectd/registerProjectdHandlers.ts) (Electron IPC handlers for projectd)
+- [tests/projectd/projectdLifecycle.test.ts](tests/projectd/projectdLifecycle.test.ts) (Checkpoints P02-A, P02-B, and P02-C test suite)
+
+Files modified:
+- [package.json](package.json) (added apps/projectd workspace and build:projectd / projectctl scripts)
+- [tsconfig.json](tsconfig.json) (added @cozea/projectd-protocol path mapping)
+- [vitest.config.ts](vitest.config.ts) (added @cozea/projectd-protocol alias)
+- [apps/desktop/tsconfig.electron.json](apps/desktop/tsconfig.electron.json) (added @cozea/projectd-protocol paths and include)
+- [apps/desktop/electron.vite.config.ts](apps/desktop/electron.vite.config.ts) (added @cozea/projectd-protocol build alias)
+- [apps/desktop/electron/main.ts](apps/desktop/electron/main.ts) (integrated projectd handlers and non-blocking service boot)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` completed cleanly
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` completed cleanly
+- command: `bunx tsc --project apps/projectd/tsconfig.json --noEmit`
+  result: passed (0 errors)
+  evidence: projectd package typecheck clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled `dist/projectd.mjs` (9.56 KB) and `dist/cozea-projectctl.mjs` (10.79 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded with projectd aliases resolved
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (12 test files, 71 tests)
+  evidence: all 7 lifecycle tests in `tests/projectd/projectdLifecycle.test.ts` passed
+
+Manual qualification:
+- scenario: Checkpoint P02-A: Daemon runs from source without Electron
+  result: Verified ProjectdServer creates Unix domain socket `/tmp/cozea-projectd-<uid>.sock`, enforces `0600` permissions, validates protocol version `1.0.0`, manages subscriptions and broadcasts, and enforces single-instance locking.
+- scenario: Checkpoint P02-B: Standalone compiled artifact runs and projectctl health succeeds
+  result: Spawned standalone `node dist/projectd.mjs` process without Electron, executed `cozea-projectctl health --json`, verified healthy response matching process PID, and verified `cozea-projectctl shutdown` gracefully unlinks the socket and terminates the process.
+- scenario: Checkpoint P02-C: Electron connects/disconnects without owning daemon lifecycle
+  result: Verified Electron's `ProjectdClient` connects, queries health, disconnects without killing the server, and reconnects; verified unreachable daemon fails gracefully without blocking Electron boot.
+
+Known follow-ups:
+- Phase P03 will implement the native macOS helper (Swift), LaunchAgent background registration (SMAppService), and Keychain identity.
+
+Exit-gate evidence:
+- Packaged/local standalone projectd responds to `cozea-projectctl health` while Electron is not running.
+- Electron is a client and does not own the daemon process lifecycle.
+- Zero React imports in projectd or projectd-protocol.
+
+

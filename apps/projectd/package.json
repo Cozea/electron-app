@@ -1,0 +1,17 @@
+{
+  "name": "@cozea/projectd",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "projectd": "./src/main.ts",
+    "cozea-projectctl": "./src/cli.ts"
+  },
+  "scripts": {
+    "build": "bun build ./src/main.ts --target=node --outfile=./dist/projectd.mjs && bun build ./src/cli.ts --target=node --outfile=./dist/cozea-projectctl.mjs",
+    "start": "bun run ./src/main.ts"
+  },
+  "dependencies": {
+    "@cozea/projectd-protocol": "workspace:*"
+  }
+}

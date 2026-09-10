@@ -6,6 +6,7 @@
   "workspaces": [
     "apps/desktop",
     "apps/server",
+    "apps/projectd",
     "packages/*"
   ],
   "main": "apps/desktop/out/main/index.js",
@@ -24,6 +25,8 @@
     "perf:bundle-summary": "bun run scripts/summarize-renderer-bundles.mjs",
     "deploy": "bunx convex deploy",
     "build": "bun run --cwd apps/desktop build",
+    "build:projectd": "bun run --cwd apps/projectd build",
+    "projectctl": "bun run apps/projectd/src/cli.ts",
     "prepare:runtime-metadata": "bun run scripts/prepare-runtime-metadata.mjs",
     "test:computer-use": "bunx vitest run tests/computer-use",
     "prepare:computer-use": "node scripts/prepare-computer-use-runtime.mjs",

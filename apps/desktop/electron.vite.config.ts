@@ -120,6 +120,14 @@ const sharedAliases: Alias[] = [
     replacement: path.resolve(repoRoot, './packages/client-runtime/src/index.ts'),
   },
   {
+    find: /^@cozea\/projectd-protocol\/(.*)$/,
+    replacement: `${path.resolve(repoRoot, './packages/projectd-protocol/src')}/$1`,
+  },
+  {
+    find: '@cozea/projectd-protocol',
+    replacement: path.resolve(repoRoot, './packages/projectd-protocol/src/index.ts'),
+  },
+  {
     find: '@t3tools/contracts',
     replacement: path.resolve(t3Root, 'packages/contracts/src/index.ts'),
   },

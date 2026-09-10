@@ -11,6 +11,8 @@
       "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],
       "@cozea/effect-acp": ["./packages/effect-acp/src/client.ts"],
       "@cozea/effect-acp/*": ["./packages/effect-acp/src/*"],
+      "@cozea/projectd-protocol": ["./packages/projectd-protocol/src/index.ts"],
+      "@cozea/projectd-protocol/*": ["./packages/projectd-protocol/src/*"],
       "@/*": ["./apps/desktop/src/*"],
       "@shared/*": ["./shared/*"]
     }

@@ -22,6 +22,7 @@ export default defineConfig({
       "@cozea/client-runtime": path.resolve(repoRoot, "./packages/client-runtime/src/index.ts"),
       "@cozea/substrate-contracts": path.resolve(repoRoot, "./packages/substrate-contracts/src/index.ts"),
       "@cozea/substrate-client-runtime": path.resolve(repoRoot, "./packages/substrate-client-runtime/src/index.ts"),
+      "@cozea/projectd-protocol": path.resolve(repoRoot, "./packages/projectd-protocol/src/index.ts"),
     },
   },
   test: {

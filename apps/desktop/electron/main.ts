@@ -60,6 +60,8 @@ import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSession
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
+import { registerProjectdHandlers } from './projectd/registerProjectdHandlers'
+import { initProjectdService, disposeProjectdService } from './projectd/ProjectdServiceRegistration'
 import { OrgDevAppArtifactService } from './services/OrgDevAppArtifactService'
 import { OrgDevAppInstallationService } from './services/OrgDevAppInstallationService'
 import { T3BrowserSurfaceService } from './services/T3BrowserSurfaceService'
@@ -1878,6 +1880,8 @@ registerContextMenuHandlers(ipcMain, {
   getMainWindow: () => win,
 })
 
+registerProjectdHandlers()
+
 const cleanupApplicationServices = createShutdownCleanup([
   { name: 'DevApp artifacts', run: () => orgDevAppArtifactService.dispose() },
   { name: 'DevApp preview', run: () => devAppPreviewService.dispose() },
@@ -1886,6 +1890,7 @@ const cleanupApplicationServices = createShutdownCleanup([
   { name: 'Contained DevApp runtime', run: disposeContainedDevAppRuntime },
   { name: 'Preview snapshots', run: () => PreviewSnapshotService.getInstance().dispose() },
   { name: 'Local automation', run: () => LocalAutomationResolverService.getInstance().dispose() },
+  { name: 'Projectd client', run: disposeProjectdService },
 ], (name, error) => console.warn(`[Lifecycle] ${name} cleanup failed.`, error))
 
 app.on('window-all-closed', () => {
@@ -2011,6 +2016,13 @@ app.whenReady().then(() => {
       })
     },
     250,
+  )
+  scheduleBootWork(
+    'projectd-client-connected',
+    () => {
+      void initProjectdService()
+    },
+    200,
   )
   scheduleBootWork(
     'assistant-runtime-started',

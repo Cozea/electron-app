@@ -61,11 +61,18 @@
       ],
       "@cozea/substrate-client-runtime": [
         "../../packages/substrate-client-runtime/src/index.ts"
+      ],
+      "@cozea/projectd-protocol": [
+        "../../packages/projectd-protocol/src/index.ts"
+      ],
+      "@cozea/projectd-protocol/*": [
+        "../../packages/projectd-protocol/src/*"
       ]
     }
   },
   "include": [
     "electron/**/*.ts",
-    "../../shared/**/*.ts"
+    "../../shared/**/*.ts",
+    "../../packages/projectd-protocol/src/**/*.ts"
   ]
 }
