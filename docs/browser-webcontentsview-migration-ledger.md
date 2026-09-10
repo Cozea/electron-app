@@ -42,7 +42,7 @@ the target the native path must match. It is not evidence about native code.
 | 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
 | 2 — repin, native session registry, view and host | complete | `cb48b18a` |
 | 3 — Browser surface on the native backend | implementation landed; pre-Phase-4 lifecycle correction pass landed; interactive parity still pending | see below |
-| 4 — native overlay, focus, clipping, floating order | not started; no longer code-blocked by D1, but PH3-C/D/E must be rerun first | — |
+| 4 — native overlay, focus, clipping, floating order | not started; entry gate satisfied (D1 and D7 closed) | — |
 
 ## T3 pin
 
@@ -171,26 +171,25 @@ Before Phase 4 implementation begins, rerun:
   one-way layout IPC is not the next step. Whether the trail still reads as
   visually wrong during a smooth gesture remains a human check.
 - ~~PH3-C: full T3 automation matrix against the native Browser tile.~~
-  **RUN 2026-09-10 — passes except recording (D7).** Driven by
+  **PASSED 2026-09-10 for every machine-drivable operation.** Driven by
   `bun run acceptance:native-browser-automation`, which runs the real
   `T3BrowserSurfaceService` -- real preview manager, Effect runtime and
   Playwright locators -- against a real main-owned `WebContentsView`, and checks
   every operation through the visible contents directly rather than through
-  T3's own report. T3 state is bound to the visible `webContentsId`; a value
-  written by T3 is read back from the visible page; click, type, press, scroll,
-  waitFor, snapshot, screenshot, navigate, back/forward, refresh and
-  picture-in-picture all land in the visible browser without creating a second
-  one; an untrusted live WebContents is refused registration. Recording fails
-  (D7). Pointer and keyboard operations dispatch real input through CDP and so
-  need the harness window unoccluded; an observation row records page
-  visibility, focus and animation frames immediately before them. Two runs
-  made while the window sat on another Space timed out on click and press,
-  and the same checks pass with it visible -- attributing those two runs to
-  occlusion is inferred, since they predate the observation row.
-  Isolated as manual, each with a stated reason: picker element selection
-  and annotation submission (need a real pointer gesture; the picker opens and
-  cancels on the native tab), find-in-page (harness visibility), recording frame
-  production (blocked by D7).
+  T3's own report. On the repinned T3 (`50977ab6`): 29 passed, 0 failed. T3
+  state is bound to the visible `webContentsId`; a value written by T3 is read
+  back from the visible page; click, type, press, scroll, waitFor, snapshot,
+  screenshot, recording, picture-in-picture, navigate, back/forward and refresh
+  all land in the visible browser without creating a second one; an untrusted
+  live WebContents is refused registration.
+  Pointer and keyboard operations dispatch real input through CDP and so need
+  the harness window unoccluded; an observation row records page visibility,
+  focus and animation frames immediately before them. Two earlier runs made
+  while the window sat on another Space timed out on click and press; that
+  attribution is inferred, since they predate the observation row.
+  Isolated as manual, each with a stated reason: picker element selection and
+  annotation submission (need a real pointer gesture; the picker opens and
+  cancels on the native tab) and find-in-page (harness visibility).
   Harness note: the vendored runtime imports Playwright's injected script with
   Vite's `?raw`, so the build must load that file as text; bundling it as code
   executes Playwright inside main at load.
@@ -382,31 +381,50 @@ longer has permission to destroy the last valid layout.
 
 ### D7 — recording cannot start on a native Browser surface
 
-**Open. Found by PH3-C on 2026-09-10; blocks recording parity.**
+**Closed 2026-09-10. Fixed in T3 `50977ab6`, repinned in `e414f770`, verified
+end to end by the acceptance harness.**
 
-`startRecording` in the vendored `Manager.ts` takes `wc.hostWebContents` as the
-display-media requester and fails with `PreviewMainWindowClosedError` when it is
-null. `hostWebContents` is the embedder of a `<webview>` guest; a main-owned
-`WebContentsView` has none by definition, so recording on a native surface fails
-in production, unconditionally. The pipeline assumes the embedder renderer
-issues `getDisplayMedia` and that main's display-media handler matches
-`request.frame.frameTreeNodeId` against it before granting the guest's main
-frame as the source.
+`startRecording` in the vendored `Manager.ts` took `wc.hostWebContents` as the
+display-media requester. A main-owned `WebContentsView` has no embedder, so
+recording on a native surface failed in production unconditionally, with a
+misleading "main window is closed" error while the window was open.
 
-The error text is misleading: the window is open. The other gate on that path,
-`frameCaptureWindowOpen`, was true -- `setMainWindow` sets it and only the
-window's `closed` event clears it -- so the embedder check is the sole cause.
+The requester is now selected by ownership rather than by the absence of a host
+(Cozea/t3code `cozea/preview-native-recording-requester`):
 
-Scope is recording only. Picture-in-picture shares frame capture but not the
-embedder requirement, and passes on native.
+- a renderer guest records through its embedder, unchanged;
+- a view main vouched for in-process records through the current main renderer,
+  reached through `mainWindowRef`;
+- contents with neither proof are refused -- a missing embedder is never, by
+  itself, authorisation to record into the main renderer.
 
-Fix direction, not implemented: for native-owned contents the requester is the
-Cozea main window's renderer, which the manager already holds in
-`mainWindowRef`, rather than `wc.hostWebContents`. The manager already
-distinguishes renderer-webview from native ownership, so this selects the
-requester by ownership rather than redesigning recording. It is a vendored T3
-change and must go through the gitlink/pin process. The acceptance harness's
-recording check is the regression target.
+Ownership is re-proven after the source warms, and revoking a native vouch now
+clears a grant armed for those contents, since main revokes before it destroys a
+view. The grant source is unchanged: the armed tab's own main frame.
+
+Legacy behaviour is deliberately untouched. A recording-time check that a
+guest's embedder equals the current main renderer was considered and not added:
+registration already checks it, and adding it would change behaviour when the
+main window is replaced after a guest registers, which the existing T3 suite
+covers.
+
+Evidence:
+
+- T3: six focused regressions -- both requester selections, a revoked native
+  view refused with no main-renderer fallback, a native view with no main
+  renderer, and revoke or close while a grant is armed. Restoring the old
+  null-host path fails four of them; dropping only the revoke-clears-grant line
+  fails the armed-revoke case. Desktop suite 804 passed; tsgo and `vp fmt`
+  clean. `vp lint` cannot load the t3code config in this environment and fails
+  identically on untouched files, so it could not be run.
+- Parent, on the committed pin after `prepare:t3-runtime`: the harness drives
+  the real pipeline -- main asks the Cozea renderer to request display media,
+  which is granted the native tab's frame. 17 frames arrived while a visible
+  element changed, and the sampled pixel matched the probe tab (`1,170,86`
+  against `rgb(0,170,85)`) rather than the host. Stopping left no grant -- a
+  fresh gesture-backed `getDisplayMedia` was refused -- and a restarted
+  recording streamed; closing a tab mid-recording ended the track and left no
+  grant; no second or hidden browser appeared.
 
 ### Development-only artifact worth knowing
 
@@ -429,16 +447,17 @@ Do not migrate a second surface family yet.
 Phase 4 may begin only after the corrected PH3-C, PH3-D and PH3-E checks are run
 and the D1 route/lifetime regression is confirmed closed.
 
-Status 2026-09-10: every machine-drivable Phase 3 check has now been run.
-PH3-A, PH3-D and PH3-E pass, D1 is closed, PH3-B is measured, and the
-tile-close, session-freeze and renderer-reload gates pass through the real
-service. PH3-C passes except recording, which fails on native surfaces (D7).
-The genuinely manual PH3-C checks are isolated above with reasons.
+Status 2026-09-10: every machine-drivable Phase 3 check has been run and
+passes. PH3-A, PH3-C, PH3-D and PH3-E pass, PH3-B is measured, D1 and D7 are
+closed, and the tile-close, session-freeze and renderer-reload gates pass
+through the real service. The genuinely manual PH3-C checks -- picker element
+selection and annotation submission, and find-in-page -- are isolated above
+with reasons.
 
-Phase 4 is held on one decision: fix D7 first, or accept recording as a known
-gap in the Browser canary and carry it as a precondition for `NATIVE_REQUIRED`
-instead. Running the manual checks does not change that decision. D2, D4 and D5 are not
-prerequisites to Phase 4; implementing them is Phase 4.
+**The Phase 4 entry gate is satisfied.** Storage parity is `native-verified` on
+PH3-D's real-Electron evidence at the Electron Session boundary. Automation
+parity stays `native-pending` until the isolated manual PH3-C checks are run;
+overlay parity cannot be measured until Phase 4 delivers occlusion.
 
 ## Performance baseline (Phase 0)
 

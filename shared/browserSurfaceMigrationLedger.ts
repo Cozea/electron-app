@@ -96,16 +96,17 @@ export const BROWSER_SURFACE_MIGRATION_LEDGER: ReadonlyArray<BrowserSurfaceMigra
     // session key, which closed D1.
     //
     // PH3-A, PH3-C, PH3-D and PH3-E have been rerun against the corrected
-    // branch (2026-09-10). Automation parity stays pending: PH3-C passes every
-    // operation except recording, which cannot start on a native surface (D7).
-    // Storage parity has passing native evidence from PH3-D but is left for an
-    // explicit review rather than flipped as a side effect of recording it.
+    // branch (2026-09-10), and D7 (native recording) is fixed and repinned.
+    // Automation parity stays pending only on the manual PH3-C checks: picker
+    // element selection, annotation submission and find-in-page.
+    // Storage parity is native-verified: PH3-D supplied real-Electron evidence
+    // at the Electron Session boundary, which is the actual isolation mechanism.
     // D2 (DOM overlay occlusion), D4 (floating native order) and D5
     // (popout-window reparenting) are Phase 4 deliverables, not prerequisites.
     state: "NATIVE_CANARY",
     activeBackend: "main-webcontentsview",
     automationParity: "native-pending",
-    storageParity: "native-pending",
+    storageParity: "native-verified",
     overlayParity: "native-pending",
     lastUpdatedPhase: 3,
   },
