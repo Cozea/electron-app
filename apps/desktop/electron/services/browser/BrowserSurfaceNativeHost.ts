@@ -28,10 +28,10 @@ export interface BrowserSurfaceNativeHostOptions {
   readonly automation?: BrowserSurfaceAutomationBinder | null;
   readonly resolvePreload?: (descriptor: BrowserSurfaceDescriptor) => string | null;
   /**
-   * Preload world posture is an explicit policy decision. Do not infer
-   * shared-world merely from the existence of a preload: future keyboard-only
-   * preloads should stay isolated, while the current annotation picker needs
-   * shared-world to see the page's React DevTools hook.
+   * Override the preload-world policy. The current T3 preview preloads are
+   * annotation-picker preloads and require shared-world to see the page's React
+   * DevTools hook; a future keyboard-only or other isolated preload must opt
+   * back to `isolated` explicitly here rather than inheriting that parity rule.
    */
   readonly resolvePreloadPosture?: (
     descriptor: BrowserSurfaceDescriptor,
@@ -118,13 +118,19 @@ export class BrowserSurfaceNativeHost {
     }
 
     const preloadPath = this.options.resolvePreload?.(descriptor) ?? null;
+    const posture =
+      this.options.resolvePreloadPosture?.(descriptor) ??
+      // Current native product surfaces receive the same T3 picker preloads as
+      // the legacy webview path. Those preloads require page-world access for
+      // component-aware picks. Bare/shadow test surfaces remain isolated.
+      (preloadPath ? "shared-world" : "isolated");
     const view = new BrowserSurfaceView({
       runtimeTabId: descriptor.runtimeTabId,
       descriptor,
       session: this.options.sessions.resolve(descriptor),
       window,
       preloadPath,
-      posture: this.options.resolvePreloadPosture?.(descriptor) ?? "isolated",
+      posture,
     });
     this.surfaces.set(descriptor.runtimeTabId, view);
 
