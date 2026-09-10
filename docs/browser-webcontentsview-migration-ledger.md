@@ -170,8 +170,24 @@ Before Phase 4 implementation begins, rerun:
   **Measured 2026-09-10; see D3.** The transport is not the bottleneck, so
   one-way layout IPC is not the next step. Whether the trail still reads as
   visually wrong during a smooth gesture remains a human check.
-- PH3-C: full T3 automation matrix against the native Browser tile, including
-  picker/annotation now that the native preload is wired.
+- ~~PH3-C: full T3 automation matrix against the native Browser tile.~~
+  **RUN 2026-09-10 — passes except recording (D7).** Driven by
+  `bun run acceptance:native-browser-automation`, which runs the real
+  `T3BrowserSurfaceService` -- real preview manager, Effect runtime and
+  Playwright locators -- against a real main-owned `WebContentsView`, and checks
+  every operation through the visible contents directly rather than through
+  T3's own report. T3 state is bound to the visible `webContentsId`; a value
+  written by T3 is read back from the visible page; click, type, press, scroll,
+  waitFor, snapshot, screenshot, navigate, back/forward, refresh and
+  picture-in-picture all land in the visible browser without creating a second
+  one; an untrusted live WebContents is refused registration. Recording fails
+  (D7). Isolated as manual, each with a stated reason: picker element selection
+  and annotation submission (need a real pointer gesture; the picker opens and
+  cancels on the native tab), find-in-page (harness visibility), recording frame
+  production (blocked by D7).
+  Harness note: the vendored runtime imports Playwright's injected script with
+  Vite's `?raw`, so the build must load that file as text; bundling it as code
+  executes Playwright inside main at load.
 - ~~PH3-D: cookie/storage sharing and isolation across live Browser tiles.~~
   **PASSED 2026-09-10** via `bun run smoke:native-browser-surface` against real
   Electron sessions on this head: two surfaces in one workspace share storage,
@@ -189,14 +205,23 @@ Before Phase 4 implementation begins, rerun:
   workbench, and no errors were raised. Trust revocation before
   `WebContents.close` and descriptor/native teardown ordering are asserted
   directly by `browserSurfacePrePhase4Corrections` and the native-host
-  regressions rather than inferred from the screen.
-- Session freeze/close: verify no native WCV orphan remains.
+  regressions rather than inferred from the screen. The acceptance harness now
+  also verifies the internal half through the real service: native view,
+  logical T3 state and inventory entry removed and the contents destroyed
+  together.
+- ~~Session freeze/close~~ **PASSED 2026-09-10** through the production
+  eviction path, `releaseSurfacesForWorkbenchSession`, which
+  `WorkbenchSessionManager` calls when a session freezes or closes: every view,
+  inventory entry and contents of the evicted session went, while a second
+  session's surface was untouched and stayed automatable.
 - ~~Full renderer reload~~ **PASSED 2026-09-10.** Run with a live browser
   surface present, not an empty workbench: after Force Reload the tile returned
   painting its page with the correct title, the layout was preserved, nothing
   from before the reload survived on screen, and no errors were raised. The
   first attempt was discarded as meaningless because the workbench had no live
-  surface to orphan.
+  surface to orphan. The acceptance harness repeats it through the real service:
+  a main-frame document replacement leaves no native, logical or inventory
+  survivor, and the next surface receives only its own fresh identity.
 
 The previously verified group move remains valid evidence: the tile retained the
 same `webContentsId` and unsubmitted page state through the move.
@@ -349,6 +374,34 @@ or durable record. The original Shift+Cmd+R reproduction is still worth running
 to determine why Dockview emitted the degenerate shape, but that observation no
 longer has permission to destroy the last valid layout.
 
+### D7 — recording cannot start on a native Browser surface
+
+**Open. Found by PH3-C on 2026-09-10; blocks recording parity.**
+
+`startRecording` in the vendored `Manager.ts` takes `wc.hostWebContents` as the
+display-media requester and fails with `PreviewMainWindowClosedError` when it is
+null. `hostWebContents` is the embedder of a `<webview>` guest; a main-owned
+`WebContentsView` has none by definition, so recording on a native surface fails
+in production, unconditionally. The pipeline assumes the embedder renderer
+issues `getDisplayMedia` and that main's display-media handler matches
+`request.frame.frameTreeNodeId` against it before granting the guest's main
+frame as the source.
+
+The error text is misleading: the window is open. The other gate on that path,
+`frameCaptureWindowOpen`, was true -- `setMainWindow` sets it and only the
+window's `closed` event clears it -- so the embedder check is the sole cause.
+
+Scope is recording only. Picture-in-picture shares frame capture but not the
+embedder requirement, and passes on native.
+
+Fix direction, not implemented: for native-owned contents the requester is the
+Cozea main window's renderer, which the manager already holds in
+`mainWindowRef`, rather than `wc.hostWebContents`. The manager already
+distinguishes renderer-webview from native ownership, so this selects the
+requester by ownership rather than redesigning recording. It is a vendored T3
+change and must go through the gitlink/pin process. The acceptance harness's
+recording check is the regression target.
+
 ### Development-only artifact worth knowing
 
 Hot-module replacement of the browser module family silently blanks live tiles.
@@ -370,8 +423,15 @@ Do not migrate a second surface family yet.
 Phase 4 may begin only after the corrected PH3-C, PH3-D and PH3-E checks are run
 and the D1 route/lifetime regression is confirmed closed.
 
-PH3-E has passed and D1 is closed (2026-09-10). PH3-A, PH3-B, PH3-C and PH3-D,
-plus the tile-close, session-freeze and renderer-reload checks, remain owed. D2, D4 and D5 are not
+Status 2026-09-10: every machine-drivable Phase 3 check has now been run.
+PH3-A, PH3-D and PH3-E pass, D1 is closed, PH3-B is measured, and the
+tile-close, session-freeze and renderer-reload gates pass through the real
+service. PH3-C passes except recording, which fails on native surfaces (D7).
+The genuinely manual PH3-C checks are isolated above with reasons.
+
+Phase 4 is held on one decision: fix D7 first, or accept recording as a known
+gap in the Browser canary and carry it as a precondition for `NATIVE_REQUIRED`
+instead. Running the manual checks does not change that decision. D2, D4 and D5 are not
 prerequisites to Phase 4; implementing them is Phase 4.
 
 ## Performance baseline (Phase 0)

@@ -91,13 +91,17 @@ export const BROWSER_SURFACE_MIGRATION_LEDGER: ReadonlyArray<BrowserSurfaceMigra
     // First canary. Main owns the WCV and T3 controls that exact WebContents.
     // The pre-Phase-4 correction pass separated presentation leases from
     // browser lifetime, made warm remounts idempotent, unified logical/native
-    // teardown, hardened trust cleanup and removed an avoidable resize frame.
+    // teardown, hardened trust cleanup and removed an avoidable resize frame;
+    // the identity boundary now refuses to mint a browser from a provisional
+    // session key, which closed D1.
     //
-    // Interactive evidence already proves a group move preserves the same
-    // WebContents and unsubmitted page state. The parity columns remain pending
-    // until PH3-C/D/E are rerun against the corrected branch; code changes are
-    // not evidence. D2 (DOM overlay occlusion), D4 (floating native order) and
-    // D5 (popout-window reparenting) are Phase 4 deliverables, not prerequisites.
+    // PH3-A, PH3-C, PH3-D and PH3-E have been rerun against the corrected
+    // branch (2026-09-10). Automation parity stays pending: PH3-C passes every
+    // operation except recording, which cannot start on a native surface (D7).
+    // Storage parity has passing native evidence from PH3-D but is left for an
+    // explicit review rather than flipped as a side effect of recording it.
+    // D2 (DOM overlay occlusion), D4 (floating native order) and D5
+    // (popout-window reparenting) are Phase 4 deliverables, not prerequisites.
     state: "NATIVE_CANARY",
     activeBackend: "main-webcontentsview",
     automationParity: "native-pending",

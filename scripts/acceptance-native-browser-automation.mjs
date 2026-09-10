@@ -80,6 +80,9 @@ try {
   });
 
   const pickPreload = path.join(root, "apps/desktop/out/preload/preview-pick-preload.cjs");
+  // Production passes the built picture-in-picture preload; the service derives
+  // its PiP resource directory from it, so an empty path would point PiP at ".".
+  const pipPreload = path.join(root, "apps/desktop/out/preload/preview-pip-preload.cjs");
   const run = spawnSync(
     path.join(root, "node_modules/.bin/electron"),
     ["tests/browser/nativeBrowserAutomationAcceptance.cjs"],
@@ -94,6 +97,7 @@ try {
         ...process.env,
         COZEA_T3_SERVICE_BUNDLE: bundle,
         COZEA_PICK_PRELOAD: fs.existsSync(pickPreload) ? pickPreload : "",
+        COZEA_PIP_PRELOAD: fs.existsSync(pipPreload) ? pipPreload : "",
         COZEA_ACCEPTANCE_ARTIFACTS: path.join(outDir, "artifacts"),
         // Keep ws on its pure-JS paths so the externalised accelerators above
         // are never required.

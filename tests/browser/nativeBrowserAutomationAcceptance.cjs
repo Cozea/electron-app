@@ -135,7 +135,7 @@ app.whenReady().then(async () => {
     artifactsDirectory: process.env.COZEA_ACCEPTANCE_ARTIFACTS,
     pickPreloadPath: process.env.COZEA_PICK_PRELOAD || '',
     devAppPickPreloadPath: '',
-    pictureInPicturePreloadPath: '',
+    pictureInPicturePreloadPath: process.env.COZEA_PIP_PRELOAD || '',
   })
   // Production calls this once the main window exists; mirror that order.
   await service.setMainWindow(window)
@@ -277,6 +277,36 @@ app.whenReady().then(async () => {
       : 'commands accepted; no frames observed in this harness (see manual row)'
   })
 
+  // Picture-in-picture shares the frame-capture path with recording but not the
+  // webview-embedder requirement that breaks recording on native surfaces, so it
+  // is checked on its own rather than assumed either way.
+  await check('picture-in-picture opens and closes without replacing the browser', async () => {
+    const windowsBefore = BrowserWindow.getAllWindows().length
+    const contentsBefore = webContents.getAllWebContents().length
+    await service.openPictureInPicture(TAB)
+    await waitFor(
+      () =>
+        BrowserWindow.getAllWindows().length > windowsBefore ||
+        webContents.getAllWebContents().length > contentsBefore,
+      'a picture-in-picture window to appear',
+      10_000,
+    )
+    const windowsOpen = BrowserWindow.getAllWindows().length
+    const contentsOpen = webContents.getAllWebContents().length
+    assert.deepEqual(nativeIds(), [visibleId], 'PiP must not create a second browser')
+    const status = await service.automationStatus(TAB)
+    assert.equal(status.available, true, 'the browser must stay automatable while in PiP')
+    await service.closePictureInPicture(TAB)
+    await waitFor(
+      () =>
+        BrowserWindow.getAllWindows().length === windowsBefore &&
+        webContents.getAllWebContents().length === contentsBefore,
+      'picture-in-picture to close back to baseline',
+      10_000,
+    )
+    return `windows ${windowsBefore}->${windowsOpen}->${windowsBefore}, contents ${contentsBefore}->${contentsOpen}->${contentsBefore}`
+  }, 30_000)
+
   await check('picker opens and cancels on the native tab', async () => {
     const picking = service.pickElement(TAB)
     await sleep(500)
@@ -338,7 +368,7 @@ app.whenReady().then(async () => {
   manual('find-in-page',
     'a WebContentsView in a harness reports visibilityState hidden and never runs requestAnimationFrame, so a search result is timing-dependent here')
   manual('recording frame production',
-    'start/stop are verified above; whether frames are produced depends on real on-screen compositing')
+    'blocked by D7: recording cannot start on a native surface, so frame production cannot be judged until that is fixed')
 
   // ------------------------------------------------- Gate: explicit close ----
   await check('explicit close removes native, logical, inventory and contents together', async () => {
