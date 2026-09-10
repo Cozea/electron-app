@@ -42,6 +42,7 @@ the target the native path must match. It is not evidence about native code.
 | 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
 | 2 — repin, native session registry, view and host | complete | `cb48b18a` |
 | 3 — Browser surface on the native backend | code complete; `browser` flipped to `NATIVE_CANARY` for interactive acceptance | see below |
+| 4 — native overlay, focus, clipping, floating order | not started; blocked on D1 | — |
 
 ## T3 pin
 
@@ -156,6 +157,63 @@ Electron. find-in-page is not asserted there: a `WebContentsView` in that harnes
 reports `document.visibilityState` as hidden and never runs
 `requestAnimationFrame`, so a search is timing-dependent rather than a real
 signal.
+
+## Where this stands, and what blocks Phase 4
+
+Phases 0-3 are done. The `browser` family runs on the main-owned
+`WebContentsView` path, T3 drives the same contents the user sees, and the
+defining invariant is verified for mount, unmount, move, resize, hide and
+return -- the move leg by hand, since synthetic input cannot drive HTML5
+drag-and-drop. Float and popout are unverified and expected to misbehave while
+D4 and D5 stand.
+
+### D2 and D4 are not blockers, they are Phase 4
+
+Phase 4 of the plan is "native overlay, focus, clipping, and floating-order
+integration", and it is mandatory before any second surface family migrates. Its
+overlay inventory and single overlay coordinator are exactly what D2 describes,
+and its floating-order half is D4. Do not schedule them as corrections that come
+first; doing them is what starting Phase 4 means. D5 belongs with the same work.
+
+### D1 is the blocker
+
+Phase 4 builds an occlusion coordinator on top of surfaces whose lifetime is
+assumed to track their tile. D1 breaks that assumption: a route change destroys
+the browser, and the surface built on return never draws. Layering occlusion
+over that makes the two indistinguishable -- every "the surface is not drawing"
+report would have two candidate causes, one of them pre-existing.
+
+D1 splits into a fix and a decision:
+
+- The rebuild path loses `setNativeSurfaceVisible(true)`. The one-shot flush
+  added in `5447b99e` does not cover a slot that unmounts again before
+  `ensure()` resolves. Tractable and small.
+- Whether leaving the workbench should end a browser's life at all is a product
+  question, not a bug. The recommendation on this branch is that it should not:
+  a main-owned surface that dies when the user opens their Inbox gives up most
+  of the reason for owning it in main. The shape of the fix depends on the
+  answer, so decide before writing it.
+
+Also unexplained and worth understanding before Phase 4 rather than after: two
+surfaces churn for one visible browser tile while the tile's identity inputs
+(`tileId`, `projectId`, `laneId`, `workspaceId`, session key) stay constant
+across renders.
+
+### Suggested order
+
+1. Revert the diagnostic scaffolding. Done in `f8b455af`; recover it with
+   `git revert 46d4127d` if D1 or D6 need the instrumentation back.
+2. Fix D1, after settling the lifetime question above.
+3. Re-run PH3-A against a tile restored from a persisted layout and across a
+   route round trip -- PH3-E. Neither was covered by the original pass, and both
+   are where D1 lives.
+4. PH3-C and PH3-D. `automationParity` and `storageParity` can be measured now;
+   `overlayParity` cannot be measured until Phase 4 exists.
+5. Phase 4, which is D2, D4 and D5.
+
+D3 is not a blocker. It needs a decision rather than a diagnosis, and it rides
+naturally with Phase 4 since both touch geometry and visibility. D6 is
+pre-existing, belongs to another subsystem, and should be its own branch.
 
 ## Open defects
 
