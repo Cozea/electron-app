@@ -154,24 +154,6 @@ describe("BrowserSurfaceModelRegistry", () => {
     expect(registry.size()).toBe(0);
   });
 
-  it("keeps an in-flight presentation model indexed until attach settles", async () => {
-    const { registry, runDeferred } = makeHarness();
-    let resolvePrepare!: () => void;
-    const bridge = (registry as unknown as { bridge?: NativeBrowserSurfaceBridge }).bridge;
-    void bridge;
-    const owner = Symbol("a");
-    const model = registry.acquire(descriptor(), owner);
-    // Replace through the model's injected harness bridge by constructing a
-    // dedicated harness below; this assertion is covered more directly in the
-    // close-race case. The model must still be present before the deferred
-    // callback can observe a settled attach.
-    expect(model.pendingEnsure).toBeNull();
-    registry.release("rt_1", owner);
-    runDeferred();
-    expect(registry.size()).toBe(0);
-    void resolvePrepare;
-  });
-
   it("creates a fresh renderer proxy after route-length absence without closing main runtime", async () => {
     const { registry, bridge, runDeferred } = makeHarness();
     const firstOwner = Symbol("a");
