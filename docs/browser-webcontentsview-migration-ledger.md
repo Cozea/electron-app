@@ -42,7 +42,7 @@ the target the native path must match. It is not evidence about native code.
 | 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
 | 2 — repin, native session registry, view and host | complete | `cb48b18a` |
 | 3 — Browser surface on the native backend | implementation landed; pre-Phase-4 lifecycle correction pass landed; interactive parity still pending | see below |
-| 4 — native overlay, focus, clipping, floating order | not started; entry gate satisfied (D1 and D7 closed) | — |
+| 4 — native overlay, focus, clipping, floating order | in progress: occlusion (D2), native order (D4) and focus bridge landed and verified live; D5 popout and some live overlay rows outstanding | `224edab6`, `0bbe944d` |
 
 ## T3 pin
 
@@ -298,12 +298,15 @@ retained session identities from an actual duplicate `runtimeTabId`.
 
 ### D2 — native surfaces paint above application DOM
 
-**Open; Phase 4 deliverable.**
+**Fixed 2026-09-11 (`224edab6`, `0bbe944d`); closes when the remaining live
+overlay rows below pass.**
 
-The `setOccluded` transport exists. Phase 4 must implement the one overlay
-coordinator that inventories relevant Cozea overlays, computes rectangle overlap,
-blocks interaction, provides screenshot/neutral placeholder state, and hides /
-restores the native WCV. CSS z-index is not a solution.
+One renderer coordinator inventories Cozea's overlays, computes overlap, hides a
+covered surface whole and shows a still of the page in its slot until the
+overlay goes. See "Phase 4 — overlay, focus and native order". Verified live for
+the command palette and for Dockview floating groups; the other overlay
+categories are covered by unit tests and the declaration guard, and their live
+rows are listed as outstanding.
 
 ### D3 — surface trails tile during continuous resize
 
@@ -352,12 +355,14 @@ primary success criteria.
 
 ### D4 — floating order computed but ignored
 
-**Open; Phase 4 deliverable.**
+**Closed 2026-09-11 (`224edab6`, `0bbe944d`).**
 
-The host now defines the order contract unambiguously as back-to-front and
-suppresses identical orders. Phase 4 still needs the workbench coordinator that
-publishes the complete ordered native surface set when Dockview floating order
-changes.
+The occlusion coordinator publishes the complete back-to-front native order --
+docked surfaces beneath floating ones, floats by Dockview level -- only when it
+changes. Verified live with two overlapping floating Browser tiles and with a
+floating Browser over a floating Terminal, bringing each forward in turn: the
+front surface stays live, the one behind shows its still and its page reports
+hidden. The CSS stacking layer no longer feeds native order.
 
 ### D5 — popout leaves native surface in the main window
 
@@ -439,6 +444,106 @@ This cannot occur in production -- one module instance, one registry -- and a
 clean restart restores the tile. It is recorded because it looks exactly like a
 migration regression and was mistaken for one during this acceptance pass. Do
 not edit browser-surface sources under a running dev server while testing.
+
+## Phase 4 — overlay, focus and native order (2026-09-11)
+
+Commits: `224edab6` (coordinator, placeholders, native order, focus bridge) and
+`0bbe944d` (placement read from the Dockview group).
+
+### Overlay inventory (PH4 checkpoint note)
+
+| Category | Detected by |
+| --- | --- |
+| Dialogs, alert dialogs, sheets, the command palette, body-portal modals (chat image preview, Tasks), the tile split chooser | `data-cozea-overlay="dialog"` on the painted element |
+| Dropdown menus and submenus, selects, comboboxes | `data-cozea-overlay="menu"` on the positioner |
+| Popovers, including the header overflow | `data-cozea-overlay="popover"` |
+| Tooltips | `data-cozea-overlay="tooltip"` |
+| Toasts, the update notice | `data-cozea-overlay="notification"` |
+| Dockview floating groups | `.dv-resize-container`; covers only surfaces beneath it by `aria-level` |
+| Dockview drop targets | `.dv-drop-target-anchor`, `.dv-drop-target-dropzone` |
+| Dockview tab overflow list | `.dv-popover-anchor > *` |
+| Product tour | `.driver-overlay`, `.cozea-tour-popover` |
+| Native context menus, the editor picker, the branch menu | not overlays: macOS draws them above every view (verified live) |
+
+`browserSurfaceOverlayDeclaration.test.ts` requires every element placed on an
+application overlay layer to declare itself, so a new overlay cannot silently
+open beneath a live browser.
+
+### How it works
+
+- **One owner.** `browserSurfaceOcclusion.ts` decides occlusion and native order.
+  Observers only report that something changed -- mounts and unmounts, Dockview
+  levels, declarations, and movement of tracked overlays -- and one
+  animation-frame pass reads rectangles. There is no polling.
+- **Whole-surface cover.** A native view cannot be clipped by DOM, so a covered
+  surface is hidden whole (plan 24.3). Overlaps under 2px are shadows, not cover.
+- **Placeholder.** The slot shows the latest still at once, or a neutral fill.
+  Main requests a capture while the view is still drawn and hides the view in
+  the same turn, never waiting on it; the fresh still then replaces the old one.
+  Stills refresh after navigation and on return to the screen, never on a timer.
+- **Placement.** Read from the panel's Dockview group, not the slot. Workbench
+  panels are always-rendered, so their content lives in an overlay layer
+  outside the group and its floating container.
+- **Focus bridge.** Main reports focus entering and leaving a native surface and
+  the tile activates its panel. A focused surface hands focus to the workbench
+  renderer before it hides or is destroyed.
+- **Keyboard preload.** Not added; plan 13.6 asks for one only if necessary. T3
+  already forwards Cmd+K, Cmd+Shift+J, Cmd+, and Cmd+W from any attached
+  contents, native included, and pages keep every other shortcut. The forwarded
+  set is unchanged from the legacy host; widening it is a product decision.
+- **Rounded clipping.** Unchanged from Phase 3: one uniform native radius, the
+  largest corner. The placeholder uses the same radius.
+
+### Evidence
+
+Automated: unit tests for the occlusion core (every plan 25 case), the
+coordinator (including an always-rendered placement regression),
+capture-before-hide ordering, focus return and focus events; the real-Electron
+smoke (a still taken as the view hides matches the presented frame; native
+children reorder without recreating a browser); and the acceptance harness
+through the real service, 35 passed, 0 failed, 2 manual, including six PH4 rows.
+
+Live, in the dev app with real input and CDP state:
+
+| Row | Result |
+| --- | --- |
+| Command palette over a live Browser | pass: palette above, page hidden, still shown, same page returns |
+| Cmd+K typed while the native page has focus | pass: forwarded; palette opens; focus moves to its input; typing reaches the palette, not the page |
+| Clicking and typing into the native page | pass: the page holds focus, the Browser panel is active, the renderer reports unfocused |
+| Tooltip beside the Browser | pass: the Browser stays live |
+| Native OS menus | pass: drawn above the native view |
+| Docked Terminal beside the Browser | pass: the Browser stays live |
+| Floating Terminal over the docked Browser | pass: `floating` placeholder, page hidden |
+| Floating Browser and floating Terminal, each brought forward | pass after `0bbe944d` |
+| Two overlapping floating Browsers, each brought forward | pass: front live, back shows its still and reports hidden |
+| Closing a Browser tile | pass: its native contents are destroyed |
+
+### Findings
+
+- **Always-rendered placement** (fixed, `0bbe944d`). Found only live: every
+  always-rendered browser looked docked, so a browser floated to the front was
+  hidden under a lower float.
+- **Capture startup gap.** A view is not capturable until Chromium has presented
+  its first frame; `capturePage` rejects before that. The slot shows its neutral
+  fill for that interval.
+- **Colour-managed stills.** Captures are in the display's colour space, so a
+  still can differ slightly in colour from the live page.
+- **Overhang when a float is narrower than its group.** The native view follows
+  the group, not the float's clip. The Float menu uses 900x640, so this needs a
+  float sized below the Browser's 320px minimum. Open, minor.
+- **Escape in the computer-use harness** never reached the app, which has no
+  global shortcut or menu accelerator for it; Escape sent through CDP closes the
+  palette. Not an app defect, but worth one human confirmation.
+
+### Remaining before the Phase 4 exit
+
+- D5 popout: not started.
+- Live rows not yet driven: a Base UI dropdown, popover or select over the
+  Browser; a toast over it; the product tour; Dockview drag targets; a sheet or
+  alert dialog. Covered by unit tests and the declaration guard.
+- PH4-B: switching Dockview tabs away from a focused Browser, and returning. Unit
+  tests cover focus returning before a hide.
+- `overlayParity` stays `native-pending` until those rows pass.
 
 ## Phase 4 entry rule
 
