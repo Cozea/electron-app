@@ -7,12 +7,6 @@ import {
 import type { BrowserSurfaceBounds } from "../../shared/browserSurfaceLayout";
 import type { BrowserSurfaceDescriptor } from "../../shared/browserSurfaceTypes";
 
-/**
- * The model is what makes a browser survive React. A Dockview move unmounts the
- * old subtree before mounting the new one, so a registry that destroyed on
- * unmount would tear down Chromium every time a tile changed groups.
- */
-
 const descriptor = (runtimeTabId = "rt_1"): BrowserSurfaceDescriptor => ({
   runtimeTabId,
   tileId: `tile_${runtimeTabId}`,
@@ -34,13 +28,12 @@ const bounds = (overrides: Partial<BrowserSurfaceBounds> = {}): BrowserSurfaceBo
   ...overrides,
 });
 
-/** Deferred release runs only when the test says so. */
 const makeHarness = () => {
   const calls: Array<() => void> = [];
   const bridge: NativeBrowserSurfaceBridge = {
     prepareSurface: vi.fn(async () => undefined),
     ensureNativeSurface: vi.fn(async () => undefined),
-    releaseNativeSurface: vi.fn(async () => undefined),
+    closeSurface: vi.fn(async () => undefined),
     layoutNativeSurface: vi.fn(async () => undefined),
     setNativeSurfaceVisible: vi.fn(async () => undefined),
     setNativeSurfaceOccluded: vi.fn(async () => undefined),
@@ -53,7 +46,8 @@ const makeHarness = () => {
       return calls.length as unknown as ReturnType<typeof setTimeout>;
     },
     cancel: (handle) => {
-      calls.splice((handle as unknown as number) - 1, 1);
+      const index = (handle as unknown as number) - 1;
+      if (index >= 0 && index < calls.length) calls.splice(index, 1);
     },
   });
   return { registry, bridge, runDeferred: () => calls.splice(0).forEach((call) => call()) };
@@ -66,8 +60,6 @@ describe("BrowserSurfaceModelRegistry", () => {
 
     await model.ensure();
 
-    // Preparation carries descriptor validation and session resolution; a view
-    // created without it would have no prepared surface to attach to.
     expect(bridge.prepareSurface).toHaveBeenCalledWith(
       expect.objectContaining({ runtimeTabId: "rt_1" }),
     );
@@ -86,25 +78,22 @@ describe("BrowserSurfaceModelRegistry", () => {
     expect(bridge.ensureNativeSurface).not.toHaveBeenCalled();
   });
 
-  it("creates the native surface exactly once for one runtime tab", async () => {
+  it("creates the native surface exactly once for one renderer model", async () => {
     const { registry, bridge } = makeHarness();
-    const owner = Symbol("a");
+    const model = registry.acquire(descriptor(), Symbol("a"));
 
-    const model = registry.acquire(descriptor(), owner);
     await model.ensure();
     await model.ensure();
 
     expect(bridge.ensureNativeSurface).toHaveBeenCalledTimes(1);
   });
 
-  it("does not race two creations when mount calls overlap", async () => {
+  it("does not race overlapping ensure calls", async () => {
     const { registry, bridge } = makeHarness();
     const model = registry.acquire(descriptor(), Symbol("a"));
 
     await Promise.all([model.ensure(), model.ensure(), model.ensure()]);
 
-    // The promise is cached, not the result, so concurrent callers await one
-    // creation rather than each starting their own.
     expect(bridge.ensureNativeSurface).toHaveBeenCalledTimes(1);
   });
 
@@ -116,62 +105,71 @@ describe("BrowserSurfaceModelRegistry", () => {
     await expect(model.ensure()).rejects.toThrow("no window");
     await model.ensure();
 
-    // A rejected promise must not be cached forever.
     expect(bridge.ensureNativeSurface).toHaveBeenCalledTimes(2);
   });
 
-  it("shares one model between owners of the same surface", () => {
+  it("shares one model between simultaneous presentation owners", () => {
     const { registry } = makeHarness();
+    const firstOwner = Symbol("a");
+    const secondOwner = Symbol("b");
 
-    const first = registry.acquire(descriptor(), Symbol("a"));
-    const second = registry.acquire(descriptor(), Symbol("b"));
+    const first = registry.acquire(descriptor(), firstOwner);
+    const second = registry.acquire(descriptor(), secondOwner);
 
     expect(second).toBe(first);
     expect(first.ownerCount).toBe(2);
   });
 
-  it("keeps the browser alive while another owner still holds it", () => {
+  it("survives a real same-tick unmount/remount without closing runtime", async () => {
     const { registry, bridge, runDeferred } = makeHarness();
-    const first = Symbol("a");
-    const second = Symbol("b");
-    registry.acquire(descriptor(), first);
-    registry.acquire(descriptor(), second);
-
-    registry.release("rt_1", first);
-    runDeferred();
-
-    expect(bridge.releaseNativeSurface).not.toHaveBeenCalled();
-    expect(registry.size()).toBe(1);
-  });
-
-  it("survives an unmount and remount in the same tick", async () => {
-    const { registry, bridge, runDeferred } = makeHarness();
-    const before = registry.acquire(descriptor(), Symbol("a"));
+    const firstOwner = Symbol("a");
+    const secondOwner = Symbol("b");
+    const before = registry.acquire(descriptor(), firstOwner);
     await before.ensure();
 
-    // Exactly what a Dockview move looks like: release then acquire before the
-    // deferred destroy can run.
-    registry.release("rt_1", Symbol("a"));
-    const after = registry.acquire(descriptor(), Symbol("b"));
+    registry.release("rt_1", firstOwner);
+    const after = registry.acquire(descriptor(), secondOwner);
     runDeferred();
 
     expect(after).toBe(before);
-    expect(bridge.releaseNativeSurface).not.toHaveBeenCalled();
+    expect(bridge.closeSurface).not.toHaveBeenCalled();
     expect(bridge.ensureNativeSurface).toHaveBeenCalledTimes(1);
   });
 
-  it("destroys the surface once the last owner is really gone", () => {
+  it("hides and evicts only the renderer proxy when the last owner disappears", async () => {
     const { registry, bridge, runDeferred } = makeHarness();
     const owner = Symbol("a");
-    registry.acquire(descriptor(), owner);
+    const model = registry.acquire(descriptor(), owner);
+    await model.ensure();
+    model.setVisible(true);
 
     registry.release("rt_1", owner);
-    expect(bridge.releaseNativeSurface).not.toHaveBeenCalled();
-
     runDeferred();
 
-    expect(bridge.releaseNativeSurface).toHaveBeenCalledWith("rt_1");
+    expect(bridge.setNativeSurfaceVisible).toHaveBeenLastCalledWith("rt_1", false);
+    expect(bridge.closeSurface).not.toHaveBeenCalled();
     expect(registry.size()).toBe(0);
+  });
+
+  it("creates a fresh renderer proxy after route-length absence without closing main runtime", async () => {
+    const { registry, bridge, runDeferred } = makeHarness();
+    const firstOwner = Symbol("a");
+    const first = registry.acquire(descriptor(), firstOwner);
+    await first.ensure();
+
+    registry.release("rt_1", firstOwner);
+    runDeferred();
+    expect(registry.get("rt_1")).toBeUndefined();
+
+    const second = registry.acquire(descriptor(), Symbol("b"));
+    await second.ensure();
+
+    expect(second).not.toBe(first);
+    expect(bridge.closeSurface).not.toHaveBeenCalled();
+    // Main is responsible for making the second ensure idempotently reuse the
+    // already-live WCV rather than interpreting it as a second browser.
+    expect(bridge.prepareSurface).toHaveBeenCalledTimes(2);
+    expect(bridge.ensureNativeSurface).toHaveBeenCalledTimes(2);
   });
 
   it("does not make existence mean visibility", () => {
@@ -179,7 +177,6 @@ describe("BrowserSurfaceModelRegistry", () => {
 
     registry.acquire(descriptor(), Symbol("a"));
 
-    // A model can exist for a tile sitting on a hidden Dockview tab.
     expect(bridge.setNativeSurfaceVisible).not.toHaveBeenCalled();
   });
 
@@ -206,48 +203,7 @@ describe("BrowserSurfaceModelRegistry", () => {
     expect(bridge.setNativeSurfaceOccluded).toHaveBeenCalledTimes(1);
   });
 
-  it("stops talking to main once released", async () => {
-    const { registry, bridge, runDeferred } = makeHarness();
-    const owner = Symbol("a");
-    const model = registry.acquire(descriptor(), owner);
-    registry.release("rt_1", owner);
-    runDeferred();
-
-    model.layout(bounds());
-    model.setVisible(true);
-    model.focus();
-    await model.ensure();
-
-    // A late callback from a torn-down tile must not resurrect or move a
-    // surface that no longer exists.
-    expect(bridge.layoutNativeSurface).not.toHaveBeenCalled();
-    expect(bridge.setNativeSurfaceVisible).not.toHaveBeenCalled();
-    expect(bridge.focusNativeSurface).not.toHaveBeenCalled();
-    expect(bridge.ensureNativeSurface).not.toHaveBeenCalled();
-  });
-
-  it("applies geometry stated before the surface finished being created", async () => {
-    const { registry, bridge } = makeHarness();
-    const model = registry.acquire(descriptor(), Symbol("a"));
-    const first = bounds({ width: 640, height: 480 });
-
-    // Exactly the mount order the slot produces: creation is asynchronous, but
-    // the slot measures synchronously so the surface is placed before its
-    // first paint.
-    const creating = model.ensure();
-    model.layout(first);
-    model.setVisible(true);
-    expect(bridge.layoutNativeSurface).not.toHaveBeenCalled();
-    await creating;
-
-    // Main drops geometry for a surface it does not have yet, and neither this
-    // model nor the scheduler would ever send that rectangle a second time, so
-    // a surface that was never handed its bounds would never draw.
-    expect(bridge.layoutNativeSurface).toHaveBeenCalledWith("rt_1", first);
-    expect(bridge.setNativeSurfaceVisible).toHaveBeenCalledWith("rt_1", true);
-  });
-
-  it("hands over only the settled rectangle, not every one stated while creating", async () => {
+  it("applies only settled geometry stated while creation is in flight", async () => {
     const { registry, bridge } = makeHarness();
     const model = registry.acquire(descriptor(), Symbol("a"));
     const settled = bounds({ width: 900, height: 700 });
@@ -255,12 +211,13 @@ describe("BrowserSurfaceModelRegistry", () => {
     const creating = model.ensure();
     model.layout(bounds({ width: 100, height: 100 }));
     model.layout(settled);
+    model.setVisible(true);
+    expect(bridge.layoutNativeSurface).not.toHaveBeenCalled();
     await creating;
 
-    // Geometry changes at animation frequency; replaying the intermediate
-    // rectangles would be pure IPC for positions that never mattered.
     expect(bridge.layoutNativeSurface).toHaveBeenCalledTimes(1);
     expect(bridge.layoutNativeSurface).toHaveBeenCalledWith("rt_1", settled);
+    expect(bridge.setNativeSurfaceVisible).toHaveBeenCalledWith("rt_1", true);
   });
 
   it("does not announce a surface as visible when it was never asked to be", async () => {
@@ -269,11 +226,10 @@ describe("BrowserSurfaceModelRegistry", () => {
 
     await model.ensure();
 
-    // A tile on a hidden Dockview tab has a live browser and draws nothing.
     expect(bridge.setNativeSurfaceVisible).not.toHaveBeenCalled();
   });
 
-  it("updates the descriptor in place rather than replacing the browser", () => {
+  it("updates the descriptor in place rather than replacing the presentation model", () => {
     const { registry, bridge } = makeHarness();
     const owner = Symbol("a");
     const first = registry.acquire(descriptor(), owner);
@@ -281,25 +237,74 @@ describe("BrowserSurfaceModelRegistry", () => {
     const renamed = { ...descriptor(), title: "Renamed" };
     const second = registry.acquire(renamed, owner);
 
-    // A title change is not a reason to destroy a page.
     expect(second).toBe(first);
     expect(second.currentDescriptor.title).toBe("Renamed");
-    expect(bridge.releaseNativeSurface).not.toHaveBeenCalled();
+    expect(bridge.closeSurface).not.toHaveBeenCalled();
   });
 
-  it("keeps separate surfaces independent", () => {
+  it("keeps separate surfaces independent with real owner identities", () => {
     const { registry, bridge, runDeferred } = makeHarness();
-    registry.acquire(descriptor("rt_a"), Symbol("a"));
-    registry.acquire(descriptor("rt_b"), Symbol("b"));
+    const ownerA = Symbol("a");
+    const ownerB = Symbol("b");
+    registry.acquire(descriptor("rt_a"), ownerA);
+    registry.acquire(descriptor("rt_b"), ownerB);
 
-    registry.release("rt_a", Symbol("a"));
+    registry.release("rt_a", ownerA);
     runDeferred();
 
     expect(registry.get("rt_b")).toBeDefined();
-    expect(bridge.releaseNativeSurface).not.toHaveBeenCalledWith("rt_b");
+    expect(bridge.closeSurface).not.toHaveBeenCalled();
   });
 
-  it("publishes native order for overlapping surfaces", () => {
+  it("explicit close ends runtime lifetime even after the presentation proxy was evicted", async () => {
+    const { registry, bridge, runDeferred } = makeHarness();
+    const owner = Symbol("a");
+    registry.acquire(descriptor(), owner);
+    registry.release("rt_1", owner);
+    runDeferred();
+
+    await registry.close("rt_1");
+
+    expect(bridge.closeSurface).toHaveBeenCalledWith("rt_1");
+  });
+
+  it("does not let a close racing preparation resurrect a native surface", async () => {
+    const { registry, bridge } = makeHarness();
+    let resolvePrepare!: () => void;
+    vi.mocked(bridge.prepareSurface).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolvePrepare = resolve)),
+    );
+    const model = registry.acquire(descriptor(), Symbol("a"));
+
+    const creating = model.ensure();
+    await model.close();
+    resolvePrepare();
+    await creating;
+
+    expect(bridge.ensureNativeSurface).not.toHaveBeenCalled();
+    expect(bridge.closeSurface).toHaveBeenCalled();
+    expect(model.isClosed).toBe(true);
+  });
+
+  it("closes again after a native ensure that wins a race with explicit close", async () => {
+    const { registry, bridge } = makeHarness();
+    let resolveEnsure!: () => void;
+    vi.mocked(bridge.ensureNativeSurface).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (resolveEnsure = resolve)),
+    );
+    const model = registry.acquire(descriptor(), Symbol("a"));
+
+    const creating = model.ensure();
+    await Promise.resolve();
+    const closing = model.close();
+    resolveEnsure();
+    await Promise.all([creating, closing]);
+
+    expect(bridge.closeSurface).toHaveBeenCalled();
+    expect(model.isClosed).toBe(true);
+  });
+
+  it("publishes native order in canonical back-to-front order", () => {
     const { registry, bridge } = makeHarness();
 
     registry.setOrder(["rt_b", "rt_a"]);
@@ -307,14 +312,14 @@ describe("BrowserSurfaceModelRegistry", () => {
     expect(bridge.setNativeSurfaceOrder).toHaveBeenCalledWith(["rt_b", "rt_a"]);
   });
 
-  it("tears everything down on shutdown", async () => {
+  it("explicit destroyAll closes all runtimes", async () => {
     const { registry, bridge } = makeHarness();
     registry.acquire(descriptor("rt_a"), Symbol("a"));
     registry.acquire(descriptor("rt_b"), Symbol("b"));
 
     await registry.destroyAll();
 
-    expect(bridge.releaseNativeSurface).toHaveBeenCalledTimes(2);
+    expect(bridge.closeSurface).toHaveBeenCalledTimes(2);
     expect(registry.size()).toBe(0);
   });
 });
