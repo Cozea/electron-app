@@ -66,6 +66,11 @@ export class BrowserSurfaceModel {
     return this.lastBounds;
   }
 
+  /** A creation/reconciliation that has not yet produced a ready surface. */
+  get pendingEnsure(): Promise<void> | null {
+    return this.ready ? null : this.ensured;
+  }
+
   addOwner(owner: symbol): void {
     this.owners.add(owner);
   }
@@ -79,20 +84,19 @@ export class BrowserSurfaceModel {
   }
 
   /**
-   * Attach this renderer model to the main-owned surface, exactly once per
-   * model instance.
+   * Attach this renderer model to the main-owned surface.
    *
-   * A route round-trip may create a fresh renderer model for an already-live
-   * surface. `prepareSurface` + `ensureNativeSurface` therefore have to be
-   * idempotent in main and must return the existing page without navigating it.
-   *
-   * Explicit close is allowed to race an in-flight attach. We check `closed`
-   * after every await and issue a full close again if necessary so a late
-   * creation cannot resurrect a surface after its tile was removed.
+   * `force=false` caches the initial attach. `force=true` is used when a hidden
+   * presentation becomes visible again: main session policy may legitimately
+   * have evicted a backgroundFrozen WCV while this keep-alive React tree stayed
+   * mounted. Main's prepare/ensure operations are idempotent, so a warm surface
+   * is reused unchanged while an evicted one is recreated.
    */
-  ensure(): Promise<void> {
+  private attach(force: boolean): Promise<void> {
     if (this.closed) return Promise.resolve();
-    this.ensured ??= (async () => {
+    if (!force && this.ensured) return this.ensured;
+
+    const operation = (async () => {
       await this.bridge.prepareSurface(this.descriptor);
       if (this.closed) {
         await this.bridge.closeSurface(this.runtimeTabId);
@@ -109,10 +113,20 @@ export class BrowserSurfaceModel {
       this.flushDesiredState();
     })().catch((error: unknown) => {
       this.ready = false;
-      this.ensured = null;
+      if (this.ensured === operation) this.ensured = null;
       throw error;
     });
-    return this.ensured;
+    this.ensured = operation;
+    return operation;
+  }
+
+  ensure(): Promise<void> {
+    return this.attach(false);
+  }
+
+  /** Reconcile renderer belief with main after a hidden/frozen interval. */
+  reconcile(): Promise<void> {
+    return this.attach(true);
   }
 
   /**
@@ -131,7 +145,17 @@ export class BrowserSurfaceModel {
     if (this.closed || this.visible === visible) return;
     this.visible = visible;
     if (!this.ready) return;
+
+    // Fast path for a still-warm surface. If main evicted the native view while
+    // backgroundFrozen this is a harmless no-op; reconciliation below recreates
+    // it and flushes the same desired visibility/bounds afterward.
     void this.bridge.setNativeSurfaceVisible(this.runtimeTabId, visible);
+    if (visible) {
+      void this.reconcile().catch(() => {
+        // Main/T3 state carries the user-visible error; avoid an unhandled
+        // rejection from an effect-driven presentation reconciliation.
+      });
+    }
   }
 
   /** Presentation disappeared; keep runtime alive but take native pixels off screen. */
@@ -179,10 +203,11 @@ export class BrowserSurfaceModel {
 /**
  * Renderer presentation models keyed by stable runtime id.
  *
- * A last-owner release is deliberately non-destructive. It hides the native
- * view and evicts only the renderer proxy after one macrotask. That one-tick
- * grace keeps Dockview moves cheap; longer route absences may discard the
- * proxy while the main-owned browser stays warm and is reattached later.
+ * A last-owner release is deliberately non-destructive. One macrotask of grace
+ * distinguishes a Dockview move (same-tick reclaim) from a genuinely detached
+ * presentation. Only after the grace expires do we hide the WCV and evict the
+ * local proxy. An in-flight proxy stays indexed until its attach settles so an
+ * explicit tile close can still mark it closed and prevent late resurrection.
  */
 export class BrowserSurfaceModelRegistry {
   private readonly models = new Map<string, BrowserSurfaceModel>();
@@ -234,24 +259,28 @@ export class BrowserSurfaceModelRegistry {
     return model;
   }
 
-  /**
-   * Drop a presentation reference. No browser lifetime ends here.
-   *
-   * When the last owner disappears, hide immediately and evict only the local
-   * proxy after a macrotask. Main/session policy remains authoritative for the
-   * live browser runtime.
-   */
+  /** Drop a presentation reference. No browser lifetime ends here. */
   release(runtimeTabId: string, owner: symbol): void {
     const model = this.models.get(runtimeTabId);
     if (!model) return;
     model.removeOwner(owner);
     if (model.ownerCount > 0) return;
 
-    model.detachPresentation();
     const handle = this.defer(() => {
       this.pendingEviction.delete(runtimeTabId);
       const candidate = this.models.get(runtimeTabId);
       if (!candidate || candidate.ownerCount > 0) return;
+
+      candidate.detachPresentation();
+      const inFlight = candidate.pendingEnsure;
+      if (inFlight) {
+        void inFlight.finally(() => {
+          const settled = this.models.get(runtimeTabId);
+          if (settled !== candidate || candidate.ownerCount > 0 || candidate.isClosed) return;
+          this.models.delete(runtimeTabId);
+        });
+        return;
+      }
       this.models.delete(runtimeTabId);
     });
     this.pendingEviction.set(runtimeTabId, handle);
