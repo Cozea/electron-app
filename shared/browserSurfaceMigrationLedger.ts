@@ -88,20 +88,16 @@ export function allowsNativeSurface(state: BrowserSurfaceMigrationState): boolea
 export const BROWSER_SURFACE_MIGRATION_LEDGER: ReadonlyArray<BrowserSurfaceMigrationEntry> = [
   {
     family: "browser",
-    // First canary. The native path is exercised by the suite and by
-    // `bun run smoke:native-browser-surface`, and PH3-A has now been driven in
-    // a running workbench: address-bar and in-page navigation, back, forward,
-    // title, favicon, URL and error state, and one surviving browser across a
-    // sidebar resize, a group split, maximize and restore.
+    // First canary. Main owns the WCV and T3 controls that exact WebContents.
+    // The pre-Phase-4 correction pass separated presentation leases from
+    // browser lifetime, made warm remounts idempotent, unified logical/native
+    // teardown, hardened trust cleanup and removed an avoidable resize frame.
     //
-    // The three parity columns stay pending because none of them has been
-    // measured against the legacy host yet, which is what parity means here.
-    // Six open defects are recorded in the markdown ledger; D1 (a route change
-    // destroys the surface and the rebuilt one never draws) and D2 (native
-    // surfaces paint over all application UI, because nothing computes
-    // occlusion) both have to be closed before this family can advance.
-    // Still unverified interactively: drag-to-move between groups and float,
-    // which HTML5 drag-and-drop puts out of reach of synthetic input.
+    // Interactive evidence already proves a group move preserves the same
+    // WebContents and unsubmitted page state. The parity columns remain pending
+    // until PH3-C/D/E are rerun against the corrected branch; code changes are
+    // not evidence. D2 (DOM overlay occlusion), D4 (floating native order) and
+    // D5 (popout-window reparenting) are Phase 4 deliverables, not prerequisites.
     state: "NATIVE_CANARY",
     activeBackend: "main-webcontentsview",
     automationParity: "native-pending",
