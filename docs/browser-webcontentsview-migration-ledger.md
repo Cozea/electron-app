@@ -136,6 +136,13 @@ pass, the parity columns above stay `native-pending`:
   attached with no oscillation and no repeated React commits.
 - PH3-C: the T3 automation matrix against a native Browser tile.
 - PH3-D: cookie sharing and isolation across two live tiles.
+- PH3-E: a tile restored from a persisted layout, not one opened by hand, and a
+  round trip to another top-level route and back. Both are currently broken by
+  D1 and were never covered by the original PH3-A pass.
+- Drag a tile between groups and confirm `webContentsId` is unchanged
+  afterwards. This is the half of the defining invariant that synthetic input
+  cannot drive: Dockview uses HTML5 drag-and-drop, which ignores injected mouse
+  events, so it needs a human hand.
 
 `bun run smoke:native-browser-surface` already covers navigation, history,
 reload, title, zoom, DevTools and the storage-parity half of PH3-D against real
@@ -143,6 +150,110 @@ Electron. find-in-page is not asserted there: a `WebContentsView` in that harnes
 reports `document.visibilityState` as hidden and never runs
 `requestAnimationFrame`, so a search is timing-dependent rather than a real
 signal.
+
+## Open defects
+
+Found by driving a running workbench on 2026-09-10. Ordered by severity. None
+of these is covered by the suite, which is the point: every one of them was
+invisible to 2843 passing tests because the failure path is a silent drop
+rather than an exception.
+
+### D1 - Leaving the workbench destroys the browser and returns a blank tile
+
+Navigating to another top-level route (Inbox, DevApps Store, ...) and back does
+not hide the surface, it releases it. The deferred release exists to survive a
+Dockview remount, but a route change keeps the tile unmounted long enough for
+the macrotask to fire, so the surface is destroyed and a fresh Chromium is built
+on return -- `webContentsId` observed going 2 -> 4. The page is gone, not merely
+unpainted, which breaks the migration's defining invariant.
+
+The rebuilt surface then never draws. The renderer computes every term of
+`surfaceVisible` as true while main holds `wantsVisibility: false`, so
+`setNativeSurfaceVisible(true)` is lost somewhere on the rebuild path. This is
+the same class as the creation race fixed in `5447b99e` -- desired state stated
+before main can accept it -- except the one-shot flush on `ensure()` does not
+cover a slot that unmounts again before creation resolves.
+
+Two surfaces also churn per one visible browser tile, with the tile's identity
+inputs (`tileId`, `projectId`, `laneId`, `workspaceId`, session key) all stable
+across renders. The second surface's origin is not established; a hidden
+keep-alive workbench session mounting its own copy is a hypothesis, not a
+finding.
+
+Severity: highest open defect. It breaks surface lifetime, not presentation.
+
+### D2 - Native surfaces paint above all application UI
+
+A `WebContentsView` is a native layer composited above the window's web
+contents, so every piece of DOM that is meant to sit over a browser tile --
+dropdowns, popovers, modals, drawers, toasts, drag overlays -- is covered by the
+page instead. CSS `z-index` cannot address this (INV-011), and the plan's answer
+is INV-009: an overlapping overlay must take the surface off screen rather than
+try to draw over it.
+
+The mechanism for that exists and is wired end to end -- `setOccluded` through
+the model, preload, IPC and `BrowserSurfaceView` -- and has no caller anywhere
+in the application. Nothing computes overlap, so nothing is ever occluded.
+
+Native menus are unaffected: they are separate OS windows and correctly render
+above the surface.
+
+Deliberately not fixed yet. Doing it properly means deciding what counts as an
+overlapping overlay and who owns that computation, which is Phase 4 work.
+
+### D3 - Mid-drag gaps and overhangs
+
+During a Dockview drag the surface chases the moving placeholder over IPC, so it
+lags behind the tile (black gaps) and paints outside it and over the drop
+indicator (overhang). Same root cause as D2: nothing occludes during a drag.
+
+The hook points already exist in `useWorkbenchDockviewRuntime.ts`
+(`onWillDragPanel`, `onWillDragGroup`), plus a `dragend` listener for the
+cancelled-drag case, since `onDidDrop` only fires on a successful drop.
+
+Held back because hiding every browser tile for the duration of any drag is a
+visible behaviour change that should be chosen deliberately.
+
+### D4 - Floating group order is computed and then ignored
+
+`nativeOrder` is derived from Dockview's `aria-level` and shipped to main inside
+the bounds payload, but `BrowserSurfaceView` never reads it. Real ordering
+happens only through `bringToFront()`, reached via `setSurfaceOrder`, which has
+no caller. Two overlapping native surfaces therefore sit in creation order
+rather than float order.
+
+### D5 - A popped-out group leaves its surface in the main window
+
+`moveToWindow` exists and is covered by a test, and has no caller. Dockview's
+`addPopoutGroup` opens a real second `BrowserWindow`, so a popped-out browser
+tile keeps drawing in the window it came from.
+
+### D6 - Workbench layout is lost on a keyboard hard reload
+
+Pre-existing and outside this migration: `useWorkbenchDockviewRuntime.ts` and
+`workbenchLayoutPersistence.ts` are untouched by this branch. Recorded here
+because it was found while testing it, and because it destroys evidence.
+
+Reproduces with a non-default layout, the pointer over the sidebar, and a real
+Shift+Cmd+R. The same command from the View menu does not reproduce it. On a
+failed restore the catch calls `clearPersistedWorkbenchLayout`, so the saved
+layout is deleted: the next reload looks innocent and the layout is
+unrecoverable.
+
+Partially diagnosed. The stored record was present at boot with a matching
+`layoutResetKey` and `bindingRevision` and not deleted, yet the peek returned
+nothing because the stored `layout` field failed `isLayout` (needs `grid` and
+`panels`). That points at a degenerate layout being written, not a read-side
+rejection. A hydration race was ruled out: the effect is guarded on
+`!input.isLayoutPersistenceReady`.
+
+### Coverage gap this exposed
+
+PH3-A was driven only against tiles opened by hand in a session that was never
+navigated away from. Tiles restored from a persisted layout, and route
+round-trips, were never exercised -- and both D1 and the intermittent
+blank-on-boot live exactly there. Restored tiles and route changes belong in the
+acceptance list in their own right.
 
 ## Performance baseline (Phase 0)
 

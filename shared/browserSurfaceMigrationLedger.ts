@@ -96,6 +96,10 @@ export const BROWSER_SURFACE_MIGRATION_LEDGER: ReadonlyArray<BrowserSurfaceMigra
     //
     // The three parity columns stay pending because none of them has been
     // measured against the legacy host yet, which is what parity means here.
+    // Six open defects are recorded in the markdown ledger; D1 (a route change
+    // destroys the surface and the rebuilt one never draws) and D2 (native
+    // surfaces paint over all application UI, because nothing computes
+    // occlusion) both have to be closed before this family can advance.
     // Still unverified interactively: drag-to-move between groups and float,
     // which HTML5 drag-and-drop puts out of reach of synthetic input.
     state: "NATIVE_CANARY",
