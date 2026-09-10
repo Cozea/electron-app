@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { BrowserSurfaceBackendSlot } from "@/features/browser/BrowserSurfaceBackendSlot";
 import { resolveBrowserPageError } from "@/features/browser/browserPageError";
+import { browserSurfaceModels } from "@/features/browser/browserSurfaceModel";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
@@ -20,7 +21,7 @@ import {
 } from "@/features/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
-import { useProjectWorkbenchStore } from "@/lib/workbenchStore";
+import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/lib/workbenchStore";
 import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/lib/workbenchStore";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 
@@ -148,6 +149,28 @@ export function WorkbenchBrowserTile({
       workspaceId,
     );
   }, [actions, laneId, projectId, state, tile.favicon, tile.id, tile.title, workspaceId]);
+
+  useEffect(() => {
+    // Component unmount is presentation lifecycle, not browser lifecycle. A
+    // Dockview move, hidden keep-alive workbench, route switch, StrictMode
+    // replay or parent remount must preserve the main-owned page. Only close it
+    // when the persisted workbench model says the tile itself is really gone.
+    return () => {
+      const closingRuntimeTabId = runtimeTabId;
+      const closingTileId = tile.id;
+      window.setTimeout(() => {
+        const liveWorkbench = selectProjectWorkbench(
+          projectId,
+          laneId,
+          workspaceId,
+        )(useProjectWorkbenchStore.getState());
+        if (liveWorkbench?.tiles[closingTileId]?.type === "browser") return;
+        void browserSurfaceModels.close(closingRuntimeTabId).catch((error) => {
+          console.warn("[BrowserSurface] Failed to close removed browser tile", error);
+        });
+      }, 0);
+    };
+  }, [laneId, projectId, runtimeTabId, tile.id, workspaceId]);
 
   const navStatus = state?.navStatus;
   const showStartState = !tile.url.trim() && (!navStatus || navStatus.kind === "Idle");
