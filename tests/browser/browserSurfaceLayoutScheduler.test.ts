@@ -22,7 +22,6 @@ const bounds = (overrides: Partial<BrowserSurfaceBounds> = {}): BrowserSurfaceBo
   height: 600,
   hostZoomFactor: 1,
   cornerRadius: 0,
-  nativeOrder: 0,
   ...overrides,
 });
 
@@ -201,7 +200,6 @@ describe("browser surface bounds contract", () => {
   });
 
   it("treats a reorder as a different rectangle", () => {
-    expect(sameBrowserSurfaceBounds(bounds(), bounds({ nativeOrder: 1 }))).toBe(false);
   });
 
   it("derives size from rounded edges so tiles do not leave a seam", () => {

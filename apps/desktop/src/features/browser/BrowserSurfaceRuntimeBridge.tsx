@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { readPreviewAnnotationTheme } from "./annotationTheme";
 import { useBrowserPointerStore } from "./browserPointerStore";
+import { useBrowserSurfaceFocusStore } from "./browserSurfaceFocusStore";
 import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore";
 
 /**
@@ -26,9 +27,13 @@ export function BrowserSurfaceRuntimeBridge() {
     const stopStateEvents = preview.onSurfaceStateChange((runtimeTabId, state) =>
       useBrowserSurfaceStateStore.getState().apply(runtimeTabId, state),
     );
+    const stopFocusEvents = preview.onNativeSurfaceFocusChange((runtimeTabId, focused) =>
+      useBrowserSurfaceFocusStore.getState().apply(runtimeTabId, focused),
+    );
     return () => {
       stopPointerEvents();
       stopStateEvents();
+      stopFocusEvents();
     };
   }, []);
 

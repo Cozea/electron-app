@@ -39,6 +39,7 @@ function SheetOverlay({
   return (
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
+      data-cozea-overlay="dialog"
       className={cn(
         "fixed inset-0 z-[var(--cozea-layer-dialog)] bg-black/32 backdrop-blur-sm",
         !disableAnimation &&
@@ -67,6 +68,7 @@ function SheetContent({
       <SheetOverlay disableAnimation={disableAnimation} />
       <SheetPrimitive.Content
         data-slot="sheet-content"
+        data-cozea-overlay="dialog"
         className={cn(
           "bg-popover text-popover-foreground fixed z-[var(--cozea-layer-dialog)] flex flex-col gap-4 shadow-lg/5",
           !disableAnimation &&

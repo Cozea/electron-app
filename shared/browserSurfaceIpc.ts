@@ -20,6 +20,7 @@ export const BROWSER_SURFACE_IPC = {
   setNativeSurfaceOccluded: `${PREFIX}-set-native-surface-occluded`,
   setNativeSurfaceOrder: `${PREFIX}-set-native-surface-order`,
   focusNativeSurface: `${PREFIX}-focus-native-surface`,
+  captureNativeSurfacePlaceholder: `${PREFIX}-capture-native-surface-placeholder`,
   navigate: `${PREFIX}-navigate`,
   goBack: `${PREFIX}-go-back`,
   goForward: `${PREFIX}-go-forward`,
@@ -54,6 +55,7 @@ export const BROWSER_SURFACE_IPC = {
   automationEvaluate: `${PREFIX}-automation-evaluate`,
   automationWaitFor: `${PREFIX}-automation-wait-for`,
   stateChanged: `${PREFIX}-state-change`,
+  nativeSurfaceFocusChanged: `${PREFIX}-native-surface-focus-changed`,
   pointerEvent: `${PREFIX}-pointer-event`,
   recordingFrame: `${PREFIX}-recording-frame`,
 } as const;

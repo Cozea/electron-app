@@ -39,6 +39,7 @@ import type {
   BrowserHttpDiagnostic,
   BrowserSurfaceDescriptor,
   BrowserSurfaceInventoryEntry,
+  BrowserSurfacePlaceholder,
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
 } from "../../../../shared/browserSurfaceTypes";
@@ -243,6 +244,7 @@ export class T3BrowserSurfaceService {
     (frame: import("@cozea/contracts/t3/ipc").DesktopPreviewRecordingFrame) => void
   >();
   private readonly inventoryListeners = new Set<(workbenchSessionKey: string) => void>();
+  private readonly nativeFocusListeners = new Set<(tabId: string, focused: boolean) => void>();
   private readonly options: BrowserSurfaceServiceOptions;
   private readonly runtime;
   private readonly managerPromise: Promise<T3Manager>;
@@ -267,6 +269,9 @@ export class T3BrowserSurfaceService {
       sessions: this.sessionRegistry,
       getWindow: () => options.getMainWindow() ?? null,
       resolvePreload: (descriptor) => this.preloadPath(descriptor),
+      onSurfaceFocusChange: (tabId, focused) => {
+        for (const listener of this.nativeFocusListeners) listener(tabId, focused);
+      },
       onRendererInvalidated: async () => {
         // A full renderer document replacement invalidates the opaque runtime
         // ids held by that renderer. Close logical T3 state and physical WCVs
@@ -764,8 +769,16 @@ export class T3BrowserSurfaceService {
     this.nativeHost.setSurfaceVisible(tabId, visible);
   }
 
-  setNativeSurfaceOccluded(tabId: string, occluded: boolean): void {
-    this.nativeHost.setSurfaceOccluded(tabId, occluded);
+  /** Occluding resolves with a still of the page for the renderer's placeholder. */
+  async setNativeSurfaceOccluded(
+    tabId: string,
+    occluded: boolean,
+  ): Promise<BrowserSurfacePlaceholder | null> {
+    return await this.nativeHost.setSurfaceOccluded(tabId, occluded);
+  }
+
+  async captureNativeSurfacePlaceholder(tabId: string): Promise<BrowserSurfacePlaceholder | null> {
+    return await this.nativeHost.captureSurfacePlaceholder(tabId);
   }
 
   /** Back-to-front order; the final id is front-most. */
@@ -1354,6 +1367,11 @@ export class T3BrowserSurfaceService {
   ): () => void {
     this.recordingFrameListeners.add(listener);
     return () => this.recordingFrameListeners.delete(listener);
+  }
+
+  onNativeSurfaceFocusChange(listener: (tabId: string, focused: boolean) => void): () => void {
+    this.nativeFocusListeners.add(listener);
+    return () => this.nativeFocusListeners.delete(listener);
   }
 
   async dispose(): Promise<void> {

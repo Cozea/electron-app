@@ -15,6 +15,8 @@ interface FakeView {
     close: ReturnType<typeof vi.fn>;
     focus: ReturnType<typeof vi.fn>;
     loadURL: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
+    isFocused: () => boolean;
   };
   setBounds: ReturnType<typeof vi.fn>;
   getBounds: () => FakeView["bounds"];
@@ -49,6 +51,8 @@ class FakeWebContentsView {
       }),
       focus: vi.fn(),
       loadURL: vi.fn(async () => undefined),
+      on: vi.fn(),
+      isFocused: () => false,
     };
     created.push(this as unknown as FakeView);
   }

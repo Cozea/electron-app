@@ -1,6 +1,9 @@
 import type { BrowserWindow } from "electron";
 
-import type { BrowserSurfaceDescriptor } from "../../../../../shared/browserSurfaceTypes";
+import type {
+  BrowserSurfaceDescriptor,
+  BrowserSurfacePlaceholder,
+} from "../../../../../shared/browserSurfaceTypes";
 import type { BrowserSurfaceSessionRegistry } from "./BrowserSurfaceSessionRegistry";
 import type { BrowserSurfacePreloadPosture } from "./BrowserSurfaceWebPreferences";
 import { BrowserSurfaceView, type BrowserSurfaceBounds } from "./BrowserSurfaceView";
@@ -41,6 +44,8 @@ export interface BrowserSurfaceNativeHostOptions {
    * the service above this host must close T3/descriptor/native state together.
    */
   readonly onRendererInvalidated?: () => Promise<void>;
+  /** Keyboard focus entered or left a surface's contents. */
+  readonly onSurfaceFocusChange?: (runtimeTabId: string, focused: boolean) => void;
 }
 
 function sameOrder(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
@@ -131,6 +136,8 @@ export class BrowserSurfaceNativeHost {
       window,
       preloadPath,
       posture,
+      onFocusChange: (focused) =>
+        this.options.onSurfaceFocusChange?.(descriptor.runtimeTabId, focused),
     });
     this.surfaces.set(descriptor.runtimeTabId, view);
 
@@ -180,8 +187,28 @@ export class BrowserSurfaceNativeHost {
     this.surfaces.get(runtimeTabId)?.setVisible(visible);
   }
 
-  setSurfaceOccluded(runtimeTabId: string, occluded: boolean): void {
-    this.surfaces.get(runtimeTabId)?.setOccluded(occluded);
+  /**
+   * Take a surface off screen for application UI, or give it back.
+   *
+   * Occluding resolves with a fresh still of what the user was looking at. The
+   * capture is requested while the view is still drawn and the view is hidden
+   * in the same turn, without waiting for it: an overlay must never be held
+   * behind a live browser for the length of a screenshot (INV-009).
+   */
+  async setSurfaceOccluded(
+    runtimeTabId: string,
+    occluded: boolean,
+  ): Promise<BrowserSurfacePlaceholder | null> {
+    const view = this.surfaces.get(runtimeTabId);
+    if (!view) return null;
+    const capture = occluded ? view.capturePlaceholder() : null;
+    view.setOccluded(occluded);
+    return capture ? await capture : null;
+  }
+
+  /** A still of an uncovered surface, taken ahead of the next overlay. */
+  async captureSurfacePlaceholder(runtimeTabId: string): Promise<BrowserSurfacePlaceholder | null> {
+    return (await this.surfaces.get(runtimeTabId)?.capturePlaceholder()) ?? null;
   }
 
   /**

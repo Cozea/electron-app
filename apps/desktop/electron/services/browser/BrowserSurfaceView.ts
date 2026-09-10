@@ -1,6 +1,9 @@
 import { type BrowserWindow, type Session, WebContentsView } from "electron";
 
-import type { BrowserSurfaceDescriptor } from "../../../../../shared/browserSurfaceTypes";
+import type {
+  BrowserSurfaceDescriptor,
+  BrowserSurfacePlaceholder,
+} from "../../../../../shared/browserSurfaceTypes";
 import {
   browserSurfaceWebPreferences,
   type BrowserSurfacePreloadPosture,
@@ -30,7 +33,16 @@ export interface BrowserSurfaceViewOptions {
   readonly window: BrowserWindow;
   readonly preloadPath?: string | null;
   readonly posture?: BrowserSurfacePreloadPosture;
+  /** Keyboard focus entered (true) or left (false) this surface's contents. */
+  readonly onFocusChange?: (focused: boolean) => void;
 }
+
+/**
+ * JPEG, because a placeholder is looked at for the length of a menu or dialog,
+ * not inspected: a lossless capture of a large page costs several times the
+ * bytes over IPC for no visible difference.
+ */
+const PLACEHOLDER_JPEG_QUALITY = 80;
 
 /**
  * Initial rectangle. On-screen and non-zero rather than empty, because a view
@@ -76,6 +88,14 @@ export class BrowserSurfaceView {
     this.view.setBounds({ ...INITIAL_BOUNDS });
     this.view.setVisible(false);
     this.currentWindow.contentView.addChildView(this.view);
+
+    // Chromium moves keyboard focus between sibling views by itself when the
+    // user clicks one, and no DOM event tells the renderer. These do.
+    const onFocusChange = options.onFocusChange;
+    if (onFocusChange) {
+      this.view.webContents.on("focus", () => onFocusChange(true));
+      this.view.webContents.on("blur", () => onFocusChange(false));
+    }
   }
 
   /** The exact contents T3 automates, so the agent drives what the user sees. */
@@ -146,6 +166,33 @@ export class BrowserSurfaceView {
   }
 
   /**
+   * A still of what the surface is showing, for the DOM placeholder that stands
+   * in while application UI covers it.
+   *
+   * The capture is requested synchronously, before this returns, so a caller
+   * that hides the view immediately afterwards still captures the frame the
+   * user was looking at. Null when the surface is not on screen, because a
+   * capture of a view that was never drawn is not a picture of anything.
+   */
+  capturePlaceholder(): Promise<BrowserSurfacePlaceholder | null> {
+    if (this.disposed || this.view.webContents.isDestroyed() || !this.view.getVisible()) {
+      return Promise.resolve(null);
+    }
+    return this.view.webContents.capturePage().then(
+      (image) =>
+        image.isEmpty()
+          ? null
+          : {
+              dataUrl: `data:image/jpeg;base64,${image.toJPEG(PLACEHOLDER_JPEG_QUALITY).toString("base64")}`,
+              capturedAt: Date.now(),
+            },
+      // Torn down mid-capture: there is no still to offer, and the slot's
+      // neutral placeholder is the honest fallback.
+      () => null,
+    );
+  }
+
+  /**
    * Raise above sibling native views. Dockview's floating order is visual
    * order, and for native children only re-adding establishes it (INV-011).
    */
@@ -180,7 +227,23 @@ export class BrowserSurfaceView {
    */
   private reconcileVisibility(): void {
     const shouldDraw = this.wantsVisibility && this.hasBeenLaidOut && !this.occluded;
-    if (this.view.getVisible() !== shouldDraw) this.view.setVisible(shouldDraw);
+    if (this.view.getVisible() === shouldDraw) return;
+    if (!shouldDraw) this.releaseFocusToWindow();
+    this.view.setVisible(shouldDraw);
+  }
+
+  /**
+   * Hand keyboard focus back to the workbench before leaving the screen.
+   *
+   * Hidden contents keep focus otherwise, so keystrokes would go on landing in
+   * a page the user can no longer see -- including underneath a modal that
+   * should own them. Focus moves first and the view hides second, so there is
+   * no interval in which nothing visible has focus.
+   */
+  private releaseFocusToWindow(): void {
+    const contents = this.view.webContents;
+    if (contents.isDestroyed() || !contents.isFocused()) return;
+    if (!this.currentWindow.isDestroyed()) this.currentWindow.webContents.focus();
   }
 
   /**
@@ -191,6 +254,7 @@ export class BrowserSurfaceView {
     if (this.disposed) return;
     this.disposed = true;
 
+    this.releaseFocusToWindow();
     this.view.setVisible(false);
     if (!this.currentWindow.isDestroyed()) {
       this.currentWindow.contentView.removeChildView(this.view);

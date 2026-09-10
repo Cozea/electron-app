@@ -165,6 +165,7 @@ function ComboboxPopup({
         anchor={anchor}
         className="z-[var(--cozea-layer-menu)] select-none"
         data-slot="combobox-positioner"
+        data-cozea-overlay="menu"
         side={side}
         sideOffset={sideOffset}
       >

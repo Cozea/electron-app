@@ -98,6 +98,7 @@ function SelectContent({
         sideOffset={4}
         alignItemWithTrigger={alignItemWithTrigger}
         className="z-[var(--cozea-layer-menu)]"
+        data-cozea-overlay="menu"
       >
         <BaseSelect.Popup
           data-slot="select-content"

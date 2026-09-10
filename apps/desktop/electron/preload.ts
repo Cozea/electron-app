@@ -149,6 +149,8 @@ const previewBridge: CozeaDesktopPreviewBridge = {
   setNativeSurfaceOrder: (orderedTabIds) =>
     ipcRenderer.invoke(BROWSER_SURFACE_IPC.setNativeSurfaceOrder, { orderedTabIds }),
   focusNativeSurface: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.focusNativeSurface, tabId),
+  captureNativeSurfacePlaceholder: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.captureNativeSurfacePlaceholder, tabId),
   setSurfaceActive: (tabId, active) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.setSurfaceActive, { tabId, active }),
   findInPage: (tabId, query, options) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.findInPage, { tabId, query, options }),
   stopFindInPage: (tabId, action) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.stopFindInPage, { tabId, action }),
@@ -232,6 +234,13 @@ const previewBridge: CozeaDesktopPreviewBridge = {
     }
     ipcRenderer.on(BROWSER_SURFACE_IPC.pointerEvent, wrapped)
     return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.pointerEvent, wrapped)
+  },
+  onNativeSurfaceFocusChange: (listener) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, tabId: unknown, focused: unknown) => {
+      if (typeof tabId === 'string' && typeof focused === 'boolean') listener(tabId, focused)
+    }
+    ipcRenderer.on(BROWSER_SURFACE_IPC.nativeSurfaceFocusChanged, wrapped)
+    return () => ipcRenderer.removeListener(BROWSER_SURFACE_IPC.nativeSurfaceFocusChanged, wrapped)
   },
 }
 

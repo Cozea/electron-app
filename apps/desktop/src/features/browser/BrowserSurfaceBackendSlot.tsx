@@ -24,7 +24,6 @@ export interface BrowserSurfaceBackendSlotProps {
   readonly borderRadius?: string;
   readonly cornerRadius?: number;
   readonly stackingLayer?: number;
-  readonly nativeOrder?: number;
   readonly className?: string;
   readonly fitSourceContent?: boolean;
   readonly subscribePositionChanges?: (listener: () => void) => () => void;
@@ -58,14 +57,12 @@ export function BrowserSurfaceBackendSlot(props: BrowserSurfaceBackendSlotProps)
   const backend = expectedBackendForState(migrationStateFor(props.descriptor.kind));
 
   if (backend === "main-webcontentsview") {
-    const { descriptor, visible, cornerRadius, nativeOrder, className, subscribePositionChanges } =
-      props;
+    const { descriptor, visible, cornerRadius, className, subscribePositionChanges } = props;
     return (
       <NativeBrowserSurfaceSlot
         descriptor={descriptor}
         visible={visible}
         {...(cornerRadius === undefined ? {} : { cornerRadius })}
-        {...(nativeOrder === undefined ? {} : { nativeOrder })}
         {...(className === undefined ? {} : { className })}
         {...(subscribePositionChanges === undefined ? {} : { subscribePositionChanges })}
       />

@@ -13,6 +13,8 @@ class FakeWebContentsView {
     close: vi.fn(),
     focus: vi.fn(),
     loadURL: vi.fn(async () => undefined),
+    on: vi.fn(),
+    isFocused: () => false,
   };
 
   constructor(options: unknown) {

@@ -26,8 +26,6 @@ export interface BrowserSurfaceBounds {
    */
   readonly hostZoomFactor?: number;
   readonly cornerRadius: number;
-  /** Front-to-back position among overlapping surfaces; higher is nearer. */
-  readonly nativeOrder: number;
   /** Device-emulation scale, when the surface renders a scaled viewport. */
   readonly emulation?: { readonly scale: number };
 }
@@ -53,7 +51,6 @@ export function sameBrowserSurfaceBounds(
     a.height === b.height &&
     (a.hostZoomFactor ?? 1) === (b.hostZoomFactor ?? 1) &&
     a.cornerRadius === b.cornerRadius &&
-    a.nativeOrder === b.nativeOrder &&
     (a.emulation?.scale ?? null) === (b.emulation?.scale ?? null)
   );
 }

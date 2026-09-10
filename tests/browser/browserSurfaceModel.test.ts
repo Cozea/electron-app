@@ -5,7 +5,10 @@ import {
   type NativeBrowserSurfaceBridge,
 } from "../../apps/desktop/src/features/browser/browserSurfaceModel";
 import type { BrowserSurfaceBounds } from "../../shared/browserSurfaceLayout";
-import type { BrowserSurfaceDescriptor } from "../../shared/browserSurfaceTypes";
+import type {
+  BrowserSurfaceDescriptor,
+  BrowserSurfacePlaceholder,
+} from "../../shared/browserSurfaceTypes";
 
 const descriptor = (runtimeTabId = "rt_1"): BrowserSurfaceDescriptor => ({
   runtimeTabId,
@@ -24,7 +27,6 @@ const bounds = (overrides: Partial<BrowserSurfaceBounds> = {}): BrowserSurfaceBo
   width: 800,
   height: 600,
   cornerRadius: 0,
-  nativeOrder: 0,
   ...overrides,
 });
 
@@ -36,7 +38,10 @@ const makeHarness = () => {
     closeSurface: vi.fn(async () => undefined),
     layoutNativeSurface: vi.fn(async () => undefined),
     setNativeSurfaceVisible: vi.fn(async () => undefined),
-    setNativeSurfaceOccluded: vi.fn(async () => undefined),
+    setNativeSurfaceOccluded: vi.fn(async (): Promise<BrowserSurfacePlaceholder | null> => null),
+    captureNativeSurfacePlaceholder: vi.fn(
+      async (): Promise<BrowserSurfacePlaceholder | null> => null,
+    ),
     setNativeSurfaceOrder: vi.fn(async () => undefined),
     focusNativeSurface: vi.fn(async () => undefined),
   };
@@ -223,6 +228,41 @@ describe("BrowserSurfaceModelRegistry", () => {
     model.setOccluded(true);
 
     expect(bridge.setNativeSurfaceOccluded).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves an occlusion with the still main captured", async () => {
+    const { registry, bridge } = makeHarness();
+    const still = { dataUrl: "data:image/jpeg;base64,c3RpbGw=", capturedAt: 7 };
+    vi.mocked(bridge.setNativeSurfaceOccluded).mockResolvedValueOnce(still);
+    const model = registry.acquire(descriptor(), Symbol("a"));
+    await model.ensure();
+
+    await expect(model.setOccluded(true)).resolves.toEqual(still);
+    // A repeat sends nothing, so it has no still to offer.
+    await expect(model.setOccluded(true)).resolves.toBeNull();
+  });
+
+  it("holds an occlusion stated before attach and sends it once main has the surface", async () => {
+    const { registry, bridge } = makeHarness();
+    const model = registry.acquire(descriptor(), Symbol("a"));
+
+    await expect(model.setOccluded(true)).resolves.toBeNull();
+    expect(bridge.setNativeSurfaceOccluded).not.toHaveBeenCalled();
+
+    await model.ensure();
+    expect(bridge.setNativeSurfaceOccluded).toHaveBeenCalledWith("rt_1", true);
+  });
+
+  it("asks main for a still only once the surface exists", async () => {
+    const { registry, bridge } = makeHarness();
+    const model = registry.acquire(descriptor(), Symbol("a"));
+
+    await expect(model.capturePlaceholder()).resolves.toBeNull();
+    expect(bridge.captureNativeSurfacePlaceholder).not.toHaveBeenCalled();
+
+    await model.ensure();
+    await model.capturePlaceholder();
+    expect(bridge.captureNativeSurfacePlaceholder).toHaveBeenCalledWith("rt_1");
   });
 
   it("applies only settled geometry stated while creation is in flight", async () => {

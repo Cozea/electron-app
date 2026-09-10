@@ -55,6 +55,7 @@ function PopoverContent({
         sideOffset={sideOffset}
         alignOffset={alignOffset}
         className="z-[var(--cozea-layer-menu)]"
+        data-cozea-overlay="popover"
       >
         <BasePopover.Popup
           data-slot="popover-content"

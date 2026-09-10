@@ -1049,10 +1049,14 @@ export function TasksPage({
         <AppOverlayPortal>
           <div
             className="fixed inset-0 z-[var(--cozea-layer-dialog)] bg-black/45 backdrop-blur-[2px]"
+            data-cozea-overlay="dialog"
             onClick={closeTasksModal}
             aria-hidden="true"
           />
-          <div className="fixed inset-0 z-[var(--cozea-layer-dialog)] flex items-start justify-center p-4 pt-14 sm:p-6 sm:pt-16">
+          <div
+            className="fixed inset-0 z-[var(--cozea-layer-dialog)] flex items-start justify-center p-4 pt-14 sm:p-6 sm:pt-16"
+            data-cozea-overlay="dialog"
+          >
             {shell}
           </div>
         </AppOverlayPortal>

@@ -1,5 +1,8 @@
 import type { BrowserSurfaceBounds } from "@shared/browserSurfaceLayout";
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
+import type {
+  BrowserSurfaceDescriptor,
+  BrowserSurfacePlaceholder,
+} from "@shared/browserSurfaceTypes";
 
 import { BrowserSurfaceLayoutScheduler } from "./browserSurfaceLayoutScheduler";
 
@@ -25,7 +28,12 @@ export interface NativeBrowserSurfaceBridge {
   closeSurface: (tabId: string) => Promise<void>;
   layoutNativeSurface: (tabId: string, bounds: BrowserSurfaceBounds) => Promise<void>;
   setNativeSurfaceVisible: (tabId: string, visible: boolean) => Promise<void>;
-  setNativeSurfaceOccluded: (tabId: string, occluded: boolean) => Promise<void>;
+  /** Occluding resolves with a still of the page, taken as the view left the screen. */
+  setNativeSurfaceOccluded: (
+    tabId: string,
+    occluded: boolean,
+  ) => Promise<BrowserSurfacePlaceholder | null>;
+  captureNativeSurfacePlaceholder: (tabId: string) => Promise<BrowserSurfacePlaceholder | null>;
   /** Ordered back-to-front; the final id is the front-most native surface. */
   setNativeSurfaceOrder: (orderedTabIds: ReadonlyArray<string>) => Promise<void>;
   focusNativeSurface: (tabId: string) => Promise<void>;
@@ -65,6 +73,11 @@ export class BrowserSurfaceModel {
   /** Latest rectangle published by this presentation proxy. */
   get publishedBounds(): BrowserSurfaceBounds | null {
     return this.lastBounds;
+  }
+
+  /** Whether this proxy currently wants its surface drawn and main has it. */
+  get isVisible(): boolean {
+    return this.visible && this.ready && !this.closed;
   }
 
   /** Any attach/reconcile that an explicit close must still be able to cancel. */
@@ -193,11 +206,23 @@ export class BrowserSurfaceModel {
     this.setVisible(false);
   }
 
-  setOccluded(occluded: boolean): void {
-    if (this.closed || this.occluded === occluded) return;
+  /**
+   * Take the surface off screen for application UI, or give it back.
+   *
+   * Resolves with the still main captured as the view left the screen, or null
+   * when nothing was sent or there was nothing on screen to capture.
+   */
+  setOccluded(occluded: boolean): Promise<BrowserSurfacePlaceholder | null> {
+    if (this.closed || this.occluded === occluded) return Promise.resolve(null);
     this.occluded = occluded;
-    if (!this.ready) return;
-    void this.bridge.setNativeSurfaceOccluded(this.runtimeTabId, occluded);
+    if (!this.ready) return Promise.resolve(null);
+    return this.bridge.setNativeSurfaceOccluded(this.runtimeTabId, occluded).catch(() => null);
+  }
+
+  /** A still of the uncovered page, taken ahead of the next overlay. */
+  capturePlaceholder(): Promise<BrowserSurfacePlaceholder | null> {
+    if (this.closed || !this.ready) return Promise.resolve(null);
+    return this.bridge.captureNativeSurfacePlaceholder(this.runtimeTabId).catch(() => null);
   }
 
   /** Hand main only the latest state stated while creation was in flight. */
@@ -368,7 +393,9 @@ const preloadBridge: NativeBrowserSurfaceBridge = {
   setNativeSurfaceVisible: async (tabId, visible) =>
     await window.desktopBridge?.preview?.setNativeSurfaceVisible(tabId, visible),
   setNativeSurfaceOccluded: async (tabId, occluded) =>
-    await window.desktopBridge?.preview?.setNativeSurfaceOccluded(tabId, occluded),
+    (await window.desktopBridge?.preview?.setNativeSurfaceOccluded(tabId, occluded)) ?? null,
+  captureNativeSurfacePlaceholder: async (tabId) =>
+    (await window.desktopBridge?.preview?.captureNativeSurfacePlaceholder(tabId)) ?? null,
   setNativeSurfaceOrder: async (orderedTabIds) =>
     await window.desktopBridge?.preview?.setNativeSurfaceOrder(orderedTabIds),
   focusNativeSurface: async (tabId) =>

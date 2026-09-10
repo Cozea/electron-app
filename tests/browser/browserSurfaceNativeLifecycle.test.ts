@@ -20,6 +20,11 @@ interface FakeView {
     close: ReturnType<typeof vi.fn>;
     focus: ReturnType<typeof vi.fn>;
     loadURL: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
+    emit: (event: string) => void;
+    focused: boolean;
+    isFocused: () => boolean;
+    capturePage: ReturnType<typeof vi.fn>;
   };
   setBounds: (bounds: FakeView["bounds"]) => void;
   getBounds: () => FakeView["bounds"];
@@ -44,7 +49,8 @@ class FakeWebContentsView {
     // Per-instance, so disposing one surface cannot make every other surface
     // look destroyed and hide a real per-view leak.
     let destroyed = false;
-    this.webContents = {
+    const listeners = new Map<string, Array<() => void>>();
+    const contents: FakeView["webContents"] = {
       id,
       isDestroyed: () => destroyed,
       close: vi.fn(() => {
@@ -52,7 +58,18 @@ class FakeWebContentsView {
       }),
       focus: vi.fn(),
       loadURL: vi.fn(async () => undefined),
+      on: vi.fn((event: string, listener: () => void) => {
+        listeners.set(event, [...(listeners.get(event) ?? []), listener]);
+      }),
+      emit: (event: string) => listeners.get(event)?.forEach((listener) => listener()),
+      focused: false,
+      isFocused: () => contents.focused,
+      capturePage: vi.fn(async () => ({
+        isEmpty: () => false,
+        toJPEG: () => Buffer.from("still"),
+      })),
     };
+    this.webContents = contents;
     created.push(this as unknown as FakeView);
   }
   setBounds(bounds: FakeView["bounds"]) {
@@ -92,6 +109,7 @@ const makeWindow = () => {
   return {
     isDestroyed: () => false,
     webContents: {
+      focus: vi.fn(),
       on: vi.fn((event: string, listener: (...args: never[]) => void) => {
         rendererListeners.set(event, listener);
       }),
@@ -350,6 +368,123 @@ describe("BrowserSurfaceNativeHost", () => {
     await host.releaseAll();
 
     expect(host.list()).toHaveLength(0);
+  });
+});
+
+describe("native surface occlusion and focus", () => {
+  const makeHost = (window = makeWindow(), onSurfaceFocusChange?: (id: string, focused: boolean) => void) =>
+    new BrowserSurfaceNativeHost({
+      sessions: { resolve: () => ({}) as never } as never,
+      getWindow: () => window as never,
+      ...(onSurfaceFocusChange ? { onSurfaceFocusChange } : {}),
+    });
+
+  const onScreen = async (host: ReturnType<typeof makeHost>) => {
+    const view = await host.ensureSurface(descriptor());
+    view.layout({ x: 0, y: 0, width: 400, height: 300 });
+    view.setVisible(true);
+    return { view, native: created.at(-1)! };
+  };
+
+  it("requests the still before the view leaves the screen, and does not wait for it", async () => {
+    const host = makeHost();
+    const { view, native } = await onScreen(host);
+    const sequence: string[] = [];
+    native.webContents.capturePage.mockImplementation(async () => {
+      sequence.push("capture requested");
+      await Promise.resolve();
+      sequence.push("capture resolved");
+      return { isEmpty: () => false, toJPEG: () => Buffer.from("still") };
+    });
+    const setVisible = native.setVisible.bind(native);
+    native.setVisible = (visible: boolean) => {
+      sequence.push(`visible ${visible}`);
+      setVisible(visible);
+    };
+
+    const pending = host.setSurfaceOccluded("rt_1", true);
+
+    // Hidden in the same turn: the overlay is never held behind a live page
+    // for the length of a screenshot.
+    expect(view.isVisible).toBe(false);
+    expect(native.webContents.capturePage).toHaveBeenCalledTimes(1);
+    const still = await pending;
+    // Requested while the page is still drawn, so it is the frame the user saw;
+    // hidden before the capture returns, so nothing waited on it.
+    expect(sequence).toEqual(["capture requested", "visible false", "capture resolved"]);
+    expect(still?.dataUrl).toBe(`data:image/jpeg;base64,${Buffer.from("still").toString("base64")}`);
+  });
+
+  it("offers no still for a surface that is not on screen", async () => {
+    const host = makeHost();
+    await host.ensureSurface(descriptor());
+    const native = created.at(-1)!;
+
+    await expect(host.setSurfaceOccluded("rt_1", true)).resolves.toBeNull();
+    expect(native.webContents.capturePage).not.toHaveBeenCalled();
+  });
+
+  it("treats an empty capture as no still at all", async () => {
+    const host = makeHost();
+    const { native } = await onScreen(host);
+    native.webContents.capturePage.mockResolvedValueOnce({ isEmpty: () => true, toJPEG: () => Buffer.from("") });
+
+    await expect(host.setSurfaceOccluded("rt_1", true)).resolves.toBeNull();
+  });
+
+  it("returns keyboard focus to the workbench before hiding a focused surface", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    const { native } = await onScreen(host);
+    native.webContents.focused = true;
+    const sequence: string[] = [];
+    window.webContents.focus.mockImplementation(() => sequence.push("workbench focused"));
+    const setVisible = native.setVisible.bind(native);
+    native.setVisible = (visible: boolean) => {
+      sequence.push(`visible ${visible}`);
+      setVisible(visible);
+    };
+
+    await host.setSurfaceOccluded("rt_1", true);
+
+    // Focus first, then hide: keystrokes must never land in a page the user
+    // can no longer see, such as one under a modal.
+    expect(sequence).toEqual(["workbench focused", "visible false"]);
+  });
+
+  it("leaves focus alone when the surface does not hold it", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    const { view } = await onScreen(host);
+
+    view.setVisible(false);
+
+    expect(window.webContents.focus).not.toHaveBeenCalled();
+  });
+
+  it("returns focus before destroying a focused surface", async () => {
+    const window = makeWindow();
+    const host = makeHost(window);
+    const { native } = await onScreen(host);
+    native.webContents.focused = true;
+
+    await host.releaseSurface("rt_1");
+
+    expect(window.webContents.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports focus entering and leaving a surface by its runtime id", async () => {
+    const onFocus = vi.fn();
+    const host = makeHost(makeWindow(), onFocus);
+    const { native } = await onScreen(host);
+
+    native.webContents.emit("focus");
+    native.webContents.emit("blur");
+
+    expect(onFocus.mock.calls).toEqual([
+      ["rt_1", true],
+      ["rt_1", false],
+    ]);
   });
 });
 

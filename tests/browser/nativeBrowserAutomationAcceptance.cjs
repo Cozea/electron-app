@@ -14,7 +14,7 @@
 // harness window unoccluded. Run it with the window visible on the current
 // Space; the "page visibility and animation frames" row records what the page
 // saw, so an environment effect can be told apart from a defect.
-const { app, BrowserWindow, WebContentsView, webContents } = require('electron')
+const { BrowserWindow, WebContentsView, app, nativeImage, webContents } = require('electron')
 
 process.on('uncaughtException', (error) => {
   console.error('[acceptance] uncaught exception:', error)
@@ -209,7 +209,7 @@ app.whenReady().then(async () => {
     await service.prepareSurface(descriptor(runtimeTabId, sessionKey, workspaceId))
     await service.ensureNativeSurface(runtimeTabId)
     service.layoutNativeSurface(runtimeTabId, {
-      windowId: 0, x: 0, y: 0, width: 900, height: 640, cornerRadius: 0, nativeOrder: 0,
+      windowId: 0, x: 0, y: 0, width: 900, height: 640, cornerRadius: 0,
     })
     service.setNativeSurfaceVisible(runtimeTabId, true)
     const view = service.listNativeSurfaces().find((surface) => surface.runtimeTabId === runtimeTabId)
@@ -495,6 +495,108 @@ app.whenReady().then(async () => {
     'the picker path opens and cancels on the native tab above; choosing an element and submitting an annotation need a real pointer gesture over the page')
   manual('find-in-page',
     'a WebContentsView in a harness reports visibilityState hidden and never runs requestAnimationFrame, so a search result is timing-dependent here')
+
+  // ------------------------------------------------------------------ PH4 ----
+  // Occlusion, focus and native order through the real service. The renderer
+  // coordinator that decides *when* to occlude is covered by unit tests; these
+  // prove what main does with that decision, on real Chromium.
+
+  // Centre pixel as [r, g, b]; Electron bitmaps are BGRA.
+  const centrePixel = (image) => {
+    const { width, height } = image.getSize()
+    const bitmap = image.toBitmap()
+    const at = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4
+    return [bitmap[at + 2], bitmap[at + 1], bitmap[at]]
+  }
+  const tabView = () => service.listNativeSurfaces().find((surface) => surface.runtimeTabId === TAB)
+
+  await check('PH4 occlusion hides the visible browser at once and returns a still of that frame', async () => {
+    // A view is not capturable until Chromium has presented a frame; production
+    // shows its neutral fill for that interval. The reference goes through the
+    // same colour-managed pipeline as the still, so they are comparable.
+    // Earlier rows scrolled and navigated this tab, so paint it a known colour
+    // first: a white-on-white comparison could not tell a real still from a
+    // blank one.
+    await probe(`window.__ph4Kept = "kept";
+      document.documentElement.style.background = "rgb(0,170,85)";
+      document.body.style.background = "rgb(0,170,85)";
+      true`)
+    const painted = ([r, g, b]) => g > 120 && r < 140 && b < 140
+    let reference = null
+    await waitFor(async () => {
+      reference = await visible.capturePage().then((image) => (image.isEmpty() ? null : image), () => null)
+      return reference !== null && painted(centrePixel(reference))
+    }, 'a capturable frame showing the painted page')
+
+    const pending = service.setNativeSurfaceOccluded(TAB, true)
+    assert.equal(tabView().isVisible, false, 'the view must leave the screen without waiting for the capture')
+    const still = await pending
+    assert.ok(still && still.dataUrl.startsWith('data:image/jpeg;base64,'), 'occlusion must return a still')
+    const image = nativeImage.createFromDataURL(still.dataUrl)
+    const [got, seen] = [centrePixel(image), centrePixel(reference)]
+    assert.ok(painted(got), `the still must show the page, not a blank: rgb(${got})`)
+    assert.ok(got.every((channel, index) => Math.abs(channel - seen[index]) <= 12),
+      `the still must be the frame the user saw: rgb(${got}) vs rgb(${seen})`)
+    return `still ${image.getSize().width}x${image.getSize().height}, centre rgb(${got})`
+  })
+
+  await check('PH4 the same live page returns when the overlay goes', async () => {
+    assert.equal(await service.setNativeSurfaceOccluded(TAB, false), null, 'uncovering takes no still')
+    assert.equal(tabView().isVisible, true)
+    assert.equal(tabView().webContentsId, visibleId, 'no second browser')
+    assert.equal(service.listNativeSurfaces().length, 1)
+    assert.equal(await probe('window.__ph4Kept'), 'kept', 'page state must survive being covered')
+  })
+
+  await check('PH4 a covered browser offers no still', async () => {
+    await service.setNativeSurfaceOccluded(TAB, true)
+    try {
+      assert.equal(await service.captureNativeSurfacePlaceholder(TAB), null)
+    } finally {
+      await service.setNativeSurfaceOccluded(TAB, false)
+    }
+  })
+
+  await check('PH4 focus entering the native browser reaches the workbench', async () => {
+    const events = []
+    const stop = service.onNativeSurfaceFocusChange((tabId, focused) => events.push([tabId, focused]))
+    try {
+      window.webContents.focus()
+      visible.focus()
+      await waitFor(() => events.some(([tabId, focused]) => tabId === TAB && focused),
+        'a focus event for the tab', 3000)
+      return JSON.stringify(events)
+    } finally {
+      stop()
+    }
+  })
+
+  await check('PH4 covering a focused browser hands focus back to the workbench first', async () => {
+    visible.focus()
+    await waitFor(() => visible.isFocused(), 'the browser to hold focus', 3000)
+    await service.setNativeSurfaceOccluded(TAB, true)
+    try {
+      assert.equal(visible.isFocused(), false, 'hidden contents must not keep keyboard focus')
+      assert.equal(window.webContents.isFocused(), true, 'focus must return to the workbench renderer')
+    } finally {
+      await service.setNativeSurfaceOccluded(TAB, false)
+    }
+  })
+
+  await check('PH4 native order follows the published order without recreating browsers', async () => {
+    const other = 'rt_ph4_order'
+    const otherId = await openSurface(other, SESSION, 'ws_auto')
+    const index = (id) => window.contentView.children.findIndex((child) => child.webContents?.id === id)
+    try {
+      service.setNativeSurfaceOrder([other, TAB])
+      assert.ok(index(visibleId) > index(otherId), 'the last id published must be front-most')
+      service.setNativeSurfaceOrder([TAB, other])
+      assert.ok(index(otherId) > index(visibleId), 'bringing a surface forward must reorder it')
+      assert.equal(webContents.fromId(visibleId), visible, 'reordering must not recreate a browser')
+    } finally {
+      await service.releaseSurface(other)
+    }
+  })
 
   // ------------------------------------------------- Gate: explicit close ----
   await check('explicit close removes native, logical, inventory and contents together', async () => {

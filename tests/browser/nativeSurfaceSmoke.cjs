@@ -8,7 +8,7 @@
 // Driven by scripts/smoke-native-browser-surface.mjs, which compiles the
 // TypeScript sources first and passes the output directory in
 // COZEA_NATIVE_SURFACE_BUILD.
-const { app, BrowserWindow, webContents } = require('electron')
+const { app, BrowserWindow, nativeImage, webContents } = require('electron')
 const assert = require('node:assert/strict')
 const path = require('node:path')
 
@@ -22,7 +22,20 @@ const { BrowserSurfaceSessionRegistry } = load('BrowserSurfaceSessionRegistry.js
 
 const PAGE = 'data:text/html;charset=utf-8,' + encodeURIComponent(
   '<!doctype html><meta charset="utf-8"><title>Native Surface Probe</title>' +
+  '<body style="margin:0;background:rgb(0,170,85)">' +
   '<h1 id="heading">main-owned</h1><script>window.__probe = "native-surface-ok"</script>')
+
+// Centre pixel of a still, as [r, g, b]. JPEG is lossy, so callers compare
+// with a small tolerance rather than exactly.
+const centrePixel = (image) => {
+  const { width, height } = image.getSize()
+  const bitmap = image.toBitmap()
+  const at = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4
+  // Electron bitmaps are BGRA.
+  return [bitmap[at + 2], bitmap[at + 1], bitmap[at]]
+}
+const near = (actual, expected, tolerance = 24) =>
+  actual.every((channel, index) => Math.abs(channel - expected[index]) <= tolerance)
 
 const timeout = setTimeout(() => {
   console.error('Native browser surface smoke timed out')
@@ -110,15 +123,64 @@ app.whenReady().then(async () => {
   assert.equal(await contents.executeJavaScript('window.__probe'), 'native-surface-ok',
     'the page must survive a hide/show cycle')
 
-  // An overlay must remove the view from the screen, not sit under it (INV-009).
-  surface.setOccluded(true)
-  assert.equal(surface.isVisible, false)
-  surface.setOccluded(false)
-  assert.equal(surface.isVisible, true)
+  // ---- PH4: an overlay removes the view from the screen (INV-009) ----
+  // A view is not capturable until Chromium has presented its first frame;
+  // before that, capturePage rejects with "display surface not available".
+  // Production covers that interval with the slot's neutral fill. Here, wait
+  // for the frame -- a readiness condition, like waiting for load -- so the
+  // still below is checked against real pixels rather than against nothing.
+  // The frame it presents is also the reference: capturePage returns pixels in
+  // the display's colour space, so the still is compared with the view as the
+  // user saw it, not with the page's CSS colour.
+  const capturableBy = Date.now() + 5_000
+  let reference = null
+  while (!reference) {
+    reference = await contents.capturePage().then((image) => (image.isEmpty() ? null : image), () => null)
+    if (reference) break
+    assert.ok(Date.now() < capturableBy, 'the surface never presented a capturable frame')
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  // The view must hide in the same turn -- never held on screen for the length
+  // of a capture -- and the still handed to the DOM placeholder must still be
+  // the page the user was looking at, although the view is already hidden.
+  const occluding = host.setSurfaceOccluded('rt_probe', true)
+  assert.equal(surface.isVisible, false, 'occlusion must hide the view without waiting for the capture')
+  const still = await occluding
+  assert.ok(still && still.dataUrl.startsWith('data:image/jpeg;base64,'),
+    'occlusion must return a still of the page')
+  const stillImage = nativeImage.createFromDataURL(still.dataUrl)
+  assert.equal(stillImage.isEmpty(), false, 'the still must contain an image')
+  const seen = centrePixel(reference)
+  assert.ok(near(centrePixel(stillImage), seen, 12),
+    `the still must be the frame the user saw: rgb(${centrePixel(stillImage).join(',')}) vs rgb(${seen.join(',')})`)
+  assert.equal(await host.setSurfaceOccluded('rt_probe', false), null,
+    'uncovering takes no still')
+  assert.equal(surface.isVisible, true, 'the same live page must return after the overlay')
+  assert.equal(await contents.executeJavaScript('window.__probe'), 'native-surface-ok',
+    'the page must survive being covered')
+  // A covered view is off screen, so there is nothing current to capture.
+  host.setSurfaceOccluded('rt_probe', true)
+  assert.equal(await host.captureSurfacePlaceholder('rt_probe'), null,
+    'a covered surface must not offer a still')
+  await host.setSurfaceOccluded('rt_probe', false)
+
+  // ---- PH4: native order follows the order the workbench publishes ----
+  const back = await host.ensureSurface({ ...descriptor, runtimeTabId: 'rt_order_back', tileId: 'tile_back' })
+  back.layout({ x: 60, y: 60, width: 300, height: 200 })
+  back.setVisible(true)
+  const childIndex = (view) => window.contentView.children.indexOf(view.view)
+  host.setSurfaceOrder(['rt_order_back', 'rt_probe'])
+  assert.ok(childIndex(surface) > childIndex(back), 'the last id published must be front-most')
+  host.setSurfaceOrder(['rt_probe', 'rt_order_back'])
+  assert.ok(childIndex(back) > childIndex(surface), 'bringing a surface forward must reorder the native children')
+  assert.equal(back.webContentsId, back.view.webContents.id, 'reordering must not recreate a browser')
+  await host.releaseSurface('rt_order_back')
 
   // destroy
+  const revokedBeforeRelease = revoked.length
   await host.releaseSurface('rt_probe')
-  assert.deepEqual(revoked, [idBeforeToggle], 'the automation vouch must be withdrawn')
+  assert.deepEqual(revoked.slice(revokedBeforeRelease), [idBeforeToggle],
+    'the automation vouch must be withdrawn')
   assert.equal(host.has('rt_probe'), false)
   assert.equal(surface.isDisposed, true)
 

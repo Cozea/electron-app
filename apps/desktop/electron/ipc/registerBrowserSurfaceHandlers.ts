@@ -127,6 +127,9 @@ export function registerBrowserSurfaceHandlers(
   handle(BROWSER_SURFACE_IPC.focusNativeSurface, (_event, tabId: string) =>
     service.focusNativeSurface(tabId),
   );
+  handle(BROWSER_SURFACE_IPC.captureNativeSurfacePlaceholder, (_event, tabId: string) =>
+    service.captureNativeSurfacePlaceholder(tabId),
+  );
   handle(BROWSER_SURFACE_IPC.navigate, (_event, payload: { tabId: string; url: string }) =>
     service.navigate(payload.tabId, payload.url),
   );
@@ -241,10 +244,18 @@ export function registerBrowserSurfaceHandlers(
     }
   });
 
+  const removeFocusListener = service.onNativeSurfaceFocusChange((tabId, focused) => {
+    const window = options.getMainWindow();
+    if (window && !window.isDestroyed()) {
+      window.webContents.send(BROWSER_SURFACE_IPC.nativeSurfaceFocusChanged, tabId, focused);
+    }
+  });
+
   return () => {
     removeStateListener();
     removePointerListener();
     removeRecordingListener();
+    removeFocusListener();
     for (const [channel] of handles) ipcMain.removeHandler(channel);
   };
 }

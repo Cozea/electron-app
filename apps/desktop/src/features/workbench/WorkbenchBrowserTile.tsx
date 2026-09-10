@@ -14,6 +14,7 @@ import {
   browserSurfaceRuntimeTabId,
   canonicalBrowserWorkbenchSessionKey,
 } from "@/features/browser/browserSurfaceIdentity";
+import { useBrowserSurfaceFocusStore } from "@/features/browser/browserSurfaceFocusStore";
 import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore";
 import {
   resolveDockviewBrowserSurfaceNativeRadius,
@@ -138,6 +139,16 @@ export function WorkbenchBrowserTile({
   );
   const preview = window.desktopBridge?.preview;
 
+  // A click into a native page moves focus inside Chromium without any DOM
+  // event reaching the renderer, so Dockview cannot see it the way it sees a
+  // click on DOM content. Main reports it, and the tile activates itself.
+  const nativeFocused = useBrowserSurfaceFocusStore(
+    (store) => runtimeTabId !== null && store.focusedRuntimeTabId === runtimeTabId,
+  );
+  useEffect(() => {
+    if (nativeFocused && !panelApi.isActive) panelApi.setActive();
+  }, [nativeFocused, panelApi]);
+
   useEffect(() => {
     if (!state || state.navStatus.kind !== "Success") return;
     actions.updateBrowserTile(
@@ -205,7 +216,6 @@ export function WorkbenchBrowserTile({
             borderRadius={surfacePresentation.borderRadius}
             cornerRadius={resolveDockviewBrowserSurfaceNativeRadius(surfacePresentation.borderRadius)}
             stackingLayer={surfacePresentation.stackingLayer}
-            nativeOrder={surfacePresentation.stackingLayer}
             subscribePositionChanges={surfacePresentation.subscribePositionChanges}
             className="absolute inset-0 size-full"
           />
