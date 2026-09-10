@@ -9,7 +9,6 @@ import {
   type Event,
   type IpcMainInvokeEvent,
   type Session,
-  session,
   shell,
   webContents,
   type WebContents,
@@ -44,6 +43,9 @@ import type {
   PreparedBrowserSurface,
 } from "../../../../shared/browserSurfaceTypes";
 import { partitionForDescriptor } from "../../../../shared/browserSurfaceSessions";
+import { BrowserSurfaceSessionRegistry } from "./browser/BrowserSurfaceSessionRegistry";
+import { BrowserSurfaceNativeHost } from "./browser/BrowserSurfaceNativeHost";
+import type { BrowserSurfaceView } from "./browser/BrowserSurfaceView";
 import { browserHttpDiagnosticForResponse } from "../../../../shared/browserHttpDiagnostics";
 import {
   evaluateOrgDevAppNavigation,
@@ -223,7 +225,13 @@ function cloneFindState(state: BrowserFindState): BrowserFindState {
 export class T3BrowserSurfaceService {
   private readonly descriptors = new Map<string, BrowserSurfaceDescriptor>();
   private readonly partitionsByScope = new Map<string, string>();
-  private readonly sessionsByPartition = new Map<string, Session>();
+  private readonly sessionRegistry: BrowserSurfaceSessionRegistry;
+  /**
+   * Native browser surfaces. Present from Phase 2 but not yet driving any
+   * product tile: every surface family still renders through the renderer
+   * `<webview>` host until its ledger row moves.
+   */
+  private readonly nativeHost: BrowserSurfaceNativeHost;
   private readonly partitionOperations = new Map<string, Promise<void>>();
   private readonly stateByTabId = new Map<string, CozeaBrowserSurfaceState>();
   private readonly activeByTabId = new Map<string, boolean>();
@@ -251,6 +259,33 @@ export class T3BrowserSurfaceService {
 
   constructor(options: BrowserSurfaceServiceOptions) {
     this.options = options;
+    this.sessionRegistry = new BrowserSurfaceSessionRegistry({
+      allowedPermissions: ALLOWED_PREVIEW_PERMISSIONS,
+      protocols: {
+        registerOrgDevAppProtocol: (browserSession, publicationId) =>
+          options.orgDevAppArtifactService.registerProtocolForSession(
+            browserSession,
+            publicationId,
+          ),
+        registerDevAppPreviewProtocol: (browserSession, devSourceId) =>
+          options.devAppPreviewService.registerProtocolForSession(browserSession, devSourceId),
+      },
+    });
+    this.nativeHost = new BrowserSurfaceNativeHost({
+      sessions: this.sessionRegistry,
+      getWindow: () => options.getMainWindow() ?? null,
+      automation: {
+        // Vouching happens in-process, immediately before registration, so T3
+        // never has to re-derive ownership of contents main created.
+        attach: async (tabId, webContentsId) => {
+          await this.run((manager) => manager.trustNativeBrowserContents(webContentsId));
+          await this.run((manager) => manager.registerBrowserContents(tabId, webContentsId));
+        },
+        detach: async (webContentsId) => {
+          await this.run((manager) => manager.revokeNativeBrowserContents(webContentsId));
+        },
+      },
+    });
     this.removeDevAppWorkerStateListener = options.devAppPreviewService.onWorkerStateChange(
       (sourceId, state) => {
         for (const [tabId, descriptor] of this.descriptors) {
@@ -295,7 +330,7 @@ export class T3BrowserSurfaceService {
           }
           return partition;
         }),
-      isPartition: (partition: string) => this.sessionsByPartition.has(partition),
+      isPartition: (partition: string) => this.sessionRegistry.hasPartition(partition),
       getSession: (scope = "shared") =>
         T3Effect.sync(() => {
           const partition = this.partitionsByScope.get(scope);
@@ -307,7 +342,7 @@ export class T3BrowserSurfaceService {
       clearCookies: () =>
         T3Effect.promise(() =>
           Promise.all(
-            Array.from(this.sessionsByPartition.values(), (browserSession) =>
+            this.sessionRegistry.sessions().map((browserSession) =>
               browserSession.clearStorageData({
                 storages: ["cookies", "localstorage", "indexdb", "websql", "serviceworkers"],
               }),
@@ -317,9 +352,7 @@ export class T3BrowserSurfaceService {
       clearCache: () =>
         T3Effect.promise(() =>
           Promise.all(
-            Array.from(this.sessionsByPartition.values(), (browserSession) =>
-              browserSession.clearCache(),
-            ),
+            this.sessionRegistry.sessions().map((browserSession) => browserSession.clearCache()),
           ).then(() => undefined),
         ),
     });
@@ -358,36 +391,14 @@ export class T3BrowserSurfaceService {
     void this.startSubscriptions();
   }
 
+  /**
+   * Session construction lives in `BrowserSurfaceSessionRegistry`; this keeps
+   * the descriptor-aware call shape the service already used.
+   */
   private ensureSession(partition: string, descriptor: BrowserSurfaceDescriptor | null): Session {
-    const existing = this.sessionsByPartition.get(partition);
-    if (existing) return existing;
-
-    const browserSession = session.fromPartition(partition);
-    const userAgent = browserSession
-      .getUserAgent()
-      .replace(/Electron\/[\d.]+ /, "")
-      .replace(/\s*Cozea\/[\d.]+/, "");
-    browserSession.setUserAgent(userAgent);
-    browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-      callback(ALLOWED_PREVIEW_PERMISSIONS.has(permission));
-    });
-    browserSession.setPermissionCheckHandler((_webContents, permission) =>
-      ALLOWED_PREVIEW_PERMISSIONS.has(permission),
-    );
-    browserSession.on("will-download", (event) => event.preventDefault());
-    if (descriptor?.kind === "orgDevApp" && descriptor.publicationId) {
-      this.options.orgDevAppArtifactService.registerProtocolForSession(
-        browserSession,
-        descriptor.publicationId,
-      );
-    } else if (descriptor?.kind === "devAppPreview" && descriptor.devSourceId) {
-      this.options.devAppPreviewService.registerProtocolForSession(
-        browserSession,
-        descriptor.devSourceId,
-      );
-    }
-    this.sessionsByPartition.set(partition, browserSession);
-    return browserSession;
+    return descriptor
+      ? this.sessionRegistry.resolve(descriptor)
+      : this.sessionRegistry.resolvePartition(partition);
   }
 
   private async manager(): Promise<T3Manager> {
@@ -498,7 +509,7 @@ export class T3BrowserSurfaceService {
 
   canAttachWebview(webPreferences: WebPreferences, params: Record<string, unknown>): boolean {
     const partition = typeof params.partition === "string" ? params.partition : "";
-    if (!partition || !this.sessionsByPartition.has(partition)) return false;
+    if (!partition || !this.sessionRegistry.hasPartition(partition)) return false;
     const preparedDescriptors = Array.from(this.descriptors.entries())
       .filter(
         ([tabId, descriptor]) =>
@@ -608,7 +619,7 @@ export class T3BrowserSurfaceService {
           (candidate) => partitionForDescriptor(candidate) === partition,
         );
         if (!stillUsed) {
-          const ephemeralSession = this.sessionsByPartition.get(partition);
+          const ephemeralSession = this.sessionRegistry.peek(partition);
           if (ephemeralSession) {
             await Promise.allSettled([
               ephemeralSession.clearStorageData({
@@ -617,7 +628,7 @@ export class T3BrowserSurfaceService {
               ephemeralSession.clearCache(),
             ]);
           }
-          this.sessionsByPartition.delete(partition);
+          this.sessionRegistry.forget(partition);
         }
       }
       if (descriptor) this.emitInventoryChange(descriptor.workbenchSessionKey);
@@ -647,6 +658,34 @@ export class T3BrowserSurfaceService {
     await this.releaseSurface(tabId);
   }
 
+  /**
+   * Development-only probe for the native surface path (plan section 11.5).
+   *
+   * Constructs a real main-owned `WebContentsView`, registers it with T3, and
+   * hands it back so a caller can drive automation against it. Gated behind an
+   * environment flag because Phase 2 must not create a native view for any
+   * production surface: the ledger still has every family on the renderer host.
+   */
+  async probeNativeSurface(descriptor: BrowserSurfaceDescriptor): Promise<BrowserSurfaceView> {
+    if (process.env.COZEA_BROWSER_NATIVE_SHADOW !== "1") {
+      throw new Error(
+        "Native browser surfaces are not enabled; set COZEA_BROWSER_NATIVE_SHADOW=1 to probe one.",
+      );
+    }
+    validateOrgSurfaceDescriptor(descriptor);
+    return await this.nativeHost.ensureSurface(descriptor);
+  }
+
+  /** Tear down a probed native surface and withdraw its automation vouch. */
+  async releaseNativeSurface(runtimeTabId: string): Promise<void> {
+    await this.nativeHost.releaseSurface(runtimeTabId);
+  }
+
+  /** Live native surfaces. Empty in production until a family cuts over. */
+  listNativeSurfaces(): ReadonlyArray<BrowserSurfaceView> {
+    return this.nativeHost.list();
+  }
+
   async registerWebview(
     event: IpcMainInvokeEvent,
     tabId: string,
@@ -666,7 +705,7 @@ export class T3BrowserSurfaceService {
       guest.getType() !== "webview" ||
       guest.hostWebContents !== event.sender ||
       !partition ||
-      guest.session !== this.sessionsByPartition.get(partition)
+      guest.session !== this.sessionRegistry.peek(partition)
     ) {
       throw new Error("The supplied WebContents is not the prepared Cozea browser guest.");
     }

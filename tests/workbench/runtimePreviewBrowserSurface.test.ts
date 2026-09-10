@@ -74,7 +74,7 @@ describe("T3 runtime preview browser surfaces", () => {
     expect(source).toContain("runPartitionOperation(partition");
     expect(source).toContain("ephemeralSession.clearStorageData");
     expect(source).toContain("ephemeralSession.clearCache()");
-    expect(source).toContain("this.sessionsByPartition.delete(partition)");
+    expect(source).toContain("this.sessionRegistry.forget(partition)");
   });
 
   it("commits every address submission through T3 and supports live reload and external HTTP", () => {

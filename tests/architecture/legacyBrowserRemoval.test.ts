@@ -141,6 +141,33 @@ describe("browser surface migration boundary", () => {
     }
   });
 
+  it("keeps native surface creation gated while every family is renderer-backed", () => {
+    const service = read("apps/desktop/electron/services/T3BrowserSurfaceService.ts");
+
+    // Phase 2 adds the native host but must not put a native view behind any
+    // product tile. The probe is the only way to construct one, and it refuses
+    // to run unless explicitly enabled.
+    expect(service).toContain("COZEA_BROWSER_NATIVE_SHADOW");
+    expect(service).toContain("nativeHost.ensureSurface(descriptor)");
+
+    const nativeCreationSites = scan([mainRoot], ["ensureSurface(descriptor)"]);
+    expect(nativeCreationSites).toEqual([
+      "apps/desktop/electron/services/T3BrowserSurfaceService.ts: ensureSurface(descriptor)",
+    ]);
+  });
+
+  it("keeps the native host out of renderer code", () => {
+    // The host owns Chromium; the renderer may only ask for layout and
+    // visibility through IPC.
+    expect(
+      scan(rendererRoots, [
+        "BrowserSurfaceNativeHost",
+        "BrowserSurfaceView",
+        "BrowserSurfaceSessionRegistry",
+      ]),
+    ).toEqual([]);
+  });
+
   it("keeps the T3 automation parity ledger complete", () => {
     expect(
       T3_BROWSER_PORT_PARITY_LEDGER.filter((requirement) =>

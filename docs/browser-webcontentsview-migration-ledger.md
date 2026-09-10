@@ -40,26 +40,23 @@ the target the native path must match. It is not evidence about native code.
 | --- | --- | --- |
 | 0 — reverse obsolete guards, establish measurements | complete except the interactive performance scenarios | `eccbf98f` |
 | 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
+| 2 — repin, native session registry, view and host | complete | see below |
 
 ## T3 pin
 
 | | Commit |
 | --- | --- |
 | Planning baseline | `be4668f7b439499f39a659055d0f6ec34ac666b2` |
-| Current pin | `717f4f1430ee2ef73a780a1db744d5d034e00eff` |
+| Current pin | `113abb57e5977950c8c7204030dac77084d7b700` |
 
 The current pin is one commit ahead of the planning baseline. That commit
 (`717f4f14`, branch `cozea/computer-use-v2-contract`) vendors the generated
 Computer Use v2 contract and is unrelated to this migration; it moves no browser
 code.
 
-Phase 1 is committed and pushed but **not yet pinned**: `113abb57` on
-`cozea/preview-generic-browser-contents` generalizes the `PreviewManager`
-registration boundary. Phase 2 repins the parent to it and adds the native host.
-
-| | Commit |
-| --- | --- |
-| Ready for Phase 2 repin | `113abb57e5977950c8c7204030dac77084d7b700` |
+Phase 2 repinned the parent to `113abb57`
+(`cozea/preview-generic-browser-contents`), which generalizes the
+`PreviewManager` registration boundary.
 
 ### T3 registration boundary after Phase 1
 
@@ -72,6 +69,34 @@ registration boundary. Phase 2 repins the parent to it and adds the native host.
 preload bridge and the web renderer, so a renderer cannot nominate an arbitrary
 `WebContents`. Vouches are withdrawn on destroy or crash because Chromium
 recycles `WebContents` ids.
+
+## Native substrate (Phase 2)
+
+Main-process code, none of it behind a product tile yet.
+
+| File | Role |
+| --- | --- |
+| `BrowserSurfaceSessionRegistry.ts` | resolves a descriptor to its configured Electron session |
+| `BrowserSurfaceWebPreferences.ts` | the security posture for a native surface, electron-free so it is testable |
+| `BrowserSurfaceView.ts` | one main-owned `WebContentsView`, keyed by `runtimeTabId` |
+| `BrowserSurfaceNativeHost.ts` | the map of live surfaces and the only thing that creates them |
+
+The web preferences are deliberately not a copy of the `<webview>` posture. The
+guest path runs `contextIsolation=false` so the annotation picker's preload can
+read the page's React DevTools hook; a native surface is isolated by default and
+a surface opts into `shared-world` explicitly. The OS sandbox stays on for every
+posture, because that is what stops a shared-world preload from handing the page
+`require`.
+
+Native surfaces are reachable only through `probeNativeSurface`, which refuses
+to run unless `COZEA_BROWSER_NATIVE_SHADOW=1`. The architecture test asserts
+that is the sole creation site, so no production surface can acquire one before
+its ledger row moves.
+
+`bun run smoke:native-browser-surface` drives a real Electron
+`WebContentsView` through create, hidden, layout, visible, navigate, hide, show
+and destroy, and asserts the `WebContents` id handed to automation is the one
+observing the loaded page, with no `<webview>` in the process.
 
 ## Performance baseline (Phase 0)
 

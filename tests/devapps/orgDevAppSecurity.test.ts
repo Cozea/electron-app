@@ -25,6 +25,10 @@ const upload = fs.readFileSync(
   "utf8",
 );
 const main = fs.readFileSync(path.join(root, "apps/desktop/electron/main.ts"), "utf8");
+const browserSurfaceSessionRegistry = fs.readFileSync(
+  path.join(root, "apps/desktop/electron/services/browser/BrowserSurfaceSessionRegistry.ts"),
+  "utf8",
+);
 const browserSurfaceService = fs.readFileSync(
   path.join(root, "apps/desktop/electron/services/T3BrowserSurfaceService.ts"),
   "utf8",
@@ -61,10 +65,15 @@ describe("org DevApp security lifecycle", () => {
     expect(artifacts).toContain("gatewayPublications");
     expect(main).toContain("orgDevAppArtifactService.registerProtocol()");
     expect(main).not.toContain("orgDevAppArtifactService.registerProtocolForSession(");
+    // Session configuration moved to BrowserSurfaceSessionRegistry. The service
+    // still supplies the handler, and the registry is what attaches it to the
+    // one session belonging to that publication.
     expect(browserSurfaceService).toContain(
-      "this.options.orgDevAppArtifactService.registerProtocolForSession(",
+      "options.orgDevAppArtifactService.registerProtocolForSession(",
     );
-    expect(browserSurfaceService).toContain("partitionForDescriptor(descriptor)");
+    expect(browserSurfaceSessionRegistry).toContain("registerOrgDevAppProtocol(browserSession");
+    expect(browserSurfaceSessionRegistry).toContain('descriptor?.kind === "orgDevApp"');
+    expect(browserSurfaceSessionRegistry).toContain("partitionForDescriptor(descriptor)");
     // The partition rule itself now lives in shared/browserSurfaceSessions and is
     // exercised directly, rather than asserted here as a template literal that any
     // refactor breaks without telling anyone whether the property still holds.
@@ -90,7 +99,7 @@ describe("org DevApp security lifecycle", () => {
     expect(browserSurfaceService).toContain("this.pendingDirectNavigationByTabId.set(tabId, url)");
     expect(browserSurfaceService).toContain("await guest.loadURL(url)");
     expect(browserSurfaceService).not.toContain("isSafeExternalUrl");
-    expect(browserSurfaceService).toContain('browserSession.on("will-download"');
+    expect(browserSurfaceSessionRegistry).toContain('browserSession.on("will-download"');
     expect(browserSurfaceService).toContain("ALLOWED_PREVIEW_PERMISSIONS");
   });
 
