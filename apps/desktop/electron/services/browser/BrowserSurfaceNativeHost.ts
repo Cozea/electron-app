@@ -9,7 +9,8 @@ import { BrowserSurfaceView, type BrowserSurfaceBounds } from "./BrowserSurfaceV
  *
  * One live view per `runtimeTabId` (INV-003): `ensureSurface` reconciles a
  * repeat call instead of creating a second Chromium browser, which is what
- * makes a tile survive unmount, move and re-mount.
+ * makes a tile survive presentation churn without giving React browser
+ * lifetime authority.
  */
 
 /** Registers a native surface's contents with T3 automation. */
@@ -25,43 +26,55 @@ export interface BrowserSurfaceNativeHostOptions {
   readonly getWindow: () => BrowserWindow | null;
   readonly automation?: BrowserSurfaceAutomationBinder | null;
   readonly resolvePreload?: (descriptor: BrowserSurfaceDescriptor) => string | null;
+  /**
+   * Full logical teardown owner. A renderer reload invalidates runtime ids, so
+   * the service above this host must close T3/descriptor/native state together.
+   */
+  readonly onRendererInvalidated?: () => Promise<void>;
+}
+
+function sameOrder(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 export class BrowserSurfaceNativeHost {
   private readonly surfaces = new Map<string, BrowserSurfaceView>();
   private readonly options: BrowserSurfaceNativeHostOptions;
   private readonly watchedRenderers = new WeakSet<Electron.WebContents>();
+  private rendererInvalidation: Promise<void> | null = null;
+  private lastAppliedOrder: ReadonlyArray<string> = [];
 
   constructor(options: BrowserSurfaceNativeHostOptions) {
     this.options = options;
   }
 
   /**
-   * Drop every surface when the window's renderer document goes away.
-   *
-   * A `runtimeTabId` exists only in renderer memory, and a reloaded renderer
-   * mints fresh ones, so it can neither name nor release the surfaces it asked
-   * for before the reload. Those views stay parented to the window and keep
-   * painting over the workbench, and closing the tile that used to own one
-   * releases the surface created after the reload instead.
-   *
-   * Main owns these browsers (INV-001), so noticing the renderer leave is
-   * main's job rather than something to trust the renderer to announce -- a
-   * crashed renderer never gets to announce anything at all.
+   * A full renderer document replacement destroys renderer runtime identity.
+   * Main notices it because a crashed/reloaded renderer cannot be trusted to
+   * announce cleanup itself. The owner service performs the complete logical +
+   * native teardown; this host falls back to native-only cleanup only in unit
+   * isolation where no higher-level callback is supplied.
    */
   private watchHostRenderer(window: BrowserWindow): void {
     const contents = window.webContents;
     if (this.watchedRenderers.has(contents)) return;
     this.watchedRenderers.add(contents);
 
+    const invalidate = () => {
+      if (this.rendererInvalidation) return;
+      const operation = (this.options.onRendererInvalidated?.() ?? this.releaseAll()).finally(() => {
+        if (this.rendererInvalidation === operation) this.rendererInvalidation = null;
+      });
+      this.rendererInvalidation = operation;
+      void operation.catch((error) => {
+        console.warn("[BrowserSurfaceNativeHost] Renderer invalidation cleanup failed", error);
+      });
+    };
+
     contents.on("did-start-navigation", (details) => {
-      // Same-document navigation keeps the renderer's memory, and with it every
-      // runtimeTabId, so the surfaces are still owned and must not be dropped.
-      if (details.isMainFrame && !details.isSameDocument) void this.releaseAll();
+      if (details.isMainFrame && !details.isSameDocument) invalidate();
     });
-    contents.on("render-process-gone", () => {
-      void this.releaseAll();
-    });
+    contents.on("render-process-gone", invalidate);
   }
 
   has(runtimeTabId: string): boolean {
@@ -81,8 +94,8 @@ export class BrowserSurfaceNativeHost {
    * The surface for a descriptor, creating it only if absent.
    *
    * A descriptor arriving twice for one `runtimeTabId` returns the existing
-   * view rather than replacing it, so a React remount cannot silently discard a
-   * live page and its session state.
+   * view rather than replacing it, so a renderer remount cannot silently
+   * discard a live page and its session state.
    */
   async ensureSurface(descriptor: BrowserSurfaceDescriptor): Promise<BrowserSurfaceView> {
     const existing = this.surfaces.get(descriptor.runtimeTabId);
@@ -91,8 +104,6 @@ export class BrowserSurfaceNativeHost {
     const window = this.options.getWindow();
     if (window && !window.isDestroyed()) this.watchHostRenderer(window);
     if (!window || window.isDestroyed()) {
-      // Explicit failure rather than a surface that exists but never paints
-      // (INV-013).
       throw new Error("Cannot create a browser surface without a live window.");
     }
 
@@ -109,9 +120,11 @@ export class BrowserSurfaceNativeHost {
       try {
         await this.options.automation.attach(descriptor.runtimeTabId, view.webContentsId);
       } catch (cause) {
-        // A surface T3 cannot drive is not a usable surface; do not leave a
-        // half-registered view behind.
+        // Attachment may have failed after a trust vouch was created. Revoke
+        // best-effort before Chromium can recycle the id, then destroy the
+        // unusable view. `detach` is deliberately idempotent.
         this.surfaces.delete(descriptor.runtimeTabId);
+        await this.options.automation.detach(view.webContentsId).catch(() => undefined);
         view.dispose();
         throw cause;
       }
@@ -123,11 +136,22 @@ export class BrowserSurfaceNativeHost {
     const view = this.surfaces.get(runtimeTabId);
     if (!view) return;
     this.surfaces.delete(runtimeTabId);
+    this.lastAppliedOrder = [];
     const webContentsId = view.isDisposed ? null : view.webContentsId;
-    view.dispose();
+
+    let detachError: unknown = null;
     if (webContentsId !== null && this.options.automation) {
-      await this.options.automation.detach(webContentsId);
+      try {
+        // Revoke before closing the WebContents so an id that Chromium reuses
+        // cannot inherit a native-browser vouch even for a brief interval.
+        await this.options.automation.detach(webContentsId);
+      } catch (error) {
+        detachError = error;
+      }
     }
+
+    view.dispose();
+    if (detachError) throw detachError;
   }
 
   layoutSurface(runtimeTabId: string, bounds: BrowserSurfaceBounds, borderRadius = 0): void {
@@ -143,13 +167,18 @@ export class BrowserSurfaceNativeHost {
   }
 
   /**
-   * Apply a front-to-back order to overlapping surfaces.
-   *
-   * Ordering is expressed by re-adding children back-to-front, because that is
-   * what actually reorders native views; CSS cannot (INV-011).
+   * Apply one canonical back-to-front order to overlapping surfaces.
+   * The final id is front-most. Re-adding an unchanged order would churn the
+   * native child list for no visual effect, so it is suppressed here.
    */
   setSurfaceOrder(orderedRuntimeTabIds: ReadonlyArray<string>): void {
-    for (const runtimeTabId of orderedRuntimeTabIds) {
+    const uniqueLive = orderedRuntimeTabIds.filter(
+      (runtimeTabId, index) =>
+        orderedRuntimeTabIds.indexOf(runtimeTabId) === index && this.surfaces.has(runtimeTabId),
+    );
+    if (sameOrder(this.lastAppliedOrder, uniqueLive)) return;
+    this.lastAppliedOrder = [...uniqueLive];
+    for (const runtimeTabId of uniqueLive) {
       this.surfaces.get(runtimeTabId)?.bringToFront();
     }
   }
@@ -160,7 +189,11 @@ export class BrowserSurfaceNativeHost {
 
   async releaseAll(): Promise<void> {
     for (const runtimeTabId of Array.from(this.surfaces.keys())) {
-      await this.releaseSurface(runtimeTabId);
+      try {
+        await this.releaseSurface(runtimeTabId);
+      } catch {
+        // Continue releasing remaining native children during shutdown/reload.
+      }
     }
   }
 }
