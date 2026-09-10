@@ -172,15 +172,31 @@ Before Phase 4 implementation begins, rerun:
   visually wrong during a smooth gesture remains a human check.
 - PH3-C: full T3 automation matrix against the native Browser tile, including
   picker/annotation now that the native preload is wired.
-- PH3-D: cookie/storage sharing and isolation across live Browser tiles.
+- ~~PH3-D: cookie/storage sharing and isolation across live Browser tiles.~~
+  **PASSED 2026-09-10** via `bun run smoke:native-browser-surface` against real
+  Electron sessions on this head: two surfaces in one workspace share storage,
+  different workspaces do not, ephemeral surfaces are isolated from each other,
+  and an ephemeral surface cannot write into workspace storage. Asserted at the
+  session layer that backs the tiles rather than by opening two tiles by hand;
+  the session is the isolation boundary, so this is the meaningful level.
 - ~~PH3-E: persisted-layout restore and a route round trip.~~ **PASSED
   2026-09-10** — see D1. Persisted-layout restore brings back one surface with
   the layout intact; three route round trips preserved `runtimeTabId`,
   `webContentsId`, `live: 1` and scroll position.
-- Actual tile close: verify the surface disappears from native host, T3 state and
-  inventory together.
+- ~~Actual tile close~~ **PASSED 2026-09-10 (observable half).** Closing a
+  Browser tile removed the tile, its sidebar entry and its inventory row
+  together, the neighbouring tile reflowed, nothing was left painting over the
+  workbench, and no errors were raised. Trust revocation before
+  `WebContents.close` and descriptor/native teardown ordering are asserted
+  directly by `browserSurfacePrePhase4Corrections` and the native-host
+  regressions rather than inferred from the screen.
 - Session freeze/close: verify no native WCV orphan remains.
-- Full renderer reload: verify neither physical nor logical old surface survives.
+- ~~Full renderer reload~~ **PASSED 2026-09-10.** Run with a live browser
+  surface present, not an empty workbench: after Force Reload the tile returned
+  painting its page with the correct title, the layout was preserved, nothing
+  from before the reload survived on screen, and no errors were raised. The
+  first attempt was discarded as meaningless because the workbench had no live
+  surface to orphan.
 
 The previously verified group move remains valid evidence: the tile retained the
 same `webContentsId` and unsubmitted page state through the move.
@@ -332,6 +348,20 @@ a record. A degenerate teardown snapshot cannot replace the last valid in-memory
 or durable record. The original Shift+Cmd+R reproduction is still worth running
 to determine why Dockview emitted the degenerate shape, but that observation no
 longer has permission to destroy the last valid layout.
+
+### Development-only artifact worth knowing
+
+Hot-module replacement of the browser module family silently blanks live tiles.
+`browserSurfaceModels` is a module singleton, so an HMR swap leaves two
+registries alive at once: the pre-swap slot's cleanup sends `setVisible(false)`
+for the same `runtimeTabId` that the new model has just set to `true`, and the
+stale write wins. Layout keeps arriving, so the surface is positioned but not
+drawn.
+
+This cannot occur in production -- one module instance, one registry -- and a
+clean restart restores the tile. It is recorded because it looks exactly like a
+migration regression and was mistaken for one during this acceptance pass. Do
+not edit browser-surface sources under a running dev server while testing.
 
 ## Phase 4 entry rule
 
