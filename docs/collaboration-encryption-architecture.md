@@ -1,5 +1,14 @@
 # Collaboration Encryption Architecture
 
+> **SUPERSEDED AS IMPLEMENTATION AUTHORITY**
+>
+> This document is retained for historical context, key wrapping patterns, and cryptographic primitives.
+> It is superseded by the master collaboration specification:
+> [docs/collaboration/collaboration-autogit-master-plan.md](docs/collaboration/collaboration-autogit-master-plan.md).
+>
+> Do not use this document as authority for collaboration session lifecycle, room identity (`projectId`),
+> or renderer-owned CRDT state.
+
 Last reviewed: 2026-08-29
 
 ## Implementation Status

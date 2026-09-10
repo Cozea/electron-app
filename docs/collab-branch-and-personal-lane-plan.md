@@ -1,5 +1,14 @@
 # Collab Branch And Personal Lane Plan
 
+> **SUPERSEDED AS IMPLEMENTATION AUTHORITY**
+>
+> This document is retained for historical context and recovery patterns only.
+> It is superseded by the master collaboration specification:
+> [docs/collaboration/collaboration-autogit-master-plan.md](docs/collaboration/collaboration-autogit-master-plan.md).
+>
+> Do not use this document as authority for collaboration architecture, room identity (`projectId`),
+> branch-equality collaboration activation, editor-centric sync, or Git transport.
+
 ## Goal
 
 Split the current single-branch model into two clearly different concepts:

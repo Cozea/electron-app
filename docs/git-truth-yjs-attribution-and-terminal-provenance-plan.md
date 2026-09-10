@@ -1,5 +1,14 @@
 # Git Truth, Yjs Attribution, and Terminal Provenance Plan
 
+> **SUPERSEDED AS IMPLEMENTATION AUTHORITY**
+>
+> This document is retained for historical context and recovery patterns only.
+> It is superseded by the master collaboration specification:
+> [docs/collaboration/collaboration-autogit-master-plan.md](docs/collaboration/collaboration-autogit-master-plan.md).
+>
+> Do not use this document as authority for collaboration architecture, room identity (`projectId`),
+> branch-equality collaboration activation, editor-centric sync, or Git transport.
+
 Last reviewed: 2026-04-18
 
 ## Summary
