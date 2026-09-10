@@ -7,14 +7,13 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
-import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot";
+import { BrowserSurfaceBackendSlot } from "@/features/browser/BrowserSurfaceBackendSlot";
 import { resolveBrowserPageError } from "@/features/browser/browserPageError";
 import {
   browserSurfaceRuntimeTabId,
   resolveBrowserWorkbenchSessionKey,
 } from "@/features/browser/browserSurfaceIdentity";
 import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore";
-import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry";
 import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
@@ -127,7 +126,8 @@ export function WorkbenchBrowserTile({
       workspaceId,
     ],
   );
-  useHostedBrowserSurface(descriptor);
+  // Which host renders this surface is decided by the migration ledger, inside
+  // BrowserSurfaceBackendSlot, not here.
   const state = useBrowserSurfaceStateStore((store) => store.byTabId[runtimeTabId]);
   const preview = window.desktopBridge?.preview;
 
@@ -167,11 +167,13 @@ export function WorkbenchBrowserTile({
         tileType="browser"
       >
         <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
-          <BrowserSurfaceSlot
-            tabId={runtimeTabId}
+          <BrowserSurfaceBackendSlot
+            descriptor={descriptor}
             visible={surfaceVisible}
             borderRadius={surfacePresentation.borderRadius}
+            cornerRadius={Number.parseFloat(surfacePresentation.borderRadius) || 0}
             stackingLayer={surfacePresentation.stackingLayer}
+            nativeOrder={surfacePresentation.stackingLayer}
             subscribePositionChanges={surfacePresentation.subscribePositionChanges}
             className="absolute inset-0 size-full"
           />

@@ -46,6 +46,7 @@ import { partitionForDescriptor } from "../../../../shared/browserSurfaceSession
 import { BrowserSurfaceSessionRegistry } from "./browser/BrowserSurfaceSessionRegistry";
 import { BrowserSurfaceNativeHost } from "./browser/BrowserSurfaceNativeHost";
 import type { BrowserSurfaceView } from "./browser/BrowserSurfaceView";
+import type { BrowserSurfaceBounds } from "../../../../shared/browserSurfaceLayout";
 import { browserHttpDiagnosticForResponse } from "../../../../shared/browserHttpDiagnostics";
 import {
   evaluateOrgDevAppNavigation,
@@ -656,6 +657,67 @@ export class T3BrowserSurfaceService {
 
   async closeTab(tabId: string): Promise<void> {
     await this.releaseSurface(tabId);
+  }
+
+  /**
+   * Create (or reuse) the native view behind a surface whose family has moved
+   * to the native backend.
+   *
+   * Idempotent by `runtimeTabId`, so a React remount reuses the live browser
+   * rather than replacing it.
+   */
+  async ensureNativeSurface(tabId: string): Promise<void> {
+    const descriptor = this.descriptors.get(tabId);
+    if (!descriptor) throw new Error(`Unknown browser surface ${tabId}`);
+    await this.nativeHost.ensureSurface(descriptor);
+  }
+
+  async releaseNativeSurfaceForTab(tabId: string): Promise<void> {
+    await this.nativeHost.releaseSurface(tabId);
+  }
+
+  /**
+   * Place a native surface.
+   *
+   * Bounds arrive in CSS pixels and are scaled by the window's zoom factor,
+   * because a zoomed workbench measures in CSS pixels that are no longer
+   * native pixels.
+   */
+  layoutNativeSurface(tabId: string, bounds: BrowserSurfaceBounds): void {
+    // Read the zoom from the window main owns rather than trusting the number
+    // the renderer sent: an isolated renderer cannot read Electron's zoom
+    // factor, and renderer-supplied geometry should not decide placement.
+    const mainWindow = this.options.getMainWindow();
+    const reported =
+      mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getZoomFactor() : 1;
+    const scale = reported > 0 ? reported : 1;
+    this.nativeHost.layoutSurface(
+      tabId,
+      {
+        x: Math.round(bounds.x * scale),
+        y: Math.round(bounds.y * scale),
+        width: Math.max(1, Math.round(bounds.width * scale)),
+        height: Math.max(1, Math.round(bounds.height * scale)),
+      },
+      Math.round(bounds.cornerRadius * scale),
+    );
+  }
+
+  setNativeSurfaceVisible(tabId: string, visible: boolean): void {
+    this.nativeHost.setSurfaceVisible(tabId, visible);
+  }
+
+  setNativeSurfaceOccluded(tabId: string, occluded: boolean): void {
+    this.nativeHost.setSurfaceOccluded(tabId, occluded);
+  }
+
+  /** Back-to-front order for overlapping native surfaces. */
+  setNativeSurfaceOrder(orderedTabIds: ReadonlyArray<string>): void {
+    this.nativeHost.setSurfaceOrder(orderedTabIds);
+  }
+
+  focusNativeSurface(tabId: string): void {
+    this.nativeHost.focusSurface(tabId);
   }
 
   /**

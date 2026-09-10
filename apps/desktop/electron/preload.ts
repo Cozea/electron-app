@@ -137,6 +137,18 @@ const previewBridge: CozeaDesktopPreviewBridge = {
   releaseSurface: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.releaseSurface, tabId),
   getSurfaceState: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.getSurfaceState, tabId),
   listSurfaces: () => ipcRenderer.invoke(BROWSER_SURFACE_IPC.listSurfaces),
+  ensureNativeSurface: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.ensureNativeSurface, tabId),
+  releaseNativeSurface: (tabId) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.releaseNativeSurface, tabId),
+  layoutNativeSurface: (tabId, bounds) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.layoutNativeSurface, { tabId, bounds }),
+  setNativeSurfaceVisible: (tabId, visible) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setNativeSurfaceVisible, { tabId, visible }),
+  setNativeSurfaceOccluded: (tabId, occluded) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setNativeSurfaceOccluded, { tabId, occluded }),
+  setNativeSurfaceOrder: (orderedTabIds) =>
+    ipcRenderer.invoke(BROWSER_SURFACE_IPC.setNativeSurfaceOrder, { orderedTabIds }),
+  focusNativeSurface: (tabId) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.focusNativeSurface, tabId),
   setSurfaceActive: (tabId, active) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.setSurfaceActive, { tabId, active }),
   findInPage: (tabId, query, options) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.findInPage, { tabId, query, options }),
   stopFindInPage: (tabId, action) => ipcRenderer.invoke(BROWSER_SURFACE_IPC.stopFindInPage, { tabId, action }),

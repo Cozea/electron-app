@@ -180,9 +180,15 @@ describe("browser surface migration boundary", () => {
     const browserTile = read("apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx");
     const runtimeTile = read("apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx");
     const orgDevAppTile = read("apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx");
+    const backendSlot = read("apps/desktop/src/features/browser/BrowserSurfaceBackendSlot.tsx");
 
-    expect(browserTile).toContain("<BrowserSurfaceSlot");
-    expect(browserTile).toContain("useHostedBrowserSurface(descriptor)");
+    // The Browser tile no longer picks a host itself. The ledger does, inside
+    // the backend slot, which is what keeps the two paths mutually exclusive.
+    expect(browserTile).toContain("<BrowserSurfaceBackendSlot");
+    expect(browserTile).not.toContain("useHostedBrowserSurface");
+    expect(backendSlot).toContain("migrationStateFor(props.descriptor.kind)");
+    expect(backendSlot).toContain("useHostedBrowserSurface(descriptor)");
+    expect(backendSlot).toContain("<NativeBrowserSurfaceSlot");
     expect(runtimeTile).toContain("<BrowserSurfaceSlot");
     expect(runtimeTile).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
     expect(runtimeTile).toContain("tile.devAppId");

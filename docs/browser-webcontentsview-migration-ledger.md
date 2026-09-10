@@ -40,7 +40,8 @@ the target the native path must match. It is not evidence about native code.
 | --- | --- | --- |
 | 0 — reverse obsolete guards, establish measurements | complete except the interactive performance scenarios | `eccbf98f` |
 | 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
-| 2 — repin, native session registry, view and host | complete | see below |
+| 2 — repin, native session registry, view and host | complete | `cb48b18a` |
+| 3 — native Browser path built; cutover not yet performed | implementation complete, awaiting manual acceptance | see below |
 
 ## T3 pin
 
@@ -97,6 +98,47 @@ its ledger row moves.
 `WebContentsView` through create, hidden, layout, visible, navigate, hide, show
 and destroy, and asserts the `WebContents` id handed to automation is the one
 observing the loaded page, with no `<webview>` in the process.
+
+## Native Browser path (Phase 3)
+
+The whole native path for `kind === "browser"` exists and is exercised by tests,
+but the ledger row above still reads `LEGACY_WEBVIEW`. Flipping it is a one-line
+edit, deliberately not made yet -- see "Before flipping the browser row" below.
+
+| Piece | Role |
+| --- | --- |
+| `shared/browserSurfaceLayout.ts` | the bounds contract, and rounding that avoids a tile seam |
+| `browserSurfaceLayoutScheduler.ts` | one measurement and at most one publish per frame per surface |
+| `browserSurfaceModel.ts` | reference-counted models keyed by `runtimeTabId` |
+| `NativeBrowserSurfaceSlot.tsx` | a measured `<div>`; the native view is not its child |
+| `BrowserSurfaceBackendSlot.tsx` | picks the backend from this ledger, not from a prop |
+
+Geometry never enters a store. It changes every frame during a drag, so routing
+it through shared state would rerender unrelated components at animation
+frequency to move a native view.
+
+Main does not scale by the renderer's reported zoom. An isolated renderer cannot
+read Electron's zoom factor, and renderer-supplied geometry should not decide
+placement, so main reads `webContents.getZoomFactor()` on the window it owns.
+
+### Before flipping the browser row
+
+`NATIVE_CANARY` makes this the production Browser backend, and these checks need
+a running workbench, so they are not covered by the suite:
+
+- PH3-A: open a tile, navigate, back/forward, reload, title, favicon,
+  find-in-page, zoom, DevTools, close and reopen.
+- PH3-B: drag a Dockview split for ten seconds and confirm the surface stays
+  attached with no oscillation and no repeated React commits.
+- PH3-C: the T3 automation matrix against a native Browser tile.
+- PH3-D: cookie sharing and isolation across two live tiles.
+
+`bun run smoke:native-browser-surface` already covers navigation, history,
+reload, title, zoom, DevTools and the storage-parity half of PH3-D against real
+Electron. find-in-page is not asserted there: a `WebContentsView` in that harness
+reports `document.visibilityState` as hidden and never runs
+`requestAnimationFrame`, so a search is timing-dependent rather than a real
+signal.
 
 ## Performance baseline (Phase 0)
 
