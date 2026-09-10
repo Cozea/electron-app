@@ -25,7 +25,7 @@ Both systems may coexist on the branch only while at least one family is
 
 | Surface family | Active backend | Automation parity | Storage parity | Overlay parity | Status |
 | --- | --- | --- | --- | --- | --- |
-| `browser` | renderer-webview | legacy-baseline | legacy-baseline | legacy-baseline | `LEGACY_WEBVIEW` |
+| `browser` | main-webcontentsview | native-pending | native-pending | native-pending | `NATIVE_CANARY` |
 | `devServer` | renderer-webview | legacy-baseline | legacy-baseline | legacy-baseline | `LEGACY_WEBVIEW` |
 | `projectDevApp` | renderer-webview | legacy-baseline | legacy-baseline | legacy-baseline | `LEGACY_WEBVIEW` |
 | `orgDevApp` | renderer-webview | legacy-baseline | legacy-baseline | legacy-baseline | `LEGACY_WEBVIEW` |
@@ -41,7 +41,7 @@ the target the native path must match. It is not evidence about native code.
 | 0 — reverse obsolete guards, establish measurements | complete except the interactive performance scenarios | `eccbf98f` |
 | 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
 | 2 — repin, native session registry, view and host | complete | `cb48b18a` |
-| 3 — native Browser path built; cutover not yet performed | implementation complete, awaiting manual acceptance | see below |
+| 3 — Browser surface on the native backend | code complete; `browser` flipped to `NATIVE_CANARY` for interactive acceptance | see below |
 
 ## T3 pin
 
@@ -101,9 +101,13 @@ observing the loaded page, with no `<webview>` in the process.
 
 ## Native Browser path (Phase 3)
 
-The whole native path for `kind === "browser"` exists and is exercised by tests,
-but the ledger row above still reads `LEGACY_WEBVIEW`. Flipping it is a one-line
-edit, deliberately not made yet -- see "Before flipping the browser row" below.
+`browser` is now `NATIVE_CANARY`: the Browser tile renders through a main-owned
+`WebContentsView`, and no `<webview>` is created for it. The other four families
+are untouched and still on the renderer host, which is what `NATIVE_CANARY`
+means -- one family migrated, the rest legacy.
+
+`automationParity`, `storageParity` and `overlayParity` read `native-pending`
+until the interactive checks below actually pass. They are not evidence.
 
 | Piece | Role |
 | --- | --- |
@@ -121,10 +125,10 @@ Main does not scale by the renderer's reported zoom. An isolated renderer cannot
 read Electron's zoom factor, and renderer-supplied geometry should not decide
 placement, so main reads `webContents.getZoomFactor()` on the window it owns.
 
-### Before flipping the browser row
+### Interactive acceptance still owed
 
-`NATIVE_CANARY` makes this the production Browser backend, and these checks need
-a running workbench, so they are not covered by the suite:
+These need a running workbench and are not covered by the suite. Until they
+pass, the parity columns above stay `native-pending`:
 
 - PH3-A: open a tile, navigate, back/forward, reload, title, favicon,
   find-in-page, zoom, DevTools, close and reopen.

@@ -141,12 +141,11 @@ describe("browser surface migration boundary", () => {
     }
   });
 
-  it("keeps native surface creation gated while every family is renderer-backed", () => {
+  it("routes every native surface through the one main-owned host", () => {
     const service = read("apps/desktop/electron/services/T3BrowserSurfaceService.ts");
 
-    // Phase 2 adds the native host but must not put a native view behind any
-    // product tile. The probe is the only way to construct one, and it refuses
-    // to run unless explicitly enabled.
+    // Native views may only come from the host (INV-001). The development probe
+    // stays gated so it cannot be mistaken for the product path.
     expect(service).toContain("COZEA_BROWSER_NATIVE_SHADOW");
     expect(service).toContain("nativeHost.ensureSurface(descriptor)");
 
@@ -154,6 +153,20 @@ describe("browser surface migration boundary", () => {
     expect(nativeCreationSites).toEqual([
       "apps/desktop/electron/services/T3BrowserSurfaceService.ts: ensureSurface(descriptor)",
     ]);
+  });
+
+  it("gives a native surface the same listeners the guest path attaches", () => {
+    const service = read("apps/desktop/electron/services/T3BrowserSurfaceService.ts");
+    const ensureNative = service.slice(
+      service.indexOf("async ensureNativeSurface("),
+      service.indexOf("async releaseNativeSurfaceForTab("),
+    );
+
+    // HTTP diagnostics and requested-URL tracking feed the tile's error state
+    // and address bar. Without them a native surface paints while its chrome
+    // stays blank, which is the silent half-migration INV-013 forbids.
+    expect(ensureNative).toContain("this.attachCozeaListeners(");
+    expect(ensureNative).toContain("this.attachDevAppViewBridge(");
   });
 
   it("keeps the native host out of renderer code", () => {

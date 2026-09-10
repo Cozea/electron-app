@@ -88,12 +88,15 @@ export function allowsNativeSurface(state: BrowserSurfaceMigrationState): boolea
 export const BROWSER_SURFACE_MIGRATION_LEDGER: ReadonlyArray<BrowserSurfaceMigrationEntry> = [
   {
     family: "browser",
-    state: "LEGACY_WEBVIEW",
-    activeBackend: "renderer-webview",
-    automationParity: "legacy-baseline",
-    storageParity: "legacy-baseline",
-    overlayParity: "legacy-baseline",
-    lastUpdatedPhase: 0,
+    // First canary. The native path is exercised by the suite and by
+    // `bun run smoke:native-browser-surface`, but the interactive PH3-A to
+    // PH3-D checks still have to pass in a running workbench.
+    state: "NATIVE_CANARY",
+    activeBackend: "main-webcontentsview",
+    automationParity: "native-pending",
+    storageParity: "native-pending",
+    overlayParity: "native-pending",
+    lastUpdatedPhase: 3,
   },
   {
     family: "devServer",

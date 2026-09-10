@@ -669,10 +669,21 @@ export class T3BrowserSurfaceService {
   async ensureNativeSurface(tabId: string): Promise<void> {
     const descriptor = this.descriptors.get(tabId);
     if (!descriptor) throw new Error(`Unknown browser surface ${tabId}`);
-    await this.nativeHost.ensureSurface(descriptor);
+    const view = await this.nativeHost.ensureSurface(descriptor);
+    // The same listeners the `<webview>` path attaches on registration. They
+    // carry HTTP diagnostics and requested-URL tracking, which is what the
+    // tile's error state and address bar read; without them a native surface
+    // would paint correctly while its chrome stayed blank.
+    const contents = view.view.webContents;
+    if (!contents.isDestroyed()) {
+      this.attachCozeaListeners(tabId, contents, descriptor);
+      this.attachDevAppViewBridge(tabId, contents, descriptor);
+    }
   }
 
   async releaseNativeSurfaceForTab(tabId: string): Promise<void> {
+    this.detachCozeaListeners(tabId);
+    this.detachDevAppViewBridge(tabId, "The browser surface was released.");
     await this.nativeHost.releaseSurface(tabId);
   }
 
