@@ -60,17 +60,21 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
     tileId,
     kind: "browser",
   });
-  const state = useBrowserSurfaceStateStore((store) => store.byTabId[runtimeTabId]);
+  // Null until the workbench session key resolves. The controls still render;
+  // they simply cannot address a browser that has no canonical identity yet.
+  const state = useBrowserSurfaceStateStore((store) =>
+    runtimeTabId ? store.byTabId[runtimeTabId] : undefined,
+  );
   const inputRef = useRef<HTMLInputElement | null>(null);
   const committedUrl = currentSurfaceUrl(tile?.url ?? "", state);
   const [draft, setDraft] = useState(committedUrl);
   const [inputFocused, setInputFocused] = useState(false);
   const preview = window.desktopBridge?.preview;
-  const hasWebContents = Boolean(state?.webContentsId);
+  const hasWebContents = Boolean(runtimeTabId && state?.webContentsId);
   const loading = state?.navStatus.kind === "Loading";
 
   const callTab = (operation: (tabId: string) => Promise<void>) => {
-    if (!hasWebContents) return;
+    if (!hasWebContents || !runtimeTabId) return;
     void operation(runtimeTabId).catch(() => undefined);
   };
   const focusAddress = () => {
@@ -78,12 +82,12 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
     queueMicrotask(() => inputRef.current?.select());
   };
   const toggleFind = () => {
-    if (!hasWebContents) return;
+    if (!hasWebContents || !runtimeTabId) return;
     useBrowserFindUiStore.getState().toggle(runtimeTabId);
   };
   const submit = (event?: FormEvent | KeyboardEvent) => {
     event?.preventDefault();
-    if (!tile || !preview) return;
+    if (!tile || !preview || !runtimeTabId) return;
     const normalized = resolveBrowserAddressSubmission(draft);
     if (!normalized) return;
     actions.updateBrowserTile(

@@ -165,9 +165,10 @@ Before Phase 4 implementation begins, rerun:
 - PH3-C: full T3 automation matrix against the native Browser tile, including
   picker/annotation now that the native preload is wired.
 - PH3-D: cookie/storage sharing and isolation across live Browser tiles.
-- PH3-E: persisted-layout restore and a route round trip. The route round trip
-  must preserve the exact `webContentsId` and unsubmitted page state while the
-  session remains warm.
+- ~~PH3-E: persisted-layout restore and a route round trip.~~ **PASSED
+  2026-09-10** — see D1. Persisted-layout restore brings back one surface with
+  the layout intact; three route round trips preserved `runtimeTabId`,
+  `webContentsId`, `live: 1` and scroll position.
 - Actual tile close: verify the surface disappears from native host, T3 state and
   inventory together.
 - Session freeze/close: verify no native WCV orphan remains.
@@ -180,7 +181,53 @@ same `webContentsId` and unsubmitted page state through the move.
 
 ### D1 — route change destroyed browser / returned blank
 
-**Code correction landed; interactive verification required.**
+**Closed 2026-09-10. Identity-boundary correction landed and PH3-E verified
+interactively.**
+
+The pre-Phase-4 lifecycle correction was necessary but not sufficient. PH3-E
+still failed against it, and the instrumented run showed why: the same tile
+produced two browsers under two session keys.
+
+| | `runtimeTabId` | wc | `workbenchSessionKey` |
+| --- | --- | --- | --- |
+| boot | `16ee7d1c…` | 2 | `…lws_6a2c8d77…::v1` |
+| after route trip | `563f0ac8…` | 3 | `…lws_6a2c8d77…` |
+
+Same `tileId`, `live: 2`, no dispose, tile blank. The second key is exactly the
+`resolveBrowserWorkbenchSessionKey` fallback: `ProjectWorkbenchSurface` supplies
+`workbenchSession?.sessionKey ?? null`, which is null while the session
+lifecycle re-resolves on remount, so identity was minted from provisional
+presentation state. A `runtimeTabId` that changes is a second Chromium browser
+by definition, so this was INV-002 being undermined by a helper written for
+scoping.
+
+Correction: `browserSurfaceRuntimeTabId` now requires the canonical session key
+and returns null otherwise; `canonicalBrowserWorkbenchSessionKey` reports
+readiness without substituting anything.
+`resolveBrowserWorkbenchSessionKey` is retained for scoping only and documented
+as invalid input for runtime identity. Revision suffixes are untouched: `::v1`
+and `::v2` remain distinct sessions. `WorkbenchBrowserTile` and
+`BrowserNavigationControls` — which derives identity independently — both
+withhold browser creation until identity is canonical, while still rendering
+their UI. The tile also stopped writing the fallback key into the descriptor it
+sends to main. Dev Server, project DevApp, DevApp Preview and Org DevApp were
+audited: all four already gate descriptor creation on a non-null `runtimeTabId`,
+so they withhold automatically and stay legacy.
+
+PH3-E evidence, three round trips across two routes on one warm session:
+same `tileId`, same canonical `…::v1` session key, same `runtimeTabId`
+(`2e546de1…`), same `webContentsId` (2), `live` stayed 1, no surface created or
+disposed after boot, scroll position preserved, page still painting, zero
+errors.
+
+The "two surfaces churn for one visible tile" observation the ledger asked to
+recheck is explained by this same defect and no longer reproduces: boot creates
+exactly one surface.
+
+Regression coverage in `tests/browser/browserSurfaceIdentityBoundary.test.ts`
+pins that a temporary null mints nothing, that `::v1 → null → ::v1` returns the
+same identity, and that `::v1 → ::v2` deliberately does not. Three of those fail
+against the previous behaviour.
 
 Root cause was architectural, not merely a lost `setVisible(true)`: the renderer
 model treated last presentation owner loss as permission to destroy native
@@ -252,7 +299,10 @@ longer has permission to destroy the last valid layout.
 Do not migrate a second surface family yet.
 
 Phase 4 may begin only after the corrected PH3-C, PH3-D and PH3-E checks are run
-and the D1 route/lifetime regression is confirmed closed. D2, D4 and D5 are not
+and the D1 route/lifetime regression is confirmed closed.
+
+PH3-E has passed and D1 is closed (2026-09-10). PH3-A, PH3-B, PH3-C and PH3-D,
+plus the tile-close, session-freeze and renderer-reload checks, remain owed. D2, D4 and D5 are not
 prerequisites to Phase 4; implementing them is Phase 4.
 
 ## Performance baseline (Phase 0)
