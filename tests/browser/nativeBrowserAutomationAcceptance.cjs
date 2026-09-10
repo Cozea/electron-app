@@ -28,6 +28,7 @@ const bundlePath = process.env.COZEA_T3_SERVICE_BUNDLE
 assert.ok(bundlePath, 'COZEA_T3_SERVICE_BUNDLE must point at the bundled service')
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>Automation Probe</title>
+<body style="margin:0;background:rgb(0,170,85)">
 <button id="go" onclick="document.getElementById('out').textContent='clicked'">Go</button>
 <p id="out">idle</p>
 <input id="name" aria-label="Name">
@@ -40,6 +41,52 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>Automation Probe</titl
   })
 </script>`
 const SECOND = '<!doctype html><meta charset="utf-8"><title>Second Page</title><h1>second</h1>'
+
+// Served over http://127.0.0.1 because getDisplayMedia needs a secure context.
+// Frames are read with MediaStreamTrackProcessor rather than a <video>, so
+// counting them does not depend on the host page itself being painted.
+const HOST = `<!doctype html><meta charset="utf-8"><title>Acceptance host</title>
+<body style="margin:0;background:rgb(170,0,85)">
+<script>
+  const initial = () => ({ state: 'idle', frames: 0, width: 0, height: 0, sample: null, error: null })
+  window.__recording = initial()
+  window.__resetRecording = () => { window.__recording = initial() }
+  globalThis.__t3DesktopPreviewRecordingCapture = () => {
+    const recording = window.__recording
+    recording.state = 'requested'
+    navigator.mediaDevices.getDisplayMedia({ audio: false, video: { frameRate: { max: 30 } } })
+      .then(async (stream) => {
+        window.__recordingStream = stream
+        recording.state = 'streaming'
+        const [track] = stream.getVideoTracks()
+        track.addEventListener('ended', () => { if (recording.state === 'streaming') recording.state = 'ended' })
+        const reader = new MediaStreamTrackProcessor({ track }).readable.getReader()
+        for (;;) {
+          const { value: frame, done } = await reader.read()
+          if (done) break
+          recording.frames += 1
+          if (!recording.sample) {
+            recording.width = frame.displayWidth
+            recording.height = frame.displayHeight
+            const canvas = new OffscreenCanvas(frame.displayWidth, frame.displayHeight)
+            const context = canvas.getContext('2d')
+            context.drawImage(frame, 0, 0)
+            const x = Math.floor(frame.displayWidth / 2)
+            const y = Math.floor(frame.displayHeight / 2)
+            recording.sample = Array.from(context.getImageData(x, y, 1, 1).data.slice(0, 3))
+          }
+          frame.close()
+        }
+        if (recording.state === 'streaming') recording.state = 'ended'
+      })
+      .catch((error) => { recording.state = 'failed'; recording.error = String(error) })
+    return true
+  }
+  window.__stopRecordingStream = () => {
+    for (const track of window.__recordingStream?.getTracks() ?? []) track.stop()
+    window.__recordingStream = null
+  }
+</script>`
 
 const results = []
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -118,7 +165,7 @@ app.whenReady().then(async () => {
 
   const server = http.createServer((request, response) => {
     response.setHeader('content-type', 'text/html; charset=utf-8')
-    response.end(request.url === '/second' ? SECOND : PAGE)
+    response.end(request.url === '/second' ? SECOND : request.url === '/host' ? HOST : PAGE)
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   const base = `http://127.0.0.1:${server.address().port}`
@@ -127,7 +174,7 @@ app.whenReady().then(async () => {
   // Shown so native views have a real window to composite into, but never
   // focused: an acceptance run should not steal the developer's keyboard.
   window.showInactive()
-  await window.loadURL('data:text/html,<title>Acceptance host</title>')
+  await window.loadURL(`${base}/host`)
 
   const unsubscribe = () => () => undefined
   const service = new T3BrowserSurfaceService({
@@ -285,19 +332,78 @@ app.whenReady().then(async () => {
     return artifactPath.split('/').pop()
   }, 30_000)
 
-  await check('recording starts and stops on the native tab', async () => {
-    let frames = 0
-    const stop = service.onRecordingFrame((frame) => {
-      if (frame.tabId === TAB) frames += 1
-    })
+  // Recording drives the real pipeline: main asks the host renderer to request
+  // display media, and the grant must name the exact native contents.
+  const onHost = (expression, userGesture = false) =>
+    window.webContents.executeJavaScript(expression, userGesture)
+  const recordingState = () => onHost('JSON.parse(JSON.stringify(window.__recording))')
+  // A fresh request with a user gesture, so a refusal can only mean no grant is
+  // armed -- not a missing activation.
+  const probeGrant = () =>
+    onHost(
+      "navigator.mediaDevices.getDisplayMedia({ audio: false, video: true })" +
+        ".then((stream) => { stream.getTracks().forEach((track) => track.stop()); return 'granted' }," +
+        " (error) => 'refused:' + error.name)",
+      true,
+    )
+
+  await check('recording streams the exact native contents to the Cozea renderer', async () => {
+    const contentsBefore = webContents.getAllWebContents().length
+    await onHost('window.__resetRecording()')
     await service.startRecording(TAB)
-    await sleep(1500)
+    await waitFor(async () => (await recordingState()).frames >= 1, 'recorded frames to arrive', 15_000)
+    // A static page may yield one frame and stop. A recording needs the stream
+    // to keep delivering, so change something visible at any scroll position
+    // -- and away from the sampled centre pixel -- and require more frames.
+    await probe(`document.body.insertAdjacentHTML('beforeend',
+      '<div id="tick" style="position:fixed;left:8px;top:8px;font:14px sans-serif">0</div>')`)
+    for (let tick = 1; tick <= 8; tick += 1) {
+      await probe(`document.getElementById('tick').textContent = '${tick}'`)
+      await sleep(120)
+    }
+    await waitFor(async () => (await recordingState()).frames >= 3, 'the stream to keep delivering frames', 10_000)
+    const state = await recordingState()
+    assert.equal(state.state, 'streaming', `stream state (${state.error ?? 'no error'})`)
+    assert.ok(state.sample, 'a recorded frame must have been sampled')
+    // The probe page is rgb(0,170,85) and the host renderer is rgb(170,0,85): a
+    // frame from anything but the native tab fails here.
+    const [r, g, b] = state.sample
+    assert.ok(r < 60 && g > 120 && Math.abs(b - 85) < 50, `recorded pixel ${state.sample} must come from the native tab`)
+    assert.deepEqual(nativeIds(), [visibleId], 'recording must not create a second browser')
+    assert.equal(webContents.getAllWebContents().length, contentsBefore, 'recording must not add a hidden browser')
+    return `frames=${state.frames} size=${state.width}x${state.height} pixel=${state.sample.join(',')}`
+  }, 40_000)
+
+  await check('stopping a recording tears down the stream and leaves no grant', async () => {
     await service.stopRecording(TAB)
-    stop()
-    return frames > 0
-      ? `frames=${frames}`
-      : 'commands accepted; no frames observed in this harness (see manual row)'
-  })
+    await onHost('window.__stopRecordingStream()')
+    const afterStop = await probeGrant()
+    assert.match(afterStop, /^refused/, 'no display-media grant may survive a stopped recording')
+    // The arm slot and capture consumer are free again: a new recording starts.
+    await onHost('window.__resetRecording()')
+    await service.startRecording(TAB)
+    await waitFor(async () => (await recordingState()).frames >= 1, 'a restarted recording to stream', 15_000)
+    await service.stopRecording(TAB)
+    await onHost('window.__stopRecordingStream()')
+    return `after stop: ${afterStop}; restart streamed`
+  }, 40_000)
+
+  await check('closing a tab mid-recording leaves no grant or capture behind', async () => {
+    const closingId = await openSurface('rt_recording_close', SESSION, 'ws_auto')
+    await waitFor(() => webContents.fromId(closingId).getTitle() === 'Automation Probe', 'second tab to load')
+    await onHost('window.__resetRecording()')
+    await service.startRecording('rt_recording_close')
+    await waitFor(async () => (await recordingState()).frames >= 1, 'frames from the tab being closed', 15_000)
+    await service.releaseSurface('rt_recording_close')
+    await waitFor(() => isGone(closingId), 'the recorded tab to be destroyed', 5_000)
+    await sleep(300)
+    const trackState = (await recordingState()).state
+    await onHost('window.__stopRecordingStream()')
+    const afterClose = await probeGrant()
+    assert.match(afterClose, /^refused/, 'no display-media grant may survive closing the recorded tab')
+    assert.deepEqual(nativeIds(), [visibleId], 'only the original tab may remain')
+    return `track=${trackState}; after close: ${afterClose}`
+  }, 40_000)
 
   // Picture-in-picture shares the frame-capture path with recording but not the
   // webview-embedder requirement that breaks recording on native surfaces, so it
@@ -389,8 +495,6 @@ app.whenReady().then(async () => {
     'the picker path opens and cancels on the native tab above; choosing an element and submitting an annotation need a real pointer gesture over the page')
   manual('find-in-page',
     'a WebContentsView in a harness reports visibilityState hidden and never runs requestAnimationFrame, so a search result is timing-dependent here')
-  manual('recording frame production',
-    'blocked by D7: recording cannot start on a native surface, so frame production cannot be judged until that is fixed')
 
   // ------------------------------------------------- Gate: explicit close ----
   await check('explicit close removes native, logical, inventory and contents together', async () => {
