@@ -3,7 +3,12 @@ import { buildWorkbenchScopeKey, parseWorkbenchScopeKey } from '@/lib/workbenchS
 import { desktopPersistenceClient } from '@/app/model/persistence/desktopPersistenceClient'
 
 interface LayoutData { layout: SerializedDockview | null; layoutResetKey: number }
-function isLayout(value: unknown): value is SerializedDockview { return value !== null && typeof value === 'object' && 'grid' in value && 'panels' in value }
+function isLayout(value: unknown): value is SerializedDockview {
+  if (value === null || typeof value !== 'object') return false
+  const candidate = value as { grid?: unknown; panels?: unknown }
+  return candidate.grid !== null && typeof candidate.grid === 'object' &&
+    candidate.panels !== null && typeof candidate.panels === 'object'
+}
 export function ensureWorkbenchLayoutPersistenceReady(scopeKey?: string): Promise<void> {
   return desktopPersistenceClient.hydrateNamespace('workbenchLayout', scopeKey ? [scopeKey] : undefined)
 }
@@ -16,6 +21,17 @@ export function peekPersistedWorkbenchLayout(scopeKey: string, layoutResetKey: n
   return isLayout(value) ? value : null
 }
 export function writePersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, layout: SerializedDockview, bindingRevision?: number): void {
+  // Dockview can emit teardown/intermediate shapes while the UI tree is being
+  // replaced. TypeScript's SerializedDockview annotation does not protect this
+  // runtime persistence boundary. Never overwrite the last known-good layout
+  // with a degenerate snapshot that the restore path will reject on next boot.
+  if (!isLayout(layout)) {
+    console.warn('[WorkbenchLayout] Refused to persist an invalid Dockview snapshot', {
+      scopeKey,
+      layoutResetKey,
+    })
+    return
+  }
   desktopPersistenceClient.queueDirtyRecord('workbenchLayout', scopeKey, { layout, layoutResetKey }, bindingRevision)
 }
 export function clearPersistedWorkbenchLayout(scopeKey: string): void { desktopPersistenceClient.deleteRecord('workbenchLayout', scopeKey) }
