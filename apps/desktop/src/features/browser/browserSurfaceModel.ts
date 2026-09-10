@@ -37,6 +37,7 @@ export class BrowserSurfaceModel {
   private readonly bridge: NativeBrowserSurfaceBridge;
   private readonly owners = new Set<symbol>();
   private ensured: Promise<void> | null = null;
+  private reconciling: Promise<void> | null = null;
   private ready = false;
   private closed = false;
   private visible = false;
@@ -66,9 +67,9 @@ export class BrowserSurfaceModel {
     return this.lastBounds;
   }
 
-  /** A creation/reconciliation that has not yet produced a ready surface. */
+  /** Any attach/reconcile that an explicit close must still be able to cancel. */
   get pendingEnsure(): Promise<void> | null {
-    return this.ready ? null : this.ensured;
+    return this.reconciling ?? (this.ready ? null : this.ensured);
   }
 
   addOwner(owner: symbol): void {
@@ -83,18 +84,10 @@ export class BrowserSurfaceModel {
     this.descriptor = descriptor;
   }
 
-  /**
-   * Attach this renderer model to the main-owned surface.
-   *
-   * `force=false` caches the initial attach. `force=true` is used when a hidden
-   * presentation becomes visible again: main session policy may legitimately
-   * have evicted a backgroundFrozen WCV while this keep-alive React tree stayed
-   * mounted. Main's prepare/ensure operations are idempotent, so a warm surface
-   * is reused unchanged while an evicted one is recreated.
-   */
-  private attach(force: boolean): Promise<void> {
+  /** Initial renderer attachment. Concurrent callers share one promise. */
+  ensure(): Promise<void> {
     if (this.closed) return Promise.resolve();
-    if (!force && this.ensured) return this.ensured;
+    if (this.ensured) return this.ensured;
 
     const operation = (async () => {
       await this.bridge.prepareSurface(this.descriptor);
@@ -120,13 +113,44 @@ export class BrowserSurfaceModel {
     return operation;
   }
 
-  ensure(): Promise<void> {
-    return this.attach(false);
-  }
-
-  /** Reconcile renderer belief with main after a hidden/frozen interval. */
+  /**
+   * Reconcile renderer belief with main after a hidden/frozen interval.
+   *
+   * A hidden keep-alive React tree can survive while WorkbenchSessionManager
+   * legitimately evicts a backgroundFrozen WCV. Main's prepare/ensure pair is
+   * idempotent: a warm surface is returned unchanged; an evicted surface is
+   * recreated. Reconciliations are serialized so repeated UI signals cannot
+   * start competing attach transactions.
+   */
   reconcile(): Promise<void> {
-    return this.attach(true);
+    if (this.closed) return Promise.resolve();
+    if (!this.ready) return this.ensure();
+    if (this.reconciling) return this.reconciling;
+
+    const operation = (async () => {
+      await this.bridge.prepareSurface(this.descriptor);
+      if (this.closed) {
+        await this.bridge.closeSurface(this.runtimeTabId);
+        return;
+      }
+      await this.bridge.ensureNativeSurface(this.runtimeTabId);
+      if (this.closed) {
+        await this.bridge.closeSurface(this.runtimeTabId);
+        return;
+      }
+      this.ready = true;
+      this.flushDesiredState();
+    })()
+      .catch((error: unknown) => {
+        this.ready = false;
+        this.ensured = null;
+        throw error;
+      })
+      .finally(() => {
+        if (this.reconciling === operation) this.reconciling = null;
+      });
+    this.reconciling = operation;
+    return operation;
   }
 
   /**
@@ -142,13 +166,19 @@ export class BrowserSurfaceModel {
   }
 
   setVisible(visible: boolean): void {
-    if (this.closed || this.visible === visible) return;
+    if (this.closed) return;
+    if (this.visible === visible) {
+      if (visible && !this.ready) {
+        void this.ensure().catch(() => undefined);
+      }
+      return;
+    }
     this.visible = visible;
     if (!this.ready) return;
 
     // Fast path for a still-warm surface. If main evicted the native view while
-    // backgroundFrozen this is a harmless no-op; reconciliation below recreates
-    // it and flushes the same desired visibility/bounds afterward.
+    // backgroundFrozen this is a harmless no-op; reconciliation recreates it
+    // and flushes the same desired visibility/bounds afterward.
     void this.bridge.setNativeSurfaceVisible(this.runtimeTabId, visible);
     if (visible) {
       void this.reconcile().catch(() => {
@@ -196,6 +226,7 @@ export class BrowserSurfaceModel {
     this.visible = false;
     this.occluded = false;
     this.ensured = null;
+    this.reconciling = null;
     await this.bridge.closeSurface(this.runtimeTabId);
   }
 }
