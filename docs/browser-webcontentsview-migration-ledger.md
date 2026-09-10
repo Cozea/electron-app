@@ -45,12 +45,13 @@ the target the native path must match. It is not evidence about native code.
 | | Commit |
 | --- | --- |
 | Planning baseline | `be4668f7b439499f39a659055d0f6ec34ac666b2` |
-| Current pin | `be4668f7b439499f39a659055d0f6ec34ac666b2` |
+| Current pin | `717f4f1430ee2ef73a780a1db744d5d034e00eff` |
 
-Phase 1 generalizes the T3 `PreviewManager` registration boundary and Phase 2
-repins through the repository's existing pin scripts. A `t3code` commit
-(`97ed6a3e`, branch `fix/computer-use-effect-v4`) exists ahead of the pin but is
-unrelated to this migration and is not yet pinned.
+The current pin is one commit ahead of the planning baseline. That commit
+(`717f4f14`, branch `cozea/computer-use-v2-contract`) vendors the generated
+Computer Use v2 contract and is unrelated to this migration; it moves no browser
+code. Phase 1 generalizes the T3 `PreviewManager` registration boundary and
+Phase 2 repins again from there.
 
 ## Performance baseline (Phase 0)
 
