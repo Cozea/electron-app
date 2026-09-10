@@ -67,6 +67,10 @@ describe("pinned T3 browser host foundation", () => {
       runtimeGeneration: `generation-${"g".repeat(256)}`,
     });
 
+    // A canonical session key always yields an identity. Narrow it explicitly:
+    // the return type is nullable by design, because an unresolved session key
+    // must mint nothing.
+    if (runtimeTabId === null) throw new Error("a canonical session key must yield an identity");
     expect(runtimeTabId.length).toBeLessThanOrEqual(128);
     expect(runtimeTabId).toMatch(/^cozea-preview:devServer:/);
   });
