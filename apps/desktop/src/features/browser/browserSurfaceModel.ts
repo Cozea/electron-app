@@ -39,6 +39,7 @@ export class BrowserSurfaceModel {
   private readonly bridge: NativeBrowserSurfaceBridge;
   private readonly owners = new Set<symbol>();
   private ensured: Promise<void> | null = null;
+  private ready = false;
   private released = false;
   private visible = false;
   private occluded = false;
@@ -94,6 +95,8 @@ export class BrowserSurfaceModel {
       // too rather than only when a `<webview>` announces itself.
       await this.bridge.prepareSurface(this.descriptor);
       await this.bridge.ensureNativeSurface(this.runtimeTabId);
+      this.ready = true;
+      this.flushDesiredState();
     })().catch((error: unknown) => {
       // Clear the cache so a later attempt can retry rather than inheriting a
       // permanently rejected promise.
@@ -103,23 +106,51 @@ export class BrowserSurfaceModel {
     return this.ensured;
   }
 
-  /** Publish a rectangle. Callers deduplicate; this records what was sent. */
+  /**
+   * Publish a rectangle. Callers deduplicate; this records what was sent.
+   *
+   * Recorded even before the surface exists. The slot measures synchronously
+   * on mount, which is necessarily ahead of the asynchronous creation, and
+   * main drops geometry for a surface it does not have yet. Since both this
+   * model and the scheduler deduplicate, that first rectangle would never be
+   * sent again -- leaving a surface that is laid out on this side and has
+   * never been laid out on the other, so it never draws.
+   */
   layout(bounds: BrowserSurfaceBounds): void {
     if (this.released) return;
     this.lastBounds = bounds;
+    if (!this.ready) return;
     void this.bridge.layoutNativeSurface(this.runtimeTabId, bounds);
   }
 
   setVisible(visible: boolean): void {
     if (this.released || this.visible === visible) return;
     this.visible = visible;
+    if (!this.ready) return;
     void this.bridge.setNativeSurfaceVisible(this.runtimeTabId, visible);
   }
 
   setOccluded(occluded: boolean): void {
     if (this.released || this.occluded === occluded) return;
     this.occluded = occluded;
+    if (!this.ready) return;
     void this.bridge.setNativeSurfaceOccluded(this.runtimeTabId, occluded);
+  }
+
+  /**
+   * Hand main the state stated while the surface was still being created.
+   *
+   * Sent once, from the settled values, rather than by replaying every call:
+   * geometry changes at animation frequency, and only the last rectangle is
+   * the one that matters.
+   */
+  private flushDesiredState(): void {
+    if (this.released || !this.ready) return;
+    if (this.lastBounds) {
+      void this.bridge.layoutNativeSurface(this.runtimeTabId, this.lastBounds);
+    }
+    if (this.visible) void this.bridge.setNativeSurfaceVisible(this.runtimeTabId, true);
+    if (this.occluded) void this.bridge.setNativeSurfaceOccluded(this.runtimeTabId, true);
   }
 
   focus(): void {
@@ -131,6 +162,7 @@ export class BrowserSurfaceModel {
   async destroy(): Promise<void> {
     if (this.released) return;
     this.released = true;
+    this.ready = false;
     this.ensured = null;
     await this.bridge.releaseNativeSurface(this.runtimeTabId);
   }

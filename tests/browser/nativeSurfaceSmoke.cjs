@@ -167,6 +167,38 @@ app.whenReady().then(async () => {
 
   await host.releaseSurface('rt_nav')
 
+  // ---- A page that fails to load must still leave a usable surface ----
+  // A dead bookmark, an offline machine or a DNS failure is a normal
+  // condition, not a reason for the tile to have no browser in it. The load
+  // rejects, but the surface it was loading into stays alive, laid out and
+  // drawn, so the tile shows the failure instead of showing nothing.
+  const failing = await host.ensureSurface({
+    ...descriptor,
+    runtimeTabId: 'rt_unreachable',
+    tileId: 'tile_unreachable',
+  })
+  failing.layout({ x: 0, y: 0, width: 800, height: 600 })
+  failing.setVisible(true)
+
+  await assert.rejects(
+    failing.loadUrl('https://unreachable.invalid/'),
+    'an unreachable page must report its failure',
+  )
+
+  assert.equal(failing.isDisposed, false, 'a failed load must not destroy the surface')
+  assert.equal(failing.isLaidOut, true, 'a failed load must not discard the surface bounds')
+  assert.equal(failing.isVisible, true, 'a failed load must leave the surface on screen')
+  const failedContents = webContents.fromId(failing.webContentsId)
+  assert.ok(failedContents && !failedContents.isDestroyed(),
+    'the contents must survive so the surface can be navigated somewhere else')
+
+  // And it must still be usable afterwards, not wedged by the failure.
+  await failing.loadUrl(pageA)
+  assert.equal(failedContents.getTitle(), 'Page A',
+    'a surface must recover from a failed load')
+
+  await host.releaseSurface('rt_unreachable')
+
   // ---- PH3-D: storage parity across real Electron sessions ----
   const workspaceOne = sessions.resolve({ ...descriptor, storageScope: 'workspace', workspaceId: 'ws_1', tileId: 't1' })
   const workspaceOneAgain = sessions.resolve({ ...descriptor, storageScope: 'workspace', workspaceId: 'ws_1', tileId: 't2' })

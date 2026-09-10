@@ -183,9 +183,10 @@ describe("BrowserSurfaceModelRegistry", () => {
     expect(bridge.setNativeSurfaceVisible).not.toHaveBeenCalled();
   });
 
-  it("sends a visibility change only when it actually changes", () => {
+  it("sends a visibility change only when it actually changes", async () => {
     const { registry, bridge } = makeHarness();
     const model = registry.acquire(descriptor(), Symbol("a"));
+    await model.ensure();
 
     model.setVisible(true);
     model.setVisible(true);
@@ -194,9 +195,10 @@ describe("BrowserSurfaceModelRegistry", () => {
     expect(bridge.setNativeSurfaceVisible).toHaveBeenCalledTimes(2);
   });
 
-  it("sends an occlusion change only when it actually changes", () => {
+  it("sends an occlusion change only when it actually changes", async () => {
     const { registry, bridge } = makeHarness();
     const model = registry.acquire(descriptor(), Symbol("a"));
+    await model.ensure();
 
     model.setOccluded(true);
     model.setOccluded(true);
@@ -222,6 +224,53 @@ describe("BrowserSurfaceModelRegistry", () => {
     expect(bridge.setNativeSurfaceVisible).not.toHaveBeenCalled();
     expect(bridge.focusNativeSurface).not.toHaveBeenCalled();
     expect(bridge.ensureNativeSurface).not.toHaveBeenCalled();
+  });
+
+  it("applies geometry stated before the surface finished being created", async () => {
+    const { registry, bridge } = makeHarness();
+    const model = registry.acquire(descriptor(), Symbol("a"));
+    const first = bounds({ width: 640, height: 480 });
+
+    // Exactly the mount order the slot produces: creation is asynchronous, but
+    // the slot measures synchronously so the surface is placed before its
+    // first paint.
+    const creating = model.ensure();
+    model.layout(first);
+    model.setVisible(true);
+    expect(bridge.layoutNativeSurface).not.toHaveBeenCalled();
+    await creating;
+
+    // Main drops geometry for a surface it does not have yet, and neither this
+    // model nor the scheduler would ever send that rectangle a second time, so
+    // a surface that was never handed its bounds would never draw.
+    expect(bridge.layoutNativeSurface).toHaveBeenCalledWith("rt_1", first);
+    expect(bridge.setNativeSurfaceVisible).toHaveBeenCalledWith("rt_1", true);
+  });
+
+  it("hands over only the settled rectangle, not every one stated while creating", async () => {
+    const { registry, bridge } = makeHarness();
+    const model = registry.acquire(descriptor(), Symbol("a"));
+    const settled = bounds({ width: 900, height: 700 });
+
+    const creating = model.ensure();
+    model.layout(bounds({ width: 100, height: 100 }));
+    model.layout(settled);
+    await creating;
+
+    // Geometry changes at animation frequency; replaying the intermediate
+    // rectangles would be pure IPC for positions that never mattered.
+    expect(bridge.layoutNativeSurface).toHaveBeenCalledTimes(1);
+    expect(bridge.layoutNativeSurface).toHaveBeenCalledWith("rt_1", settled);
+  });
+
+  it("does not announce a surface as visible when it was never asked to be", async () => {
+    const { registry, bridge } = makeHarness();
+    const model = registry.acquire(descriptor(), Symbol("a"));
+
+    await model.ensure();
+
+    // A tile on a hidden Dockview tab has a live browser and draws nothing.
+    expect(bridge.setNativeSurfaceVisible).not.toHaveBeenCalled();
   });
 
   it("updates the descriptor in place rather than replacing the browser", () => {

@@ -584,7 +584,20 @@ export class T3BrowserSurfaceService {
           httpDiagnostic: null,
         });
         if (!isDirectNavigationSurface(descriptor)) {
-          await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+          // A page that fails to load -- offline, DNS, a dead bookmark -- is a
+          // normal condition, and T3 already reports it as `LoadFailed` on the
+          // surface's own state. Letting it reject here would fail the whole
+          // preparation instead: the native path sequences view creation after
+          // this call, so the surface would never get a view at all and the
+          // tile would stay blank rather than showing the load error.
+          try {
+            await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+          } catch (cause) {
+            console.warn(
+              `[T3BrowserSurfaceService] Initial navigation failed for ${descriptor.runtimeTabId}`,
+              cause,
+            );
+          }
         } else {
           this.pendingDirectNavigationByTabId.set(descriptor.runtimeTabId, initialUrl);
         }
