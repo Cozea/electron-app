@@ -181,7 +181,13 @@ Before Phase 4 implementation begins, rerun:
   waitFor, snapshot, screenshot, navigate, back/forward, refresh and
   picture-in-picture all land in the visible browser without creating a second
   one; an untrusted live WebContents is refused registration. Recording fails
-  (D7). Isolated as manual, each with a stated reason: picker element selection
+  (D7). Pointer and keyboard operations dispatch real input through CDP and so
+  need the harness window unoccluded; an observation row records page
+  visibility, focus and animation frames immediately before them. Two runs
+  made while the window sat on another Space timed out on click and press,
+  and the same checks pass with it visible -- attributing those two runs to
+  occlusion is inferred, since they predate the observation row.
+  Isolated as manual, each with a stated reason: picker element selection
   and annotation submission (need a real pointer gesture; the picker opens and
   cancels on the native tab), find-in-page (harness visibility), recording frame
   production (blocked by D7).

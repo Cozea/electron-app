@@ -9,6 +9,11 @@
 // -- webContents.fromId(the id the native host created) -- never through T3's own
 // report of what it did. An operation that landed in some other contents would
 // therefore fail here even if T3 believed it succeeded.
+//
+// Pointer and keyboard checks dispatch real input through CDP, so they need the
+// harness window unoccluded. Run it with the window visible on the current
+// Space; the "page visibility and animation frames" row records what the page
+// saw, so an environment effect can be told apart from a defect.
 const { app, BrowserWindow, WebContentsView, webContents } = require('electron')
 
 process.on('uncaughtException', (error) => {
@@ -214,6 +219,23 @@ app.whenReady().then(async () => {
     // The decisive same-contents proof: T3 writes, the visible contents reads.
     await service.automationEvaluate(TAB, { expression: 'window.__t3mark = "set-by-t3"; "ok"' })
     assert.equal(await probe('window.__t3mark'), 'set-by-t3')
+  })
+
+  // Observation, not an assertion: pointer and keyboard automation wait on the
+  // page being visible and producing animation frames, and a harness window that
+  // is occluded (another Space, a full-screen app) stops both. Recording what the
+  // page saw at this moment separates an environment effect from a real defect.
+  await check('page visibility and animation frames at automation time', async () => {
+    const page = await probe(`new Promise((resolve) => {
+      let rafFired = false
+      requestAnimationFrame(() => { rafFired = true })
+      setTimeout(() => resolve({
+        visibility: document.visibilityState,
+        hasFocus: document.hasFocus(),
+        rafFired,
+      }), 500)
+    })`)
+    return JSON.stringify({ ...page, windowVisible: window.isVisible(), windowFocused: window.isFocused() })
   })
 
   await check('click lands in the visible page', async () => {

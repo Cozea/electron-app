@@ -83,8 +83,13 @@ try {
   // Production passes the built picture-in-picture preload; the service derives
   // its PiP resource directory from it, so an empty path would point PiP at ".".
   const pipPreload = path.join(root, "apps/desktop/out/preload/preview-pip-preload.cjs");
+  // Spawn the Electron binary itself, not the node_modules/.bin wrapper. The
+  // wrapper is a Node script that starts Electron as a child, so the timeout's
+  // SIGKILL would land on the wrapper and orphan a hung Electron -- which is how
+  // a stuck diagnostic probe once left a main-process error dialog on screen.
+  const electronBinary = createRequire(path.join(root, "package.json"))("electron");
   const run = spawnSync(
-    path.join(root, "node_modules/.bin/electron"),
+    electronBinary,
     ["tests/browser/nativeBrowserAutomationAcceptance.cjs"],
     {
       cwd: root,
