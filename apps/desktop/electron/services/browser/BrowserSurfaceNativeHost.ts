@@ -104,6 +104,7 @@ export class BrowserSurfaceNativeHost {
       preloadPath: this.options.resolvePreload?.(descriptor) ?? null,
     });
     this.surfaces.set(descriptor.runtimeTabId, view);
+    console.log("[SurfaceHostDiag] created", descriptor.runtimeTabId, view.webContentsId);
 
     if (this.options.automation) {
       try {

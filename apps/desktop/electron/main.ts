@@ -1534,6 +1534,17 @@ function createWindow() {
     })
   }
 
+  // TEMP DIAGNOSTIC: forward renderer console into the main log.
+  ;(win.webContents as unknown as { on(e: string, l: (...a: unknown[]) => void): void }).on(
+    'console-message',
+    (...args: unknown[]) => {
+      const first = args[0] as { level?: unknown; message?: unknown } | undefined
+      const level = first?.level ?? args[1]
+      const message = first?.message ?? args[2]
+      console.log('[RendererConsole]', String(level), String(message).slice(0, 3000))
+    },
+  )
+
   win.webContents.on('did-fail-load', (_event, _errorCode, _errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || routeRecoveryInFlight) {
       return
