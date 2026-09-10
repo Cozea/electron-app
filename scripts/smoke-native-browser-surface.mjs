@@ -20,6 +20,9 @@ function run(command, args, options = {}) {
   return result.status ?? 1;
 }
 
+// process.exit() inside try would skip the finally below and leak the temp
+// build directory, so the exit code is carried out and applied last.
+let exitCode = 1;
 try {
   // The type-only import of a path-aliased contracts module cannot resolve
   // without the app tsconfig, and is erased anyway; emit regardless.
@@ -37,13 +40,12 @@ try {
   const entry = path.join(outDir, "apps/desktop/electron/services/browser/BrowserSurfaceNativeHost.js");
   if (!fs.existsSync(entry)) {
     console.error(`[smoke-native-browser-surface] compilation produced no output at ${entry}`);
-    process.exit(1);
+  } else {
+    exitCode = run("node_modules/.bin/electron", ["tests/browser/nativeSurfaceSmoke.cjs"], {
+      env: { ...process.env, COZEA_NATIVE_SURFACE_BUILD: outDir },
+    });
   }
-
-  const status = run("node_modules/.bin/electron", ["tests/browser/nativeSurfaceSmoke.cjs"], {
-    env: { ...process.env, COZEA_NATIVE_SURFACE_BUILD: outDir },
-  });
-  process.exit(status);
 } finally {
   fs.rmSync(outDir, { recursive: true, force: true });
 }
+process.exit(exitCode);

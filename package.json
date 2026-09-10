@@ -69,6 +69,7 @@
     "fmt": "bunx --bun oxfmt -w .",
     "fmt:check": "bunx --bun oxfmt --check .",
     "perf:interactions": "node scripts/perf/interactions.mjs",
+    "acceptance:native-browser-automation": "node scripts/acceptance-native-browser-automation.mjs",
     "smoke:native-browser-surface": "node scripts/smoke-native-browser-surface.mjs"
   },
   "dependencies": {
