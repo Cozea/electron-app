@@ -49,7 +49,7 @@ the target the native path must match. It is not evidence about native code.
 | | Commit |
 | --- | --- |
 | Planning baseline | `be4668f7b439499f39a659055d0f6ec34ac666b2` |
-| Current pin | `113abb57e5977950c8c7204030dac77084d7b700` |
+| Current pin | `50977ab641d9b43547275421530dba0383de7941` |
 
 Phase 2 repinned the parent to `113abb57`
 (`cozea/preview-generic-browser-contents`), which generalizes the
