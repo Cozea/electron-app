@@ -173,7 +173,7 @@ Status: complete
 
 Baseline:
 - base commit: `2fd158ef` (P01 complete commit)
-- implementation commit: <pending>
+- implementation commit: `c4a6ac75`
 - review commit: <pending>
 
 Production owners before:
