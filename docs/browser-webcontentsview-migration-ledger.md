@@ -38,11 +38,11 @@ the target the native path must match. It is not evidence about native code.
 
 | Phase | Outcome | Commit |
 | --- | --- | --- |
-| 0 — reverse obsolete guards, establish measurements | complete except the interactive performance scenarios | `eccbf98f` |
+| 0 — reverse obsolete guards, establish measurements | architecture work complete; interactive performance baseline still incomplete | `eccbf98f` |
 | 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
 | 2 — repin, native session registry, view and host | complete | `cb48b18a` |
-| 3 — Browser surface on the native backend | code complete; `browser` flipped to `NATIVE_CANARY` for interactive acceptance | see below |
-| 4 — native overlay, focus, clipping, floating order | not started; blocked on D1 | — |
+| 3 — Browser surface on the native backend | implementation landed; pre-Phase-4 lifecycle correction pass landed; interactive parity still pending | see below |
+| 4 — native overlay, focus, clipping, floating order | not started; no longer code-blocked by D1, but PH3-C/D/E must be rerun first | — |
 
 ## T3 pin
 
@@ -50,11 +50,6 @@ the target the native path must match. It is not evidence about native code.
 | --- | --- |
 | Planning baseline | `be4668f7b439499f39a659055d0f6ec34ac666b2` |
 | Current pin | `113abb57e5977950c8c7204030dac77084d7b700` |
-
-The current pin is one commit ahead of the planning baseline. That commit
-(`717f4f14`, branch `cozea/computer-use-v2-contract`) vendors the generated
-Computer Use v2 contract and is unrelated to this migration; it moves no browser
-code.
 
 Phase 2 repinned the parent to `113abb57`
 (`cozea/preview-generic-browser-contents`), which generalizes the
@@ -67,33 +62,19 @@ Phase 2 repinned the parent to `113abb57`
 | `registerWebview` | guest reports webview type and hangs off the app window | yes, via existing IPC |
 | `registerBrowserContents` | id vouched for in-process by the main service that created the view | no |
 
-`trustNativeBrowserContents` is deliberately absent from the IPC methods, the
-preload bridge and the web renderer, so a renderer cannot nominate an arbitrary
-`WebContents`. Vouches are withdrawn on destroy or crash because Chromium
-recycles `WebContents` ids.
+`trustNativeBrowserContents` remains absent from renderer IPC. The pre-Phase-4
+correction pass also makes the vouch transactional: failed native registration
+revokes the vouch, and normal native release revokes before Chromium closes the
+`WebContents`, so a recycled id cannot inherit trust.
 
 ## Native substrate (Phase 2)
-
-Main-process code, none of it behind a product tile yet.
 
 | File | Role |
 | --- | --- |
 | `BrowserSurfaceSessionRegistry.ts` | resolves a descriptor to its configured Electron session |
-| `BrowserSurfaceWebPreferences.ts` | the security posture for a native surface, electron-free so it is testable |
+| `BrowserSurfaceWebPreferences.ts` | security posture for a native surface |
 | `BrowserSurfaceView.ts` | one main-owned `WebContentsView`, keyed by `runtimeTabId` |
-| `BrowserSurfaceNativeHost.ts` | the map of live surfaces and the only thing that creates them |
-
-The web preferences are deliberately not a copy of the `<webview>` posture. The
-guest path runs `contextIsolation=false` so the annotation picker's preload can
-read the page's React DevTools hook; a native surface is isolated by default and
-a surface opts into `shared-world` explicitly. The OS sandbox stays on for every
-posture, because that is what stops a shared-world preload from handing the page
-`require`.
-
-Native surfaces are reachable only through `probeNativeSurface`, which refuses
-to run unless `COZEA_BROWSER_NATIVE_SHADOW=1`. The architecture test asserts
-that is the sole creation site, so no production surface can acquire one before
-its ledger row moves.
+| `BrowserSurfaceNativeHost.ts` | map of live surfaces and sole native creator |
 
 `bun run smoke:native-browser-surface` drives a real Electron
 `WebContentsView` through create, hidden, layout, visible, navigate, hide, show
@@ -102,248 +83,186 @@ observing the loaded page, with no `<webview>` in the process.
 
 ## Native Browser path (Phase 3)
 
-`browser` is now `NATIVE_CANARY`: the Browser tile renders through a main-owned
-`WebContentsView`, and no `<webview>` is created for it. The other four families
-are untouched and still on the renderer host, which is what `NATIVE_CANARY`
-means -- one family migrated, the rest legacy.
+`browser` remains `NATIVE_CANARY`. The Browser tile renders through a main-owned
+`WebContentsView`; the other four families remain on the legacy host.
 
-`automationParity`, `storageParity` and `overlayParity` read `native-pending`
-until the interactive checks below actually pass. They are not evidence.
+`automationParity`, `storageParity` and `overlayParity` remain `native-pending`
+until their interactive checks actually pass. Do not flip these from code
+inspection alone.
 
 | Piece | Role |
 | --- | --- |
-| `shared/browserSurfaceLayout.ts` | the bounds contract, and rounding that avoids a tile seam |
-| `browserSurfaceLayoutScheduler.ts` | one measurement and at most one publish per frame per surface |
-| `browserSurfaceModel.ts` | reference-counted models keyed by `runtimeTabId` |
-| `NativeBrowserSurfaceSlot.tsx` | a measured `<div>`; the native view is not its child |
-| `BrowserSurfaceBackendSlot.tsx` | picks the backend from this ledger, not from a prop |
+| `shared/browserSurfaceLayout.ts` | native bounds contract and edge rounding |
+| `browserSurfaceLayoutScheduler.ts` | deduplication and frame-coalescing for noisy position signals |
+| `browserSurfaceModel.ts` | renderer presentation proxies keyed by `runtimeTabId`; no longer browser lifetime owner |
+| `NativeBrowserSurfaceSlot.tsx` | measured DOM stub; size changes flush immediately, noisy position changes remain frame-coalesced |
+| `BrowserSurfaceBackendSlot.tsx` | selects migration backend from the machine ledger |
 
-Geometry never enters a store. It changes every frame during a drag, so routing
-it through shared state would rerender unrelated components at animation
-frequency to move a native view.
+Geometry never enters a shared store. Main reads the host renderer zoom factor
+it owns rather than trusting renderer-supplied zoom.
 
-Main does not scale by the renderer's reported zoom. An isolated renderer cannot
-read Electron's zoom factor, and renderer-supplied geometry should not decide
-placement, so main reads `webContents.getZoomFactor()` on the window it owns.
+### Pre-Phase-4 correction pass — 2026-09-10
+
+The canary audit found that the first implementation still let presentation
+lifecycle control native browser lifetime. That contradicted the already-canonical
+workbench session model (`active` / `backgroundWarm` / `backgroundFrozen` /
+`closed`). The correction pass deliberately fixes the substrate before Phase 4
+adds overlay and multi-window complexity.
+
+Landed corrections:
+
+- `cda964a2` — renderer model owners are presentation leases only. Last-owner
+  release hides the WCV and evicts the renderer proxy; it does not close runtime.
+- `e19aff6e` — actual Browser tile deletion explicitly closes the surface after
+  verifying the persisted workbench tile is gone. Route/Dockview/StrictMode
+  unmounts do not.
+- `45ac20ca` — native trust is revoked before `WebContents.close`, failed attach
+  revokes best-effort, native order is canonical back-to-front and deduplicated,
+  full renderer invalidation delegates to the logical lifecycle owner.
+- `cbd3a3f2` — corner radius is deduplicated independently from bounds so a
+  radius-only transition is not dropped.
+- `4d003071` — `ResizeObserver` and OS-window resize flush authoritative geometry
+  immediately instead of waiting an extra animation frame; noisy Dockview
+  position signals remain rAF-coalesced.
+- `9c0eb01f` — replaces false-positive Symbol-owner tests with real owner identities
+  and adds route-length proxy eviction + close/ensure race coverage.
+- `79e89ff1` — `T3BrowserSurfaceService` now reuses already-prepared warm state
+  without re-navigation, supplies the native picker preload, makes T3 trust
+  registration transactional, tears logical and native state down together,
+  and performs full cleanup on renderer document invalidation.
+- `b9318e82` / `72b3b828` — D6 protection: invalid Dockview teardown snapshots
+  are refused at the persistence boundary instead of overwriting the last valid
+  layout; regression coverage added.
+- `90a33c13` — focused native host regressions for radius-only updates,
+  trust-before-close, attach-failure revocation, order dedupe and renderer
+  invalidation delegation.
+
+### Canonical lifetime after this correction
+
+| Event | Native WCV | Logical T3 surface |
+| --- | --- | --- |
+| Dockview tab hidden | alive, hidden | alive |
+| Tile moves/remounts | same WCV | same |
+| Workbench route backgrounds while session is warm | alive, hidden | alive |
+| Return to warm workbench | same WCV / same `webContentsId` expected | same |
+| Actual Browser tile close | disposed | closed |
+| Workbench session becomes `backgroundFrozen` and policy evicts surfaces | disposed | closed |
+| Workbench session closes | disposed | closed |
+| Full renderer document reload/crash | old WCV disposed | old descriptor/T3 state closed |
+
+The route/background rule is not an unresolved product choice: the existing
+session architecture already states that route lifetime is not runtime lifetime
+and that `backgroundWarm` preserves expensive runtime while detaching heavy UI.
 
 ### Interactive acceptance still owed
 
-These need a running workbench and are not covered by the suite. Until they
-pass, the parity columns above stay `native-pending`.
+Before Phase 4 implementation begins, rerun:
 
-With the move verified, the defining invariant now holds for mount, unmount,
-move, resize, hide and return. Float and popout remain unverified and are
-expected to misbehave while D4 and D5 stand.
+- PH3-A: open/navigate/back/forward/reload/title/favicon/find/zoom/DevTools/close/reopen.
+- PH3-B: continuous Dockview split + OS-window resize after `4d003071`; determine
+  whether D3 is materially improved or whether one-way layout IPC needs to be
+  evaluated next.
+- PH3-C: full T3 automation matrix against the native Browser tile, including
+  picker/annotation now that the native preload is wired.
+- PH3-D: cookie/storage sharing and isolation across live Browser tiles.
+- PH3-E: persisted-layout restore and a route round trip. The route round trip
+  must preserve the exact `webContentsId` and unsubmitted page state while the
+  session remains warm.
+- Actual tile close: verify the surface disappears from native host, T3 state and
+  inventory together.
+- Session freeze/close: verify no native WCV orphan remains.
+- Full renderer reload: verify neither physical nor logical old surface survives.
 
-- PH3-A: open a tile, navigate, back/forward, reload, title, favicon,
-  find-in-page, zoom, DevTools, close and reopen.
-- PH3-B: drag a Dockview split for ten seconds and confirm the surface stays
-  attached with no oscillation and no repeated React commits.
-- PH3-C: the T3 automation matrix against a native Browser tile.
-- PH3-D: cookie sharing and isolation across two live tiles.
-- PH3-E: a tile restored from a persisted layout, not one opened by hand, and a
-  round trip to another top-level route and back. Both are currently broken by
-  D1 and were never covered by the original PH3-A pass.
-- ~~Drag a tile between groups and confirm `webContentsId` is unchanged~~
-  **PASSED 2026-09-10.** A browser tile moved to another group kept
-  `webContentsId` 8, never stopped drawing (`was: true` straight through), and
-  re-laid-out from 492px to 991px wide in one step. Unsubmitted text in the page
-  survived, which a rebuilt browser could not have preserved. Driven by hand:
-  synthetic mouse events cannot trigger HTML5 drag-and-drop.
+The previously verified group move remains valid evidence: the tile retained the
+same `webContentsId` and unsubmitted page state through the move.
 
-`bun run smoke:native-browser-surface` already covers navigation, history,
-reload, title, zoom, DevTools and the storage-parity half of PH3-D against real
-Electron. find-in-page is not asserted there: a `WebContentsView` in that harness
-reports `document.visibilityState` as hidden and never runs
-`requestAnimationFrame`, so a search is timing-dependent rather than a real
-signal.
+## Defect status before Phase 4
 
-## Where this stands, and what blocks Phase 4
+### D1 — route change destroyed browser / returned blank
 
-Phases 0-3 are done. The `browser` family runs on the main-owned
-`WebContentsView` path, T3 drives the same contents the user sees, and the
-defining invariant is verified for mount, unmount, move, resize, hide and
-return -- the move leg by hand, since synthetic input cannot drive HTML5
-drag-and-drop. Float and popout are unverified and expected to misbehave while
-D4 and D5 stand.
+**Code correction landed; interactive verification required.**
 
-### D2 and D4 are not blockers, they are Phase 4
+Root cause was architectural, not merely a lost `setVisible(true)`: the renderer
+model treated last presentation owner loss as permission to destroy native
+runtime, and logical/native release were separate operations. A close could also
+race an in-flight ensure. The corrected model makes presentation release
+non-destructive, makes warm prepare idempotent (no second navigation), closes
+logical+native state together, and closes again after an ensure that loses a
+race with explicit close.
 
-Phase 4 of the plan is "native overlay, focus, clipping, and floating-order
-integration", and it is mandatory before any second surface family migrates. Its
-overlay inventory and single overlay coordinator are exactly what D2 describes,
-and its floating-order half is D4. Do not schedule them as corrections that come
-first; doing them is what starting Phase 4 means. D5 belongs with the same work.
+The earlier "two surfaces churn for one visible tile" observation should be
+rechecked after this correction. Cozea intentionally retains up to three
+workbench sessions with effects alive, so diagnostics must distinguish separate
+retained session identities from an actual duplicate `runtimeTabId`.
 
-### D1 is the blocker
+### D2 — native surfaces paint above application DOM
 
-Phase 4 builds an occlusion coordinator on top of surfaces whose lifetime is
-assumed to track their tile. D1 breaks that assumption: a route change destroys
-the browser, and the surface built on return never draws. Layering occlusion
-over that makes the two indistinguishable -- every "the surface is not drawing"
-report would have two candidate causes, one of them pre-existing.
+**Open; Phase 4 deliverable.**
 
-D1 splits into a fix and a decision:
+The `setOccluded` transport exists. Phase 4 must implement the one overlay
+coordinator that inventories relevant Cozea overlays, computes rectangle overlap,
+blocks interaction, provides screenshot/neutral placeholder state, and hides /
+restores the native WCV. CSS z-index is not a solution.
 
-- The rebuild path loses `setNativeSurfaceVisible(true)`. The one-shot flush
-  added in `5447b99e` does not cover a slot that unmounts again before
-  `ensure()` resolves. Tractable and small.
-- Whether leaving the workbench should end a browser's life at all is a product
-  question, not a bug. The recommendation on this branch is that it should not:
-  a main-owned surface that dies when the user opens their Inbox gives up most
-  of the reason for owning it in main. The shape of the fix depends on the
-  answer, so decide before writing it.
+### D3 — surface trails tile during continuous resize
 
-Also unexplained and worth understanding before Phase 4 rather than after: two
-surfaces churn for one visible browser tile while the tile's identity inputs
-(`tileId`, `projectId`, `laneId`, `workspaceId`, session key) stay constant
-across renders.
+**Mitigation landed; remeasure required.**
 
-### Suggested order
+Diagnosis remains cross-process presentation latency. The first implementation
+added an avoidable extra rAF after `ResizeObserver` / OS-window resize. Those
+signals now flush immediately while Dockview movement remains coalesced. If the
+trail remains materially visible, measure before changing transport; the next
+candidate is one-way renderer→main layout IPC because bounds publication has no
+meaningful response value.
 
-1. Revert the diagnostic scaffolding. Done in `f8b455af`; recover it with
-   `git revert 46d4127d` if D1 or D6 need the instrumentation back.
-2. Fix D1, after settling the lifetime question above.
-3. Re-run PH3-A against a tile restored from a persisted layout and across a
-   route round trip -- PH3-E. Neither was covered by the original pass, and both
-   are where D1 lives.
-4. PH3-C and PH3-D. `automationParity` and `storageParity` can be measured now;
-   `overlayParity` cannot be measured until Phase 4 exists.
-5. Phase 4, which is D2, D4 and D5.
+Do not call D3 cosmetic: performance during resizing is one of this migration's
+primary success criteria.
 
-D3 is not a blocker. It needs a decision rather than a diagnosis, and it rides
-naturally with Phase 4 since both touch geometry and visibility. D6 is
-pre-existing, belongs to another subsystem, and should be its own branch.
+### D4 — floating order computed but ignored
 
-## Open defects
+**Open; Phase 4 deliverable.**
 
-Found by driving a running workbench on 2026-09-10. Ordered by severity. None
-of these is covered by the suite, which is the point: every one of them was
-invisible to 2843 passing tests because the failure path is a silent drop
-rather than an exception.
+The host now defines the order contract unambiguously as back-to-front and
+suppresses identical orders. Phase 4 still needs the workbench coordinator that
+publishes the complete ordered native surface set when Dockview floating order
+changes.
 
-### D1 - Leaving the workbench destroys the browser and returns a blank tile
+### D5 — popout leaves native surface in the main window
 
-Navigating to another top-level route (Inbox, DevApps Store, ...) and back does
-not hide the surface, it releases it. The deferred release exists to survive a
-Dockview remount, but a route change keeps the tile unmounted long enough for
-the macrotask to fire, so the surface is destroyed and a fresh Chromium is built
-on return -- `webContentsId` observed going 2 -> 4. The page is gone, not merely
-unpainted, which breaks the migration's defining invariant.
+**Open; Phase 4 subproject.**
 
-The rebuilt surface then never draws. The renderer computes every term of
-`surfaceVisible` as true while main holds `wantsVisibility: false`, so
-`setNativeSurfaceVisible(true)` is lost somewhere on the rebuild path. This is
-the same class as the creation race fixed in `5447b99e` -- desired state stated
-before main can accept it -- except the one-shot flush on `ensure()` does not
-cover a slot that unmounts again before creation resolves.
+`moveToWindow()` exists, but actual window identity/reparenting is not wired and
+the current Dockview runtime still normalizes browser-backed popouts back into
+the dock. Phase 4 must map popout presentation to the correct Electron
+`BrowserWindow`, reparent the same WCV, then remove the old prohibition.
 
-Two surfaces also churn per one visible browser tile, with the tile's identity
-inputs (`tileId`, `projectId`, `laneId`, `workspaceId`, session key) all stable
-across renders. The second surface's origin is not established; a hidden
-keep-alive workbench session mounting its own copy is a hypothesis, not a
-finding.
+### D6 — keyboard hard reload could overwrite/delete layout
 
-Severity: highest open defect. It breaks surface lifetime, not presentation.
+**Write-side protection landed; original reproduction should be retested on its
+own workbench-persistence track.**
 
-### D2 - Native surfaces paint above all application UI
+The persistence writer now runtime-validates `grid` and `panels` before queuing
+a record. A degenerate teardown snapshot cannot replace the last valid in-memory
+or durable record. The original Shift+Cmd+R reproduction is still worth running
+to determine why Dockview emitted the degenerate shape, but that observation no
+longer has permission to destroy the last valid layout.
 
-A `WebContentsView` is a native layer composited above the window's web
-contents, so every piece of DOM that is meant to sit over a browser tile --
-dropdowns, popovers, modals, drawers, toasts, drag overlays -- is covered by the
-page instead. CSS `z-index` cannot address this (INV-011), and the plan's answer
-is INV-009: an overlapping overlay must take the surface off screen rather than
-try to draw over it.
+## Phase 4 entry rule
 
-The mechanism for that exists and is wired end to end -- `setOccluded` through
-the model, preload, IPC and `BrowserSurfaceView` -- and has no caller anywhere
-in the application. Nothing computes overlap, so nothing is ever occluded.
+Do not migrate a second surface family yet.
 
-Native menus are unaffected: they are separate OS windows and correctly render
-above the surface.
-
-Deliberately not fixed yet. Doing it properly means deciding what counts as an
-overlapping overlay and who owns that computation, which is Phase 4 work.
-
-### D3 - The surface trails the tile through any continuous resize
-
-Any gesture that resizes a browser tile continuously leaves the native view
-behind the pane edge for the duration of the drag: a black gap on the growing
-side, page painted past the tile boundary on the shrinking side. It settles
-correctly on release. Confirmed for the splitter between two tiles, and for
-dragging the OS window edge; the sidebar splitter is the same path.
-
-Moving a panel between groups is *not* affected, which is the tell: that gesture
-has no continuous phase, so the surface relands once at its new rectangle.
-
-This is latency, not layering, and it is not the same root cause as D2. The DOM
-pane resizes synchronously in the renderer while the surface's new rectangle has
-to be measured, coalesced to a frame, and carried across an IPC boundary before
-main can call `setBounds`. The native layer is therefore always at least one
-round trip behind a continuously moving edge, and at drag frequency that reads
-as tearing.
-
-Occluding during the drag would hide the symptom but also hide the page exactly
-while the user is sizing it to fit, which is the wrong trade for this gesture --
-unlike an overlay, where hiding is the correct answer. The real options are to
-shorten the path geometry travels, or to accept the trail and make it less
-visible. Neither is decided.
-
-That the OS window resize reproduces it too rules out anything Dockview-specific
-and confirms the shape of the problem: it is not about which widget is being
-dragged, only about the rectangle changing every frame.
-
-### D4 - Floating group order is computed and then ignored
-
-`nativeOrder` is derived from Dockview's `aria-level` and shipped to main inside
-the bounds payload, but `BrowserSurfaceView` never reads it. Real ordering
-happens only through `bringToFront()`, reached via `setSurfaceOrder`, which has
-no caller. Two overlapping native surfaces therefore sit in creation order
-rather than float order.
-
-### D5 - A popped-out group leaves its surface in the main window
-
-`moveToWindow` exists and is covered by a test, and has no caller. Dockview's
-`addPopoutGroup` opens a real second `BrowserWindow`, so a popped-out browser
-tile keeps drawing in the window it came from.
-
-### D6 - Workbench layout is lost on a keyboard hard reload
-
-Pre-existing and outside this migration: `useWorkbenchDockviewRuntime.ts` and
-`workbenchLayoutPersistence.ts` are untouched by this branch. Recorded here
-because it was found while testing it, and because it destroys evidence.
-
-Reproduces with a non-default layout, the pointer over the sidebar, and a real
-Shift+Cmd+R. The same command from the View menu does not reproduce it. On a
-failed restore the catch calls `clearPersistedWorkbenchLayout`, so the saved
-layout is deleted: the next reload looks innocent and the layout is
-unrecoverable.
-
-Partially diagnosed. The stored record was present at boot with a matching
-`layoutResetKey` and `bindingRevision` and not deleted, yet the peek returned
-nothing because the stored `layout` field failed `isLayout` (needs `grid` and
-`panels`). That points at a degenerate layout being written, not a read-side
-rejection. A hydration race was ruled out: the effect is guarded on
-`!input.isLayoutPersistenceReady`.
-
-### Coverage gap this exposed
-
-PH3-A was driven only against tiles opened by hand in a session that was never
-navigated away from. Tiles restored from a persisted layout, and route
-round-trips, were never exercised -- and both D1 and the intermittent
-blank-on-boot live exactly there. Restored tiles and route changes belong in the
-acceptance list in their own right.
+Phase 4 may begin only after the corrected PH3-C, PH3-D and PH3-E checks are run
+and the D1 route/lifetime regression is confirmed closed. D2, D4 and D5 are not
+prerequisites to Phase 4; implementing them is Phase 4.
 
 ## Performance baseline (Phase 0)
 
-Baseline is captured on the legacy `<webview>` host at parent commit `6f13aa8c`,
-so Phase 10 can repeat the same scenarios against the native path.
-
-Scenarios required before cutover comparison:
+Baseline is still anchored to the legacy `<webview>` host at parent commit
+`6f13aa8c`.
 
 | # | Scenario | Baseline |
 | --- | --- | --- |
-| 1 | One Browser tile resize | see `Static baseline` below |
+| 1 | One Browser tile resize | static path recorded |
 | 2 | Two Browser tiles side-by-side, resizing the split | not yet captured |
 | 3 | One Browser + one Dev Server, resizing | not yet captured |
 | 4 | Floating Browser tile movement | not yet captured |
@@ -351,22 +270,7 @@ Scenarios required before cutover comparison:
 | 6 | Hidden/inactive browser CPU behavior | not yet captured |
 | 7 | Browser memory with 1, 3, and 5 live surfaces | not yet captured |
 
-Scenarios 2-7 require an interactive Electron session with live browser tiles and
-are captured as part of the Phase 10 comparison run, against this same build, so
-both halves of the comparison come from one measurement method.
-
-### Static baseline
-
-The layout path's cost is dominated by how often the renderer measures a tile and
-publishes bounds. That is measurable without a running app and is recorded here
-because Phase 3 changes exactly this code:
-
-- Geometry publication in `apps/desktop/src/features/browser/BrowserSurfaceSlot.tsx`
-  is coalesced to at most one measurement and one publish per animation frame per
-  surface, and identical rectangles are suppressed before they propagate.
-- Triggers that can mark a surface dirty: `ResizeObserver` on the slot element,
-  `window resize`, capture-phase `window scroll`, and Dockview position changes.
-
-The plan requires the native path to hold the same bound: at most one
-measurement/send per animation frame per surface, with unchanged bounds suppressed
-before IPC.
+The native canary now intentionally differs from the original static scheduling
+baseline: direct size changes are published without an extra rAF, while noisy
+position-only sources remain coalesced. Duplicate rectangles are still suppressed
+before IPC and again before native `setBounds`.
