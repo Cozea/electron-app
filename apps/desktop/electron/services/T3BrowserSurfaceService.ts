@@ -173,7 +173,6 @@ function shouldOpenRestrictedSurfaceExternally(
 
 function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): void {
   if (descriptor.kind === "devAppPreview") {
-    // A preview is unreviewed code. It gets its own session and nothing else's.
     if (descriptor.storageScope !== "devAppPreview" || !descriptor.devSourceId) {
       throw new Error("A DevApp preview surface needs its own preview session.");
     }
@@ -227,11 +226,6 @@ export class T3BrowserSurfaceService {
   private readonly descriptors = new Map<string, BrowserSurfaceDescriptor>();
   private readonly partitionsByScope = new Map<string, string>();
   private readonly sessionRegistry: BrowserSurfaceSessionRegistry;
-  /**
-   * Native browser surfaces. Present from Phase 2 but not yet driving any
-   * product tile: every surface family still renders through the renderer
-   * `<webview>` host until its ledger row moves.
-   */
   private readonly nativeHost: BrowserSurfaceNativeHost;
   private readonly partitionOperations = new Map<string, Promise<void>>();
   private readonly stateByTabId = new Map<string, CozeaBrowserSurfaceState>();
@@ -264,10 +258,7 @@ export class T3BrowserSurfaceService {
       allowedPermissions: ALLOWED_PREVIEW_PERMISSIONS,
       protocols: {
         registerOrgDevAppProtocol: (browserSession, publicationId) =>
-          options.orgDevAppArtifactService.registerProtocolForSession(
-            browserSession,
-            publicationId,
-          ),
+          options.orgDevAppArtifactService.registerProtocolForSession(browserSession, publicationId),
         registerDevAppPreviewProtocol: (browserSession, devSourceId) =>
           options.devAppPreviewService.registerProtocolForSession(browserSession, devSourceId),
       },
@@ -275,12 +266,31 @@ export class T3BrowserSurfaceService {
     this.nativeHost = new BrowserSurfaceNativeHost({
       sessions: this.sessionRegistry,
       getWindow: () => options.getMainWindow() ?? null,
+      resolvePreload: (descriptor) => this.preloadPath(descriptor),
+      onRendererInvalidated: async () => {
+        // A full renderer document replacement invalidates the opaque runtime
+        // ids held by that renderer. Close logical T3 state and physical WCVs
+        // together so the next document cannot inherit orphaned surfaces.
+        const tabIds = Array.from(this.descriptors.keys());
+        const results = await Promise.allSettled(tabIds.map((tabId) => this.releaseSurface(tabId)));
+        const rejected = results.find(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+        if (rejected) throw rejected.reason;
+      },
       automation: {
-        // Vouching happens in-process, immediately before registration, so T3
-        // never has to re-derive ownership of contents main created.
         attach: async (tabId, webContentsId) => {
           await this.run((manager) => manager.trustNativeBrowserContents(webContentsId));
-          await this.run((manager) => manager.registerBrowserContents(tabId, webContentsId));
+          try {
+            await this.run((manager) => manager.registerBrowserContents(tabId, webContentsId));
+          } catch (error) {
+            // Trust is a transaction with registration. A failed registration
+            // must not leave an id vouched after Chromium destroys/recycles it.
+            await this.run((manager) => manager.revokeNativeBrowserContents(webContentsId)).catch(
+              () => undefined,
+            );
+            throw error;
+          }
         },
         detach: async (webContentsId) => {
           await this.run((manager) => manager.revokeNativeBrowserContents(webContentsId));
@@ -392,10 +402,6 @@ export class T3BrowserSurfaceService {
     void this.startSubscriptions();
   }
 
-  /**
-   * Session construction lives in `BrowserSurfaceSessionRegistry`; this keeps
-   * the descriptor-aware call shape the service already used.
-   */
   private ensureSession(partition: string, descriptor: BrowserSurfaceDescriptor | null): Session {
     return descriptor
       ? this.sessionRegistry.resolve(descriptor)
@@ -554,6 +560,21 @@ export class T3BrowserSurfaceService {
       : this.options.pickPreloadPath;
   }
 
+  private preparedResult(
+    descriptor: BrowserSurfaceDescriptor,
+    partition: string,
+    state: CozeaBrowserSurfaceState,
+  ): PreparedBrowserSurface {
+    return {
+      config: {
+        partition,
+        webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
+        preloadUrl: pathToFileURL(this.preloadPath(descriptor)).href,
+      },
+      state,
+    };
+  }
+
   async prepareSurface(descriptor: BrowserSurfaceDescriptor): Promise<PreparedBrowserSurface> {
     if (!descriptor.runtimeTabId.trim() || !descriptor.tileId.trim()) {
       throw new Error("Browser surface identifiers must be non-empty.");
@@ -564,6 +585,34 @@ export class T3BrowserSurfaceService {
     }
 
     const partition = partitionForDescriptor(descriptor);
+    const existingDescriptor = this.descriptors.get(descriptor.runtimeTabId);
+    const existingState = this.stateByTabId.get(descriptor.runtimeTabId);
+    const existingPartition = this.partitionsByScope.get(descriptor.runtimeTabId);
+    const hasAnyExisting = Boolean(existingDescriptor || existingState || existingPartition);
+    if (hasAnyExisting) {
+      if (!existingDescriptor || !existingState || !existingPartition) {
+        throw new Error(`Browser surface ${descriptor.runtimeTabId} has inconsistent prepared state.`);
+      }
+      if (existingPartition !== partition) {
+        throw new Error(
+          `Browser surface ${descriptor.runtimeTabId} cannot change storage partition while live.`,
+        );
+      }
+
+      // Route/Dockview remount is an attach, not a second navigation. Refresh
+      // descriptor presentation metadata but keep the existing T3 tab and page.
+      const nextDescriptor = { ...descriptor };
+      const nextState: CozeaBrowserSurfaceState = {
+        ...existingState,
+        descriptor: nextDescriptor,
+      };
+      this.descriptors.set(descriptor.runtimeTabId, nextDescriptor);
+      this.ensureSession(partition, descriptor);
+      this.stateByTabId.set(descriptor.runtimeTabId, nextState);
+      this.emitState(descriptor.runtimeTabId, nextState);
+      return this.preparedResult(descriptor, partition, nextState);
+    }
+
     return await this.runPartitionOperation(partition, async () => {
       this.descriptors.set(descriptor.runtimeTabId, { ...descriptor });
       this.partitionsByScope.set(descriptor.runtimeTabId, partition);
@@ -584,12 +633,6 @@ export class T3BrowserSurfaceService {
           httpDiagnostic: null,
         });
         if (!isDirectNavigationSurface(descriptor)) {
-          // A page that fails to load -- offline, DNS, a dead bookmark -- is a
-          // normal condition, and T3 already reports it as `LoadFailed` on the
-          // surface's own state. Letting it reject here would fail the whole
-          // preparation instead: the native path sequences view creation after
-          // this call, so the surface would never get a view at all and the
-          // tile would stay blank rather than showing the load error.
           try {
             await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
           } catch (cause) {
@@ -606,14 +649,7 @@ export class T3BrowserSurfaceService {
       const preparedState = this.stateByTabId.get(descriptor.runtimeTabId);
       if (!preparedState) throw new Error("The browser surface did not initialize.");
       this.emitInventoryChange(descriptor.workbenchSessionKey);
-      return {
-        config: {
-          partition,
-          webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
-          preloadUrl: pathToFileURL(this.preloadPath(descriptor)).href,
-        },
-        state: preparedState,
-      };
+      return this.preparedResult(descriptor, partition, preparedState);
     });
   }
 
@@ -622,7 +658,24 @@ export class T3BrowserSurfaceService {
     const partition = descriptor ? partitionForDescriptor(descriptor) : null;
     const release = async () => {
       this.detachCozeaListeners(tabId);
-      await this.run((manager) => manager.closeTab(tabId));
+
+      let t3Error: unknown = null;
+      let nativeError: unknown = null;
+      try {
+        // T3 owns recording/picker/debugger state; close that before destroying
+        // its WebContents so cleanup can run against the still-live attachment.
+        await this.run((manager) => manager.closeTab(tabId));
+      } catch (error) {
+        t3Error = error;
+      }
+      try {
+        // Always attempt native teardown even if T3 cleanup failed. A full
+        // close must never leave an orphan WCV painting above the workbench.
+        await this.nativeHost.releaseSurface(tabId);
+      } catch (error) {
+        nativeError = error;
+      }
+
       this.descriptors.delete(tabId);
       this.partitionsByScope.delete(tabId);
       this.stateByTabId.delete(tabId);
@@ -646,6 +699,8 @@ export class T3BrowserSurfaceService {
         }
       }
       if (descriptor) this.emitInventoryChange(descriptor.workbenchSessionKey);
+      if (t3Error) throw t3Error;
+      if (nativeError) throw nativeError;
     };
     if (partition) {
       await this.runPartitionOperation(partition, release);
@@ -672,21 +727,10 @@ export class T3BrowserSurfaceService {
     await this.releaseSurface(tabId);
   }
 
-  /**
-   * Create (or reuse) the native view behind a surface whose family has moved
-   * to the native backend.
-   *
-   * Idempotent by `runtimeTabId`, so a React remount reuses the live browser
-   * rather than replacing it.
-   */
   async ensureNativeSurface(tabId: string): Promise<void> {
     const descriptor = this.descriptors.get(tabId);
     if (!descriptor) throw new Error(`Unknown browser surface ${tabId}`);
     const view = await this.nativeHost.ensureSurface(descriptor);
-    // The same listeners the `<webview>` path attaches on registration. They
-    // carry HTTP diagnostics and requested-URL tracking, which is what the
-    // tile's error state and address bar read; without them a native surface
-    // would paint correctly while its chrome stayed blank.
     const contents = view.view.webContents;
     if (!contents.isDestroyed()) {
       this.attachCozeaListeners(tabId, contents, descriptor);
@@ -694,23 +738,12 @@ export class T3BrowserSurfaceService {
     }
   }
 
+  /** Compatibility IPC during the canary: destructive release is always full release. */
   async releaseNativeSurfaceForTab(tabId: string): Promise<void> {
-    this.detachCozeaListeners(tabId);
-    this.detachDevAppViewBridge(tabId, "The browser surface was released.");
-    await this.nativeHost.releaseSurface(tabId);
+    await this.releaseSurface(tabId);
   }
 
-  /**
-   * Place a native surface.
-   *
-   * Bounds arrive in CSS pixels and are scaled by the window's zoom factor,
-   * because a zoomed workbench measures in CSS pixels that are no longer
-   * native pixels.
-   */
   layoutNativeSurface(tabId: string, bounds: BrowserSurfaceBounds): void {
-    // Read the zoom from the window main owns rather than trusting the number
-    // the renderer sent: an isolated renderer cannot read Electron's zoom
-    // factor, and renderer-supplied geometry should not decide placement.
     const mainWindow = this.options.getMainWindow();
     const reported =
       mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getZoomFactor() : 1;
@@ -735,7 +768,7 @@ export class T3BrowserSurfaceService {
     this.nativeHost.setSurfaceOccluded(tabId, occluded);
   }
 
-  /** Back-to-front order for overlapping native surfaces. */
+  /** Back-to-front order; the final id is front-most. */
   setNativeSurfaceOrder(orderedTabIds: ReadonlyArray<string>): void {
     this.nativeHost.setSurfaceOrder(orderedTabIds);
   }
@@ -744,14 +777,6 @@ export class T3BrowserSurfaceService {
     this.nativeHost.focusSurface(tabId);
   }
 
-  /**
-   * Development-only probe for the native surface path (plan section 11.5).
-   *
-   * Constructs a real main-owned `WebContentsView`, registers it with T3, and
-   * hands it back so a caller can drive automation against it. Gated behind an
-   * environment flag because Phase 2 must not create a native view for any
-   * production surface: the ledger still has every family on the renderer host.
-   */
   async probeNativeSurface(descriptor: BrowserSurfaceDescriptor): Promise<BrowserSurfaceView> {
     if (process.env.COZEA_BROWSER_NATIVE_SHADOW !== "1") {
       throw new Error(
@@ -762,12 +787,11 @@ export class T3BrowserSurfaceService {
     return await this.nativeHost.ensureSurface(descriptor);
   }
 
-  /** Tear down a probed native surface and withdraw its automation vouch. */
+  /** Destructive native release is intentionally the same full lifecycle close. */
   async releaseNativeSurface(runtimeTabId: string): Promise<void> {
-    await this.nativeHost.releaseSurface(runtimeTabId);
+    await this.releaseSurface(runtimeTabId);
   }
 
-  /** Live native surfaces. Empty in production until a family cuts over. */
   listNativeSurfaces(): ReadonlyArray<BrowserSurfaceView> {
     return this.nativeHost.list();
   }
