@@ -158,10 +158,18 @@ and that `backgroundWarm` preserves expensive runtime while detaching heavy UI.
 
 Before Phase 4 implementation begins, rerun:
 
-- PH3-A: open/navigate/back/forward/reload/title/favicon/find/zoom/DevTools/close/reopen.
-- PH3-B: continuous Dockview split + OS-window resize after `4d003071`; determine
-  whether D3 is materially improved or whether one-way layout IPC needs to be
-  evaluated next.
+- ~~PH3-A: open/navigate/back/forward/reload/title/favicon/find/zoom/DevTools.~~
+  **PASSED 2026-09-10.** Address-bar navigation, in-page link navigation, back,
+  forward, reload, title and favicon tracking in tile and sidebar, per-page
+  colour scheme. One surface created, none disposed, zero errors across the
+  whole pass, so navigation operated a single browser rather than churning
+  them. Reload, zoom and DevTools-on-native-contents are additionally covered by
+  `bun run smoke:native-browser-surface` on this head. find-in-page remains the
+  documented harness exception and stays manual.
+- PH3-B: continuous Dockview split + OS-window resize after `4d003071`.
+  **Measured 2026-09-10; see D3.** The transport is not the bottleneck, so
+  one-way layout IPC is not the next step. Whether the trail still reads as
+  visually wrong during a smooth gesture remains a human check.
 - PH3-C: full T3 automation matrix against the native Browser tile, including
   picker/annotation now that the native preload is wired.
 - PH3-D: cookie/storage sharing and isolation across live Browser tiles.
@@ -253,7 +261,38 @@ restores the native WCV. CSS z-index is not a solution.
 
 ### D3 — surface trails tile during continuous resize
 
-**Mitigation landed; remeasure required.**
+**Mitigation landed; remeasured 2026-09-10. Transport exonerated; presentation
+latency is the remaining candidate.**
+
+48 sash-resize updates were instrumented end to end -- renderer publish, main
+arrival, and the `setBounds` call itself -- and correlated by width:
+
+| Stage | Result |
+| --- | --- |
+| publishes / arrivals / `setBounds` calls | 48 / 48 / 48 (no drops, no queueing) |
+| renderer to main IPC | p50 0ms, p90 1ms, max 1ms |
+| `WebContentsView.setBounds()` | 41x 0ms, 7x 1ms |
+
+That eliminates two of the four candidates outright: renderer-to-main IPC
+latency, and the cost of the compositor call. Every published rectangle arrived,
+in order, within a millisecond.
+
+The remaining candidate is Chromium **presentation** latency, which is distinct
+from the call cost measured above: `setBounds` returns immediately, but the
+native view's new geometry is committed on a later compositor frame, so it is
+inherently out of step with the DOM painting the same frame in the renderer.
+DOM-to-measurement latency is not excluded -- it was not separately stamped --
+but cannot account for a trail on its own given the transport numbers.
+
+Consequence for the plan: **one-way layout IPC should not be attempted as the
+next optimisation.** It targets a transport that is already sub-millisecond and
+lossless, so it cannot materially change the trail. Any further work should
+target presentation synchronisation instead.
+
+Measurement limitation to respect: the drags were driven as discrete gestures,
+producing ~12 updates each, so this measures per-update pipeline latency rather
+than reproducing a smooth 60Hz drag. Whether the residual trail is acceptable to
+the eye is still a human judgement and is not claimed here.
 
 Diagnosis remains cross-process presentation latency. The first implementation
 added an avoidable extra rAF after `ResizeObserver` / OS-window resize. Those
