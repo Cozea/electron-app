@@ -11,6 +11,7 @@ Status: complete
 Baseline:
 - planning baseline commit: `6f13aa8c2094052402b4aa47fed13d0bdc87ac65`
 - current origin/main commit: `19a06e7e815b0acde32647a51020d589226421eb`
+- implementation commit: `77e124b1`
 - diff between planning baseline and origin/main:
   - `6d9f37ba` chore(release): 0.2.3-beta.1
   - `359a002f` fix(build): ad-hoc sign unsigned mac builds so macOS will open them (#166)
