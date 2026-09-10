@@ -15,6 +15,7 @@ import { applyThemeClass, getStoredThemePreference } from './lib/theme'
 import { applyStoredLanguage } from './lib/i18n'
 
 import { appRouter } from './router/routes'
+import { BrowserSurfaceRuntimeBridge } from './features/browser/BrowserSurfaceRuntimeBridge'
 import { ElectronBrowserHostGate } from './features/browser/ElectronBrowserHostGate'
 import {
   applyDesktopBootstrapRoute,
@@ -123,6 +124,7 @@ async function startRenderer(): Promise<void> {
       <ConvexProvider>
         <ToastProvider>
           <RouterProvider router={appRouter} />
+          <BrowserSurfaceRuntimeBridge />
           <ElectronBrowserHostGate />
         </ToastProvider>
       </ConvexProvider>

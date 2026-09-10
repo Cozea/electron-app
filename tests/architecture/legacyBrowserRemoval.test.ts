@@ -181,6 +181,22 @@ describe("browser surface migration boundary", () => {
     ).toEqual([]);
   });
 
+  it("subscribes to surface state independently of the legacy host", () => {
+    const bridge = read("apps/desktop/src/features/browser/BrowserSurfaceRuntimeBridge.tsx");
+    const legacyHost = read("apps/desktop/src/features/browser/ElectronBrowserHost.tsx");
+    const entry = read("apps/desktop/src/main.tsx");
+
+    // The legacy host is lazily mounted only while the legacy registry has
+    // entries, and a native surface never registers there. Hosting these
+    // subscriptions inside it left a native tile with no state at all -- no
+    // title, favicon or error -- however well its page had loaded.
+    expect(bridge).toContain("onSurfaceStateChange");
+    expect(bridge).toContain("onPointerEvent");
+    expect(legacyHost).not.toContain("onSurfaceStateChange");
+    expect(legacyHost).not.toContain("onPointerEvent");
+    expect(entry).toContain("<BrowserSurfaceRuntimeBridge />");
+  });
+
   it("keeps the T3 automation parity ledger complete", () => {
     expect(
       T3_BROWSER_PORT_PARITY_LEDGER.filter((requirement) =>
