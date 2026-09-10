@@ -2,6 +2,7 @@ import type { BrowserWindow } from "electron";
 
 import type { BrowserSurfaceDescriptor } from "../../../../../shared/browserSurfaceTypes";
 import type { BrowserSurfaceSessionRegistry } from "./BrowserSurfaceSessionRegistry";
+import type { BrowserSurfacePreloadPosture } from "./BrowserSurfaceWebPreferences";
 import { BrowserSurfaceView, type BrowserSurfaceBounds } from "./BrowserSurfaceView";
 
 /**
@@ -26,6 +27,15 @@ export interface BrowserSurfaceNativeHostOptions {
   readonly getWindow: () => BrowserWindow | null;
   readonly automation?: BrowserSurfaceAutomationBinder | null;
   readonly resolvePreload?: (descriptor: BrowserSurfaceDescriptor) => string | null;
+  /**
+   * Preload world posture is an explicit policy decision. Do not infer
+   * shared-world merely from the existence of a preload: future keyboard-only
+   * preloads should stay isolated, while the current annotation picker needs
+   * shared-world to see the page's React DevTools hook.
+   */
+  readonly resolvePreloadPosture?: (
+    descriptor: BrowserSurfaceDescriptor,
+  ) => BrowserSurfacePreloadPosture;
   /**
    * Full logical teardown owner. A renderer reload invalidates runtime ids, so
    * the service above this host must close T3/descriptor/native state together.
@@ -107,12 +117,14 @@ export class BrowserSurfaceNativeHost {
       throw new Error("Cannot create a browser surface without a live window.");
     }
 
+    const preloadPath = this.options.resolvePreload?.(descriptor) ?? null;
     const view = new BrowserSurfaceView({
       runtimeTabId: descriptor.runtimeTabId,
       descriptor,
       session: this.options.sessions.resolve(descriptor),
       window,
-      preloadPath: this.options.resolvePreload?.(descriptor) ?? null,
+      preloadPath,
+      posture: this.options.resolvePreloadPosture?.(descriptor) ?? "isolated",
     });
     this.surfaces.set(descriptor.runtimeTabId, view);
 
