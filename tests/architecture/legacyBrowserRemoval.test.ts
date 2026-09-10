@@ -4,14 +4,32 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { T3_BROWSER_PORT_PARITY_LEDGER } from "@shared/browserPortParityLedger";
+import {
+  BROWSER_SURFACE_FAMILIES,
+  BROWSER_SURFACE_MIGRATION_LEDGER,
+  expectedBackendForState,
+  isFullyMigrated,
+} from "@shared/browserSurfaceMigrationLedger";
+import type { BrowserSurfaceKind } from "@shared/browserSurfaceTypes";
 
 const root = process.cwd();
-const sourceRoots = ["apps/desktop/electron", "apps/desktop/src", "shared", "scripts"];
+const rendererRoots = ["apps/desktop/src", "shared"];
+const mainRoot = "apps/desktop/electron";
+const sourceRoots = [mainRoot, ...rendererRoots, "scripts"];
 const sourceExtensions = new Set([".cjs", ".js", ".mjs", ".ts", ".tsx"]);
 const ignoredDirectories = new Set(["dist", "node_modules", "out"]);
 
-const forbiddenLegacyTokens = [
-  "WebContentsView",
+/**
+ * Symbols from the *removed* browser host, not from the native architecture
+ * this migration is introducing. Keeping them forbidden stops the old design
+ * being resurrected; the new main-owned classes use `BrowserSurface*` names and
+ * are unaffected.
+ *
+ * `WebContentsView`, screenshot substitution and native-surface occlusion were
+ * previously in this list. They are now required by the target architecture and
+ * are governed by the scoped ownership test below instead.
+ */
+const forbiddenRemovedHostTokens = [
   "WorkbenchBrowserService",
   "workbenchBrowser:",
   "electronAPI.workbenchBrowser",
@@ -19,15 +37,16 @@ const forbiddenLegacyTokens = [
   "useWorkbenchBrowserView",
   "data-workbench-browser-overlay",
   "BrowserUnavailableSurface",
-  "placeholderScreenshot",
-  "overlayPaused",
   "cozea:dock-layout-change",
-  "legacyBrowserFallback",
-  "browserHostFallback",
-  "nativeSurfaceOcclusion",
-  "data-native-surface",
   "cozea:split-control",
 ] as const;
+
+/**
+ * A fallback browser host is forbidden in every phase. The plan permits the
+ * legacy and native hosts to coexist only through explicit ledger states, never
+ * through a silent runtime fallback.
+ */
+const forbiddenFallbackTokens = ["legacyBrowserFallback", "browserHostFallback"] as const;
 
 function listSourceFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -43,60 +62,108 @@ function read(relativePath: string): string {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }
 
-describe("legacy browser removal boundary", () => {
-  it("keeps forbidden native-host symbols out of first-party application code", () => {
-    const violations = sourceRoots.flatMap((sourceRoot) =>
-      listSourceFiles(path.join(root, sourceRoot)).flatMap((filePath) => {
-        const source = fs.readFileSync(filePath, "utf8");
-        return forbiddenLegacyTokens
-          .filter((token) => source.includes(token))
-          .map((token) => `${path.relative(root, filePath)}: ${token}`);
-      }),
-    );
+/**
+ * Drop block comments and whole-line `//` comments before scanning.
+ *
+ * These architecture rules are about what code *does*, not which words appear
+ * in prose (INV-014). Without this, documenting an invariant in a comment
+ * violates the invariant it documents.
+ */
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n");
+}
 
-    expect(violations).toEqual([]);
+function scan(roots: readonly string[], tokens: readonly string[]): string[] {
+  return roots.flatMap((sourceRoot) =>
+    listSourceFiles(path.join(root, sourceRoot)).flatMap((filePath) => {
+      const source = stripComments(fs.readFileSync(filePath, "utf8"));
+      return tokens
+        .filter((token) => source.includes(token))
+        .map((token) => `${path.relative(root, filePath)}: ${token}`);
+    }),
+  );
+}
+
+describe("browser surface migration boundary", () => {
+  it("keeps removed-host and fallback symbols out of first-party application code", () => {
+    expect(
+      scan(sourceRoots, [...forbiddenRemovedHostTokens, ...forbiddenFallbackTokens]),
+    ).toEqual([]);
   });
 
-  it("restores all four browser-backed surface families through the shared T3 host", () => {
-    const browserTile = read(
-      "apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx",
-    );
-    const runtimeTile = read(
-      "apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx",
-    );
-    const orgDevAppTile = read(
-      "apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx",
-    );
+  it("confines native WebContentsView ownership to Electron main", () => {
+    // INV-001: only main may create or destroy a native browser view. This is
+    // the replacement for the old blanket ban on the token, which also made the
+    // target architecture untestable.
+    expect(scan(rendererRoots, ["WebContentsView"])).toEqual([]);
+  });
+
+  it("covers every browser surface kind in the migration ledger", () => {
+    const ledgerFamilies = BROWSER_SURFACE_MIGRATION_LEDGER.map((entry) => entry.family);
+    expect([...ledgerFamilies].sort()).toEqual([...BROWSER_SURFACE_FAMILIES].sort());
+
+    // Fails when a new BrowserSurfaceKind is added without deciding how it
+    // migrates. The annotation is what makes the omission a type error too.
+    const kinds: Record<BrowserSurfaceKind, true> = {
+      browser: true,
+      devServer: true,
+      projectDevApp: true,
+      orgDevApp: true,
+      devAppPreview: true,
+    };
+    expect([...BROWSER_SURFACE_FAMILIES].sort()).toEqual(Object.keys(kinds).sort());
+  });
+
+  it("keeps each family's active backend consistent with its migration state", () => {
+    const mismatches = BROWSER_SURFACE_MIGRATION_LEDGER.filter(
+      (entry) => entry.activeBackend !== expectedBackendForState(entry.state),
+    ).map((entry) => `${entry.family}: ${entry.state} declares ${entry.activeBackend}`);
+
+    expect(mismatches).toEqual([]);
+  });
+
+  it("keeps surface descriptors stable across the migration", () => {
+    // Identity is the descriptor, not the DOM node (INV-002). These fields are
+    // what main will key native surfaces by, so they must not drift silently.
+    const descriptorSource = read("shared/browserSurfaceTypes.ts");
+    for (const field of [
+      "runtimeTabId",
+      "tileId",
+      "workbenchSessionKey",
+      "kind",
+      "storageScope",
+    ]) {
+      expect(descriptorSource, `BrowserSurfaceDescriptor.${field}`).toContain(field);
+    }
+  });
+
+  it("keeps the T3 automation parity ledger complete", () => {
+    expect(
+      T3_BROWSER_PORT_PARITY_LEDGER.filter((requirement) =>
+        String(requirement.status).includes("pending"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("restores all browser-backed surface families through the shared host", () => {
+    const browserTile = read("apps/desktop/src/features/workbench/WorkbenchBrowserTile.tsx");
+    const runtimeTile = read("apps/desktop/src/features/workbench/WorkbenchDevServerTile.tsx");
+    const orgDevAppTile = read("apps/desktop/src/features/workbench/WorkbenchOrgDevAppTile.tsx");
 
     expect(browserTile).toContain("<BrowserSurfaceSlot");
     expect(browserTile).toContain("useHostedBrowserSurface(descriptor)");
-    expect(browserTile).not.toContain("<BrowserUnavailableSurface");
     expect(runtimeTile).toContain("<BrowserSurfaceSlot");
     expect(runtimeTile).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
-    expect(runtimeTile).not.toContain("<BrowserUnavailableSurface");
     expect(runtimeTile).toContain("tile.devAppId");
     expect(orgDevAppTile).toContain("<BrowserSurfaceSlot");
     expect(orgDevAppTile).toContain("useHostedBrowserSurface(browserSurfaceDescriptor)");
-    expect(orgDevAppTile).not.toContain("<BrowserUnavailableSurface");
   });
 
-  it("keeps the removed host absent while mounting only the T3 webview foundation", () => {
-    const main = read("apps/desktop/electron/main.ts");
-    const preload = read("apps/desktop/electron/preload.ts");
-    const sessionManager = read("apps/desktop/electron/services/WorkbenchSessionManager.ts");
-
-    expect(main).not.toContain("registerWorkbenchBrowserHandlers");
-    expect(main).not.toContain("registerBrowserAutomationHandlers");
-    expect(main).toContain("webviewTag: true");
-    expect(main).toContain("will-attach-webview");
-    expect(preload).not.toContain("workbenchBrowser");
-    expect(preload).toContain("preview: previewBridge");
-    expect(sessionManager).toContain(
-      "hasBrowserSurface: this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey)",
-    );
-  });
-
-  it("keeps the complete all-surface T3 automation host enabled with no pending parity", () => {
+  it("keeps the complete all-surface T3 automation host enabled", () => {
     const host = read("apps/desktop/src/substrate/t3PreviewAutomationHost.ts");
     for (const operation of [
       "status",
@@ -127,11 +194,6 @@ describe("legacy browser removal boundary", () => {
     expect(host).toContain("bridge.listSurfaces()");
     expect(host).not.toContain("PreviewAutomationUnavailableError");
     expect(
-      T3_BROWSER_PORT_PARITY_LEDGER.filter((requirement) =>
-        String(requirement.status).includes("pending"),
-      ),
-    ).toEqual([]);
-    expect(
       fs.existsSync(
         path.join(
           root,
@@ -139,5 +201,49 @@ describe("legacy browser removal boundary", () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  describe("legacy webview host", () => {
+    const legacyBackedFamilies = BROWSER_SURFACE_MIGRATION_LEDGER.filter(
+      (entry) => entry.activeBackend === "renderer-webview",
+    );
+
+    it.runIf(legacyBackedFamilies.length > 0)(
+      "stays mounted while any family is still renderer-backed",
+      () => {
+        const main = read("apps/desktop/electron/main.ts");
+        const preload = read("apps/desktop/electron/preload.ts");
+        const sessionManager = read(
+          "apps/desktop/electron/services/WorkbenchSessionManager.ts",
+        );
+
+        expect(main).not.toContain("registerWorkbenchBrowserHandlers");
+        expect(main).not.toContain("registerBrowserAutomationHandlers");
+        expect(main).toContain("webviewTag: true");
+        expect(main).toContain("will-attach-webview");
+        expect(preload).not.toContain("workbenchBrowser");
+        expect(preload).toContain("preview: previewBridge");
+        expect(sessionManager).toContain(
+          "hasBrowserSurface: this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey)",
+        );
+      },
+    );
+
+    it.runIf(isFullyMigrated())("is fully removed at final cutover", () => {
+      const main = read("apps/desktop/electron/main.ts");
+      const preload = read("apps/desktop/electron/preload.ts");
+
+      expect(main).not.toContain("webviewTag: true");
+      expect(main).not.toContain("will-attach-webview");
+      expect(preload).not.toContain("registerWebview");
+      expect(scan(rendererRoots, ["<webview", "registerWebview"])).toEqual([]);
+
+      // The native host must exist and be main-owned before anything is deleted.
+      expect(
+        fs.existsSync(
+          path.join(root, "apps/desktop/electron/services/browser/BrowserSurfaceNativeHost.ts"),
+        ),
+      ).toBe(true);
+    });
   });
 });
