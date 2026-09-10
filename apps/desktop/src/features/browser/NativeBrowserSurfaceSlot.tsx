@@ -44,8 +44,8 @@ export function NativeBrowserSurfaceSlot({
   const ownerRef = useRef<symbol | null>(null);
   ownerRef.current ??= Symbol("native-browser-surface-slot");
   // Read inside measurement without making them effect dependencies: a corner
-  // radius change should move the surface on the next frame, not re-run the
-  // whole lifecycle and re-acquire the model.
+  // radius change should move the surface on the next layout signal, not re-run
+  // the whole lifecycle and re-acquire the model.
   const presentationRef = useRef({ cornerRadius, nativeOrder });
   presentationRef.current = { cornerRadius, nativeOrder };
 
@@ -64,8 +64,6 @@ export function NativeBrowserSurfaceSlot({
     const scheduler = new BrowserSurfaceLayoutScheduler({
       measure: (): BrowserSurfaceBounds | null => {
         const rect = element.getBoundingClientRect();
-        // A collapsed slot is not a rectangle worth sending; visibility, not a
-        // degenerate size, is how a surface is taken off screen.
         if (rect.width <= 0 || rect.height <= 0) return null;
         const { cornerRadius: radius, nativeOrder: order } = presentationRef.current;
         return {
@@ -78,20 +76,27 @@ export function NativeBrowserSurfaceSlot({
       publish: (bounds) => model.layout(bounds),
     });
 
-    const markDirty = () => scheduler.markDirty();
+    // Dockview position signals can arrive several times for one logical move,
+    // so retain frame coalescing there. ResizeObserver and window resize fire
+    // after layout has already changed; deferring them through another rAF put
+    // the native view an avoidable frame behind the DOM edge during continuous
+    // resize (D3), so those authoritative size signals flush immediately.
+    const markPositionDirty = () => scheduler.markDirty();
+    const flushSize = () => scheduler.flush();
+
     // Measure synchronously on mount so the surface is placed before its first
     // paint rather than a frame later.
     scheduler.flush();
 
-    const observer = new ResizeObserver(markDirty);
+    const observer = new ResizeObserver(flushSize);
     observer.observe(element);
-    window.addEventListener("resize", markDirty);
-    const unsubscribePositionChanges = subscribePositionChanges?.(markDirty);
+    window.addEventListener("resize", flushSize);
+    const unsubscribePositionChanges = subscribePositionChanges?.(markPositionDirty);
 
     return () => {
       unsubscribePositionChanges?.();
       observer.disconnect();
-      window.removeEventListener("resize", markDirty);
+      window.removeEventListener("resize", flushSize);
       scheduler.dispose();
       modelRef.current = null;
       browserSurfaceModels.release(descriptor.runtimeTabId, owner);
