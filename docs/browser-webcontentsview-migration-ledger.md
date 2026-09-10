@@ -38,7 +38,8 @@ the target the native path must match. It is not evidence about native code.
 
 | Phase | Outcome | Commit |
 | --- | --- | --- |
-| 0 — reverse obsolete guards, establish measurements | complete | see branch `feat/browser-wcv-modernization` |
+| 0 — reverse obsolete guards, establish measurements | complete except the interactive performance scenarios | `eccbf98f` |
+| 1 — T3 accepts trusted main-created browser contents | complete | `t3code` `113abb57` |
 
 ## T3 pin
 
@@ -50,8 +51,27 @@ the target the native path must match. It is not evidence about native code.
 The current pin is one commit ahead of the planning baseline. That commit
 (`717f4f14`, branch `cozea/computer-use-v2-contract`) vendors the generated
 Computer Use v2 contract and is unrelated to this migration; it moves no browser
-code. Phase 1 generalizes the T3 `PreviewManager` registration boundary and
-Phase 2 repins again from there.
+code.
+
+Phase 1 is committed and pushed but **not yet pinned**: `113abb57` on
+`cozea/preview-generic-browser-contents` generalizes the `PreviewManager`
+registration boundary. Phase 2 repins the parent to it and adds the native host.
+
+| | Commit |
+| --- | --- |
+| Ready for Phase 2 repin | `113abb57e5977950c8c7204030dac77084d7b700` |
+
+### T3 registration boundary after Phase 1
+
+| Path | Ownership proof | Renderer-reachable |
+| --- | --- | --- |
+| `registerWebview` | guest reports webview type and hangs off the app window | yes, via existing IPC |
+| `registerBrowserContents` | id vouched for in-process by the main service that created the view | no |
+
+`trustNativeBrowserContents` is deliberately absent from the IPC methods, the
+preload bridge and the web renderer, so a renderer cannot nominate an arbitrary
+`WebContents`. Vouches are withdrawn on destroy or crash because Chromium
+recycles `WebContents` ids.
 
 ## Performance baseline (Phase 0)
 
