@@ -89,8 +89,15 @@ export const BROWSER_SURFACE_MIGRATION_LEDGER: ReadonlyArray<BrowserSurfaceMigra
   {
     family: "browser",
     // First canary. The native path is exercised by the suite and by
-    // `bun run smoke:native-browser-surface`, but the interactive PH3-A to
-    // PH3-D checks still have to pass in a running workbench.
+    // `bun run smoke:native-browser-surface`, and PH3-A has now been driven in
+    // a running workbench: address-bar and in-page navigation, back, forward,
+    // title, favicon, URL and error state, and one surviving browser across a
+    // sidebar resize, a group split, maximize and restore.
+    //
+    // The three parity columns stay pending because none of them has been
+    // measured against the legacy host yet, which is what parity means here.
+    // Still unverified interactively: drag-to-move between groups and float,
+    // which HTML5 drag-and-drop puts out of reach of synthetic input.
     state: "NATIVE_CANARY",
     activeBackend: "main-webcontentsview",
     automationParity: "native-pending",
