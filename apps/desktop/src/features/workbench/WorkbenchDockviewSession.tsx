@@ -4,7 +4,6 @@ import { WorkbenchDockRuntimeProvider } from "@/features/workbench/WorkbenchDock
 import { useWorkbenchDockviewRuntime } from "@/features/workbench/hooks/useWorkbenchDockviewRuntime"
 import {
   ensureWorkbenchLayoutPersistenceReady,
-  peekLayoutDiag,
   peekPersistedWorkbenchLayout,
 } from "@/features/workbench/model/workbenchLayoutPersistence"
 import { buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
@@ -55,15 +54,6 @@ export function WorkbenchDockviewSession({
       projectWorkbench.layoutResetKey,
       session.workspaceRevision,
     )
-    // TEMP DIAGNOSTIC
-    console.warn("[LayoutPeekDiag]", JSON.stringify({
-      scopeKey: workbenchScopeKey,
-      layoutResetKey: projectWorkbench.layoutResetKey,
-      workspaceRevision: session.workspaceRevision,
-      ready: isLayoutPersistenceReady,
-      gotLayout: Boolean(pathAwareLayout),
-      raw: peekLayoutDiag(workbenchScopeKey),
-    }))
     if (
       pathAwareLayout ||
       !legacyWorkbenchScopeKey ||

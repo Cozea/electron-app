@@ -171,15 +171,6 @@ export class BrowserSurfaceView {
    */
   private reconcileVisibility(): void {
     const shouldDraw = this.wantsVisibility && this.hasBeenLaidOut && !this.occluded;
-    // TEMP DIAGNOSTIC
-    console.log("[SurfaceViewDiag]", this.runtimeTabId, JSON.stringify({
-      wantsVisibility: this.wantsVisibility,
-      hasBeenLaidOut: this.hasBeenLaidOut,
-      occluded: this.occluded,
-      shouldDraw,
-      was: this.view.getVisible(),
-      bounds: this.lastBounds,
-    }));
     if (this.view.getVisible() !== shouldDraw) this.view.setVisible(shouldDraw);
   }
 

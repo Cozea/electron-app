@@ -154,21 +154,6 @@ export function WorkbenchBrowserTile({
   const pageError = resolveBrowserPageError(state);
   const surfaceVisible =
     workbenchSurfaceVisible && panelActivity.visible && !showStartState && !pageError;
-  // TEMP DIAGNOSTIC
-  console.warn("[TileVisibleDiag]", JSON.stringify({
-    runtimeTabId: runtimeTabId.slice(-12),
-    tileId: tile.id,
-    projectId,
-    laneId,
-    workspaceId,
-    workbenchSessionKey,
-    resolvedSessionKey,
-    workbenchSurfaceVisible,
-    panelActivityVisible: panelActivity.visible,
-    showStartState,
-    pageError: Boolean(pageError),
-    surfaceVisible,
-  }));
   const reload = () => {
     if (state?.webContentsId && preview) {
       void preview.refresh(runtimeTabId).catch(() => undefined);

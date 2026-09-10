@@ -307,14 +307,6 @@ export function useWorkbenchDockviewRuntime(
   );
 
   const saveLayout = useCallback(() => {
-    // TEMP DIAGNOSTIC
-    console.warn("[SaveLayoutDiag]", JSON.stringify({
-      projectId: Boolean(input.projectId),
-      isActive: isActiveRef.current,
-      isHydrating: isHydratingRef.current,
-      selectionTiles: Object.keys(selectionPreviewTilesRef.current).length,
-      scopeKey: workbenchScopeKeyRef.current,
-    }));
     if (!input.projectId) return;
     if (!isActiveRef.current) {
       // Hidden keep-alive sessions still receive dockview layout events.

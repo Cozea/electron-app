@@ -16,16 +16,6 @@ export function peekPersistedWorkbenchLayout(scopeKey: string, layoutResetKey: n
   return isLayout(value) ? value : null
 }
 export function writePersistedWorkbenchLayout(scopeKey: string, layoutResetKey: number, layout: SerializedDockview, bindingRevision?: number): void {
-  // TEMP DIAGNOSTIC
-  console.warn('[LayoutWriteDiag]', JSON.stringify({
-    scopeKey,
-    layoutResetKey,
-    bindingRevision,
-    valid: isLayout(layout),
-    keys: layout && typeof layout === 'object' ? Object.keys(layout).slice(0, 12) : null,
-    panelCount: layout && typeof layout === 'object' && 'panels' in layout
-      ? Object.keys((layout as unknown as { panels: object }).panels ?? {}).length : null,
-  }))
   desktopPersistenceClient.queueDirtyRecord('workbenchLayout', scopeKey, { layout, layoutResetKey }, bindingRevision)
 }
 export function clearPersistedWorkbenchLayout(scopeKey: string): void { desktopPersistenceClient.deleteRecord('workbenchLayout', scopeKey) }
@@ -63,26 +53,3 @@ export async function clonePersistedWorkbenchLayoutsForWorkspace(args: { project
   }
 }
 export const clonePersistedWorkbenchLayoutsToWorkspace = clonePersistedWorkbenchLayoutsForWorkspace
-
-// TEMP DIAGNOSTIC: report what is actually stored for a scope, so a silent
-// rejection can be told apart from a missing record.
-export function peekLayoutDiag(scopeKey: string): unknown {
-  const record = desktopPersistenceClient
-    .entries("workbenchLayout")
-    .find((candidate) => candidate.key === scopeKey)
-  if (!record) return "no-record"
-  const data = record.data as { layoutResetKey?: number; layout?: unknown } | undefined
-  const layout = data?.layout
-  return {
-    storedResetKey: data?.layoutResetKey,
-    storedBindingRevision: record.bindingRevision,
-    deleted: record.deleted ?? false,
-    layoutType: layout === null ? "null" : typeof layout,
-    layoutKeys:
-      layout && typeof layout === "object" ? Object.keys(layout).slice(0, 12) : null,
-    panelCount:
-      layout && typeof layout === "object" && "panels" in layout
-        ? Object.keys((layout as { panels: object }).panels ?? {}).length
-        : null,
-  }
-}
