@@ -1,0 +1,176 @@
+/**
+ * Canonical daemon GitService for Cozea.
+ *
+ * Master Specification: Section 17.1 - 17.5
+ * Consolidates Git operations into a single daemon-owned authority.
+ */
+
+import { GitProcess, type GitProcessHealth } from "./GitProcess"
+import { GitStatusParser, type ParsedGitStatus } from "./GitStatus"
+import { GitAttributes, type PathAttributes } from "./GitAttributes"
+import { RepositoryMirrorManager } from "./RepositoryMirror"
+
+export interface GitBranchInfo {
+  name: string
+  fullName: string
+  commitOid: string
+  upstream: string | null
+  isCurrent: boolean
+  isRemote: boolean
+}
+
+export class GitService {
+  readonly process: GitProcess
+  readonly attributes: GitAttributes
+  readonly mirrors: RepositoryMirrorManager
+
+  constructor(customGitPath?: string, mirrorsDir?: string) {
+    this.process = new GitProcess(customGitPath)
+    this.attributes = new GitAttributes(this.process)
+    this.mirrors = new RepositoryMirrorManager(this.process, mirrorsDir)
+  }
+
+  async getHealth(): Promise<GitProcessHealth> {
+    return this.process.getHealth()
+  }
+
+  /**
+   * Returns machine-readable porcelain v2 status (Section 17.5).
+   */
+  async getStatus(cwd: string): Promise<ParsedGitStatus> {
+    const res = await this.process.execute(
+      ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
+      { cwd },
+    )
+    return GitStatusParser.parsePorcelainV2(res.stdoutBuffer)
+  }
+
+  /**
+   * Lists branches using machine-readable for-each-ref (Section 17.5).
+   */
+  async getBranches(cwd: string): Promise<GitBranchInfo[]> {
+    const res = await this.process.execute(
+      [
+        "for-each-ref",
+        "--format=%(refname:short)|%(refname)|%(objectname)|%(upstream:short)|%(HEAD)",
+        "refs/heads",
+        "refs/remotes",
+      ],
+      { cwd },
+    )
+
+    const lines = res.stdout.split("\n").map((l) => l.trim()).filter(Boolean)
+    const branches: GitBranchInfo[] = []
+
+    for (const line of lines) {
+      const [name, fullName, commitOid, upstream, headFlag] = line.split("|")
+      if (!name) continue
+
+      branches.push({
+        name,
+        fullName: fullName ?? name,
+        commitOid: commitOid ?? "",
+        upstream: upstream || null,
+        isCurrent: headFlag === "*",
+        isRemote: fullName?.startsWith("refs/remotes/") ?? false,
+      })
+    }
+
+    return branches
+  }
+
+  /**
+   * Checks which paths in a list are ignored by Git rules (Section 12.10, Invariant C40).
+   */
+  async checkIgnore(cwd: string, paths: string[]): Promise<Set<string>> {
+    if (paths.length === 0) return new Set()
+
+    const stdin = paths.join("\0")
+    const res = await this.process.execute(["check-ignore", "-z", "--stdin"], {
+      cwd,
+      stdin,
+      allowNonZeroExit: true,
+    })
+
+    const ignored = new Set<string>()
+    if (res.stdout) {
+      const tokens = res.stdout.split("\0").filter(Boolean)
+      for (const t of tokens) {
+        ignored.add(t)
+      }
+    }
+    return ignored
+  }
+
+  async checkAttributes(cwd: string, paths: string[]): Promise<Map<string, PathAttributes>> {
+    return this.attributes.checkAttributes(cwd, paths)
+  }
+
+  async getCommitOid(cwd: string, ref = "HEAD"): Promise<string | null> {
+    const res = await this.process.execute(["rev-parse", "--verify", `${ref}^{commit}`], {
+      cwd,
+      allowNonZeroExit: true,
+    })
+    return res.success ? res.stdout.trim() : null
+  }
+
+  async initRepo(cwd: string, defaultBranch = "main"): Promise<void> {
+    const res = await this.process.execute(["init", "-b", defaultBranch], { cwd })
+    if (!res.success) {
+      throw new Error(`Failed to init git repository at ${cwd}: ${res.stderr}`)
+    }
+  }
+
+  async createBranch(cwd: string, branchName: string, startPoint?: string): Promise<void> {
+    const args = ["branch", branchName]
+    if (startPoint) {
+      args.push(startPoint)
+    }
+    await this.process.execute(args, { cwd })
+  }
+
+  async checkoutBranch(cwd: string, branchName: string): Promise<void> {
+    await this.process.execute(["checkout", branchName], { cwd })
+  }
+
+  async createCommit(
+    cwd: string,
+    message: string,
+    options?: {
+      author?: { name: string; email: string }
+      timestamp?: number
+      allowEmpty?: boolean
+    },
+  ): Promise<string> {
+    const args = ["commit", "-m", message]
+    if (options?.allowEmpty) {
+      args.push("--allow-empty")
+    }
+
+    const env: Record<string, string> = {}
+    if (options?.author) {
+      env["GIT_AUTHOR_NAME"] = options.author.name
+      env["GIT_AUTHOR_EMAIL"] = options.author.email
+      env["GIT_COMMITTER_NAME"] = options.author.name
+      env["GIT_COMMITTER_EMAIL"] = options.author.email
+    }
+    if (options?.timestamp) {
+      const tsStr = String(Math.floor(options.timestamp / 1000))
+      env["GIT_AUTHOR_DATE"] = tsStr
+      env["GIT_COMMITTER_DATE"] = tsStr
+    }
+
+    await this.process.execute(args, { cwd, env })
+    const oid = await this.getCommitOid(cwd, "HEAD")
+    return oid!
+  }
+
+  async writeTree(cwd: string, tempIndexFile?: string): Promise<string> {
+    const env: Record<string, string> = {}
+    if (tempIndexFile) {
+      env["GIT_INDEX_FILE"] = tempIndexFile
+    }
+    const res = await this.process.execute(["write-tree"], { cwd, env })
+    return res.stdout.trim()
+  }
+}

@@ -27,6 +27,7 @@ import { ProjectdDatabase } from "../storage/Database"
 import { SqliteWorkbenchStore } from "../workbenches/SqliteWorkbenchStore"
 import { WorkspaceRegistry } from "../workspaces/WorkspaceRegistry"
 import { WorkspaceCatalogImporter } from "../workspaces/WorkspaceCatalogImporter"
+import { GitService } from "../git/GitService"
 
 interface ConnectionState {
   socket: net.Socket
@@ -52,6 +53,7 @@ export class ProjectdServer {
   readonly workbenchStore: SqliteWorkbenchStore
   readonly workspaceRegistry: WorkspaceRegistry
   readonly catalogImporter: WorkspaceCatalogImporter
+  readonly gitService: GitService
 
   private server: net.Server | null = null
   private connections = new Set<ConnectionState>()
@@ -66,6 +68,7 @@ export class ProjectdServer {
     this.workbenchStore = new SqliteWorkbenchStore(this.db)
     this.workspaceRegistry = new WorkspaceRegistry(this.db)
     this.catalogImporter = new WorkspaceCatalogImporter(this.db, options?.sourceCatalogPath)
+    this.gitService = new GitService()
   }
 
   async start(): Promise<void> {
@@ -558,6 +561,106 @@ export class ProjectdServer {
               id: req.id,
               success: true,
               result: ws,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "git.health": {
+        void this.gitService
+          .getHealth()
+          .then((health) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: health,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "git.status": {
+        const p = req.params as { cwd: string }
+        if (!p?.cwd) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'cwd' parameter",
+          })
+          break
+        }
+        void this.gitService
+          .getStatus(p.cwd)
+          .then((status) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: status,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "git.branches": {
+        const p = req.params as { cwd: string }
+        if (!p?.cwd) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'cwd' parameter",
+          })
+          break
+        }
+        void this.gitService
+          .getBranches(p.cwd)
+          .then((branches) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: branches,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "git.checkIgnore": {
+        const p = req.params as { cwd: string; paths: string[] }
+        if (!p?.cwd || !Array.isArray(p.paths)) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'cwd' or 'paths' parameter",
+          })
+          break
+        }
+        void this.gitService
+          .checkIgnore(p.cwd, p.paths)
+          .then((ignoredSet) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: Array.from(ignoredSet),
             })
           })
           .catch((err) => {

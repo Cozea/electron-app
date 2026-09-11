@@ -425,6 +425,97 @@ Exit-gate evidence:
 - Workbench/workspace identity can be queried and switched headlessly via `ProjectdClient`, `cozea-projectctl`, and projectd IPC.
 - SQLite WAL database established for daemon with atomic single-active transactions.
 
+---
+
+## P05 — GitService consolidation foundation
+
+Status: complete
+
+Baseline:
+- base commit: `9dec878b` (P04 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Git product sync: [apps/desktop/electron/services/gitSyncService.ts](apps/desktop/electron/services/gitSyncService.ts), `gitRemoteSync.ts`, `gitReplayWorkspaceState.ts`
+- Git agent runtime: [apps/desktop/electron/substrate/vcs/GitVcsDriver.ts](apps/desktop/electron/substrate/vcs/GitVcsDriver.ts), [apps/desktop/electron/substrate/vcs/VcsDriver.ts](apps/desktop/electron/substrate/vcs/VcsDriver.ts), and vendored T3 `vendor/t3code/apps/server/src/vcs/`
+- Direct Git execution: [apps/desktop/electron/gitRuntime.ts](apps/desktop/electron/gitRuntime.ts) (`runGitCommand`)
+
+Production owners after:
+- Same live production runtime owners (P05 establishes daemon GitService foundation without prematurely deleting legacy GitSyncService until callers migrate)
+- Daemon GitService: [apps/projectd/src/git/GitService.ts](apps/projectd/src/git/GitService.ts)
+- Git CLI process manager: [apps/projectd/src/git/GitProcess.ts](apps/projectd/src/git/GitProcess.ts)
+- Machine-readable porcelain v2 parser: [apps/projectd/src/git/GitStatus.ts](apps/projectd/src/git/GitStatus.ts)
+- Attributes & LFS handlers: [apps/projectd/src/git/GitAttributes.ts](apps/projectd/src/git/GitAttributes.ts) and [apps/projectd/src/git/GitLfs.ts](apps/projectd/src/git/GitLfs.ts)
+- Hidden repository mirror: [apps/projectd/src/git/RepositoryMirror.ts](apps/projectd/src/git/RepositoryMirror.ts)
+
+Files created:
+- [apps/projectd/src/git/GitProcess.ts](apps/projectd/src/git/GitProcess.ts) (real Git executable execution, non-interactive credentials, and feature qualification)
+- [apps/projectd/src/git/GitStatus.ts](apps/projectd/src/git/GitStatus.ts) (machine-readable `porcelain=v2 -z` status parser)
+- [apps/projectd/src/git/GitAttributes.ts](apps/projectd/src/git/GitAttributes.ts) (inspects `.gitattributes` via `check-attr -z --all --stdin`)
+- [apps/projectd/src/git/GitLfs.ts](apps/projectd/src/git/GitLfs.ts) (LFS pointer detection, parsing, and generation)
+- [apps/projectd/src/git/RepositoryMirror.ts](apps/projectd/src/git/RepositoryMirror.ts) (daemon hidden mirror manager for isolated Git tree construction)
+- [apps/projectd/src/git/GitService.ts](apps/projectd/src/git/GitService.ts) (consolidated daemon Git service)
+- [tests/projectd/gitService.test.ts](tests/projectd/gitService.test.ts) (test fixtures for unborn branch, detached HEAD, custom default branch, attributes, LFS, ignore, linked worktrees, and headless API)
+- [tests/architecture/gitOwnerBoundary.test.ts](tests/architecture/gitOwnerBoundary.test.ts) (architecture boundary test forbidding raw Git process execution outside allowed layers)
+
+Files modified:
+- [packages/projectd-protocol/src/client.ts](packages/projectd-protocol/src/client.ts) (added Git client helper methods: `gitHealth`, `gitStatus`, `gitBranches`, `gitCheckIgnore`)
+- [apps/projectd/src/server/ProjectdServer.ts](apps/projectd/src/server/ProjectdServer.ts) (wired GitService and request handlers)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (61.13 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (16 test files, 93 tests)
+  evidence: all 10 tests in `tests/projectd/gitService.test.ts` and `tests/architecture/gitOwnerBoundary.test.ts` passed
+
+Manual qualification:
+- scenario: Git and Git LFS qualification
+  result: Verified system git version 2.54.0 and git-lfs/3.8.0 qualified with porcelain v2 and merge-tree capabilities.
+- scenario: Unborn branch handling
+  result: Verified fresh repository returns `isUnborn: true`, `headOid: null`, `clean: true`.
+- scenario: Detached HEAD handling
+  result: Verified detached HEAD returns `isDetached: true`, `headRef: null`, and exact commit OID.
+- scenario: Custom default branch
+  result: Verified custom default branch (e.g. `trunk`) correctly reports `isCurrent: true`.
+- scenario: Git attributes and custom filters
+  result: Verified `check-attr` accurately identifies text (`eol=lf`), binary, LFS filter, and custom syntax filters.
+- scenario: Git LFS pointer validation
+  result: Verified LFS pointer detection, parsing (oid sha256 and size), and canonical pointer generation.
+- scenario: Git-aware ignore classification
+  result: Verified `checkIgnore` accurately resolves git-ignored paths (e.g. `*.log`, `.env.local`, `build/`) via `check-ignore -z --stdin` without heuristic exclusion of tracked assets.
+- scenario: Linked worktree fixture
+  result: Verified `getStatus` in linked worktree resolves branch and status accurately.
+- scenario: Architecture owner boundary
+  result: Verified no direct raw git CLI execution occurs outside allowed git layers.
+
+Known follow-ups:
+- Phase P06 will implement native FSEvents and scanner/materialization index in `apps/projectd`.
+
+Exit-gate evidence:
+- New GitService can inspect and prepare repositories without using legacy collaboration Git stack.
+- Real Git CLI and Git LFS qualified.
+- Machine-readable porcelain v2, attributes, and mirror management functional.
+
+
 
 
 

@@ -311,6 +311,22 @@ export class ProjectdClient {
     return this.request<T>("workspaces.register", params)
   }
 
+  async gitHealth<T = any>(): Promise<T> {
+    return this.request<T>("git.health")
+  }
+
+  async gitStatus<T = any>(cwd: string): Promise<T> {
+    return this.request<T>("git.status", { cwd })
+  }
+
+  async gitBranches<T = any>(cwd: string): Promise<T[]> {
+    return this.request<T[]>("git.branches", { cwd })
+  }
+
+  async gitCheckIgnore(cwd: string, paths: string[]): Promise<string[]> {
+    return this.request<string[]>("git.checkIgnore", { cwd, paths })
+  }
+
   disconnect(): void {
     if (this.socket) {
       this.socket.destroy()
