@@ -257,4 +257,91 @@ Exit-gate evidence:
 - Electron is a client and does not own the daemon process lifecycle.
 - Zero React imports in projectd or projectd-protocol.
 
+---
+
+## P03 — macOS helper, LaunchAgent, Keychain identity
+
+Status: complete
+
+Baseline:
+- base commit: `fd93b855` (P02 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Yjs text document model: [apps/desktop/src/lib/yjs/YjsProjectDoc.ts](apps/desktop/src/lib/yjs/YjsProjectDoc.ts) and [shared/yjsCore.ts](shared/yjsCore.ts)
+- Yjs runtime provider & lifecycle: [apps/desktop/src/contexts/YjsProjectContext.tsx](apps/desktop/src/contexts/YjsProjectContext.tsx) via [apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx](apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx)
+- Filesystem observation: [apps/desktop/electron/projectWatcher.ts](apps/desktop/electron/projectWatcher.ts)
+- Git sync services: [apps/desktop/electron/services/gitSyncService.ts](apps/desktop/electron/services/gitSyncService.ts)
+- Device identity in Electron: [apps/desktop/electron/collabKeys.ts](apps/desktop/electron/collabKeys.ts) (requires Electron `safeStorage` API)
+- Collaboration session transport: [cloudflare/worker/src/routes/collabSession.ts](cloudflare/worker/src/routes/collabSession.ts), [cloudflare/worker/src/durableObjects/CollabRoom.ts](cloudflare/worker/src/durableObjects/CollabRoom.ts)
+
+Production owners after:
+- Same live production runtime owners (P03 establishes the macOS native helper, Keychain storage, and background device identity manager for projectd without altering live renderer flows)
+- Native helper: `native/projectd-macos` (`cozea-projectd-mac-helper`)
+- Background identity manager: [apps/projectd/src/identity/BackgroundDeviceIdentity.ts](apps/projectd/src/identity/BackgroundDeviceIdentity.ts)
+- Native bridge: [apps/projectd/src/native/NativeMacHelper.ts](apps/projectd/src/native/NativeMacHelper.ts)
+
+Files created:
+- `native/projectd-macos/Package.swift` (Swift 6 macOS package targeting macOS 13+)
+- `native/projectd-macos/.gitignore`
+- `native/projectd-macos/Sources/CozeaProjectdMac/main.swift` (CLI subcommand dispatcher)
+- `native/projectd-macos/Sources/CozeaProjectdMac/KeychainService.swift` (macOS Keychain Security API for background identity storage and P-256 CryptoKit signing)
+- `native/projectd-macos/Sources/CozeaProjectdMac/FSEventsService.swift` (native FSEvents stream with granular item flags and drop detection)
+- `native/projectd-macos/Sources/CozeaProjectdMac/LaunchAgentService.swift` (macOS `SMAppService` and LaunchAgent plist management)
+- `native/projectd-macos/Sources/CozeaProjectdMac/VolumeCapabilities.swift` (APFS copyfile cloning and case-sensitivity probe)
+- [apps/projectd/src/native/NativeMacHelper.ts](apps/projectd/src/native/NativeMacHelper.ts) (TypeScript client wrapping the Swift helper)
+- [apps/projectd/src/identity/BackgroundDeviceIdentity.ts](apps/projectd/src/identity/BackgroundDeviceIdentity.ts) (Keychain-backed device identity, migration from dev storage, and cloud challenge-response authentication)
+- [tests/projectd/backgroundIdentity.test.ts](tests/projectd/backgroundIdentity.test.ts) (unit tests for Keychain, signing parity, and cloud auth)
+
+Files modified:
+- [package.json](package.json) (added `prepare:projectd-helper` script)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `swift build --package-path native/projectd-macos`
+  result: passed (exit 0)
+  evidence: compiled `cozea-projectd-mac-helper` in debug mode
+- command: `swift build -c release --package-path native/projectd-macos`
+  result: passed (exit 0)
+  evidence: release build succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (13 test files, 78 tests)
+  evidence: all 7 tests in `tests/projectd/backgroundIdentity.test.ts` passed
+
+Manual qualification:
+- scenario: Keychain storage & retrieval via native helper
+  result: Verified `keychain-save` and `keychain-load` round-trip identity JSON in macOS Keychain without interactive UI prompts.
+- scenario: Challenge signing parity (Swift CryptoKit vs Node WebCrypto)
+  result: Verified Swift CryptoKit P-256 signature and Node WebCrypto signature are both verified by the public key using IEEE P1363 / WebCrypto standards.
+- scenario: Cloud authentication with Electron closed
+  result: Verified `BackgroundDeviceIdentityManager.authenticateWithCloud` completes 2-step challenge-response token exchange with Cloudflare worker endpoints.
+- scenario: Revoked identity fail-closed
+  result: Verified rejected challenge/token exchange fails closed with descriptive error.
+- scenario: Volume capability probe
+  result: Verified `volume-probe /` returns APFS format, cloning support = true, case sensitive = false.
+- scenario: LaunchAgent status
+  result: Verified `launchagent-status` checks `SMAppService` and launchctl state without errors.
+
+Known follow-ups:
+- Phase P04 will implement daemon-owned workspace and Workbench registry with SQLite and WAL persistence.
+
+Exit-gate evidence:
+- Background daemon survives renderer/app-window lifetime and authenticates as device principal.
+- Swift helper `cozea-projectd-mac-helper` compiled and functional.
+- macOS Keychain access works for background identity storage and signing.
+
+
 
