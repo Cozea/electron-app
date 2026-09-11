@@ -773,6 +773,75 @@ Exit-gate evidence:
 - Snapshot-anchored diffing prevents deletion of concurrent remote edits.
 - Durable SQLite outbound queue operational.
 
+---
+
+## P09 — CRDT -> filesystem materializer
+
+Status: complete
+
+Baseline:
+- base commit: `eef1a57b` (P08 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Disk writeback: [apps/desktop/src/hooks/useYjsFileWriteback.ts](apps/desktop/src/hooks/useYjsFileWriteback.ts) (500ms fixed debounce writing to disk via IPC)
+
+Production owners after:
+- Same live production runtime owners (P09 establishes the daemon-owned FilesystemMaterializer with 20-40ms adaptive coalescing, atomic safe writes, divergent disk protection, and path collision suppression in projectd)
+- Materializer: [apps/projectd/src/filesystem/Materializer.ts](apps/projectd/src/filesystem/Materializer.ts)
+
+Files created:
+- [apps/projectd/src/filesystem/Materializer.ts](apps/projectd/src/filesystem/Materializer.ts) (adaptive 20-40ms coalescer, atomic writes, divergent disk protection, symlink & mode support)
+- [tests/projectd/filesystemMaterializer.test.ts](tests/projectd/filesystemMaterializer.test.ts) (5 tests covering latency, 100-update coalescing, divergent disk protection, collision suppression, and deletions)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (62.50 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (20 test files, 124 tests)
+  evidence: all 5 tests in `tests/projectd/filesystemMaterializer.test.ts` passed
+
+Manual qualification:
+- scenario: Remote single-character edit materialization
+  result: Verified remote single-character edit reaches disk within 25ms and records latency instrumentation.
+- scenario: Rapid 100 updates adaptive coalescing
+  result: Verified 100 rapid sequential text edits coalesce into a single final disk materialization without starving disk I/O.
+- scenario: Divergent disk protection (Section 28.3)
+  result: Verified un-ingested local edits on disk are preserved into a `.conflict` backup file rather than destructively overwritten.
+- scenario: Path collision suppression (Invariant C18)
+  result: Verified materialization is suppressed when multiple fileIds claim one path, preventing arbitrary file clobbering.
+- scenario: Deletions and symlinks
+  result: Verified atomic file deletion, symlink creation, and materialization index updates.
+
+Known follow-ups:
+- Phase P10 will implement cloud session room, global sequence, E2EE, and durable replay in Cloudflare workers.
+
+Exit-gate evidence:
+- Remote CRDT state reaches disk quickly (target 20-40ms) and never echoes back as new edit.
+- Atomic safe writes via temp-file + rename.
+- Divergent local disk protection active.
+
+
 
 
 
