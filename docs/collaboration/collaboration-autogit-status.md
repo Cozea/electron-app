@@ -1246,6 +1246,77 @@ Exit-gate evidence:
 - Invitee and returning participant land at exact live session state.
 - Membership is never rolled back on local disk or network error.
 
+---
+
+## P16 — AutoGit leader lease
+
+Status: complete
+
+Baseline:
+- base commit: `2feef787` (P15 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Git sync operations: [apps/desktop/electron/services/gitSyncService.ts](apps/desktop/electron/services/gitSyncService.ts) (ad-hoc peer push)
+
+Production owners after:
+- Same live production runtime owners (P16 introduces AutoGit fenced leader lease coordinator, deterministic candidate election, and stale leader fencing in projectd)
+- Leader lease client: [apps/projectd/src/autogit/LeaderLeaseClient.ts](apps/projectd/src/autogit/LeaderLeaseClient.ts) (20s lease, 5s renewal, fencing assertions)
+- AutoGit coordinator: [apps/projectd/src/autogit/AutoGitCoordinator.ts](apps/projectd/src/autogit/AutoGitCoordinator.ts) (state machine, election, and non-leader request routing)
+
+Files created:
+- [apps/projectd/src/autogit/LeaderLeaseClient.ts](apps/projectd/src/autogit/LeaderLeaseClient.ts) (leader lease client, eligibility report, and fencing validator)
+- [apps/projectd/src/autogit/AutoGitCoordinator.ts](apps/projectd/src/autogit/AutoGitCoordinator.ts) (AutoGit coordinator and deterministic candidate election)
+- [tests/projectd/autoGitLeaderLease.test.ts](tests/projectd/autoGitLeaderLease.test.ts) (4 tests for candidate election, failover, generation increment, fencing rejection, and request routing)
+
+Files modified:
+- [apps/projectd/src/filesystem/Materializer.ts](apps/projectd/src/filesystem/Materializer.ts) (added dispose method)
+- [tests/projectd/filesystemMaterializer.test.ts](tests/projectd/filesystemMaterializer.test.ts) (deterministic flush and cleanup)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (27 test files, 150 tests)
+  evidence: all 4 tests in `tests/projectd/autoGitLeaderLease.test.ts` passed
+
+Manual qualification:
+- scenario: Deterministic leader election from candidates (Section 14.7)
+  result: Verified lowest alphabetical eligible candidate with write role and healthy git service wins lease deterministically.
+- scenario: Leader failover and generation increment (Section 14.5 - 14.6)
+  result: Verified when leader lease expires, successor is elected at generation 2; stale generation 1 leader is rejected by fencing assertions.
+- scenario: Non-leader manual request routing (Section 14.3)
+  result: Verified manual checkpoint and push actions called on a non-leader are routed to the active leader.
+- scenario: Leader degradation
+  result: Verified loss of credentials transitions state to LEADER_DEGRADED.
+
+Known follow-ups:
+- Phase P17 will implement AutoGit barriers, deterministic checkpoint commit, and periodic push.
+
+Exit-gate evidence:
+- At most one device is authorized for automatic Git mutation at a time.
+- Fencing tokens prevent stale partitioned leaders from publishing.
+- Successor can safely continue after leader failure.
+
+
 
 
 

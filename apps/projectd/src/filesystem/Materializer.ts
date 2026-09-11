@@ -117,6 +117,13 @@ export class FilesystemMaterializer {
     }
   }
 
+  dispose(): void {
+    for (const pending of this.pendingQueue.values()) {
+      clearTimeout(pending.timer)
+    }
+    this.pendingQueue.clear()
+  }
+
   /**
    * Safely materializes a file to disk.
    */

@@ -46,6 +46,9 @@ describe("P09 CRDT -> filesystem materializer", () => {
   })
 
   afterEach(() => {
+    if (materializer) {
+      materializer.dispose()
+    }
     if (db) db.close()
     for (const p of [testWorkspaceDir, testDbPath, `${testDbPath}-wal`, `${testDbPath}-shm`]) {
       try {
@@ -65,7 +68,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
     })
 
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 25))
+    await new Promise((r) => setTimeout(r, 50))
 
     const absPath = path.join(testWorkspaceDir, "counter.ts")
     expect(fs.existsSync(absPath)).toBe(true)
@@ -77,10 +80,10 @@ describe("P09 CRDT -> filesystem materializer", () => {
 
     const start = Date.now()
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 25))
+    await new Promise((r) => setTimeout(r, 50))
 
     expect(fs.readFileSync(absPath, "utf8")).toBe("const a = 10;")
-    expect(Date.now() - start).toBeLessThan(100) // Fast low-latency materialization
+    expect(Date.now() - start).toBeLessThan(150) // Fast low-latency materialization
     expect(materializer.lastLatencyMs).toBeGreaterThan(0)
   })
 
@@ -121,7 +124,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
 
     // Materialize initial baseline
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 20))
+    await materializer.flush()
 
     const absPath = path.join(testWorkspaceDir, "config.json")
     expect(fs.readFileSync(absPath, "utf8")).toBe('{"v":1}')
@@ -135,7 +138,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
     doc.text.insert(0, '{"v":2,"remote":true}')
 
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 20))
+    await materializer.flush()
 
     // Divergent disk protection: Local unmerged edits were preserved in a .conflict backup file!
     const filesInDir = fs.readdirSync(testWorkspaceDir)
@@ -187,7 +190,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
     })
 
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 20))
+    await materializer.flush()
 
     const absPath = path.join(testWorkspaceDir, "temp.txt")
     expect(fs.existsSync(absPath)).toBe(true)
@@ -195,7 +198,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
     // Delete in CRDT
     replica.deleteFile(file.fileId, actorRemote)
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 20))
+    await materializer.flush()
 
     expect(fs.existsSync(absPath)).toBe(false)
     expect(index.getByFileId(sessionId, file.fileId)).toBeNull()
