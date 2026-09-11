@@ -1443,6 +1443,72 @@ Exit-gate evidence:
 - Participant Git baseline advances without destroying CRDT-newer working tree.
 - Working tree is never reset with `git reset --hard` to align with HEAD.
 
+---
+
+## P19 — External Git interoperability and controlled GitHub sync
+
+Status: complete
+
+Baseline:
+- base commit: `8dcde251` (P18 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Git sync: blind git pull inside active working tree
+
+Production owners after:
+- Same live production runtime owners (P19 introduces ExternalGitInteroperability detecting branch drift, in-progress rebase/merge, deliberate Git adoption, and controlled sync in hidden mirrors)
+- External Git interop: [apps/projectd/src/git/ExternalGitInteroperability.ts](apps/projectd/src/git/ExternalGitInteroperability.ts)
+
+Files created:
+- [apps/projectd/src/git/ExternalGitInteroperability.ts](apps/projectd/src/git/ExternalGitInteroperability.ts) (branch drift protection, in-progress merge detection, and controlled GitHub sync)
+- [tests/projectd/externalGitInteroperability.test.ts](tests/projectd/externalGitInteroperability.test.ts) (4 tests for clean state, branch drift pause, in-progress merge detection, and adopt git result)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (30 test files, 159 tests)
+  evidence: all 4 tests in `tests/projectd/externalGitInteroperability.test.ts` passed
+
+Manual qualification:
+- scenario: Branch checkout drift protection (Section 18.5)
+  result: Verified checking out an external branch pauses filesystem ingress so that mass checkout writes are not broadcast as CRDT edits.
+- scenario: In-progress merge/rebase detection (Section 18.6)
+  result: Verified presence of MERGE_HEAD, rebase-apply, or rebase-merge pauses ingress.
+- scenario: Adopt Git result (Section 18.6)
+  result: Verified deliberate import of Git tree differences into session CRDT.
+- scenario: Controlled GitHub sync (Section 19)
+  result: Verified fetch executes in hidden mirror rather than live working tree; fast-forward adopts baseline and divergence blocks safely.
+
+Known follow-ups:
+- Phase P20 will implement target tracking and rebase recommendation.
+
+Exit-gate evidence:
+- External Git cannot accidentally broadcast checkout/rebase as ordinary CRDT edits.
+- Controlled GitHub sync fetches in hidden mirror, not live working tree.
+
+
 
 
 
