@@ -45,8 +45,13 @@ Verified on 2026-09-11, after the step 1 work:
 - Typecheck: app, electron, tests, projectd, Convex and the worker.
 - oxlint.
 
+Deployed on 2026-09-11 from `e34c2252`:
+- Convex prod: the 18 `collaborationSessions` functions were added. No function was removed and no index was deleted.
+- Worker `cozea-collab` version `830e4891` (tag `collab-sessions-e34c2252`), with the `v4` migration applied. It was deployed with `--containers-rollout=none`, so the sandbox container was not rebuilt.
+- Checked afterwards: `/health` and `/collab/capabilities` return 200, and `POST /collab/sessions/connect` returns 403 without device auth.
+
 Still open:
-- Nothing is deployed. The worker needs the `v4` Durable Object migration, and Convex needs the changed session functions, including the new session-key functions. The renderer changes depend on that Convex deploy.
+- The signed-in path in production (device token, then ticket, then room) has not been exercised yet. It needs a real device.
 - Nothing starts the daemon for users, so the daemon path stays behind `VITE_FF_DAEMON_COLLABORATION`, which is off. With it off, the in-app Yjs engine still runs every live session.
 - Daemon-hosted sessions have these limits:
   - Only text syncs. Binaries and files over 512 KiB stay local, and symlinks are not shared.
@@ -905,7 +910,7 @@ Exit-gate evidence:
 
 ## P10 — Cloud session room, global sequence, E2EE, durable replay
 
-Status: partial — the room is bound in wrangler (migration `v4`) with token-authenticated hibernatable sockets, and `POST /collab/sessions/connect` admits only active members. Since 2026-09-11 projectd hosts the client: `CollaborationSessionHost` syncs a folder with the room through the durable `OutboundBatchQueue`, with persisted text baselines, reconnects and ticket refresh, tested end to end against the real room code. Not deployed, and the app side is behind `VITE_FF_DAEMON_COLLABORATION`, which is off by default.
+Status: partial — the room is bound in wrangler (migration `v4`) with token-authenticated hibernatable sockets, and `POST /collab/sessions/connect` admits only active members. Since 2026-09-11 projectd hosts the client: `CollaborationSessionHost` syncs a folder with the room through the durable `OutboundBatchQueue`, with persisted text baselines, reconnects and ticket refresh, tested end to end against the real room code. Deployed on 2026-09-11 (worker version `830e4891`). The app side is behind `VITE_FF_DAEMON_COLLABORATION`, which is off by default.
 
 Baseline:
 - base commit: `21f20dee` (P09 complete commit)
@@ -2068,7 +2073,7 @@ Automated Acceptance Suite Results:
 Two-Mac Physical Qualification Runbook (Section 32):
 To run physical deployment qualification between Mac A and Mac B:
 1. Deploy Convex functions: `bunx convex deploy`
-2. Deploy Cloudflare worker: `cd cloudflare/worker && bun run deploy`
+2. Deploy Cloudflare worker: `cd cloudflare/worker && bun run deploy`. This rebuilds the sandbox container and needs Docker running. When the sandbox hasn't changed, run `bunx wrangler deploy --containers-rollout=none` instead.
 3. Package desktop application: `bun run dist:local`
 4. Execute test matrix scenarios W01-W07, S01-S10, T01-T10, F01-F17, B01-B05, A01-A06, C01-C08, G01-G10, R01-R10, M01-M06, D01-D07, U01-U10 from Section 32 of [docs/collaboration/collaboration-autogit-master-plan.md](docs/collaboration/collaboration-autogit-master-plan.md).
 
