@@ -1833,7 +1833,7 @@ Status: complete
 
 Baseline:
 - base commit: `3103af37` (P24 complete commit)
-- implementation commit: <pending>
+- implementation commit: `24fcc5b4`
 - review commit: <pending>
 
 Production owners before:
