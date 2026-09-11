@@ -1116,6 +1116,72 @@ Exit-gate evidence:
 - Dedicated managed session clone created under `~/Library/Application Support/Cozea/Collaboration/<projectId>/<sessionId>/repo`.
 - Switching active workbench does not mutate workspace directories.
 
+---
+
+## P14 — Share/Create session UX
+
+Status: complete
+
+Baseline:
+- base commit: `0dcf3a37` (P13 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Project sharing: [apps/desktop/src/components/layouts/unified-header/HeaderProjectShareButton.tsx](apps/desktop/src/components/layouts/unified-header/HeaderProjectShareButton.tsx) (project-level member sharing only)
+
+Production owners after:
+- Same live production runtime owners (P14 introduces StartCollaborationDialog and creation orchestration hook)
+- Collaboration creation UI: [apps/desktop/src/features/collaboration/ui/StartCollaborationDialog.tsx](apps/desktop/src/features/collaboration/ui/StartCollaborationDialog.tsx)
+- Creation hook: [apps/desktop/src/features/collaboration/hooks/useCreateCollaborationSession.ts](apps/desktop/src/features/collaboration/hooks/useCreateCollaborationSession.ts)
+
+Files created:
+- [apps/desktop/src/features/collaboration/hooks/useCreateCollaborationSession.ts](apps/desktop/src/features/collaboration/hooks/useCreateCollaborationSession.ts) (orchestration hook with multi-stage progress)
+- [apps/desktop/src/features/collaboration/ui/StartCollaborationDialog.tsx](apps/desktop/src/features/collaboration/ui/StartCollaborationDialog.tsx) (Section 6.1 modal flow: repo preflight, branch selection, dirty include/exclude, access policy, duplicate detection)
+- [tests/collaboration/startCollaborationFlow.test.ts](tests/collaboration/startCollaborationFlow.test.ts) (4 tests for clean branch, new branch, dirty include/exclude, and duplicate session detection)
+
+Files modified:
+- [convex/_generated/api.d.ts](convex/_generated/api.d.ts) (registered collaborationSessions module)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/collaboration/startCollaborationFlow.test.ts`
+  result: passed (1 test file, 4 tests)
+  evidence: all 4 tests passed
+
+Manual qualification:
+- scenario: Clean current branch flow (Section 6.1)
+  result: Verified session creates with exact branch and clean git baseline.
+- scenario: New branch creation flow
+  result: Verified session creates with specified new branch name and target branch main.
+- scenario: Dirty state Include vs Exclude (Section 6.1 Step 3)
+  result: Verified default Include changes opts-in to dirty working tree import; Exclude starts from clean Git base.
+- scenario: Existing retained session duplicate prevention
+  result: Verified preflight detects existing non-closed session on selected branch and displays existing publicSessionId.
+
+Known follow-ups:
+- Phase P15 will implement Inbox invite acceptance and Resume flow.
+
+Exit-gate evidence:
+- Creator reaches live Session Workbench without source workspace destruction.
+- Modal preflights repo, branches, dirty changes, and access policy.
+
+
 
 
 

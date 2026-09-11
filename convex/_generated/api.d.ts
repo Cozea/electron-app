@@ -30,6 +30,7 @@ import type * as lib_storageHash from "../lib/storageHash.js";
 import type * as lib_usagePeriods from "../lib/usagePeriods.js";
 import type * as lib_workspaceLimits from "../lib/workspaceLimits.js";
 import type * as lib_workspaceProjectAccess from "../lib/workspaceProjectAccess.js";
+import type * as collaborationSessions from "../collaborationSessions.js";
 import type * as organizations from "../organizations.js";
 import type * as projectAssets from "../projectAssets.js";
 import type * as projectDeviceEnrollments from "../projectDeviceEnrollments.js";
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   "lib/usagePeriods": typeof lib_usagePeriods;
   "lib/workspaceLimits": typeof lib_workspaceLimits;
   "lib/workspaceProjectAccess": typeof lib_workspaceProjectAccess;
+  collaborationSessions: typeof collaborationSessions;
   organizations: typeof organizations;
   projectAssets: typeof projectAssets;
   projectDeviceEnrollments: typeof projectDeviceEnrollments;
