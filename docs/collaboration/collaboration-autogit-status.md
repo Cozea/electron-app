@@ -1825,6 +1825,67 @@ Exit-gate evidence:
 - No capability needs a private collaboration file transport.
 - Universal filesystem interface confirmed for Assistant, Terminal, DevServer, DevApps, and Memory.
 
+---
+
+## P25 — Microphone/session media
+
+Status: complete
+
+Baseline:
+- base commit: `3103af37` (P24 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- None (voice media was not integrated into collaboration)
+
+Production owners after:
+- Same live production runtime owners (P25 introduces SessionMediaService handling WebRTC microphone acquisition, muting, peer state tracking, and idle workbench auto-mute)
+- Session media: [apps/desktop/src/features/collaboration/services/SessionMediaService.ts](apps/desktop/src/features/collaboration/services/SessionMediaService.ts)
+
+Files created:
+- [apps/desktop/src/features/collaboration/services/SessionMediaService.ts](apps/desktop/src/features/collaboration/services/SessionMediaService.ts) (WebRTC microphone state, mute controls, and idle auto-mute)
+- [tests/collaboration/sessionMediaService.test.ts](tests/collaboration/sessionMediaService.test.ts) (4 tests for default muting, Invariant C42 media failure tolerance, idle auto-mute, and track disposal)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/collaboration/sessionMediaService.test.ts`
+  result: passed (1 test file, 4 tests)
+  evidence: all 4 tests passed
+
+Manual qualification:
+- scenario: Media failure isolation (Invariant C42)
+  result: Verified media device failure or permission denial fails gracefully without throwing or interrupting CRDT replication.
+- scenario: Idle Workbench auto-mute (Section 23.4)
+  result: Verified transitioning Session Workbench to IDLE automatically mutes local microphone.
+- scenario: Disposal cleanup
+  result: Verified leaving or disposing session stops all active media stream tracks and resets states cleanly.
+
+Known follow-ups:
+- Phase P26 will remove legacy collaboration and duplicate Git owners.
+
+Exit-gate evidence:
+- Media failure/reconnect cannot block CRDT/AutoGit (Invariant C42).
+- Microphone default-muted and automatically muted on workbench idle.
+
+
 
 
 
