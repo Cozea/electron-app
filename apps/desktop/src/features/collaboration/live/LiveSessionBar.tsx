@@ -17,10 +17,12 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         targetBranch={live.session.targetBranch}
         lifecycle={live.session.lifecycle}
         sync={live.sync}
+        autoGit={live.autoGit}
         members={live.members}
         membership={live.membership}
         canManage={live.canManage}
         busyAction={live.busyAction}
+        onSaveNow={live.saveNow}
         onJoin={live.join}
         onLeave={live.leave}
         onPause={live.pause}

@@ -42,6 +42,7 @@ const OFF: DaemonCollaborationState = { phase: "off", status: null, error: null 
 interface DaemonSessionRecord {
   _id: Id<"collaborationSessions">
   publicSessionId: string
+  branchName: string
   lifecycle: string
 }
 
@@ -117,6 +118,7 @@ export function useDaemonCollaborationSession(input: {
           workspaceId,
           rootPath,
           principalId,
+          branchName: session.branchName,
         }
       : null
   // A string, so a new but equal target object does not reconnect.
@@ -137,20 +139,26 @@ export function useDaemonCollaborationSession(input: {
       checkTimer = null
     }
 
-    // Attaches again when the daemon no longer has the session, after a restart or while it is down.
+    // Attaches again when the daemon no longer has the session, after a restart or while it is
+    // down, or stopped syncing it, as when the folder held changes the session would overwrite.
     const checkAttachment = async () => {
       const result = await window.electronAPI.projectd.sessions.status(connectTarget.publicSessionId)
-      if (cancelled || (result.success && result.status)) return
+      if (cancelled) return
+      const failed = result.success && result.status?.state === "failed"
+      if (result.success && result.status && !failed) return
       stopChecking()
       connection?.stopListening()
       connection = null
-      void attempt()
+      void attempt(failed)
     }
 
-    const attempt = async () => {
-      setState((current) =>
-        current.phase === "unavailable" ? current : { phase: "connecting", status: null, error: null },
-      )
+    // A quiet attempt keeps showing the current state until the daemon reports a new one.
+    const attempt = async (quiet = false) => {
+      if (!quiet) {
+        setState((current) =>
+          current.phase === "unavailable" ? current : { phase: "connecting", status: null, error: null },
+        )
+      }
       try {
         const connected = await connectDaemonSession(deps, connectTarget, (status) => {
           if (!cancelled) setState({ phase: "attached", status, error: status.lastError?.message ?? null })

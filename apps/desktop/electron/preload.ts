@@ -317,6 +317,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       status: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:status', publicSessionId),
       updateTicket: (publicSessionId: string, ticket: ProjectdSessionTicket) =>
         ipcRenderer.invoke('projectd:sessions:updateTicket', { publicSessionId, ticket }),
+      checkpointNow: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:checkpointNow', publicSessionId),
       onEvent: (listener: (event: ProjectdSessionEvent) => void) => {
         const handler = (_event: unknown, payload: ProjectdSessionEvent) => listener(payload)
         ipcRenderer.on('projectd:sessions:event', handler)

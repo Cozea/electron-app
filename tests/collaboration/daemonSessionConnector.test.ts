@@ -148,6 +148,15 @@ describe("connectDaemonSession", () => {
     expect(listeners.size).toBe(0)
   })
 
+  it("names the session branch, so the daemon pauses the folder off it and saves to it", async () => {
+    const { deps } = createDeps([
+      { status: "ready", keyVersion: 1, wrappedKey: "w", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },
+    ])
+
+    await connectDaemonSession(deps, { ...TARGET, branchName: "feat/live" })
+    expect(deps.daemon.attach).toHaveBeenCalledWith(expect.objectContaining({ branchName: "feat/live" }))
+  })
+
   it("reports a daemon that is not running and stops listening", async () => {
     const { deps, listeners } = createDeps([
       { status: "ready", keyVersion: 1, wrappedKey: "w", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },

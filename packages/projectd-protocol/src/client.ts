@@ -12,6 +12,7 @@ import {
   type ProjectdRequest,
   type ProjectdServerMessage,
   type ProjectdSessionAttachParams,
+  type ProjectdCheckpointResult,
   type ProjectdSessionStatus,
   type ProjectdSessionTicket,
   type ProjectdShutdownResult,
@@ -352,6 +353,11 @@ export class ProjectdClient {
     ticket: ProjectdSessionTicket,
   ): Promise<ProjectdSessionStatus> {
     return this.request<ProjectdSessionStatus>("sessions.updateTicket", { publicSessionId, ticket })
+  }
+
+  /** Saves the session to its Git branch now, or asks the device that saves to. */
+  async checkpointSession(publicSessionId: string): Promise<ProjectdCheckpointResult> {
+    return this.request<ProjectdCheckpointResult>("sessions.checkpointNow", { publicSessionId })
   }
 
   disconnect(): void {

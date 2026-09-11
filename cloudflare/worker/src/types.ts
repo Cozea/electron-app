@@ -102,6 +102,8 @@ export interface DurableObjectNamespaceLike {
 export interface Env {
   COLLAB_PROTOCOL_VERSION?: string
   COLLAB_JWT_SECRET: string
+  /** AutoGit lease length in milliseconds; unset in production, where the room's default applies. */
+  AUTOGIT_LEASE_MS?: string
   DEVICE_AUTH_CHALLENGE_SECRET: string
   CONVEX_URL: string
   AI_GATEWAY_SECRET: string

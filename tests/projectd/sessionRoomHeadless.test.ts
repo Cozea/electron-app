@@ -90,8 +90,12 @@ describe("P10 session room headless slice", () => {
     expect(a.transport.lastAppliedSessionSeq).toBe(3)
     expect(b.transport.lastAppliedSessionSeq).toBe(3)
 
-    const barrier = await a.client.requestBarrier()
+    // Barriers are for the device that holds the AutoGit lease.
+    a.client.setAutoGitEligibility(true)
+    await waitFor(() => a.client.autoGitState?.lease?.leaderClientId === "c_a", "client A to take the lease")
+    const barrier = await a.client.requestBarrier(a.client.autoGitState?.lease?.generation ?? 0)
     expect(barrier.sessionSeq).toBe(3)
+    host.dispose()
   })
 
   it("exports nothing when nothing changed, even after deletions", async () => {

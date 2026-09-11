@@ -168,6 +168,19 @@ export class MaterializationIndex {
     }
   }
 
+  /** Forgets what was written for a session, as before its first attach. */
+  clearSession(sessionId: string): void {
+    this.db.db.exec("BEGIN TRANSACTION;")
+    try {
+      this.db.db.prepare("DELETE FROM file_materializations WHERE session_id = ?").run(sessionId)
+      this.db.db.prepare("DELETE FROM path_index WHERE session_id = ?").run(sessionId)
+      this.db.db.exec("COMMIT;")
+    } catch (err) {
+      this.db.db.exec("ROLLBACK;")
+      throw err
+    }
+  }
+
   private rowToEntry(row: any): MaterializedEntry {
     return {
       sessionId: String(row.session_id),

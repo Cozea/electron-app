@@ -1,25 +1,32 @@
 /**
  * One live collaboration session hosted by projectd.
  *
- * Master Specification: Section 9.5, 10.11 - 10.15, 12.3, 13.1 - 13.10
+ * Master Specification: Section 9.5, 10.11 - 10.15, 12.3, 13.1 - 13.10, 14 - 16
  * Connects the session replica to its room (end-to-end encrypted, with a durable
  * outbound queue and reconnects on fresh tickets) and to one workspace folder:
  * disk edits go in through the snapshot-anchored adapter, and peer edits come out
  * through the materializer. Ingestion and materialization take turns on one queue,
  * so each sees the index and baselines the other left behind.
+ *
+ * With a branch, the folder syncs only while that branch is checked out and Git is
+ * not in the middle of a merge or rebase there, and AutoGit saves the session to
+ * the branch.
  */
 
 import { createHash } from "node:crypto"
 import { EventEmitter } from "node:events"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { setTimeout as delay } from "node:timers/promises"
 
 import type {
+  ProjectdCheckpointResult,
   ProjectdSessionState,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
 } from "@cozea/projectd-protocol"
 
+import { AutoGitAgent, AutoGitError, type AutoGitTiming } from "../autogit/AutoGitAgent"
 import { FSEventsClient, type FileEventSource } from "../filesystem/FSEventsClient"
 import { MaterializationIndex } from "../filesystem/MaterializationIndex"
 import { FilesystemMaterializer } from "../filesystem/Materializer"
@@ -48,6 +55,7 @@ const DEFAULT_RECONNECT_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 30_000]
 const DEFAULT_SUBMIT_DELAY_MS = 40
 const DEFAULT_MATERIALIZE_DELAY_MS = 25
 const DEFAULT_RESCAN_WITHOUT_EVENTS_MS = 2_000
+const DEFAULT_GIT_POLL_MS = 2_000
 // The room caps an encrypted batch at 1 MiB, and base64 plus JSON add about 40%.
 const DEFAULT_MAX_TEXT_FILE_BYTES = 512 * 1024
 const SUBMIT_CHUNK_BYTES = 256 * 1024
@@ -55,6 +63,22 @@ const STATUS_DEBOUNCE_MS = 100
 const TICKET_EXPIRY_SKEW_SECONDS = 30
 const TICKET_WAIT_MS = 5 * 60_000
 const REJECTED_TICKET_CODES = new Set(["INVALID_SESSION_TOKEN", "ROOM_MISMATCH"])
+// A checkpoint waits this long for the room to acknowledge this device's edits.
+const ACK_WAIT_MS = 10_000
+const ACK_POLL_MS = 20
+// Detaching waits this long for a checkpoint or baseline move under way.
+const AUTOGIT_STOP_WAIT_MS = 5_000
+// Git holds index.lock through a checkout; one held longer is left over from a Git that crashed.
+const INDEX_LOCK_WAIT_MS = 10_000
+const INDEX_LOCK_POLL_MS = 50
+const BRANCH_REF_PREFIX = "ref: refs/heads/"
+const GIT_OPERATIONS: ReadonlyArray<readonly [marker: string, operation: string]> = [
+  ["MERGE_HEAD", "merge"],
+  ["rebase-merge", "rebase"],
+  ["rebase-apply", "rebase"],
+  ["CHERRY_PICK_HEAD", "cherry-pick"],
+  ["REVERT_HEAD", "revert"],
+]
 
 export interface CollaborationSessionHostOptions {
   publicSessionId: string
@@ -66,6 +90,13 @@ export interface CollaborationSessionHostOptions {
   db: ProjectdDatabase
   actor: ChangeActor
   gitService?: GitService
+  /** The session's branch: the folder syncs only while it is checked out, and AutoGit saves to it. */
+  branchName?: string
+  /** Fixes this device's replica client id; tests use it to choose which device leads. */
+  clientId?: string
+  autoGitTiming?: Partial<AutoGitTiming>
+  /** How often the folder's Git state is checked, which is also how soon a paused folder resumes. */
+  gitPollMs?: number
   connectorFactory?: (wsUrl: string) => RoomConnector
   fileEventSource?: FileEventSource
   /** Full rescans that stand in for file events when no native source runs; 0 turns them off. */
@@ -118,13 +149,16 @@ export class CollaborationSessionHost {
 
   private readonly adapter: ExternalSnapshotAdapter
   private readonly materializer: FilesystemMaterializer
+  private readonly autoGit: AutoGitAgent | null
   private readonly actor: ChangeActor
+  private readonly branchName: string | null
   private readonly connectorFactory: (wsUrl: string) => RoomConnector
   private readonly rescanIntervalMs: number
   private readonly submitDelayMs: number
   private readonly materializeDelayMs: number
   private readonly reconnectDelaysMs: number[]
   private readonly maxTextFileBytes: number
+  private readonly gitPollMs: number
   private readonly onStatus?: (status: ProjectdSessionStatus) => void
   private readonly onTicketNeeded?: () => void
   private readonly unsubscribeRemote: () => void
@@ -150,6 +184,13 @@ export class CollaborationSessionHost {
   private readonly skippedPaths = new Set<string>()
   private lastError: { code: string; message: string } | null = null
   private readonly gitService?: GitService
+  // The folder's Git directory, looked up once; null outside a repository or without a branch.
+  private gitDirLookup: Promise<string | null> | null = null
+  // Why the folder stopped syncing: another branch is checked out, or Git is mid-operation.
+  private gitPause: string | null = null
+  private gitPollTimer: NodeJS.Timeout | null = null
+  private gitChecking = false
+  private staleIndexLockMtimeMs: number | null = null
 
   constructor(options: CollaborationSessionHostOptions) {
     this.publicSessionId = options.publicSessionId
@@ -158,11 +199,13 @@ export class CollaborationSessionHost {
     this.workspaceRoot = path.resolve(options.workspaceRoot)
     this.ticket = options.ticket
     this.actor = options.actor
+    this.branchName = options.branchName?.trim() || null
     this.connectorFactory = options.connectorFactory ?? webSocketRoomConnector
     this.submitDelayMs = options.submitDelayMs ?? DEFAULT_SUBMIT_DELAY_MS
     this.materializeDelayMs = options.materializeDelayMs ?? DEFAULT_MATERIALIZE_DELAY_MS
     this.reconnectDelaysMs = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS
     this.maxTextFileBytes = options.maxTextFileBytes ?? DEFAULT_MAX_TEXT_FILE_BYTES
+    this.gitPollMs = options.gitPollMs ?? DEFAULT_GIT_POLL_MS
     this.onStatus = options.onStatus
     this.onTicketNeeded = options.onTicketNeeded
 
@@ -171,7 +214,7 @@ export class CollaborationSessionHost {
       (new NativeMacHelper().isAvailable ? new FSEventsClient(this.workspaceRoot) : null)
     this.rescanIntervalMs = options.rescanIntervalMs ?? (eventSource ? 0 : DEFAULT_RESCAN_WITHOUT_EVENTS_MS)
 
-    this.replica = new SessionReplica(this.publicSessionId)
+    this.replica = new SessionReplica(this.publicSessionId, options.clientId)
     this.queue = new OutboundBatchQueue(options.db)
     this.transport = new SessionTransport({
       sessionId: this.publicSessionId,
@@ -184,6 +227,8 @@ export class CollaborationSessionHost {
       getToken: () => this.currentToken(),
       onAcknowledged: (batchId, sessionSeq) => this.handleAcknowledged(batchId, sessionSeq),
       onStateChange: (state) => this.handleConnectionState(state),
+      onAutoGitState: (state) => this.autoGit?.handleRoomState(state),
+      onCheckpointRequested: () => this.autoGit?.handleCheckpointRequested(),
     })
     this.index = new MaterializationIndex(options.db)
     this.baselines = new BaselineStore({ db: options.db, sessionId: this.publicSessionId })
@@ -202,8 +247,29 @@ export class CollaborationSessionHost {
       index: this.index,
       fseventsClient: eventSource ?? new IdleFileEventSource(),
     })
+    this.autoGit =
+      this.branchName && options.gitService
+        ? new AutoGitAgent({
+            publicSessionId: this.publicSessionId,
+            branchName: this.branchName,
+            workspaceRoot: this.workspaceRoot,
+            gitService: options.gitService,
+            room: this.roomClient,
+            replica: this.replica,
+            transport: this.transport,
+            canWrite: () => this.canWrite,
+            maxTextFileBytes: this.maxTextFileBytes,
+            runExclusive: (work) => this.exclusive(work),
+            flushLocalChanges: () => this.flushAndAwaitAcks(),
+            onChange: () => this.emitStatusSoon(),
+            timing: options.autoGitTiming,
+          })
+        : null
     this.watcher.on("event", (event: NormalizedFsEvent) => this.handleFileEvent(event))
-    this.unsubscribeRemote = this.replica.onRemoteChange((fileIds) => this.scheduleMaterialize(fileIds))
+    this.unsubscribeRemote = this.replica.onRemoteChange((fileIds) => {
+      this.scheduleMaterialize(fileIds)
+      this.noteSessionActivity()
+    })
   }
 
   get canWrite(): boolean {
@@ -229,6 +295,9 @@ export class CollaborationSessionHost {
       this.fail("QUEUE_UNREADABLE", error)
       return
     }
+    if ((await this.resolveGitDir()) && this.running && !this.gitPollTimer) {
+      this.gitPollTimer = setInterval(() => void this.checkGit(), this.gitPollMs)
+    }
     await this.connectAndReconcile()
   }
 
@@ -251,7 +320,7 @@ export class CollaborationSessionHost {
 
   /** Scans the folder for changes the event source missed. */
   async rescan(): Promise<void> {
-    if (!this.running || this.reconciling || !this.canWrite) return
+    if (!this.running || this.reconciling || this.gitPause || !this.canWrite) return
     await this.watcher.rescan()
   }
 
@@ -266,12 +335,27 @@ export class CollaborationSessionHost {
     this.flushSubmit()
   }
 
+  /** Saves the session to its branch now, or asks the device that saves to (Section 15.1). */
+  async checkpointNow(): Promise<ProjectdCheckpointResult> {
+    if (!this.autoGit) {
+      throw new SessionHostError("AUTOGIT_OFF", "This session has no Git branch to save to.")
+    }
+    if (!this.running || this.reconciling) {
+      throw new SessionHostError(
+        "NOT_READY",
+        this.gitPause ?? "This folder is still syncing with the session. Save again once it is live.",
+      )
+    }
+    return this.autoGit.checkpointNow()
+  }
+
   async stop(): Promise<void> {
     if (this.hostState === "stopped") return
     // Unsent local edits go to the durable queue and leave on the next attach.
     if (this.running) this.flushSubmit()
     this.teardown()
     await this.work
+    await waitAtMost(this.autoGit?.settled(), AUTOGIT_STOP_WAIT_MS)
     if (this.statusTimer) {
       clearTimeout(this.statusTimer)
       this.statusTimer = null
@@ -292,6 +376,8 @@ export class CollaborationSessionHost {
       skippedPaths: [...this.skippedPaths].sort(),
       lastError: this.lastError ?? this.roomClient.lastError,
       updatedAt: Date.now(),
+      pausedReason: this.gitPause,
+      autoGit: this.autoGit?.status() ?? null,
     }
   }
 
@@ -307,8 +393,13 @@ export class CollaborationSessionHost {
       this.scheduleReconnect()
       return
     }
-    if (!this.reconciling) return
-    await this.enqueue(async () => {
+    await this.reconcileNow()
+  }
+
+  /** Runs the first sync on the queue, unless it already ran. */
+  private reconcileNow(): Promise<void> {
+    if (!this.reconciling) return Promise.resolve()
+    return this.enqueue(async () => {
       if (!this.reconciling || !this.running) return
       try {
         await this.reconcile()
@@ -324,17 +415,18 @@ export class CollaborationSessionHost {
       if (REJECTED_TICKET_CODES.has(this.roomClient.lastError?.code ?? "")) this.ticketRejected = true
       this.scheduleReconnect()
     }
+    this.autoGit?.handleConnectionChange()
     this.refreshState()
   }
 
   private scheduleReconnect(): void {
     if (!this.running || this.reconnectTimer) return
-    const delay = this.reconnectDelaysMs[Math.min(this.reconnectAttempt, this.reconnectDelaysMs.length - 1)] ?? 0
+    const delayMs = this.reconnectDelaysMs[Math.min(this.reconnectAttempt, this.reconnectDelaysMs.length - 1)] ?? 0
     this.reconnectAttempt += 1
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       void this.connectAndReconcile()
-    }, delay)
+    }, delayMs)
   }
 
   private clearReconnectTimer(): void {
@@ -368,7 +460,13 @@ export class CollaborationSessionHost {
   private handleAcknowledged(batchId: string, sessionSeq: number): void {
     this.queue.markAcked(batchId, sessionSeq)
     this.queue.pruneAcked(this.publicSessionId)
+    this.noteSessionActivity()
     this.emitStatusSoon()
+  }
+
+  /** Tells AutoGit the session moved, once the change that moved it has finished applying. */
+  private noteSessionActivity(): void {
+    if (this.autoGit) queueMicrotask(() => this.autoGit?.noteActivity())
   }
 
   // ─── Reconcile ───────────────────────────────────────────────────────────────
@@ -380,6 +478,7 @@ export class CollaborationSessionHost {
    * refused rather than overwritten.
    */
   private async reconcile(): Promise<void> {
+    if (await this.pauseIfFolderLeftBranch()) return
     if (this.index.list(this.publicSessionId).length === 0) {
       if (this.replica.tree.listLiveEntries().length === 0) {
         if (this.canWrite) await this.seedFromFolder()
@@ -393,11 +492,16 @@ export class CollaborationSessionHost {
     await this.watcher.start()
     const offlineEvents = this.reconcileEvents
     this.reconcileEvents = null
+    // The folder left the branch while the watcher started.
+    if (this.gitPause) {
+      this.watcher.stop()
+      return
+    }
     for (const event of offlineEvents) await this.ingest(event)
 
     this.pendingMaterialize.clear()
     for (const entry of this.replica.tree.listAllEntries()) {
-      if (!this.running) return
+      if (!this.running || this.gitPause) return
       if (this.needsMaterialization(entry)) await this.materializer.materializeFile(entry.fileId, Date.now())
     }
 
@@ -408,6 +512,7 @@ export class CollaborationSessionHost {
       this.rescanTimer = setInterval(() => void this.rescan(), this.rescanIntervalMs)
     }
     this.refreshState()
+    void this.autoGit?.start()
   }
 
   private async seedFromFolder(): Promise<void> {
@@ -487,7 +592,7 @@ export class CollaborationSessionHost {
   // ─── Folder → session ────────────────────────────────────────────────────────
 
   private handleFileEvent(event: NormalizedFsEvent): void {
-    if (!this.running || !this.canWrite) return
+    if (!this.running || !this.canWrite || this.gitPause) return
     if (this.reconcileEvents) {
       this.reconcileEvents.push(event)
       return
@@ -497,6 +602,7 @@ export class CollaborationSessionHost {
 
   private async ingest(event: NormalizedFsEvent): Promise<void> {
     if (!this.running || !this.canWrite) return
+    if (await this.pauseIfFolderLeftBranch()) return
     if (event.type === "change") {
       if (!event.isSymlink) await this.ingestChange(event.relativePath, event.absolutePath)
     } else if (event.type === "delete") {
@@ -523,6 +629,8 @@ export class CollaborationSessionHost {
     const diskHash = sha256(bytes)
     // The bytes this host last wrote or read: an echo, not an edit.
     if (this.index.getByPath(this.publicSessionId, filePath)?.diskHash === diskHash) return
+    // Read while Git switched branches, these bytes may belong to the other branch.
+    if (await this.pauseIfFolderLeftBranch()) return
 
     const text = bytes.toString("utf8")
     let entry = this.findLiveEntry(filePath)
@@ -561,6 +669,8 @@ export class CollaborationSessionHost {
       () => false,
     )
     if (stillExists) return
+    // A checkout of another branch removes the files only this branch has.
+    if (await this.pauseIfFolderLeftBranch()) return
 
     this.skippedPaths.delete(filePath)
     const entry = this.findLiveEntry(filePath) ?? (fileId ? this.liveEntryById(fileId) : null)
@@ -640,10 +750,24 @@ export class CollaborationSessionHost {
     this.emitStatusSoon()
   }
 
+  /** Sends unsent edits and waits until the room has acknowledged every one (Section 15.3). */
+  private async flushAndAwaitAcks(): Promise<void> {
+    this.flushSubmit()
+    const deadline = Date.now() + ACK_WAIT_MS
+    while (this.roomClient.pendingBatchCount > 0) {
+      if (Date.now() > deadline || this.roomClient.state !== "live") {
+        throw new AutoGitError("EDITS_NOT_ACKNOWLEDGED", "The session room has not confirmed this device's latest edits yet.")
+      }
+      await delay(ACK_POLL_MS)
+    }
+  }
+
   private scheduleMaterialize(fileIds: Iterable<string>): void {
     for (const fileId of fileIds) this.pendingMaterialize.add(fileId)
     this.emitStatusSoon()
-    if (this.reconciling || !this.running || this.materializeTimer || this.pendingMaterialize.size === 0) return
+    if (this.reconciling || this.gitPause || !this.running || this.materializeTimer || this.pendingMaterialize.size === 0) {
+      return
+    }
     this.materializeTimer = setTimeout(() => {
       this.materializeTimer = null
       void this.enqueue(() => this.materializePending())
@@ -651,16 +775,21 @@ export class CollaborationSessionHost {
   }
 
   private async materializePending(): Promise<void> {
+    // Peer edits written into another branch's checkout would land in that branch.
+    if (await this.pauseIfFolderLeftBranch()) {
+      this.pendingMaterialize.clear()
+      return
+    }
     const fileIds = [...this.pendingMaterialize]
     this.pendingMaterialize.clear()
     for (const fileId of fileIds) {
-      if (!this.running) return
+      if (!this.running || this.gitPause) return
       const entry = this.replica.tree.getEntry(fileId)
       if (!entry) continue
       // A local save not ingested yet goes in first, so the write below carries both edits.
       await this.ingestUnseenDiskEdit(entry)
       const current = this.replica.tree.getEntry(fileId)
-      if (current && this.needsMaterialization(current)) {
+      if (current && !this.gitPause && this.needsMaterialization(current)) {
         await this.materializer.materializeFile(fileId, Date.now())
       }
     }
@@ -685,10 +814,142 @@ export class CollaborationSessionHost {
     return this.work
   }
 
+  /** Runs work between ingestion and materialization steps and hands back its result. */
+  private exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const result = this.work.then(work)
+    this.work = result.then(
+      () => undefined,
+      () => undefined,
+    )
+    return result
+  }
+
+  // ─── Git (Section 6.4, 12.9) ─────────────────────────────────────────────────
+
+  private resolveGitDir(): Promise<string | null> {
+    this.gitDirLookup ??= this.lookUpGitDir()
+    return this.gitDirLookup
+  }
+
+  private async lookUpGitDir(): Promise<string | null> {
+    if (!this.branchName || !this.gitService) return null
+    try {
+      const result = await this.gitService.process.execute(["rev-parse", "--absolute-git-dir"], {
+        cwd: this.workspaceRoot,
+        allowNonZeroExit: true,
+      })
+      return result.success ? result.stdout.trim() || null : null
+    } catch (error) {
+      console.warn(`[projectd] Session ${this.publicSessionId}: could not find the folder's Git directory`, error)
+      return null
+    }
+  }
+
+  /** Why the folder must not sync now, or null while it may. */
+  private async folderGitProblem(): Promise<string | null> {
+    const gitDir = await this.resolveGitDir()
+    if (!gitDir || !this.branchName) return null
+    await this.waitForIndexLock(gitDir)
+    for (const [marker, operation] of GIT_OPERATIONS) {
+      if (await pathExists(path.join(gitDir, marker))) {
+        return `Git is in the middle of a ${operation} in this folder. Syncing resumes once it finishes or is aborted.`
+      }
+    }
+    const head = (await fs.readFile(path.join(gitDir, "HEAD"), "utf8").catch(() => null))?.trim()
+    if (!head || head === `${BRANCH_REF_PREFIX}${this.branchName}`) return null
+    return head.startsWith(BRANCH_REF_PREFIX)
+      ? `This folder has ${head.slice(BRANCH_REF_PREFIX.length)} checked out. Switch back to ${this.branchName} to keep syncing the session.`
+      : `This folder has a detached HEAD. Check out ${this.branchName} to keep syncing the session.`
+  }
+
+  /** Waits while Git holds the index lock. A lock that outlives the wait is not waited on again. */
+  private async waitForIndexLock(gitDir: string): Promise<void> {
+    const lockPath = path.join(gitDir, "index.lock")
+    const deadline = Date.now() + INDEX_LOCK_WAIT_MS
+    for (;;) {
+      const stat = await fs.stat(lockPath).catch(() => null)
+      if (!stat) {
+        this.staleIndexLockMtimeMs = null
+        return
+      }
+      if (stat.mtimeMs === this.staleIndexLockMtimeMs) return
+      if (Date.now() >= deadline) {
+        console.warn(`[projectd] Session ${this.publicSessionId}: ${lockPath} looks left over; syncing anyway`)
+        this.staleIndexLockMtimeMs = stat.mtimeMs
+        return
+      }
+      await delay(INDEX_LOCK_POLL_MS)
+    }
+  }
+
+  /** Pauses syncing when the folder left the session branch; true while paused. */
+  private async pauseIfFolderLeftBranch(): Promise<boolean> {
+    if (this.gitPause) return true
+    const problem = await this.folderGitProblem()
+    if (!problem) return false
+    this.pauseForGit(problem)
+    return true
+  }
+
+  /** Stops syncing the folder both ways; the session itself carries on (Section 6.4). */
+  private pauseForGit(reason: string): void {
+    if (!this.running || this.gitPause === reason) return
+    const pausing = this.gitPause === null
+    this.gitPause = reason
+    if (pausing) {
+      console.warn(`[projectd] Session ${this.publicSessionId} paused: ${reason}`)
+      this.watcher.stop()
+      this.pendingMaterialize.clear()
+      if (this.materializeTimer) {
+        clearTimeout(this.materializeTimer)
+        this.materializeTimer = null
+      }
+      if (this.rescanTimer) {
+        clearInterval(this.rescanTimer)
+        this.rescanTimer = null
+      }
+    }
+    this.refreshState()
+    if (!pausing) this.emitStatus()
+  }
+
+  private async checkGit(): Promise<void> {
+    // The first sync checks for itself.
+    if (!this.running || this.gitChecking || (this.reconciling && !this.gitPause)) return
+    this.gitChecking = true
+    try {
+      const problem = await this.folderGitProblem()
+      if (!this.running) return
+      if (problem) this.pauseForGit(problem)
+      else if (this.gitPause) this.resumeFromGitPause()
+    } finally {
+      this.gitChecking = false
+    }
+  }
+
+  /**
+   * The branch is back. Anything may have changed in the folder meanwhile, so the
+   * folder and the session come together as on joining: files that match are kept,
+   * files Git holds unchanged take the session's version, and anything else stops
+   * the sync rather than being overwritten.
+   */
+  private resumeFromGitPause(): void {
+    this.gitPause = null
+    this.index.clearSession(this.publicSessionId)
+    this.reconciling = true
+    this.refreshState()
+    // Otherwise the next connection runs the sync.
+    if (this.roomClient.state === "live") void this.reconcileNow()
+  }
+
   // ─── State ───────────────────────────────────────────────────────────────────
 
   private refreshState(): void {
     if (!this.running) return
+    if (this.gitPause) {
+      this.setState("paused")
+      return
+    }
     if (this.ticketWaiters.length > 0) {
       this.setState("waiting_for_ticket")
       return
@@ -753,6 +1014,12 @@ export class CollaborationSessionHost {
       clearInterval(this.rescanTimer)
       this.rescanTimer = null
     }
+    if (this.gitPollTimer) {
+      clearInterval(this.gitPollTimer)
+      this.gitPollTimer = null
+    }
+    // A leader gives its lease up while the connection is still open.
+    this.autoGit?.stop()
     this.watcher.stop()
     this.unsubscribeRemote()
     this.roomClient.disconnect()
@@ -766,6 +1033,20 @@ export class CollaborationSessionHost {
 
 function sha256(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex")
+}
+
+async function waitAtMost(work: Promise<unknown> | undefined, ms: number): Promise<void> {
+  if (!work) return
+  let timer: NodeJS.Timeout | undefined
+  await Promise.race([work, new Promise((resolve) => (timer = setTimeout(resolve, ms)))])
+  clearTimeout(timer)
+}
+
+function pathExists(target: string): Promise<boolean> {
+  return fs.lstat(target).then(
+    () => true,
+    () => false,
+  )
 }
 
 function fileMode(mode: number): number {

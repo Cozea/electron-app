@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import type { ProjectdSessionStatus } from "@cozea/projectd-protocol"
+import type { ProjectdAutoGitStatus, ProjectdSessionStatus } from "@cozea/projectd-protocol"
 
 import {
+  describeAutoGit,
   describeLiveSessionSync,
   resolveMembership,
   type LiveSessionMember,
@@ -77,6 +78,10 @@ describe("how the session bar describes syncing", () => {
         status: daemonStatus({ state: "reconnecting", lastError: { code: "SOCKET_CLOSED", message: "Room went away" } }),
       }),
     ).toEqual({ tone: "working", label: "Reconnecting…", detail: "Room went away" })
+    const offBranch = "This folder has main checked out. Switch back to feat/live to keep syncing the session."
+    expect(
+      describeLiveSessionSync({ ...ATTACHED, status: daemonStatus({ state: "paused", pausedReason: offBranch }) }),
+    ).toEqual({ tone: "attention", label: "Paused on this Mac", detail: offBranch })
   })
 
   it("tells people who are not syncing what to do", () => {
@@ -97,5 +102,65 @@ describe("how the session bar describes syncing", () => {
     expect(describeLiveSessionSync({ ...ATTACHED, daemonEnabled: false, phase: "off", status: null })).toMatchObject({
       tone: "live",
     })
+  })
+})
+
+describe("how the session bar describes saving to Git", () => {
+  function autoGit(overrides: Partial<ProjectdAutoGitStatus> = {}): ProjectdAutoGitStatus {
+    return {
+      state: "follower",
+      isLeader: false,
+      leaderPrincipalId: "p_sam",
+      lastCheckpoint: null,
+      unsavedChanges: 0,
+      saving: false,
+      detail: null,
+      lastError: null,
+      ...overrides,
+    }
+  }
+
+  it("stays out of the bar outside a Git repository and once syncing stopped", () => {
+    expect(describeAutoGit(daemonStatus())).toBeNull()
+    expect(describeAutoGit(daemonStatus({ autoGit: null }))).toBeNull()
+    expect(describeAutoGit(daemonStatus({ state: "failed", autoGit: autoGit() }))).toBeNull()
+  })
+
+  it("says when the session was last saved and which Mac saves it", () => {
+    const publishedAt = new Date(2026, 8, 12, 14, 32).getTime()
+    const saved = describeAutoGit(
+      daemonStatus({ autoGit: autoGit({ lastCheckpoint: { commitOid: "a1b2c3d4e5f6", sessionSeq: 4, publishedAt } }) }),
+      "Sam",
+    )
+    expect(saved).toMatchObject({ tone: "live", label: expect.stringMatching(/^Saved to Git at /), detail: null, canSave: true })
+    expect(saved?.title).toBe("Sam's Mac saves the session to Git. Last commit a1b2c3d.")
+    expect(describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "leader", isLeader: true, saving: true }) }))).toMatchObject({
+      label: "Saving to Git…",
+      title: "This Mac saves the session to Git.",
+    })
+    expect(describeAutoGit(daemonStatus({ autoGit: autoGit() }))?.label).toBe("Not saved to Git yet")
+  })
+
+  it("explains why saving stopped or failed", () => {
+    const changed = "feat/live changed on origin outside the session, so AutoGit stopped saving to it rather than overwrite those commits."
+    expect(describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "blocked", detail: changed }) }))).toMatchObject({
+      tone: "attention",
+      label: "Git saves stopped",
+      detail: changed,
+      canSave: true,
+    })
+    const noSignIn = "Git couldn't sign in to origin from the background service."
+    expect(
+      describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "ineligible", leaderPrincipalId: null, detail: noSignIn }) })),
+    ).toMatchObject({ tone: "attention", label: "Not saving to Git", detail: noSignIn, canSave: false })
+    const lastError = { code: "REMOTE_UNREACHABLE", message: "Git couldn't reach origin: timed out." }
+    expect(describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "leader", isLeader: true, lastError }) }))?.detail).toBe(
+      "The last save didn't finish (Git couldn't reach origin: timed out). It retries on its own.",
+    )
+  })
+
+  it("offers Save now only where a Mac can push and the member may write", () => {
+    expect(describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "no_leader", leaderPrincipalId: null }) }))?.canSave).toBe(false)
+    expect(describeAutoGit(daemonStatus({ role: "viewer", autoGit: autoGit() }))?.canSave).toBe(false)
   })
 })

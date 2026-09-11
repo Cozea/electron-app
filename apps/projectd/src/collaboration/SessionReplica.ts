@@ -132,6 +132,11 @@ export class SessionReplica {
     this.textDocs.setTextContent(fileId, content)
   }
 
+  /** True while local edits wait for exportBatch. */
+  hasUnexportedChanges(): boolean {
+    return this.treeDirty || this.dirtyTextDocs.size > 0
+  }
+
   /**
    * Captures any local uncommitted updates across tree and text docs into an outbound CollaborationBatch.
    */

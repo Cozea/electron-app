@@ -23,7 +23,7 @@ The `Status:` line of each phase below has been corrected. The phase logs are ke
 
 Entry points: renderer `main.tsx`, Electron `main.ts` and `preload.ts`, projectd `main.ts`, and the worker's `index.ts`.
 
-At a glance: complete P00–P01 · partial P02–P05, P10, P12, P14–P15, P23 · library only P06–P09, P11, P13, P16–P22 · tests only P24 · stub P25 · not done P26 · blocked P27.
+At a glance: complete P00–P01 · partial P02–P05, P10, P12, P14–P19, P23 · library only P06–P09, P11, P13, P20–P22 · tests only P24 · stub P25 · not done P26 · blocked P27.
 
 ### Remediation on `fix/collab-audit-remediation`
 
@@ -84,6 +84,58 @@ Still open:
   - The rebase conflict bundle is empty and the rebase never pushes.
   - The P16 lease is enforced only on the client.
   - Binary revisions never reach AutoGit commits.
+
+### Step 4 on `feat/collab-step3-session-ui` — 2026-09-12
+
+- **The room holds the AutoGit lease (P16).** `CollaborationSessionRoom` grants one lease at a time, to the eligible writer with the lowest clientId, with a generation that only grows.
+  - The lease lasts 20 seconds and the leader renews it every 5.
+  - When renewals stop, the room's alarm elects the next writer. A leader that leaves gives the lease up at once.
+  - The room accepts barriers and checkpoint records only from the current holder, so a stale leader is fenced out.
+  - It routes Save now to the leader, and passes every member the leader's reason for stopping.
+  - The client-only `LeaderLeaseClient` and `AutoGitCoordinator` were removed. This fixes the step 3 defect "The P16 lease is enforced only on the client" once the worker is deployed.
+- **Checkpoints from the daemon (P17).** `apps/projectd/src/autogit/AutoGitAgent.ts` runs in every session host that has a branch and a Git repository. The leader:
+  - sends its edits and waits until the room acknowledges them;
+  - captures the replica exactly at a room barrier;
+  - builds the commit in a temporary index;
+  - fast-forwards the branch on the remote, with `--no-verify` and never forced;
+  - records the checkpoint in the room.
+
+  Checkpoints run 15 seconds after the last change, at most 2 minutes after the first unsaved one, and at least 30 seconds apart.
+
+  If the remote branch changed outside the session, saving stops and every member sees why. Checkpoints a leader pushed but did not record are recovered from their trailers.
+
+  `CheckpointBuilder` keeps whatever the session never carries: binaries, text over the sync limit, files under a Git filter such as LFS, and editor files. Commit IDs no longer depend on locale or signing settings.
+- **Every member's Git follows (P18).** On each checkpoint, a member's branch and index move to it: a compare-and-swap `update-ref`, then a mixed reset. The working tree stays as it is, and the move happens only when it loses nothing.
+- **The folder pauses off the branch (P19, part).**
+  - When the host checks: every 2 seconds, before it reads a changed file, and again after, waiting out `index.lock` each time.
+  - What it checks: the folder's `HEAD`, and the markers for a merge, rebase, cherry-pick or revert.
+  - While another branch is checked out or Git is mid-operation, nothing syncs in either direction.
+  - When the branch is back, the folder and the session come together as on joining.
+
+  Controlled sync through hidden mirrors (the rest of P19) is not wired.
+- **Session bar.** It shows when the session was last saved to Git, which Mac saves it, and why saving stopped, and offers Save now (`projectd:sessions:checkpointNow`). A paused folder reads "Paused on this Mac" with the reason. The daemon hook attaches again when the daemon reports a failed session.
+- **Build.** `prepare:projectd-helper` runs `xcrun swift build`, so a Swift toolchain earlier on `PATH` does not shadow Xcode's.
+
+Since step 3: a local `dist:local` build ran the packaged daemon on the app's Electron binary in Node mode, and it reported healthy.
+
+Verified on 2026-09-12, after the step 4 work:
+- Full vitest: 404 files passed and 1 skipped; 2996 tests passed and 5 skipped.
+- New tests:
+  - `tests/projectd/sessionRoomAutoGit.test.ts` covers the lease.
+  - `tests/projectd/autoGitSession.test.ts` runs real Git against a bare remote. It covers checkpoints, members' branches following, Save now, a branch changed outside the session, failover, and pausing and resuming.
+  - `tests/projectd/autoGitCheckpoint.test.ts` adds the retention and subfolder cases.
+  - The new session tests passed 3 runs in a row.
+- Typecheck: app, electron, tests, projectd and the worker.
+- oxlint.
+- The macOS helper builds with Xcode's Swift 6.4.
+
+Not deployed: the worker's room changes. Until `cozea-collab` is deployed, the production room answers the new messages with `BAD_REQUEST`, and no Mac saves a session to Git.
+
+Still open:
+- P20–P22 (target tracking, rebase, merge and PR controls) are still library only. Until P20 lands, a commit pushed to the session branch from outside the session stops AutoGit until someone reconciles the branch by hand.
+- Binary edits still stay on each Mac. A checkpoint keeps the binary as Git last had it.
+- A folder that comes back to the branch holding changes Git does not have is refused, as on a first join. The app retries the attach every 15 seconds until the folder is fixed.
+- The Swift helper is still not packaged. That needs a universal build.
 
 ---
 
@@ -1333,7 +1385,7 @@ Exit-gate evidence:
 
 ## P16 — AutoGit leader lease
 
-Status: library only — the lease is enforced only on the client.
+Status: partial — since step 4 (2026-09-12) the session room holds the lease, and every session host with a branch and a remote takes part. The room changes are not deployed yet.
 
 Baseline:
 - base commit: `2feef787` (P15 complete commit)
@@ -1403,7 +1455,7 @@ Exit-gate evidence:
 
 ## P17 — AutoGit barriers, deterministic checkpoint commit, periodic push
 
-Status: library only — no entry point runs checkpoints. Fixed 2026-09-11: checkpoints drop paths deleted since the parent commit and refuse binaries that have no blob in it.
+Status: partial — since step 4 the AutoGit agent in each session host builds, pushes and records checkpoints. The room changes are not deployed yet. Fixed 2026-09-11: checkpoints drop paths deleted since the parent commit and refuse binaries that have no blob in it.
 
 Baseline:
 - base commit: `4a2883f7` (P16 complete commit)
@@ -1469,7 +1521,7 @@ Exit-gate evidence:
 
 ## P18 — Local Git baseline advancement after AutoGit checkpoint
 
-Status: library only — no entry point imports it.
+Status: partial — since step 4 every member's branch and index follow each checkpoint. Like P16, it waits on the worker deploy.
 
 Baseline:
 - base commit: `a5cb5408` (P17 complete commit)
@@ -1530,7 +1582,7 @@ Exit-gate evidence:
 
 ## P19 — External Git interoperability and controlled GitHub sync
 
-Status: library only — no entry point imports it.
+Status: partial — since step 4 the session host pauses the folder while another branch is checked out or Git is mid-merge or mid-rebase. `ExternalGitInteroperability` and controlled sync through hidden mirrors are not wired.
 
 Baseline:
 - base commit: `8dcde251` (P18 complete commit)
@@ -1794,7 +1846,7 @@ Status: partial — P23 first made the in-app Yjs engine wait for an ACTIVE sess
 - The session bar ([LiveSessionBar.tsx](apps/desktop/src/features/collaboration/live/LiveSessionBar.tsx)) shows the branch, how the folder syncs, who is in the session, and join, leave, pause, resume and end. A member whose folder has another branch checked out gets a Switch branch notice.
 - The daemon hook retries while the daemon is unreachable and attaches again after a daemon restart.
 - Without a session record, the shared branch still collaborates through the in-app engine until P26.
-- Not in the bar yet: AutoGit status, checkpoint, rebase and merge controls (P16–P22), the microphone (P25) and a Workbench switcher.
+- Not in the bar yet: rebase and merge controls (P20–P22), the microphone (P25) and a Workbench switcher. AutoGit status and Save now joined the bar in step 4.
 
 Baseline:
 - base commit: `96eb2b91` (P22 complete commit)

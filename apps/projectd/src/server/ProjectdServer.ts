@@ -123,6 +123,8 @@ function parseAttachParams(params: unknown) {
     roomKey: new Uint8Array(roomKey),
     ticket: parseTicket(attach.ticket),
     actor: attach.actor,
+    branchName:
+      typeof attach.branchName === "string" && attach.branchName.trim() ? attach.branchName.trim() : undefined,
   }
 }
 
@@ -774,6 +776,9 @@ export class ProjectdServer {
       case "sessions.updateTicket":
         this.reply(state, req.id, () => this.updateSessionTicket(req.params))
         break
+      case "sessions.checkpointNow":
+        this.reply(state, req.id, () => this.checkpointSession(req.params))
+        break
       default: {
         this.sendError(state, req.id, {
           code: "METHOD_NOT_FOUND",
@@ -847,6 +852,7 @@ export class ProjectdServer {
       ticket: attach.ticket,
       db: this.db,
       gitService: this.gitService,
+      branchName: attach.branchName,
       actor: {
         actorType: "user",
         principalId: attach.actor?.principalId,
@@ -880,6 +886,16 @@ export class ProjectdServer {
     }
     host.updateTicket(parseTicket((params as { ticket?: unknown }).ticket))
     return host.status()
+  }
+
+  /** Saves an attached session to its Git branch now, or asks the device that saves to. */
+  private checkpointSession(params: unknown) {
+    const publicSessionId = requireSessionId(params)
+    const host = this.sessionHosts.get(publicSessionId)
+    if (!host) {
+      throw new ProjectdRequestError("NOT_FOUND", `Session ${publicSessionId} is not attached`)
+    }
+    return host.checkpointNow()
   }
 
   broadcast(topic: string, event: string, payload: unknown): void {

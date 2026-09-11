@@ -34,6 +34,13 @@ export interface BarrierSnapshot {
   readonly serverTime: number
   readonly logicalTreeHash: string
   readonly files: FileSnapshotState[]
+  /** Paths the session deleted and nothing took over since; a checkpoint removes them. */
+  readonly deletedPaths?: string[]
+}
+
+/** Orders by UTF-16 code unit, which is the same on every machine; localeCompare is not. */
+function compareCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
 }
 
 export class BarrierCapture {
@@ -45,8 +52,7 @@ export class BarrierCapture {
     replica: SessionReplica,
   ): BarrierSnapshot {
     const liveEntries = replica.tree.listLiveEntries()
-    // Sort deterministically by path
-    liveEntries.sort((a, b) => a.path.localeCompare(b.path))
+    liveEntries.sort((a, b) => compareCodeUnits(a.path, b.path))
 
     const files: FileSnapshotState[] = []
     const hashDigest = createHash("sha256")
@@ -86,6 +92,16 @@ export class BarrierCapture {
       hashDigest.update(`${entry.path}:${entry.mode}:${contentHash}\n`)
     }
 
+    const livePaths = new Set(liveEntries.map((entry) => entry.path))
+    const deletedPaths = [
+      ...new Set(
+        replica.tree
+          .listAllEntries()
+          .filter((entry) => entry.deleted && !livePaths.has(entry.path))
+          .map((entry) => entry.path),
+      ),
+    ].sort(compareCodeUnits)
+
     const logicalTreeHash = hashDigest.digest("hex")
 
     return {
@@ -94,6 +110,7 @@ export class BarrierCapture {
       serverTime: barrier.serverTime,
       logicalTreeHash,
       files,
+      deletedPaths,
     }
   }
 }

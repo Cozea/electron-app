@@ -32,6 +32,10 @@ interface DurableObjectStorage {
   delete(key: string): Promise<boolean>
   list<T>(options?: DurableObjectListOptions): Promise<Map<string, T>>
   transaction<T>(closure: (transaction: DurableObjectStorage) => Promise<T>): Promise<T>
+  /** Calls the object's alarm() at that time; setting it again moves the one alarm. */
+  setAlarm(scheduledTime: number | Date): Promise<void>
+  getAlarm(): Promise<number | null>
+  deleteAlarm(): Promise<void>
 }
 
 /** WebSocket Hibernation: per-socket state that survives eviction of the object. */

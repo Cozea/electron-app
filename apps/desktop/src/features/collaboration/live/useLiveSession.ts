@@ -20,9 +20,11 @@ import { checkoutGitBranchCompat } from "@/features/workbench/branch-control/wor
 import { findBranchSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import {
+  describeAutoGit,
   describeLiveSessionSync,
   resolveMembership,
   type LiveSessionAction,
+  type LiveSessionAutoGitView,
   type LiveSessionMember,
   type LiveSessionSyncView,
   type SessionMembership,
@@ -47,7 +49,10 @@ export interface LiveSessionController {
   membership: SessionMembership
   canManage: boolean
   sync: LiveSessionSyncView | null
+  /** How the session is saved to its branch; null when the daemon does not sync this folder. */
+  autoGit: LiveSessionAutoGitView | null
   busyAction: LiveSessionAction | null
+  saveNow: () => void
   join: () => void
   leave: () => void
   pause: () => void
@@ -57,6 +62,23 @@ export interface LiveSessionController {
 }
 
 const NO_MEMBERS: LiveSessionMember[] = []
+
+/** Saves the session to its branch now, or asks the Mac that saves it to. */
+async function saveSessionNow(publicSessionId: string, branchName: string): Promise<void> {
+  const response = await window.electronAPI.projectd.sessions.checkpointNow(publicSessionId)
+  if (!response.success) throw new Error(response.error)
+  const commit = response.result.lastCheckpoint?.commitOid.slice(0, 7)
+  switch (response.result.outcome) {
+    case "saved":
+      appToast.success({ title: "Saved to Git", description: commit ? `${branchName} is at ${commit}.` : undefined })
+      return
+    case "requested":
+      appToast.info({ title: "Saving to Git", description: "The Mac that saves this session is saving it now." })
+      return
+    case "no_leader":
+      throw new Error("No member's Mac can push this session's branch right now.")
+  }
+}
 
 export function useLiveSession(input: {
   enabled: boolean
@@ -124,6 +146,10 @@ export function useLiveSession(input: {
       )
     : []
 
+  const daemonStatus = daemonEnabled && daemon.phase === "attached" ? daemon.status : null
+  const leaderName =
+    members.find((member) => member.principalId === daemonStatus?.autoGit?.leaderPrincipalId)?.displayName ?? null
+
   return {
     session,
     otherSessions,
@@ -140,7 +166,11 @@ export function useLiveSession(input: {
           error: daemon.error,
         })
       : null,
+    autoGit: session ? describeAutoGit(daemonStatus, leaderName) : null,
     busyAction,
+    saveNow: () => {
+      if (session) run("save", "Could not save to Git", () => saveSessionNow(session.publicSessionId, session.branchName))
+    },
     join: onSession("join", "Could not join the session", joinSession),
     leave: onSession("leave", "Could not leave the session", leaveSession),
     pause: onSession("pause", "Could not pause the session", pauseSession),

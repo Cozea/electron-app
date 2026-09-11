@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -7,6 +8,29 @@ import { SessionReplica } from "../../apps/projectd/src/collaboration/SessionRep
 import { BarrierCapture, type BarrierDescriptor } from "../../apps/projectd/src/autogit/BarrierCapture"
 import { CheckpointBuilder } from "../../apps/projectd/src/autogit/CheckpointBuilder"
 import type { ChangeActor } from "../../apps/projectd/src/collaboration/TreeDoc"
+
+/** Commits everything in the folder as a person would, without their hooks or signing. */
+function commitAll(dir: string): string {
+  const run = (...args: string[]) =>
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=Cozea Test",
+        "-c",
+        "user.email=test@cozea.invalid",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...args,
+      ],
+      { cwd: dir, encoding: "utf8" },
+    ).trim()
+  run("add", "-A")
+  run("commit", "-q", "-m", "parent")
+  return run("rev-parse", "HEAD")
+}
 
 describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push", () => {
   const actor: ChangeActor = { actorType: "user", principalId: "user_p17" }
@@ -159,5 +183,105 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
 
     // Working directory remained completely untouched!
     expect(fs.existsSync(path.join(testRepoDir, "bin"))).toBe(false)
+  })
+
+  const listTree = async (treeish: string, cwd = testRepoDir) =>
+    (await gitService.process.execute(["ls-tree", "-r", "--name-only", treeish], { cwd })).stdout.trim().split("\n")
+  const showFile = async (spec: string, cwd = testRepoDir) =>
+    (await gitService.process.execute(["show", spec], { cwd })).stdout
+
+  it("keeps what the session never carries and removes what the session deleted or renamed away", async () => {
+    fs.mkdirSync(path.join(testRepoDir, "assets"), { recursive: true })
+    fs.writeFileSync(path.join(testRepoDir, "README.md"), "# Demo\n")
+    fs.writeFileSync(path.join(testRepoDir, "old.md"), "renamed away\n")
+    fs.writeFileSync(path.join(testRepoDir, "gone.md"), "deleted in the session\n")
+    fs.writeFileSync(path.join(testRepoDir, "assets/logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]))
+    fs.writeFileSync(path.join(testRepoDir, "big.log"), "x".repeat(2048))
+    // A filter such as LFS stores bytes other than the folder's; no driver is needed to mark the path.
+    fs.writeFileSync(path.join(testRepoDir, ".gitattributes"), "*.psd filter=cozea-test\n")
+    fs.writeFileSync(path.join(testRepoDir, "design.psd"), "stored by a filter\n")
+    const parentOid = commitAll(testRepoDir)
+
+    const replica = new SessionReplica(sessionId, "leader_client")
+    replica.createFile({ path: "README.md", kind: "text", content: "# Demo v2\n", actor })
+    replica.createFile({ path: ".gitattributes", kind: "text", content: "*.psd filter=cozea-test\n", actor })
+    const moved = replica.createFile({ path: "old.md", kind: "text", content: "renamed away\n", actor })
+    replica.renameFile(moved.fileId, "docs/new.md", actor)
+    const gone = replica.createFile({ path: "gone.md", kind: "text", content: "deleted in the session\n", actor })
+    replica.deleteFile(gone.fileId, actor)
+    const snapshot = BarrierCapture.captureSnapshot(
+      { barrierId: "barrier_retention_test", sessionSeq: 6, serverTime: 1726000100000 },
+      replica,
+    )
+
+    const result = await checkpointBuilder.buildCheckpointCommit({
+      repoPath: testRepoDir,
+      sessionId,
+      parentOid,
+      leaseGeneration: 1,
+      snapshot,
+      maxTextFileBytes: 1024,
+    })
+
+    expect(result.parentTreeOid).not.toBe(result.treeOid)
+    expect(await listTree(result.commitOid)).toEqual([
+      ".gitattributes",
+      "README.md",
+      "assets/logo.png",
+      "big.log",
+      "design.psd",
+      "docs/new.md",
+    ])
+    expect(await showFile(`${result.commitOid}:README.md`)).toBe("# Demo v2\n")
+    // The repository's own branch and index are untouched.
+    const head = await gitService.process.execute(["rev-parse", "HEAD"], { cwd: testRepoDir })
+    expect(head.stdout.trim()).toBe(parentOid)
+  })
+
+  it("reports a checkpoint that would change nothing", async () => {
+    fs.writeFileSync(path.join(testRepoDir, "README.md"), "# Demo\n")
+    fs.writeFileSync(path.join(testRepoDir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]))
+    const parentOid = commitAll(testRepoDir)
+
+    const replica = new SessionReplica(sessionId, "leader_client")
+    replica.createFile({ path: "README.md", kind: "text", content: "# Demo\n", actor })
+    const snapshot = BarrierCapture.captureSnapshot(
+      { barrierId: "barrier_unchanged_test", sessionSeq: 2, serverTime: 1726000200000 },
+      replica,
+    )
+    const result = await checkpointBuilder.buildCheckpointCommit({
+      repoPath: testRepoDir,
+      sessionId,
+      parentOid,
+      leaseGeneration: 1,
+      snapshot,
+    })
+    expect(result.treeOid).toBe(result.parentTreeOid)
+  })
+
+  it("places a session folder below the repository root and leaves the rest of the repository alone", async () => {
+    fs.mkdirSync(path.join(testRepoDir, "app"), { recursive: true })
+    fs.writeFileSync(path.join(testRepoDir, "app/index.ts"), "export const version = 1\n")
+    fs.writeFileSync(path.join(testRepoDir, "app/stale.ts"), "export {}\n")
+    fs.writeFileSync(path.join(testRepoDir, "outside.md"), "not part of the session\n")
+    const parentOid = commitAll(testRepoDir)
+
+    const replica = new SessionReplica(sessionId, "leader_client")
+    replica.createFile({ path: "index.ts", kind: "text", content: "export const version = 2\n", actor })
+    const snapshot = BarrierCapture.captureSnapshot(
+      { barrierId: "barrier_prefix_test", sessionSeq: 3, serverTime: 1726000300000 },
+      replica,
+    )
+    const result = await checkpointBuilder.buildCheckpointCommit({
+      repoPath: path.join(testRepoDir, "app"),
+      sessionId,
+      parentOid,
+      leaseGeneration: 1,
+      snapshot,
+      pathPrefix: "app/",
+    })
+
+    expect(await listTree(result.commitOid)).toEqual(["app/index.ts", "outside.md"])
+    expect(await showFile(`${result.commitOid}:app/index.ts`)).toBe("export const version = 2\n")
   })
 })

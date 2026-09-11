@@ -82,6 +82,9 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     this.stableReader = options.stableReader ?? new StableFileReader()
     this.scanner = new WorkspaceScanner(this.workspaceRoot, this.scopePolicy, this.stableReader)
     this.fseventsClient = options.fseventsClient ?? new FSEventsClient(this.workspaceRoot)
+    // Registered once, so a watcher stopped and started again reports each event once.
+    this.fseventsClient.on("events", (items) => this.handleRawEvents(items))
+    this.fseventsClient.on("dropped", (reason) => this.handleDropped(reason))
   }
 
   get state(): WatcherLifecycle {
@@ -97,9 +100,6 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
 
     // Step 2: Start FSEvents and buffer hints
     this.bufferedHints = []
-    this.fseventsClient.on("events", (items) => this.handleRawEvents(items))
-    this.fseventsClient.on("dropped", (reason) => this.handleDropped(reason))
-
     await this.fseventsClient.start()
 
     // Step 3: Mark replica 'reconciling'
@@ -160,6 +160,7 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
   }
 
   private handleRawEvents(items: NativeFSEventItem[]): void {
+    if (this.lifecycle === "stopped") return
     if (this.lifecycle === "starting" || this.lifecycle === "reconciling") {
       this.bufferedHints.push(...items)
       return

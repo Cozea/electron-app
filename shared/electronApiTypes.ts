@@ -1,6 +1,7 @@
 import type { Session } from './types'
 import type {
   ProjectdHealthResult,
+  ProjectdCheckpointResult,
   ProjectdSessionAttachParams,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
@@ -1551,7 +1552,7 @@ export interface WorkbenchSessionSnapshot {
   hasNativePreviewSession: boolean
 }
 
-export type { ProjectdSessionAttachParams, ProjectdSessionStatus, ProjectdSessionTicket }
+export type { ProjectdCheckpointResult, ProjectdSessionAttachParams, ProjectdSessionStatus, ProjectdSessionTicket }
 
 /** A daemon session event relayed by Electron; a `status` event carries a ProjectdSessionStatus. */
 export interface ProjectdSessionEvent {
@@ -1635,6 +1636,10 @@ export interface ElectronAPI {
         publicSessionId: string,
         ticket: ProjectdSessionTicket,
       ) => Promise<{ success: true; status: ProjectdSessionStatus } | ProjectdCallFailure>
+      /** Saves the session to its Git branch now, or asks the device that saves to. */
+      checkpointNow: (
+        publicSessionId: string,
+      ) => Promise<{ success: true; result: ProjectdCheckpointResult } | ProjectdCallFailure>
       onEvent: (listener: (event: ProjectdSessionEvent) => void) => () => void
     }
   }

@@ -158,6 +158,11 @@ export interface ProjectdSessionAttachParams {
   roomKeyBase64: string
   ticket: ProjectdSessionTicket
   actor?: { principalId?: string; identityKey?: string }
+  /**
+   * The session's branch. With it, the daemon keeps the folder from syncing while
+   * another branch is checked out, and saves the session to the branch (AutoGit).
+   */
+  branchName?: string
 }
 
 export type ProjectdSessionState =
@@ -166,8 +171,39 @@ export type ProjectdSessionState =
   | "live"
   | "reconnecting"
   | "waiting_for_ticket"
+  /** The folder left the session branch, or Git is mid-merge or mid-rebase in it. */
+  | "paused"
   | "stopped"
   | "failed"
+
+export interface ProjectdCheckpointSummary {
+  commitOid: string
+  sessionSeq: number
+  publishedAt: number
+}
+
+export type ProjectdAutoGitState = "ineligible" | "no_leader" | "follower" | "leader" | "blocked"
+
+/** How the session is saved to its Git branch, as this device sees it (Section 14 - 16). */
+export interface ProjectdAutoGitStatus {
+  state: ProjectdAutoGitState
+  isLeader: boolean
+  /** The member whose device pushes checkpoints; null while none does. */
+  leaderPrincipalId: string | null
+  lastCheckpoint: ProjectdCheckpointSummary | null
+  /** Session changes this device has that no checkpoint holds yet. */
+  unsavedChanges: number
+  saving: boolean
+  /** Why saving stopped, why this device cannot push, or why Git here lags behind. */
+  detail: string | null
+  lastError: { code: string; message: string } | null
+}
+
+export interface ProjectdCheckpointResult {
+  /** saved: this device saved, or had nothing new; requested: the leader was asked; no_leader: no device can push. */
+  outcome: "saved" | "requested" | "no_leader"
+  lastCheckpoint: ProjectdCheckpointSummary | null
+}
 
 export interface ProjectdSessionStatus {
   publicSessionId: string
@@ -182,6 +218,10 @@ export interface ProjectdSessionStatus {
   skippedPaths: string[]
   lastError: { code: string; message: string } | null
   updatedAt: number
+  /** Why the folder stopped syncing while the state is `paused`. */
+  pausedReason?: string | null
+  /** Absent from daemons older than AutoGit, and null when the folder is not a Git repository. */
+  autoGit?: ProjectdAutoGitStatus | null
 }
 
 /** Topic carrying one session's `status` and `ticket_needed` events. */

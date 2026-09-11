@@ -36,7 +36,7 @@
     "prepare:devapp-runtime": "node scripts/prepare-devapp-container-runtime.mjs --package",
     "prepare:devapp-runtime:debug": "node scripts/prepare-devapp-container-runtime.mjs --debug",
     "prepare:devapp-runtime:check": "node scripts/prepare-devapp-container-runtime.mjs --check",
-    "prepare:projectd-helper": "swift build -c release --package-path native/projectd-macos",
+    "prepare:projectd-helper": "xcrun swift build -c release --package-path native/projectd-macos",
     "sign:runtime-metadata": "bun run scripts/sign-runtime-metadata.mjs",
     "predist": "bun run prepare:t3-runtime:package && bun run prepare:runtime-metadata && bun run prepare:local-automation && bun run prepare:devapp-runtime && bun run prepare:projectd-helper && bun run build:projectd",
     "dist": "bun run --cwd apps/desktop dist",

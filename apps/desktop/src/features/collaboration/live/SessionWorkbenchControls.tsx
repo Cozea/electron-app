@@ -4,9 +4,9 @@
  * Master Specification: Section 5.3, 6.7, 23.2
  * Phase: P23
  *
- * Shows the session's branch, how this folder syncs with it, who is in it, and the
- * actions this device may take. AutoGit status and the microphone join the bar when
- * those features are wired (P16–P22, P25).
+ * Shows the session's branch, how this folder syncs with it, when the session was
+ * last saved to the branch (P16 - P18), who is in it, and the actions this device
+ * may take. The microphone joins the bar with P25.
  */
 
 import { useState } from "react"
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import type {
   LiveSessionAction,
+  LiveSessionAutoGitView,
   LiveSessionMember,
   LiveSessionSyncView,
   SessionMembership,
@@ -47,10 +48,13 @@ export interface SessionWorkbenchControlsProps {
   targetBranch: string
   lifecycle: string
   sync: LiveSessionSyncView
+  /** How the session is saved to its branch; null outside a Git repository or before the folder syncs. */
+  autoGit?: LiveSessionAutoGitView | null
   members: readonly LiveSessionMember[]
   membership: SessionMembership
   canManage: boolean
   busyAction?: LiveSessionAction | null
+  onSaveNow?: () => void
   onJoin?: () => void
   onLeave?: () => void
   onPause?: () => void
@@ -63,10 +67,12 @@ export function SessionWorkbenchControls({
   targetBranch,
   lifecycle,
   sync,
+  autoGit = null,
   members,
   membership,
   canManage,
   busyAction = null,
+  onSaveNow,
   onJoin,
   onLeave,
   onPause,
@@ -98,6 +104,14 @@ export function SessionWorkbenchControls({
           <span className="shrink-0 text-muted-foreground" role="status">
             {sync.label}
           </span>
+          {autoGit ? (
+            <span
+              className={cn("min-w-0 truncate", autoGit.tone === "attention" ? "text-destructive" : "text-muted-foreground")}
+              title={autoGit.title ?? undefined}
+            >
+              · {autoGit.label}
+            </span>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
@@ -150,6 +164,12 @@ export function SessionWorkbenchControls({
                   {membership === "left" ? "Rejoin" : "Join session"}
                 </Button>
               ) : null}
+              {membership === "active" && autoGit?.canSave && onSaveNow ? (
+                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onSaveNow}>
+                  {spinnerFor("save")}
+                  Save now
+                </Button>
+              ) : null}
               {canManage && paused && onResume ? (
                 <Button type="button" size="sm" variant="outline" className={BAR_BUTTON} disabled={busy} onClick={onResume}>
                   {spinnerFor("resume")}
@@ -189,6 +209,11 @@ export function SessionWorkbenchControls({
       {sync.detail ? (
         <p className={cn("pb-0.5 pl-4", sync.tone === "attention" ? "text-destructive" : "text-muted-foreground")}>
           {sync.detail}
+        </p>
+      ) : null}
+      {autoGit?.detail ? (
+        <p className={cn("pb-0.5 pl-4", autoGit.tone === "attention" ? "text-destructive" : "text-muted-foreground")}>
+          {autoGit.detail}
         </p>
       ) : null}
     </div>

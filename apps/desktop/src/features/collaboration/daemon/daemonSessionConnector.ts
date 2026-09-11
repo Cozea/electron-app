@@ -105,6 +105,8 @@ export interface DaemonSessionTarget {
   workspaceId: string
   rootPath: string
   principalId: string | null
+  /** The session's branch: the daemon syncs the folder only while it is checked out, and saves to it. */
+  branchName?: string | null
 }
 
 export interface DaemonSessionConnection {
@@ -149,6 +151,7 @@ export async function connectDaemonSession(
       roomKeyBase64,
       ticket,
       actor: target.principalId ? { principalId: target.principalId } : undefined,
+      ...(target.branchName ? { branchName: target.branchName } : {}),
     })
     if (!result.success) {
       throw new Error(result.error)

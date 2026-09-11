@@ -11,7 +11,7 @@ import type { DaemonSessionPhase } from "../daemon/useDaemonCollaborationSession
 
 export type SessionMembership = "active" | "left" | "revoked" | "none"
 
-export type LiveSessionAction = "join" | "leave" | "pause" | "resume" | "end" | "switch"
+export type LiveSessionAction = "join" | "leave" | "pause" | "resume" | "end" | "switch" | "save"
 
 export interface LiveSessionMember {
   principalId: string
@@ -65,6 +65,12 @@ function describeDaemonStatus(status: ProjectdSessionStatus | null): LiveSession
       return { tone: "working", label: "Reconnecting…", detail: status.lastError?.message ?? null }
     case "waiting_for_ticket":
       return { tone: "working", label: "Renewing access…", detail: null }
+    case "paused":
+      return {
+        tone: "attention",
+        label: "Paused on this Mac",
+        detail: status.pausedReason ?? "This folder is not on the session branch, so nothing syncs here.",
+      }
     case "failed":
       return {
         tone: "attention",
@@ -134,6 +140,56 @@ export function describeLiveSessionSync(input: {
       }
     case "attached":
       return describeDaemonStatus(input.status)
+  }
+}
+
+export interface LiveSessionAutoGitView {
+  tone: LiveSessionTone
+  label: string
+  /** Why saving stopped or lags behind; null when there is nothing to explain. */
+  detail: string | null
+  /** Which Mac saves, and the last commit, for a tooltip. */
+  title: string | null
+  /** Whether Save now can reach a Mac that pushes. */
+  canSave: boolean
+}
+
+function formatSaveTime(publishedAt: number): string {
+  return new Date(publishedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+}
+
+/** How the session is saved to its Git branch, for the session bar (Section 14 - 16). */
+export function describeAutoGit(
+  status: ProjectdSessionStatus | null,
+  leaderName: string | null = null,
+): LiveSessionAutoGitView | null {
+  const autoGit = status?.autoGit
+  if (!status || !autoGit || status.state === "failed" || status.state === "stopped") return null
+  const checkpoint = autoGit.lastCheckpoint
+  const saver = autoGit.isLeader
+    ? "This Mac saves the session to Git."
+    : autoGit.leaderPrincipalId
+      ? `${leaderName ?? "Another member"}'s Mac saves the session to Git.`
+      : null
+  const title = [saver, checkpoint ? `Last commit ${checkpoint.commitOid.slice(0, 7)}.` : null].filter(Boolean).join(" ")
+  const view = { title: title || null, canSave: status.role !== "viewer" && autoGit.leaderPrincipalId !== null }
+
+  switch (autoGit.state) {
+    case "blocked":
+      return { ...view, tone: "attention", label: "Git saves stopped", detail: autoGit.detail }
+    case "ineligible":
+      return { ...view, tone: "attention", label: "Not saving to Git", detail: autoGit.detail, canSave: false }
+    case "no_leader":
+      return { ...view, tone: "working", label: "Waiting to save to Git", detail: null, canSave: false }
+    case "leader":
+    case "follower": {
+      if (autoGit.saving) return { ...view, tone: "working", label: "Saving to Git…", detail: autoGit.detail }
+      const label = checkpoint ? `Saved to Git at ${formatSaveTime(checkpoint.publishedAt)}` : "Not saved to Git yet"
+      const failure = autoGit.lastError
+        ? `The last save didn't finish (${autoGit.lastError.message.replace(/\.$/, "")}). It retries on its own.`
+        : null
+      return { ...view, tone: failure ? "attention" : "live", label, detail: failure ?? autoGit.detail }
+    }
   }
 }
 

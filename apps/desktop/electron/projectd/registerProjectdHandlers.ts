@@ -113,6 +113,14 @@ export function registerProjectdHandlers(): void {
     },
   )
 
+  ipcMain.handle("projectd:sessions:checkpointNow", async (_event, publicSessionId: string) => {
+    try {
+      return { success: true, result: await getSharedProjectdClient().checkpointSession(publicSessionId) }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
   ipcMain.handle("projectd:health", async () => {
     const client = getSharedProjectdClient()
     try {
