@@ -140,6 +140,27 @@ export class ProjectdDatabase {
         last_error TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_outbound_session_state ON outbound_batches(session_id, state);
+
+      CREATE TABLE IF NOT EXISTS binary_cache (
+        content_hash TEXT PRIMARY KEY,
+        local_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        verified_at INTEGER NOT NULL,
+        ref_count INTEGER NOT NULL DEFAULT 1
+      );
+
+      CREATE TABLE IF NOT EXISTS collab_conflicts (
+        conflict_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        file_id TEXT,
+        path TEXT,
+        state TEXT NOT NULL DEFAULT 'open',
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        resolved_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_conflicts_session ON collab_conflicts(session_id, state);
     `)
   }
 

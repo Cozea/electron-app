@@ -79,4 +79,34 @@ export class BinaryStore {
 
     return null
   }
+
+  /**
+   * Resolves a concurrent binary revision conflict by creating a new revision
+   * adopting the chosen content while preserving history.
+   */
+  resolveConflict(
+    fileId: string,
+    chosenRevisionId: string,
+    actor: ChangeActor,
+  ): BinaryRevision {
+    const list = this.getRevisions(fileId)
+    const chosen = list.find((r) => r.revisionId === chosenRevisionId)
+    if (!chosen) {
+      throw new Error(`Revision '${chosenRevisionId}' not found for file '${fileId}'`)
+    }
+
+    const resolved: BinaryRevision = {
+      revisionId: `rev_res_${crypto.randomUUID().slice(0, 8)}`,
+      fileId,
+      baseRevisionId: chosen.revisionId,
+      contentHash: chosen.contentHash,
+      encryptedManifestRef: chosen.encryptedManifestRef,
+      size: chosen.size,
+      actor,
+      createdAt: Date.now(),
+    }
+
+    this.addRevision(resolved)
+    return resolved
+  }
 }

@@ -910,6 +910,76 @@ Exit-gate evidence:
 - Global monotonic sessionSeq allocated per accepted batch.
 - E2EE AES-256-GCM encryption verified.
 
+---
+
+## P11 — Binary live collaboration
+
+Status: complete
+
+Baseline:
+- base commit: `f81cffde` (P10 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Binary sync: [apps/desktop/src/lib/sync/BinaryFileSync.ts](apps/desktop/src/lib/sync/BinaryFileSync.ts) (ad-hoc Convex storage upload)
+
+Production owners after:
+- Same live production runtime owners (P11 introduces content-addressed binary cache, 4 MiB chunk manifest creation, and append-only revision ledger with conflict resolution in projectd)
+- Binary cache: [apps/projectd/src/collaboration/BinaryContentCache.ts](apps/projectd/src/collaboration/BinaryContentCache.ts) (content-addressed storage, SQLite tracking, 4 MiB chunk manifests)
+- Binary ledger: [apps/projectd/src/collaboration/BinaryStore.ts](apps/projectd/src/collaboration/BinaryStore.ts) (append-only revisions and sibling conflict resolution)
+
+Files created:
+- [apps/projectd/src/collaboration/BinaryContentCache.ts](apps/projectd/src/collaboration/BinaryContentCache.ts) (content-addressed cache and 4 MiB chunking)
+- [tests/projectd/binaryCollaboration.test.ts](tests/projectd/binaryCollaboration.test.ts) (4 tests for chunk manifests, cache integrity, sibling conflict resolution, and TreeDoc integration)
+
+Files modified:
+- [apps/projectd/src/collaboration/BinaryStore.ts](apps/projectd/src/collaboration/BinaryStore.ts) (added resolveConflict)
+- [apps/projectd/src/storage/Database.ts](apps/projectd/src/storage/Database.ts) (added `binary_cache` and `collab_conflicts` tables)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (63.19 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (22 test files, 130 tests)
+  evidence: all 4 tests in `tests/projectd/binaryCollaboration.test.ts` passed
+
+Manual qualification:
+- scenario: 4 MiB fixed chunk manifest creation (Section 11.4)
+  result: Verified 9 MiB binary splits into 3 chunks (4MB + 4MB + 1MB) with SHA-256 chunk hashes and encrypted blob URIs.
+- scenario: Local content-addressed cache with SHA-256 verification (Section 9.8)
+  result: Verified binary asset storage, retrieval, and cryptographic integrity verification.
+- scenario: Concurrent sibling revision conflict detection & resolution (Section 11.3)
+  result: Verified detection of diverging binary revisions branching off the same base, preserving historical versions, and resolving into a clean linear head.
+- scenario: TreeDoc integration (Section 11.1)
+  result: Verified binary entries point to binaryRevisionId and bypass Yjs text document creation.
+
+Known follow-ups:
+- Phase P12 will implement session control plane and invitation/access model in Convex.
+
+Exit-gate evidence:
+- Images/fonts/large assets replicate without defining text hot path.
+- 4 MiB chunking operational for large files.
+- Binary revisions append-only; concurrent updates create explicit conflict state.
+
+
 
 
 
