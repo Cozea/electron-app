@@ -1885,6 +1885,74 @@ Exit-gate evidence:
 - Media failure/reconnect cannot block CRDT/AutoGit (Invariant C42).
 - Microphone default-muted and automatically muted on workbench idle.
 
+---
+
+## P26 — Remove legacy collaboration and duplicate Git owners
+
+Status: complete
+
+Baseline:
+- base commit: `24fcc5b4` (P25 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Multiple Git execution pathways and legacy branch-equality gates
+
+Production owners after:
+- Exactly one live collaboration engine (daemon-owned CRDT tree, multiplexed per-file docs, and snapshot-anchored ingress in projectd) and one canonical product Git owner (GitService in projectd)
+- Architecture CI guardrails enforce:
+  - Zero React imports in projectd
+  - Zero Electron renderer code in projectd
+  - Zero editor tile requirements for collaboration
+  - Elimination of activeBranch === collabBranch membership gate
+
+Files created:
+- [tests/architecture/collaborationArchitectureCutover.test.ts](tests/architecture/collaborationArchitectureCutover.test.ts) (CI guardrail test suite asserting zero React imports in projectd, zero Electron imports in projectd, no editor tile requirements, and elimination of branch-equality gates)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bunx tsc --project convex/tsconfig.json --noEmit`
+  result: passed (0 errors)
+  evidence: convex functions clean
+- command: `bunx tsc --project cloudflare/worker/tsconfig.json --noEmit`
+  result: passed (0 errors)
+  evidence: cloudflare worker clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (63.19 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (37 test files, 185 tests)
+  evidence: all 4 tests in `tests/architecture/collaborationArchitectureCutover.test.ts` passed
+
+Manual qualification:
+- scenario: Architecture guardrail verification (Section 26)
+  result: Verified projectd has zero React imports, zero Electron renderer imports, collaboration has no editor tile dependency, and activeBranch === collabBranch is eliminated from membership decisions.
+- scenario: Single live collaboration engine & single product Git owner
+  result: Verified all collaboration operations (tree CRDT, text docs, binary manifests, materializer, and AutoGit checkpoints) route through projectd and GitService.
+
+Exit-gate evidence:
+- Exactly one live collaboration engine and one canonical product Git owner remain.
+- CI guardrail assertions passing across all 185 tests.
+
+
 
 
 
