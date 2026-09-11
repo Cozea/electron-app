@@ -1316,6 +1316,73 @@ Exit-gate evidence:
 - Fencing tokens prevent stale partitioned leaders from publishing.
 - Successor can safely continue after leader failure.
 
+---
+
+## P17 — AutoGit barriers, deterministic checkpoint commit, periodic push
+
+Status: complete
+
+Baseline:
+- base commit: `4a2883f7` (P16 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Git checkpoints: ad-hoc working-tree git commits via GitCore/GitSyncService
+
+Production owners after:
+- Same live production runtime owners (P17 introduces immutable barrier capture, isolated staging index, deterministic commit construction, and remote verification in projectd)
+- Barrier capture: [apps/projectd/src/autogit/BarrierCapture.ts](apps/projectd/src/autogit/BarrierCapture.ts) (captures state at seq N while edits continue, computes logicalTreeHash)
+- Checkpoint builder: [apps/projectd/src/autogit/CheckpointBuilder.ts](apps/projectd/src/autogit/CheckpointBuilder.ts) (reconstructs git tree in isolated staging, creates deterministic commit with trailers, verifies remote OID)
+
+Files created:
+- [apps/projectd/src/autogit/BarrierCapture.ts](apps/projectd/src/autogit/BarrierCapture.ts) (barrier snapshot capture and logical tree hash)
+- [apps/projectd/src/autogit/CheckpointBuilder.ts](apps/projectd/src/autogit/CheckpointBuilder.ts) (isolated git tree construction, deterministic trailers, failover reproducibility)
+- [tests/projectd/autoGitCheckpoint.test.ts](tests/projectd/autoGitCheckpoint.test.ts) (3 tests for barrier immutability during ongoing edits, deterministic commit failover, and symlinks/modes in isolated staging)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (28 test files, 153 tests)
+  evidence: all 3 tests in `tests/projectd/autoGitCheckpoint.test.ts` passed
+
+Manual qualification:
+- scenario: Immutable barrier capture during active edits (Section 15.3 - 15.4)
+  result: Verified snapshot captured at barrier seq 10 remains immutable while live CRDT edits continue at seq 11+.
+- scenario: Deterministic commit construction & failover reproducibility (Section 15.7)
+  result: Verified Leader 1 and successor Leader 2 produce exact byte-for-byte matching commit OID and tree OID from the same barrier snapshot and generation.
+- scenario: Isolated staging index (Section 15.6)
+  result: Verified git tree construction, symlinks, and file modes (+x) are staged in isolated temp index without mutating or locking the participant's working directory.
+
+Known follow-ups:
+- Phase P18 will implement local Git baseline advancement after AutoGit checkpoint.
+
+Exit-gate evidence:
+- GitHub session branch periodically advances to exact immutable CRDT barriers.
+- Commits are deterministic and reproducible upon failover.
+- Participant live workspace is never committed directly.
+
+
 
 
 
