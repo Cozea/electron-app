@@ -129,7 +129,9 @@ Verified on 2026-09-12, after the step 4 work:
 - oxlint.
 - The macOS helper builds with Xcode's Swift 6.4.
 
-Not deployed: the worker's room changes. Until `cozea-collab` is deployed, the production room answers the new messages with `BAD_REQUEST`, and no Mac saves a session to Git.
+Deployed on 2026-09-12 from `8c556ace`:
+- Worker `cozea-collab` version `26d7f93c` (tag `collab-autogit-8c556ace`), replacing `830e4891`. It was deployed with `--containers-rollout=none`. There was no migration: the room class did not change, and alarms need none.
+- Checked afterwards: `/health` and `/collab/capabilities` return 200, and `POST /collab/sessions/connect` returns 403 without device auth.
 
 Still open:
 - P20–P22 (target tracking, rebase, merge and PR controls) are still library only. Until P20 lands, a commit pushed to the session branch from outside the session stops AutoGit until someone reconciles the branch by hand.
@@ -1385,7 +1387,7 @@ Exit-gate evidence:
 
 ## P16 — AutoGit leader lease
 
-Status: partial — since step 4 (2026-09-12) the session room holds the lease, and every session host with a branch and a remote takes part. The room changes are not deployed yet.
+Status: partial — since step 4 (2026-09-12) the session room holds the lease, and every session host with a branch and a remote takes part. Deployed with worker version `26d7f93c`, but not yet exercised on two Macs.
 
 Baseline:
 - base commit: `2feef787` (P15 complete commit)
@@ -1455,7 +1457,7 @@ Exit-gate evidence:
 
 ## P17 — AutoGit barriers, deterministic checkpoint commit, periodic push
 
-Status: partial — since step 4 the AutoGit agent in each session host builds, pushes and records checkpoints. The room changes are not deployed yet. Fixed 2026-09-11: checkpoints drop paths deleted since the parent commit and refuse binaries that have no blob in it.
+Status: partial — since step 4 the AutoGit agent in each session host builds, pushes and records checkpoints. Deployed with worker version `26d7f93c`, but not yet exercised on two Macs. Fixed 2026-09-11: checkpoints drop paths deleted since the parent commit and refuse binaries that have no blob in it.
 
 Baseline:
 - base commit: `4a2883f7` (P16 complete commit)
@@ -1521,7 +1523,7 @@ Exit-gate evidence:
 
 ## P18 — Local Git baseline advancement after AutoGit checkpoint
 
-Status: partial — since step 4 every member's branch and index follow each checkpoint. Like P16, it waits on the worker deploy.
+Status: partial — since step 4 every member's branch and index follow each checkpoint. Not yet exercised on two Macs.
 
 Baseline:
 - base commit: `a5cb5408` (P17 complete commit)
