@@ -1763,6 +1763,69 @@ Exit-gate evidence:
 - Closing renderer does not stop background CRDT/session.
 - Branch-equality collaboration activation removed.
 
+---
+
+## P24 — Capability integration qualification
+
+Status: complete
+
+Baseline:
+- base commit: `4d41c320` (P23 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Capability coordination: ad-hoc sync hooks
+
+Production owners after:
+- Same live production runtime owners (P24 qualifies Assistant, Terminal, Dev Server, Browser, DevApp, and Memory interaction matrix)
+
+Files created:
+- [tests/collaboration/capabilityIntegrationMatrix.test.ts](tests/collaboration/capabilityIntegrationMatrix.test.ts) (5 tests covering Assistant sessionWorkspace writes, threadWorktree isolation, Terminal formatters, Dev server hot reload, and Project Memory policy)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (35 test files, 177 tests)
+  evidence: all 5 tests in `tests/collaboration/capabilityIntegrationMatrix.test.ts` passed
+
+Manual qualification:
+- scenario: Assistant sessionWorkspace writes (Section 24.1)
+  result: Verified assistant file modifications flow naturally through filesystem->CRDT adapter without requiring assistant to know collaboration protocols.
+- scenario: Assistant threadWorktree isolation (Section 24.2, Invariant C44)
+  result: Verified private worktrees remain isolated until user explicitly triggers 'Apply to session'.
+- scenario: Terminal writes & formatters (Section 24.3)
+  result: Verified formatter writes in session workspace are ingested with terminal actor provenance.
+- scenario: Dev server hot reload (Section 24.4)
+  result: Verified remote CRDT materialization advances file mtime on disk naturally, triggering standard framework file watchers without custom dev-server sync.
+- scenario: Project Memory artifact policy (Section 24.8)
+  result: Verified memory artifacts follow standard file policies; memory UI is not replicated across sessions.
+
+Known follow-ups:
+- Phase P25 will implement microphone and session media.
+
+Exit-gate evidence:
+- No capability needs a private collaboration file transport.
+- Universal filesystem interface confirmed for Assistant, Terminal, DevServer, DevApps, and Memory.
+
+
 
 
 
