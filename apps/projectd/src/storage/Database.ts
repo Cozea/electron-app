@@ -104,6 +104,29 @@ export class ProjectdDatabase {
         FOREIGN KEY (workspace_id) REFERENCES workspaces(workspace_id) ON DELETE RESTRICT
       );
       CREATE INDEX IF NOT EXISTS idx_session_bindings_project ON session_bindings(project_id);
+
+      CREATE TABLE IF NOT EXISTS file_materializations (
+        session_id TEXT NOT NULL,
+        file_id TEXT NOT NULL,
+        relative_path TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        mode INTEGER NOT NULL DEFAULT 420,
+        disk_hash TEXT NOT NULL,
+        disk_size INTEGER NOT NULL DEFAULT 0,
+        disk_mtime_ms INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL DEFAULT 'materialized',
+        PRIMARY KEY(session_id, file_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_file_mat_path ON file_materializations(session_id, relative_path);
+
+      CREATE TABLE IF NOT EXISTS path_index (
+        session_id TEXT NOT NULL,
+        normalized_path TEXT NOT NULL,
+        file_id TEXT NOT NULL,
+        display_path TEXT NOT NULL,
+        conflict_state TEXT NOT NULL DEFAULT 'clean',
+        PRIMARY KEY(session_id, normalized_path, file_id)
+      );
     `)
   }
 

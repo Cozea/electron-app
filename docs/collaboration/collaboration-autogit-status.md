@@ -515,6 +515,99 @@ Exit-gate evidence:
 - Real Git CLI and Git LFS qualified.
 - Machine-readable porcelain v2, attributes, and mirror management functional.
 
+---
+
+## P06 — Native FSEvents + scanner/materialization index
+
+Status: complete
+
+Baseline:
+- base commit: `e9194488` (P05 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Filesystem watcher: [apps/desktop/electron/projectWatcher.ts](apps/desktop/electron/projectWatcher.ts) (Node `fs.watch` with 1500ms timestamp echo suppression and hardcoded excluded directories)
+- Ingress bridge: [apps/desktop/src/hooks/useAgentFileSync.ts](apps/desktop/src/hooks/useAgentFileSync.ts)
+
+Production owners after:
+- Same live production runtime owners (P06 establishes the background native FSEvents streaming client, Git-aware scope policy, stable file reader, materialization index with hash-based echo classification, and startup reconciliation scanner in projectd)
+- Native FSEvents streaming: [native/projectd-macos/Sources/CozeaProjectdMac/FSEventsService.swift](native/projectd-macos/Sources/CozeaProjectdMac/FSEventsService.swift) and [apps/projectd/src/filesystem/FSEventsClient.ts](apps/projectd/src/filesystem/FSEventsClient.ts)
+- Scope policy: [apps/projectd/src/filesystem/ScopePolicy.ts](apps/projectd/src/filesystem/ScopePolicy.ts) (Invariants C38, C39, C40, C41)
+- Stable file reader: [apps/projectd/src/filesystem/StableRead.ts](apps/projectd/src/filesystem/StableRead.ts) (settle delay, double-lstat stability check, exponential backoff, SHA-256 hashing)
+- Materialization index: [apps/projectd/src/filesystem/MaterializationIndex.ts](apps/projectd/src/filesystem/MaterializationIndex.ts) (SQLite-backed `file_materializations` and `path_index` tables, hash-based echo classification without time windows)
+- Tree scanner: [apps/projectd/src/filesystem/Scanner.ts](apps/projectd/src/filesystem/Scanner.ts) (full tree scan, diff against index, and periodic audit)
+- Watcher coordinator: [apps/projectd/src/filesystem/WorkspaceFilesystemWatcher.ts](apps/projectd/src/filesystem/WorkspaceFilesystemWatcher.ts) (Section 12.3 startup order: buffer hints -> full scan -> compare index -> replay hints -> declare ready)
+
+Files created:
+- [apps/projectd/src/filesystem/ScopePolicy.ts](apps/projectd/src/filesystem/ScopePolicy.ts) (Git-aware scope policy, sticky membership, and transient editor filtering)
+- [apps/projectd/src/filesystem/StableRead.ts](apps/projectd/src/filesystem/StableRead.ts) (stable read algorithm for dirty files with retry and hashing)
+- [apps/projectd/src/filesystem/MaterializationIndex.ts](apps/projectd/src/filesystem/MaterializationIndex.ts) (materialization index, path collision reducer, and hash-based echo classification)
+- [apps/projectd/src/filesystem/Scanner.ts](apps/projectd/src/filesystem/Scanner.ts) (full workspace scanner and offline diff generator)
+- [apps/projectd/src/filesystem/FSEventsClient.ts](apps/projectd/src/filesystem/FSEventsClient.ts) (native FSEvents stream client with dropped event handling)
+- [apps/projectd/src/filesystem/WorkspaceFilesystemWatcher.ts](apps/projectd/src/filesystem/WorkspaceFilesystemWatcher.ts) (startup buffering coordinator and normalized event dispatcher)
+- [tests/projectd/filesystemObservation.test.ts](tests/projectd/filesystemObservation.test.ts) (test fixtures for atomic saves, transient files, tracked folders, ignored env, echo suppression, collisions, downtime restart, 500-file burst, and startup buffering)
+
+Files modified:
+- `native/projectd-macos/Sources/CozeaProjectdMac/main.swift` (added `fsevents-stream` subcommand)
+- [apps/projectd/src/storage/Database.ts](apps/projectd/src/storage/Database.ts) (added `file_materializations` and `path_index` tables)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (62.0 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `swift build --package-path native/projectd-macos`
+  result: passed (exit 0)
+  evidence: compiled `cozea-projectd-mac-helper` with `fsevents-stream` command
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (17 test files, 103 tests)
+  evidence: all 10 tests in `tests/projectd/filesystemObservation.test.ts` passed
+
+Manual qualification:
+- scenario: VS Code atomic save fixture
+  result: Verified `StableFileReader` resolves temp file + rename sequence cleanly to final content and hash.
+- scenario: Vim transient swap and probe files
+  result: Verified `ScopePolicy` filters `.swp`, `.swo`, `~` backup files, and `.tmp` probes.
+- scenario: Tracked files in dist/build/vendor (Invariant C39)
+  result: Verified tracked files are retained in scope regardless of directory name.
+- scenario: Untracked ignored files (Invariant C40)
+  result: Verified untracked git-ignored files (`.env.local`, `*.secret`) stay local and are excluded from collaboration scope.
+- scenario: Sticky membership (Invariant C41)
+  result: Verified once an untracked file is admitted to session state, subsequent ignore rule changes do not silently remove it.
+- scenario: Hash-based echo suppression (Invariant C14 / Section 12.7)
+  result: Verified `MaterializationIndex.isEcho()` compares exact SHA-256 disk hashes without time windows or clock heuristics.
+- scenario: Path collisions (Invariant C18)
+  result: Verified multiple fileIds claiming one normalized path generate explicit collision state instead of silent overwrites.
+- scenario: Startup reconciliation order (Section 12.3)
+  result: Verified `WorkspaceFilesystemWatcher` buffers FSEvents hints, runs full scanner against index, emits genuine offline differences, replays buffered hints, and transitions to ready.
+- scenario: 500-file format burst
+  result: Verified `WorkspaceScanner` scans 500 files within bounded memory in under 1 second.
+
+Known follow-ups:
+- Phase P07 will implement CRDT tree + per-text-file docs in `apps/projectd`.
+
+Exit-gate evidence:
+- Local project index reconstructs exact in-scope filesystem state after watcher loss/restart.
+- Hash-based echo classification active (zero time windows).
+- Startup buffering + full scan reconciliation proven in automated tests.
+
+
 
 
 

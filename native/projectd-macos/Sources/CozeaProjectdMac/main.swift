@@ -142,6 +142,46 @@ func runCLI() {
         RunLoop.current.run(until: Date().addingTimeInterval(2.0))
         FSEventsService.shared.stopStream(streamId: streamId)
 
+    case "fsevents-stream":
+        let path = args.count >= 2 ? Array(args)[1] : "/tmp"
+        var latency = 0.05
+        let subArgs = Array(args.dropFirst())
+        for i in 0..<subArgs.count {
+            if subArgs[i] == "--latency" && i + 1 < subArgs.count, let l = Double(subArgs[i + 1]) {
+                latency = l
+            }
+        }
+
+        var currentStreamId: UInt64 = 0
+        let streamId = FSEventsService.shared.startStream(path: path, latency: latency) { events in
+            struct EventBatchMsg: Codable {
+                let type: String
+                let streamId: UInt64
+                let items: [FSEventItem]
+            }
+            let msg = EventBatchMsg(type: "events", streamId: currentStreamId, items: events)
+            if let data = try? JSONEncoder().encode(msg), let str = String(data: data, encoding: .utf8) {
+                print(str)
+                fflush(stdout)
+            }
+        }
+        currentStreamId = streamId
+
+        print("{\"type\":\"ready\",\"streamId\":\(streamId),\"path\":\"\(path)\"}")
+        fflush(stdout)
+
+        DispatchQueue.global().async {
+            while let line = readLine() {
+                if line.trimmingCharacters(in: .whitespacesAndNewlines) == "stop" {
+                    break
+                }
+            }
+            FSEventsService.shared.stopStream(streamId: streamId)
+            exit(0)
+        }
+
+        RunLoop.current.run()
+
     case "help":
         fallthrough
     default:
