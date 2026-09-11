@@ -1382,6 +1382,68 @@ Exit-gate evidence:
 - Commits are deterministic and reproducible upon failover.
 - Participant live workspace is never committed directly.
 
+---
+
+## P18 — Local Git baseline advancement after AutoGit checkpoint
+
+Status: complete
+
+Baseline:
+- base commit: `a5cb5408` (P17 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Git checkout / sync: `git checkout` / `git pull` blindly in active working tree
+
+Production owners after:
+- Same live production runtime owners (P18 introduces safe baseline adoption via GitBaselineAdopter in projectd)
+- Baseline adopter: [apps/projectd/src/autogit/GitBaselineAdopter.ts](apps/projectd/src/autogit/GitBaselineAdopter.ts) (advances HEAD and mixed index without pulling or overwriting CRDT working tree)
+
+Files created:
+- [apps/projectd/src/autogit/GitBaselineAdopter.ts](apps/projectd/src/autogit/GitBaselineAdopter.ts) (Section 16.1 safe baseline advancement and failure policy)
+- [tests/projectd/gitBaselineAdoption.test.ts](tests/projectd/gitBaselineAdoption.test.ts) (2 tests including the required C40/C41 example test)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (29 test files, 155 tests)
+  evidence: all 2 tests in `tests/projectd/gitBaselineAdoption.test.ts` passed
+
+Manual qualification:
+- scenario: Required example test (Section 16.1)
+  result: Verified participant at HEAD C40 with newer live CRDT state (seq 18570) advances baseline to published C41 without pulling bytes already delivered by CRDT, leaving git dirty state representing only changes after C41.
+- scenario: Safe failure policy (Section 16.2)
+  result: Verified if baseline adoption cannot be proven safe, working-tree bytes are never reset or damaged.
+
+Known follow-ups:
+- Phase P19 will implement external Git interoperability and controlled GitHub sync.
+
+Exit-gate evidence:
+- Participant Git baseline advances without destroying CRDT-newer working tree.
+- Working tree is never reset with `git reset --hard` to align with HEAD.
+
+
 
 
 
