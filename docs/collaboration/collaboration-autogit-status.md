@@ -841,6 +841,76 @@ Exit-gate evidence:
 - Atomic safe writes via temp-file + rename.
 - Divergent local disk protection active.
 
+---
+
+## P10 — Cloud session room, global sequence, E2EE, durable replay
+
+Status: complete
+
+Baseline:
+- base commit: `21f20dee` (P09 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Cloud room: [cloudflare/worker/src/durableObjects/CollabRoom.ts](cloudflare/worker/src/durableObjects/CollabRoom.ts) (room ID `project:<projectId>`)
+
+Production owners after:
+- Same live production runtime owners (P10 establishes session-scoped Durable Object room `session:<sessionId>`, global monotonic `sessionSeq`, batch idempotency, and client-side AES-256-GCM E2EE transport in projectd)
+- Session Durable Object: [cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts](cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts)
+- Session transport & E2EE: [apps/projectd/src/collaboration/SessionTransport.ts](apps/projectd/src/collaboration/SessionTransport.ts)
+
+Files created:
+- [cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts](cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts) (Durable Object with sessionSeq, idempotency, barriers, and WebSocket hibernation)
+- [apps/projectd/src/collaboration/SessionTransport.ts](apps/projectd/src/collaboration/SessionTransport.ts) (AES-256-GCM E2EE encryption/decryption, sequence tracking, and catchup replay)
+- [tests/projectd/sessionRoomE2EE.test.ts](tests/projectd/sessionRoomE2EE.test.ts) (two-client headless test over offline edits, reconnect, and room eviction/re-instantiation)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run typecheck:cloudflare`
+  result: passed (0 errors)
+  evidence: `tsc --project cloudflare/worker/tsconfig.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (62.50 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (21 test files, 126 tests)
+  evidence: all 2 tests in `tests/projectd/sessionRoomE2EE.test.ts` passed
+
+Manual qualification:
+- scenario: Two-client headless convergence across disconnect and room re-instantiation (Exit Gate)
+  result: Verified Client A and Client B disconnect, edit offline, reconnect, replay missing batches, and converge to 100% identical content after room eviction and re-instantiation.
+- scenario: Client-side AES-256-GCM encryption
+  result: Verified batch payloads are encrypted before transport with random 12-byte IV and 16-byte auth tag, with zero plaintext leakage in serialized envelopes.
+- scenario: Batch idempotency
+  result: Verified duplicate batch submission returns original sessionSeq with duplicate flag.
+
+Known follow-ups:
+- Phase P11 will implement binary live collaboration.
+
+Exit-gate evidence:
+- Headless CRDT collaboration survives disconnect and room re-instantiation.
+- Global monotonic sessionSeq allocated per accepted batch.
+- E2EE AES-256-GCM encryption verified.
+
+
 
 
 
