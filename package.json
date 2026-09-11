@@ -38,7 +38,7 @@
     "prepare:devapp-runtime:check": "node scripts/prepare-devapp-container-runtime.mjs --check",
     "prepare:projectd-helper": "swift build -c release --package-path native/projectd-macos",
     "sign:runtime-metadata": "bun run scripts/sign-runtime-metadata.mjs",
-    "predist": "bun run prepare:t3-runtime:package && bun run prepare:runtime-metadata && bun run prepare:local-automation && bun run prepare:devapp-runtime",
+    "predist": "bun run prepare:t3-runtime:package && bun run prepare:runtime-metadata && bun run prepare:local-automation && bun run prepare:devapp-runtime && bun run prepare:projectd-helper && bun run build:projectd",
     "dist": "bun run --cwd apps/desktop dist",
     "dist:local": "COZEA_LOCAL_UNSIGNED_DIST=1 COZEA_SKIP_NOTARIZE=1 CSC_IDENTITY_AUTO_DISCOVERY=false bun run dist -- --publish never",
     "release": "bun run dist -- --publish always",
