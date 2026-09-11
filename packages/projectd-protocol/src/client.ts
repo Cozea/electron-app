@@ -269,6 +269,48 @@ export class ProjectdClient {
     }
   }
 
+  async listWorkbenches<T = any>(projectId: string): Promise<T[]> {
+    return this.request<T[]>("workbenches.list", { projectId })
+  }
+
+  async getWorkbench<T = any>(workbenchId: string): Promise<T | null> {
+    return this.request<T | null>("workbenches.get", { workbenchId })
+  }
+
+  async saveWorkbench<T = any>(workbench: T): Promise<T> {
+    return this.request<T>("workbenches.save", workbench)
+  }
+
+  async activateWorkbench<T = any>(
+    projectId: string,
+    workbenchId: string,
+  ): Promise<{ activated: T; idled: T | null }> {
+    return this.request<{ activated: T; idled: T | null }>("workbenches.activate", {
+      projectId,
+      workbenchId,
+    })
+  }
+
+  async idleWorkbench<T = any>(projectId: string, workbenchId: string): Promise<T> {
+    return this.request<T>("workbenches.idle", { projectId, workbenchId })
+  }
+
+  async deleteWorkbench(workbenchId: string): Promise<{ deleted: boolean }> {
+    return this.request<{ deleted: boolean }>("workbenches.delete", { workbenchId })
+  }
+
+  async listWorkspaces<T = any>(projectId: string): Promise<T[]> {
+    return this.request<T[]>("workspaces.list", { projectId })
+  }
+
+  async getWorkspace<T = any>(workspaceId: string): Promise<T | null> {
+    return this.request<T | null>("workspaces.get", { workspaceId })
+  }
+
+  async registerWorkspace<T = any>(params: any): Promise<T> {
+    return this.request<T>("workspaces.register", params)
+  }
+
   disconnect(): void {
     if (this.socket) {
       this.socket.destroy()

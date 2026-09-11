@@ -2,6 +2,12 @@ import fs from "node:fs"
 import net from "node:net"
 
 import {
+  asProjectId,
+  asWorkbenchId,
+  asWorkspaceId,
+  type LocalProjectWorkbench,
+} from "@shared/collaboration"
+import {
   encodeMessage,
   getProjectdSocketPath,
   LineMessageDecoder,
@@ -17,6 +23,11 @@ import {
   type ProjectdServerMessage,
 } from "@cozea/projectd-protocol"
 
+import { ProjectdDatabase } from "../storage/Database"
+import { SqliteWorkbenchStore } from "../workbenches/SqliteWorkbenchStore"
+import { WorkspaceRegistry } from "../workspaces/WorkspaceRegistry"
+import { WorkspaceCatalogImporter } from "../workspaces/WorkspaceCatalogImporter"
+
 interface ConnectionState {
   socket: net.Socket
   decoder: LineMessageDecoder
@@ -28,12 +39,19 @@ interface ConnectionState {
 export interface ProjectdServerOptions {
   socketPath?: string
   version?: string
+  database?: ProjectdDatabase
+  dbPath?: string
+  sourceCatalogPath?: string
 }
 
 export class ProjectdServer {
   readonly socketPath: string
   readonly version: string
   readonly startedAt: number
+  readonly db: ProjectdDatabase
+  readonly workbenchStore: SqliteWorkbenchStore
+  readonly workspaceRegistry: WorkspaceRegistry
+  readonly catalogImporter: WorkspaceCatalogImporter
 
   private server: net.Server | null = null
   private connections = new Set<ConnectionState>()
@@ -43,10 +61,16 @@ export class ProjectdServer {
     this.socketPath = options?.socketPath ?? getProjectdSocketPath()
     this.version = options?.version ?? PROJECTD_DEFAULT_DAEMON_VERSION
     this.startedAt = Date.now()
+
+    this.db = options?.database ?? new ProjectdDatabase(options?.dbPath)
+    this.workbenchStore = new SqliteWorkbenchStore(this.db)
+    this.workspaceRegistry = new WorkspaceRegistry(this.db)
+    this.catalogImporter = new WorkspaceCatalogImporter(this.db, options?.sourceCatalogPath)
   }
 
   async start(): Promise<void> {
     await this.ensureSocketAvailable()
+    await this.catalogImporter.importIfNecessary()
 
     return new Promise<void>((resolve, reject) => {
       const server = net.createServer((socket) => this.handleConnection(socket))
@@ -286,6 +310,262 @@ export class ProjectdServer {
           success: true,
           result: req.params,
         })
+        break
+      }
+      case "workbenches.list": {
+        const p = req.params as { projectId: string }
+        if (!p?.projectId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'projectId' parameter",
+          })
+          break
+        }
+        void this.workbenchStore
+          .listByProject(asProjectId(p.projectId))
+          .then((workbenches) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: workbenches,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workbenches.get": {
+        const p = req.params as { workbenchId: string }
+        if (!p?.workbenchId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'workbenchId' parameter",
+          })
+          break
+        }
+        void this.workbenchStore
+          .get(asWorkbenchId(p.workbenchId))
+          .then((workbench) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: workbench,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workbenches.save": {
+        const wb = req.params as LocalProjectWorkbench
+        if (!wb?.workbenchId || !wb?.projectId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Invalid workbench object: missing workbenchId or projectId",
+          })
+          break
+        }
+        void this.workbenchStore
+          .save(wb)
+          .then((saved) => {
+            this.broadcast(`project:${wb.projectId}`, "workbench_saved", saved)
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: saved,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workbenches.activate": {
+        const p = req.params as { projectId: string; workbenchId: string }
+        if (!p?.projectId || !p?.workbenchId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'projectId' or 'workbenchId' parameter",
+          })
+          break
+        }
+        void this.workbenchStore
+          .setActive(asProjectId(p.projectId), asWorkbenchId(p.workbenchId))
+          .then((res) => {
+            this.broadcast(`project:${p.projectId}`, "workbench_switched", res)
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: res,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workbenches.idle": {
+        const p = req.params as { projectId: string; workbenchId: string }
+        if (!p?.projectId || !p?.workbenchId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'projectId' or 'workbenchId' parameter",
+          })
+          break
+        }
+        void this.workbenchStore
+          .setIdle(asProjectId(p.projectId), asWorkbenchId(p.workbenchId))
+          .then((res) => {
+            this.broadcast(`project:${p.projectId}`, "workbench_idled", res)
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: res,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workbenches.delete": {
+        const p = req.params as { workbenchId: string }
+        if (!p?.workbenchId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'workbenchId' parameter",
+          })
+          break
+        }
+        void this.workbenchStore
+          .delete(asWorkbenchId(p.workbenchId))
+          .then((deleted) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: { deleted },
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workspaces.list": {
+        const p = req.params as { projectId: string }
+        if (!p?.projectId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'projectId' parameter",
+          })
+          break
+        }
+        void this.workspaceRegistry
+          .listByProject(asProjectId(p.projectId))
+          .then((workspaces) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: workspaces,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workspaces.get": {
+        const p = req.params as { workspaceId: string }
+        if (!p?.workspaceId) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'workspaceId' parameter",
+          })
+          break
+        }
+        void this.workspaceRegistry
+          .get(asWorkspaceId(p.workspaceId))
+          .then((ws) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: ws,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
+        break
+      }
+      case "workspaces.register": {
+        const p = req.params as any
+        if (!p?.workspaceId || !p?.projectId || !p?.rootPath) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing workspace registration fields",
+          })
+          break
+        }
+        void this.workspaceRegistry
+          .registerWorkspace({
+            workspaceId: asWorkspaceId(p.workspaceId),
+            projectId: asProjectId(p.projectId),
+            rootPath: p.rootPath,
+            projectRootPath: p.projectRootPath,
+            gitRootPath: p.gitRootPath,
+            gitOriginUrl: p.gitOriginUrl,
+            source: p.source ?? "register",
+            storageOwnership: p.storageOwnership,
+            managedRootId: p.managedRootId,
+          })
+          .then((ws) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: ws,
+            })
+          })
+          .catch((err) => {
+            this.sendError(state, req.id, {
+              code: "INTERNAL_ERROR",
+              message: err.message,
+            })
+          })
         break
       }
       default: {

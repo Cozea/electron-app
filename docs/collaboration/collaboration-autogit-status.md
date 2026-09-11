@@ -343,5 +343,88 @@ Exit-gate evidence:
 - Swift helper `cozea-projectd-mac-helper` compiled and functional.
 - macOS Keychain access works for background identity storage and signing.
 
+---
+
+## P04 — Daemon-owned workspace + Workbench registry
+
+Status: complete
+
+Baseline:
+- base commit: `a2617aab` (P03 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Workspace catalog: [apps/desktop/electron/workspaces/WorkspaceCatalog.ts](apps/desktop/electron/workspaces/WorkspaceCatalog.ts) (Effect-based SQLite in Electron main process)
+- Workspace IPC handlers: [apps/desktop/electron/ipc/registerWorkspaceHandlers.ts](apps/desktop/electron/ipc/registerWorkspaceHandlers.ts)
+- Workbench presentation identity: in-memory `workbenchStore.ts` in renderer
+
+Production owners after:
+- Same live production runtime owners (P04 establishes daemon-owned SQLite storage, WorkspaceCatalog importer, and headless workbench/workspace registry in projectd)
+- Daemon SQLite storage: [apps/projectd/src/storage/Database.ts](apps/projectd/src/storage/Database.ts) (WAL mode, foreign keys, busy timeout)
+- Daemon workspace registry: [apps/projectd/src/workspaces/WorkspaceRegistry.ts](apps/projectd/src/workspaces/WorkspaceRegistry.ts)
+- Daemon workbench store: [apps/projectd/src/workbenches/SqliteWorkbenchStore.ts](apps/projectd/src/workbenches/SqliteWorkbenchStore.ts)
+- Catalog importer: [apps/projectd/src/workspaces/WorkspaceCatalogImporter.ts](apps/projectd/src/workspaces/WorkspaceCatalogImporter.ts)
+- Electron main bridge: [apps/desktop/electron/projectd/registerProjectdHandlers.ts](apps/desktop/electron/projectd/registerProjectdHandlers.ts)
+
+Files created:
+- [apps/projectd/src/storage/Database.ts](apps/projectd/src/storage/Database.ts) (`node:sqlite` WAL database for projectd)
+- [apps/projectd/src/workspaces/WorkspaceCatalogImporter.ts](apps/projectd/src/workspaces/WorkspaceCatalogImporter.ts) (idempotent migration from `workspace-catalog.sqlite`)
+- [apps/projectd/src/workspaces/WorkspaceRegistry.ts](apps/projectd/src/workspaces/WorkspaceRegistry.ts) (daemon workspace registry)
+- [apps/projectd/src/workbenches/SqliteWorkbenchStore.ts](apps/projectd/src/workbenches/SqliteWorkbenchStore.ts) (SQLite-backed LocalProjectWorkbenchStore with atomic single-active transaction)
+- [tests/projectd/workbenchRegistry.test.ts](tests/projectd/workbenchRegistry.test.ts) (tests for migration idempotency, attached folder safety, atomic switch, restart durability, and headless API)
+
+Files modified:
+- [packages/projectd-protocol/src/client.ts](packages/projectd-protocol/src/client.ts) (added workbench and workspace client methods)
+- [apps/projectd/src/server/ProjectdServer.ts](apps/projectd/src/server/ProjectdServer.ts) (added `workbenches.*` and `workspaces.*` request handlers and automatic catalog import on boot)
+- [apps/projectd/src/cli.ts](apps/projectd/src/cli.ts) (added `workbenches`, `workbench activate`, `workspaces` CLI commands)
+- [apps/desktop/electron/projectd/registerProjectdHandlers.ts](apps/desktop/electron/projectd/registerProjectdHandlers.ts) (exposed `projectd:workbenches:*` and `projectd:workspaces:*` IPC handlers)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (39.64 KB) and `cozea-projectctl.mjs` (14.43 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (14 test files, 83 tests)
+  evidence: 5 new tests in `tests/projectd/workbenchRegistry.test.ts` passed
+
+Manual qualification:
+- scenario: WorkspaceCatalog migration idempotency
+  result: Verified `WorkspaceCatalogImporter.importIfNecessary()` imports records from `workspace-catalog.sqlite` on first run and is a clean no-op on subsequent runs.
+- scenario: Attached folder immutability
+  result: Verified attached folders and their files on disk are completely untouched during catalog import and workbench lifecycle changes.
+- scenario: Atomic active switch
+  result: Verified `SqliteWorkbenchStore.setActive()` switches the active workbench and idles the previously active workbench in a single SQLite transaction.
+- scenario: Restart durability
+  result: Verified reopening `ProjectdDatabase` accurately restores active and idle workbenches and workspace records.
+- scenario: Workbench deletion independence
+  result: Verified deleting a Workbench presentation record does not delete or remove the underlying workspace directory or workspace catalog entry.
+- scenario: Headless control
+  result: Verified `cozea-projectctl workbenches <projectId>`, `cozea-projectctl workbench activate <projectId> <wbId>`, and `cozea-projectctl workspaces <projectId>` query and mutate state headlessly over the Unix socket.
+
+Known follow-ups:
+- Phase P05 will implement GitService consolidation foundation in `apps/projectd`.
+
+Exit-gate evidence:
+- Workbench/workspace identity can be queried and switched headlessly via `ProjectdClient`, `cozea-projectctl`, and projectd IPC.
+- SQLite WAL database established for daemon with atomic single-active transactions.
+
+
 
 
