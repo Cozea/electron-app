@@ -1573,6 +1573,73 @@ Exit-gate evidence:
 - UI can accurately explain why rebase is recommended.
 - No rebase can start automatically (Invariant C25 enforced).
 
+---
+
+## P21 — Explicit isolated Rebase from main
+
+Status: complete
+
+Baseline:
+- base commit: `32c5dda8` (P20 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Git rebase: None (users ran git rebase manually in working tree)
+
+Production owners after:
+- Same live production runtime owners (P21 introduces RebaseCoordinator performing isolated git rebase in temporary worktrees with three-way B/R/L integration into live CRDT)
+- Rebase coordinator: [apps/projectd/src/autogit/RebaseCoordinator.ts](apps/projectd/src/autogit/RebaseCoordinator.ts) (three-way B/R/L integration, isolated worktrees, conflict bundles)
+
+Files created:
+- [apps/projectd/src/autogit/RebaseCoordinator.ts](apps/projectd/src/autogit/RebaseCoordinator.ts) (Section 21 isolated rebase coordinator and B/R/L three-way merger)
+- [tests/projectd/autoGitRebase.test.ts](tests/projectd/autoGitRebase.test.ts) (4 tests for explicit user action invariant, clean rebase, B/R/L live edit preservation, and isolated conflict bundles)
+
+Files modified:
+- [apps/projectd/src/autogit/BarrierCapture.ts](apps/projectd/src/autogit/BarrierCapture.ts) (added snapshotUpdate and stateVector to FileSnapshotState)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (32 test files, 167 tests)
+  evidence: all 4 tests in `tests/projectd/autoGitRebase.test.ts` passed
+
+Manual qualification:
+- scenario: Explicit user action invariant (Invariant C25)
+  result: Verified executing rebase without explicit user approval throws Invariant C25 violation error.
+- scenario: Isolated worktree computation (Invariant C26)
+  result: Verified rebase computes in temporary detached worktree without locking or mutating the live session workspace.
+- scenario: Concurrent live work preservation via B/R/L integration (Invariant C27 / Section 21.7)
+  result: Verified live edits made to files while rebase was computing are preserved and merged with target changes.
+- scenario: Conflict preview (Section 21.5)
+  result: Verified conflicting rebases generate conflict bundles and abort cleanly without mutating live CRDT.
+
+Known follow-ups:
+- Phase P22 will implement merge and PR controls.
+
+Exit-gate evidence:
+- Explicit rebase updates live session and Git branch without losing post-barrier collaboration.
+- Isolated worktree computation ensures zero interference with live working tree during compute.
+
+
 
 
 

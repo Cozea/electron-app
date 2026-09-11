@@ -24,6 +24,8 @@ export interface FileSnapshotState {
   readonly contentHash: string
   readonly textContent?: string
   readonly symlinkTarget?: string
+  readonly snapshotUpdate?: Uint8Array
+  readonly stateVector?: Uint8Array
 }
 
 export interface BarrierSnapshot {
@@ -53,10 +55,14 @@ export class BarrierCapture {
       let contentHash = ""
       let textContent: string | undefined
       let symlinkTarget: string | undefined
+      let snapshotUpdate: Uint8Array | undefined
+      let stateVector: Uint8Array | undefined
 
       if (entry.kind === "text") {
         textContent = replica.textDocs.getTextContent(entry.fileId)
         contentHash = createHash("sha256").update(textContent).digest("hex")
+        snapshotUpdate = replica.textDocs.encodeStateAsUpdate(entry.fileId)
+        stateVector = replica.textDocs.getStateVector(entry.fileId)
       } else if (entry.kind === "symlink") {
         symlinkTarget = entry.symlinkTarget ?? ""
         contentHash = createHash("sha256").update(symlinkTarget).digest("hex")
@@ -73,6 +79,8 @@ export class BarrierCapture {
         contentHash,
         textContent,
         symlinkTarget,
+        snapshotUpdate,
+        stateVector,
       })
 
       hashDigest.update(`${entry.path}:${entry.mode}:${contentHash}\n`)
