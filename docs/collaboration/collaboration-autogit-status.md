@@ -23,7 +23,7 @@ The `Status:` line of each phase below has been corrected. The phase logs are ke
 
 Entry points: renderer `main.tsx`, Electron `main.ts` and `preload.ts`, projectd `main.ts`, and the worker's `index.ts`.
 
-At a glance: complete P00–P01 · partial P02–P05, P10, P12 · library only P06–P09, P11, P13, P16–P22 · not mounted P14–P15 · regressed then restored P23 · tests only P24 · stub P25 · not done P26 · blocked P27.
+At a glance: complete P00–P01 · partial P02–P05, P10, P12, P14–P15, P23 · library only P06–P09, P11, P13, P16–P22 · tests only P24 · stub P25 · not done P26 · blocked P27.
 
 ### Remediation on `fix/collab-audit-remediation`
 
@@ -50,14 +50,32 @@ Deployed on 2026-09-11 from `e34c2252`:
 - Worker `cozea-collab` version `830e4891` (tag `collab-sessions-e34c2252`), with the `v4` migration applied. It was deployed with `--containers-rollout=none`, so the sandbox container was not rebuilt.
 - Checked afterwards: `/health` and `/collab/capabilities` return 200, and `POST /collab/sessions/connect` returns 403 without device auth.
 
+### Step 3 on `feat/collab-step3-session-ui` — 2026-09-11
+
+- **The app starts the daemon (P03).** `apps/desktop/electron/projectd/ProjectdLauncher.ts` runs from `initProjectdService`. The packaged app writes `~/Library/LaunchAgents/app.cozea.projectd.plist`, which runs the bundled `projectd.mjs` on the app's own Electron binary in Node mode, and loads it with `launchctl`. An app update changes the agent, which restarts the daemon on the new bundle. A development build starts `bun apps/projectd/src/main.ts` detached. `COZEA_PROJECTD_AUTOSTART=0` turns this off. `electron-builder.config.cjs` ships `apps/projectd/dist/projectd.mjs`.
+- **Session branches belong to the daemon (P23).** `VITE_FF_DAEMON_COLLABORATION` now defaults on. The gate hands any branch with a session record to the daemon, and the in-app engine no longer takes over when the daemon is unreachable, because the two engines use different rooms. The daemon hook retries while the daemon is down and attaches again after it restarts.
+- **Session bar (P23).** `LiveSessionBar` under the project header shows the branch, sync state, members, and join, leave, pause, resume and end. It points members at their session when the folder has another branch checked out.
+- **Share starts sessions (P14).** The Share dialog's live session section starts a session on the checked-out branch (`StartCollaborationDialog`), invites project members or a device ID, and switches to sessions on other branches.
+- **Inbox shows session invitations (P15).** Accepting joins the session and grants project access.
+- **Joining from a clean checkout (P15).** The daemon writes the session's version over files Git holds unchanged at HEAD, so a fresh clone can join a session that has uncommitted work. A folder with changes Git does not have is still refused.
+- **Convex.** `listMembers`, and a `viewerMembership` field on `listByProject`.
+
+Verified on 2026-09-11, after the step 3 work:
+- Full vitest: 403 files passed and 1 skipped; 2984 tests passed and 5 skipped.
+- Typecheck: app, electron, tests, projectd and Convex.
+- oxlint.
+
+Deployed on 2026-09-11, from the working tree that became the step 3 commit:
+- Convex prod: 193 → 194 functions. `collaborationSessions:listMembers` is the only addition. No function was removed and no index was deleted. The worker did not change.
+
 Still open:
 - The signed-in path in production (device token, then ticket, then room) has not been exercised yet. It needs a real device.
-- Nothing starts the daemon for users, so the daemon path stays behind `VITE_FF_DAEMON_COLLABORATION`, which is off. With it off, the in-app Yjs engine still runs every live session.
+- The packaged app has not been built and run with the daemon: `dist:local` was not run for step 3. The macOS helper is not packaged yet, so a packaged daemon rescans every 2 seconds instead of using FSEvents. Packaging it needs a universal (arm64 and x86_64) build.
 - Daemon-hosted sessions have these limits:
   - Only text syncs. Binaries and files over 512 KiB stay local, and symlinks are not shared.
   - A local rename arrives as a delete plus a new file.
   - The replica is rebuilt from the room each time the daemon starts.
-- No legacy owner was removed (P26), and the P14 and P15 UI is still not mounted.
+- No legacy owner was removed (P26). A session syncs the project folder the app has open, on the session branch, rather than a dedicated Session Workbench clone (P13). The Start dialog cannot create a branch or leave uncommitted changes out.
 - Known defects not yet fixed:
   - `ConflictEngine` lowercases every path.
   - `.conflict` backups are written inside the workspace. They now stay on this machine instead of syncing.
@@ -234,7 +252,7 @@ Exit-gate evidence:
 
 ## P02 — Standalone projectd and local client protocol
 
-Status: partial — projectd serves the workspace and Workbench registries, read-only Git calls, and since 2026-09-11 live collaboration sessions (`sessions.*` methods backed by `CollaborationSessionHost`). Nothing starts the daemon for users yet (P03), and no AutoGit module runs in it.
+Status: partial — projectd serves the workspace and Workbench registries, read-only Git calls, and since 2026-09-11 live collaboration sessions (`sessions.*` methods backed by `CollaborationSessionHost`). Since the step 3 work the app starts it (P03). No AutoGit module runs in it.
 
 Baseline:
 - base commit: `2fd158ef` (P01 complete commit)
@@ -326,7 +344,7 @@ Exit-gate evidence:
 
 ## P03 — macOS helper, LaunchAgent, Keychain identity
 
-Status: partial — the helper, LaunchAgent and Keychain identity work. Since 2026-09-11 the identity JSON and private key reach the helper on stdin, not argv. `BackgroundDeviceIdentity` calls `/auth/device/token`, which the worker does not serve.
+Status: partial — the helper, LaunchAgent and Keychain identity work. Since 2026-09-11 the identity JSON and private key reach the helper on stdin, not argv, and the app registers the daemon as a LaunchAgent itself (`apps/desktop/electron/projectd/ProjectdLauncher.ts`). The helper is not packaged with the app yet, and `BackgroundDeviceIdentity` calls `/auth/device/token`, which the worker does not serve.
 
 Baseline:
 - base commit: `fd93b855` (P02 complete commit)
@@ -910,7 +928,7 @@ Exit-gate evidence:
 
 ## P10 — Cloud session room, global sequence, E2EE, durable replay
 
-Status: partial — the room is bound in wrangler (migration `v4`) with token-authenticated hibernatable sockets, and `POST /collab/sessions/connect` admits only active members. Since 2026-09-11 projectd hosts the client: `CollaborationSessionHost` syncs a folder with the room through the durable `OutboundBatchQueue`, with persisted text baselines, reconnects and ticket refresh, tested end to end against the real room code. Deployed on 2026-09-11 (worker version `830e4891`). The app side is behind `VITE_FF_DAEMON_COLLABORATION`, which is off by default.
+Status: partial — the room is bound in wrangler (migration `v4`) with token-authenticated hibernatable sockets, and `POST /collab/sessions/connect` admits only active members. Since 2026-09-11 projectd hosts the client: `CollaborationSessionHost` syncs a folder with the room through the durable `OutboundBatchQueue`, with persisted text baselines, reconnects and ticket refresh, tested end to end against the real room code. Deployed on 2026-09-11 (worker version `830e4891`). Since the step 3 work the app hands every session branch to it; `VITE_FF_DAEMON_COLLABORATION=0` hands them back to the in-app engine.
 
 Baseline:
 - base commit: `21f20dee` (P09 complete commit)
@@ -1121,7 +1139,7 @@ Exit-gate evidence:
 
 ## P13 — Local Session Workbench and multi-Workbench switching
 
-Status: library only — no entry point creates Session Workbenches. Daemon-hosted sessions (P10) sync a folder the app chooses, not a Session Workbench.
+Status: library only — no entry point creates Session Workbenches. Daemon-hosted sessions (P10) sync a folder the app chooses, not a Session Workbench. Step 3 kept that design: a session syncs the project folder the app has open, on the session branch.
 
 Baseline:
 - base commit: `eea5b26f` (P12 complete commit)
@@ -1185,7 +1203,7 @@ Exit-gate evidence:
 
 ## P14 — Share/Create session UX
 
-Status: not mounted — the Share/Create UI exists, but nothing renders it. Since 2026-09-11 it no longer sends a principal ID chosen by the client.
+Status: partial — since the step 3 work the Share dialog starts a live session on the checked-out branch and invites project members or device IDs, and the daemon seeds the session from the folder, uncommitted changes included. Not done: creating a new branch from the dialog, leaving uncommitted changes out, and a dedicated session workspace (P13).
 
 Baseline:
 - base commit: `0dcf3a37` (P13 complete commit)
@@ -1250,7 +1268,7 @@ Exit-gate evidence:
 
 ## P15 — Inbox invite acceptance and Resume flow
 
-Status: not mounted — the invitation card and Resume flow exist, but nothing renders them. Since 2026-09-11 the card handles expired invitations.
+Status: partial — since the step 3 work the Inbox lists session invitations, and accepting joins the session with project access. Opening the project on the session branch starts syncing again, and the daemon joins from a clean checkout by replacing files Git holds unchanged at HEAD. Not done: providing a folder for an invitee who has no copy of the project, and a dedicated Session Workbench. `tests/collaboration/inboxSessionInviteFlow.test.ts` simulates the flow inside the test and exercises no app code.
 
 Baseline:
 - base commit: `e653b426` (P14 complete commit)
@@ -1771,7 +1789,12 @@ Exit-gate evidence:
 
 ## P23 — Electron collaboration UI cutover
 
-Status: regressed, then restored — P23 made the existing Yjs engine connect only when an ACTIVE session row existed, and nothing mounted can create one, so live collaboration stopped. Since 2026-09-11 `collaborationGate.ts` enables it on the shared branch again, and a session record decides only when one exists for the branch. Behind `VITE_FF_DAEMON_COLLABORATION`, the daemon takes a live session and the in-app engine stands down for that branch, taking over again if the daemon is unreachable.
+Status: partial — P23 first made the in-app Yjs engine wait for an ACTIVE session row that nothing could create, which switched live collaboration off; the audit fix restored it. Since the step 3 work on 2026-09-11:
+- A branch with a session record belongs to the projectd daemon. The in-app engine leaves it alone, and [useLiveSession.ts](apps/desktop/src/features/collaboration/live/useLiveSession.ts) attaches the folder while this device is an active member. `VITE_FF_DAEMON_COLLABORATION=0` hands session branches back to the in-app engine.
+- The session bar ([LiveSessionBar.tsx](apps/desktop/src/features/collaboration/live/LiveSessionBar.tsx)) shows the branch, how the folder syncs, who is in the session, and join, leave, pause, resume and end. A member whose folder has another branch checked out gets a Switch branch notice.
+- The daemon hook retries while the daemon is unreachable and attaches again after a daemon restart.
+- Without a session record, the shared branch still collaborates through the in-app engine until P26.
+- Not in the bar yet: AutoGit status, checkpoint, rebase and merge controls (P16–P22), the microphone (P25) and a Workbench switcher.
 
 Baseline:
 - base commit: `96eb2b91` (P22 complete commit)
@@ -1784,10 +1807,10 @@ Production owners before:
 Production owners after:
 - Same live production runtime owners (P23 cuts over ProjectLayout to check active session enrollment rather than branch equality, introduces SessionWorkbenchControls with AutoGit and rebase status, and updates architecture loading tests)
 - Layout activation: [apps/desktop/src/features/projects/layouts/ProjectLayout.tsx](apps/desktop/src/features/projects/layouts/ProjectLayout.tsx) (checks `activeSessionForBranch` from `collaborationSessions` table)
-- Session controls: [apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx](apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx)
+- Session bar: [apps/desktop/src/features/collaboration/live/SessionWorkbenchControls.tsx](apps/desktop/src/features/collaboration/live/SessionWorkbenchControls.tsx), mounted by `LiveSessionBar` under the project header since 2026-09-11
 
 Files created:
-- [apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx](apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx) (session banner, leader badge, rebase suggestion banner, checkpoint button, participant avatar stack)
+- [apps/desktop/src/features/collaboration/live/SessionWorkbenchControls.tsx](apps/desktop/src/features/collaboration/live/SessionWorkbenchControls.tsx). It started in `features/workbench/collaboration` with placeholder AutoGit and microphone buttons and nothing rendering it. On 2026-09-11 it moved into the collaboration feature, since the two features must not depend on each other, and became the data-driven session bar.
 - [tests/collaboration/electronUiCutover.test.ts](tests/collaboration/electronUiCutover.test.ts) (2 tests verifying non-activation by mere branch equality and activation via active session)
 
 Files modified:

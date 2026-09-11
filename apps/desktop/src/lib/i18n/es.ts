@@ -835,6 +835,7 @@ const es: Record<TranslationKey, string> = {
   "inbox.declined": "Invitación rechazada",
   "inbox.invitedBy": "Invitado por",
   "inbox.deviceInvitations": "Invitaciones de dispositivos",
+  "inbox.liveSessions": "Sesiones en vivo",
   "assistant.questions.label": "Preguntas del agente",
   "assistant.questions.hint": "El agente puede seguir trabajando mientras respondes.",
   "assistant.questions.answerLabel": "Respuesta",

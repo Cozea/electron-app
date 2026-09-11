@@ -131,6 +131,14 @@ module.exports = {
         "resource-manifest.json",
       ],
     },
+    {
+      // cozea-projectd, the background daemon that syncs live sessions. The app
+      // registers it as a LaunchAgent that runs this bundle on the app's own Electron
+      // binary in Node mode. `predist` builds it with `build:projectd`.
+      from: "../projectd/dist",
+      to: "projectd",
+      filter: ["projectd.mjs"],
+    },
   ],
   mac: {
     category: "public.app-category.developer-tools",

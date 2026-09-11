@@ -1,69 +1,38 @@
 import { describe, expect, it } from "vitest"
 
-describe("P14 Share/Create session UX flows", () => {
-  it("validates session parameters for clean current branch flow", () => {
-    const params = {
-      projectId: "proj_clean",
-      repositoryBindingId: "repo_1",
-      branchName: "main",
-      targetBranch: "main",
-      includeDirtyChanges: false,
-      accessMode: "invite_only" as const,
-      creatorPrincipalId: "p_user",
-    }
+import { planLiveSessionStart } from "@/features/collaboration/live/liveSessionModel"
 
-    expect(params.branchName).toBe("main")
-    expect(params.includeDirtyChanges).toBe(false)
+/**
+ * The Start dialog's preflight (Section 6.1): a session starts on the branch the
+ * project's folder has checked out, once per branch, and only in a Git repository.
+ */
+describe("P14 starting a live session", () => {
+  const sessions = [
+    { branchName: "feature/dashboard", lifecycle: "ACTIVE" },
+    { branchName: "feature/old", lifecycle: "CLOSED" },
+  ]
+
+  it("starts on the branch the folder has checked out", () => {
+    expect(planLiveSessionStart({ branch: "feature/new", hasGitRepo: true, sessions })).toEqual({
+      status: "ready",
+      branch: "feature/new",
+    })
+    // A closed session does not hold its branch.
+    expect(planLiveSessionStart({ branch: "feature/old", hasGitRepo: true, sessions }).status).toBe("ready")
   })
 
-  it("validates parameters for new branch flow", () => {
-    const newBranch = "feature/experimental-collab"
-    const params = {
-      projectId: "proj_clean",
-      repositoryBindingId: "repo_1",
-      branchName: newBranch,
-      targetBranch: "main",
-      includeDirtyChanges: false,
-      accessMode: "organization_available" as const,
-      creatorPrincipalId: "p_user",
-    }
-
-    expect(params.branchName).toBe("feature/experimental-collab")
-    expect(params.accessMode).toBe("organization_available")
+  it("refuses a branch that already has a session, and a folder without Git or a branch", () => {
+    expect(planLiveSessionStart({ branch: "feature/dashboard", hasGitRepo: true, sessions })).toEqual({
+      status: "blocked",
+      reason: "feature/dashboard already has a live session. Join it from the session bar.",
+    })
+    expect(planLiveSessionStart({ branch: "main", hasGitRepo: false, sessions }).status).toBe("blocked")
+    expect(planLiveSessionStart({ branch: " ", hasGitRepo: true, sessions }).status).toBe("blocked")
   })
 
-  it("handles dirty state Include vs Exclude choice (Section 6.1 Step 3)", () => {
-    // When includeDirty is true:
-    const paramsInclude = {
-      includeDirtyChanges: true,
-      branchName: "main",
-    }
-    expect(paramsInclude.includeDirtyChanges).toBe(true)
-
-    // When includeDirty is false (session begins from clean git base):
-    const paramsExclude = {
-      includeDirtyChanges: false,
-      branchName: "main",
-    }
-    expect(paramsExclude.includeDirtyChanges).toBe(false)
-  })
-
-  it("detects existing non-closed session on selected branch and flags duplicate", () => {
-    const existingSessions = [
-      {
-        sessionId: "sess_existing",
-        publicSessionId: "czs_existing",
-        branchName: "feature/dashboard",
-        lifecycle: "ACTIVE",
-      },
-    ]
-
-    const selectedBranch = "feature/dashboard"
-    const duplicate = existingSessions.find(
-      (s) => s.branchName === selectedBranch && s.lifecycle !== "CLOSED",
-    )
-
-    expect(duplicate).toBeDefined()
-    expect(duplicate?.publicSessionId).toBe("czs_existing")
+  it("waits for the project's sessions before offering to start", () => {
+    expect(planLiveSessionStart({ branch: "main", hasGitRepo: true, sessions: undefined })).toEqual({
+      status: "checking",
+    })
   })
 })

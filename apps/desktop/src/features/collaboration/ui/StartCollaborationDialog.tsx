@@ -1,8 +1,12 @@
 /**
- * Start Collaboration Dialog (Section 6.1).
+ * Starts a live session on the branch the project's folder has checked out.
  *
- * Master Specification: Section 6.1
+ * Master Specification: Section 6.1, 6.4
  * Phase: P14
+ *
+ * The session starts from the folder as it is, uncommitted changes included: once
+ * the session exists, the background sync service seeds it from this folder. Using
+ * another branch means switching to it first.
  */
 
 import { useState } from "react"
@@ -10,9 +14,7 @@ import { useQuery } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
-import { useAuth } from "@/contexts/AuthContext"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -21,20 +23,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
+import { appToast } from "@/lib/appToast"
 import { useCreateCollaborationSession } from "../hooks/useCreateCollaborationSession"
+import { planLiveSessionStart } from "../live/liveSessionModel"
+
+type AccessMode = "invite_only" | "organization_available"
 
 export interface StartCollaborationDialogProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   projectId: Id<"projects">
   projectName: string
-  currentBranch?: string | null
+  /** The branch the project's folder has checked out; the session follows it. */
+  currentBranch: string | null
+  /** The branch the session's work is meant to merge into. */
+  targetBranch: string
+  hasGitRepo: boolean
+  /** Files with uncommitted changes in the folder; they join the session as they are. */
+  uncommittedFileCount?: number
   repositoryBindingId?: string
-  hasGitRepo?: boolean
-  isDirty?: boolean
   onSessionStarted?: (result: { sessionId: string; publicSessionId: string }) => void
 }
 
@@ -43,203 +52,121 @@ export function StartCollaborationDialog({
   onOpenChange,
   projectId,
   projectName,
-  currentBranch = "main",
+  currentBranch,
+  targetBranch,
+  hasGitRepo,
+  uncommittedFileCount = 0,
   repositoryBindingId = "repo_default",
-  hasGitRepo = true,
-  isDirty = false,
   onSessionStarted,
 }: StartCollaborationDialogProps) {
-  const { principalId } = useAuth()
-
-  const [branchMode, setBranchMode] = useState<"current" | "new">("current")
-  const [newBranchName, setNewBranchName] = useState("")
-  const [includeDirty, setIncludeDirty] = useState(true)
-  const [accessMode, setAccessMode] = useState<"invite_only" | "organization_available">("invite_only")
-
+  const [accessMode, setAccessMode] = useState<AccessMode>("invite_only")
   const { stage, error, startCollaboration, reset } = useCreateCollaborationSession()
+  const sessions = useQuery(api.collaborationSessions.listByProject, isOpen ? { projectId } : "skip")
+  const plan = planLiveSessionStart({ branch: currentBranch, hasGitRepo, sessions })
+  const submitting = stage === "creating_session"
 
-  // Preflight check for existing non-closed session on selected branch
-  const activeBranch = branchMode === "current" ? (currentBranch ?? "main") : newBranchName.trim()
-  const existingSessions = useQuery(api.collaborationSessions.listByProject, { projectId })
-  const duplicateSession = existingSessions?.find(
-    (s) => s.branchName === activeBranch && s.lifecycle !== "CLOSED",
-  )
+  const close = (open: boolean) => {
+    if (submitting) return
+    reset()
+    onOpenChange(open)
+  }
 
   const handleStart = async () => {
-    if (!principalId) return
-    if (branchMode === "new" && !newBranchName.trim()) return
-
+    if (plan.status !== "ready") return
     try {
-      const res = await startCollaboration({
+      const result = await startCollaboration({
         projectId,
         repositoryBindingId,
-        branchName: activeBranch,
-        targetBranch: "main",
-        includeDirtyChanges: isDirty ? includeDirty : false,
+        branchName: plan.branch,
+        targetBranch,
         accessMode,
       })
-
-      onSessionStarted?.({
-        sessionId: res.sessionId,
-        publicSessionId: res.publicSessionId,
+      appToast.success({
+        title: "Live session started",
+        description: `This folder syncs with the session on ${plan.branch}. Invite people from Share.`,
       })
+      onSessionStarted?.({ sessionId: result.sessionId, publicSessionId: result.publicSessionId })
+      reset()
       onOpenChange(false)
     } catch {
-      // Error handled by hook
+      // The hook shows the error in the dialog.
     }
   }
 
-  const isSubmitting = stage !== "idle" && stage !== "error" && stage !== "ready"
-
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!isSubmitting) {
-          reset()
-          onOpenChange(open)
-        }
-      }}
-    >
+    <Dialog open={isOpen} onOpenChange={close}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Start collaboration</DialogTitle>
+          <DialogTitle>Start a live session</DialogTitle>
           <DialogDescription>
-            Collaborate on <strong>{projectName}</strong> in real-time across devices.
+            Edit <strong>{projectName}</strong> together in real time. Everyone in the session works on the same
+            branch, from their own Mac.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Step 1: Repository preflight */}
-          {!hasGitRepo && (
-            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-md text-sm text-amber-600 dark:text-amber-400">
-              No remote GitHub repository attached. Connect a repository in Project Settings before enabling remote collaboration.
-            </div>
-          )}
-
-          {/* Step 2: Branch selection */}
-          <div className="space-y-2">
-            <Label className="text-xs font-medium">Session Branch</Label>
-            <div className="flex gap-2 text-sm">
-              <Button
-                type="button"
-                variant={branchMode === "current" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setBranchMode("current")}
-                disabled={isSubmitting}
-              >
-                Current branch ({currentBranch ?? "main"})
-              </Button>
-              <Button
-                type="button"
-                variant={branchMode === "new" ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setBranchMode("new")}
-                disabled={isSubmitting}
-              >
-                New branch
-              </Button>
-            </div>
-
-            {branchMode === "new" && (
-              <Input
-                placeholder="e.g. feature/live-collab"
-                value={newBranchName}
-                onChange={(e) => setNewBranchName(e.target.value)}
-                disabled={isSubmitting}
-                className="mt-2"
-              />
-            )}
-
-            {duplicateSession && (
-              <p className="text-xs text-rose-500">
-                A collaboration session is already active on branch &apos;{activeBranch}&apos; ({duplicateSession.publicSessionId}).
-              </p>
-            )}
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Branch</Label>
+            <p className="font-mono text-sm">{currentBranch ?? "No branch checked out"}</p>
+            <p className="text-[11px] text-muted-foreground">
+              The session follows the branch this folder has checked out. To use another branch, switch to it first.
+              {currentBranch && targetBranch !== currentBranch ? ` Its work is meant to merge into ${targetBranch}.` : null}
+            </p>
           </div>
 
-          {/* Step 3: Local dirty state option */}
-          {isDirty && (
-            <div className="flex items-center space-x-2 pt-1">
-              <Checkbox
-                id="include-dirty"
-                checked={includeDirty}
-                onCheckedChange={(c) => setIncludeDirty(Boolean(c))}
-                disabled={isSubmitting}
-              />
-              <label
-                htmlFor="include-dirty"
-                className="text-sm font-normal leading-none cursor-pointer"
-              >
-                Include current uncommitted changes in the new session
-              </label>
-            </div>
-          )}
+          {uncommittedFileCount > 0 ? (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              Your uncommitted changes to {uncommittedFileCount} {uncommittedFileCount === 1 ? "file are" : "files are"}{" "}
+              included: the session starts from this folder as it is now.
+            </p>
+          ) : null}
 
-          {/* Step 4: Access mode */}
-          <div className="space-y-2 pt-1">
-            <Label className="text-xs font-medium">Access Policy</Label>
-            <div className="flex gap-3 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
+          <fieldset className="space-y-2">
+            <legend className="text-xs font-medium">Who can join</legend>
+            <div className="flex flex-col gap-1.5 text-sm">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="radio"
                   name="accessMode"
                   checked={accessMode === "invite_only"}
                   onChange={() => setAccessMode("invite_only")}
-                  disabled={isSubmitting}
+                  disabled={submitting}
                 />
-                <span>Invite people</span>
+                <span>People I invite</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex cursor-pointer items-center gap-2">
                 <input
                   type="radio"
                   name="accessMode"
                   checked={accessMode === "organization_available"}
                   onChange={() => setAccessMode("organization_available")}
-                  disabled={isSubmitting}
+                  disabled={submitting}
                 />
-                <span>Available to organization</span>
+                <span>Anyone in the project&apos;s organization</span>
               </label>
             </div>
-          </div>
+          </fieldset>
 
-          {/* Progress / Error */}
-          {error && (
-            <div className="p-2.5 bg-destructive/10 border border-destructive/20 text-destructive text-sm rounded-md">
+          {plan.status === "blocked" ? (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              {plan.reason}
+            </p>
+          ) : null}
+
+          {error ? (
+            <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {error}
-            </div>
-          )}
-
-          {isSubmitting && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
-              <Spinner className="h-4 w-4" />
-              <span>
-                {stage === "creating_session" && "Creating cloud session..."}
-              </span>
-            </div>
-          )}
+            </p>
+          ) : null}
         </div>
 
         <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={isSubmitting}
-          >
+          <Button type="button" variant="outline" onClick={() => close(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button
-            type="button"
-            onClick={handleStart}
-            disabled={
-              isSubmitting ||
-              !hasGitRepo ||
-              Boolean(duplicateSession) ||
-              (branchMode === "new" && !newBranchName.trim())
-            }
-          >
-            {isSubmitting ? "Starting..." : "Start collaboration"}
+          <Button type="button" onClick={handleStart} disabled={submitting || plan.status !== "ready"}>
+            {submitting ? <Spinner size="xs" className="mr-1.5" /> : null}
+            {submitting ? "Starting…" : "Start session"}
           </Button>
         </DialogFooter>
       </DialogContent>

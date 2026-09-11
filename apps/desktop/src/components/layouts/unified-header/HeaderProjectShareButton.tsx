@@ -7,6 +7,9 @@ import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { cleanConvexError as cleanError } from "@/lib/convexError"
 import { useAuth } from "@/contexts/AuthContext";
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
+import { LiveSessionShareSection } from "@/features/collaboration/ui/LiveSessionShareSection";
+import { StartCollaborationDialog } from "@/features/collaboration/ui/StartCollaborationDialog";
+import { useGitDirtySnapshot } from "@/features/source-control/hooks/useGitDirtySnapshot";
 import { buildProjectJoinUrl } from "@shared/projectShare";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -89,6 +92,9 @@ export function HeaderProjectShareButton({
   const removeMember = useMutation(api.projectMembers.removeMember);
 
   const [open, setOpen] = useState(false);
+  const [startSessionOpen, setStartSessionOpen] = useState(false);
+  // Read only while the Start dialog is open, to tell the creator what the session starts from.
+  const dirtySnapshot = useGitDirtySnapshot(startSessionOpen ? syncContext?.workspaceId ?? null : null);
   const headerOverflow = useHeaderOverflow();
   const [identityKey, setIdentityKey] = useState("");
   const [inviteRole, setInviteRole] = useState<ProjectRole>("developer");
@@ -169,6 +175,7 @@ export function HeaderProjectShareButton({
   if (!projectId) return null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(next) => {
       setOpen(next);
       if (next) headerOverflow?.dismiss();
@@ -198,20 +205,32 @@ export function HeaderProjectShareButton({
         <DialogHeader>
           <DialogTitle>Share {projectName || "project"}</DialogTitle>
           <DialogDescription>
-            Project access belongs to individual Cozea device identities. Invite a device ID or share a join link.
+            Edit this branch together in a live session, or give other Cozea devices access to the project.
           </DialogDescription>
         </DialogHeader>
 
         {error ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p> : null}
         {notice ? <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{notice}</p> : null}
 
+        <LiveSessionShareSection
+          projectId={projectId}
+          projectMembers={members}
+          canManageProject={canManage}
+          onStartSession={() => {
+            setOpen(false);
+            setStartSessionOpen(true);
+          }}
+        />
+
         {!canManage ? (
-          <p className="rounded-md border border-border/60 px-3 py-3 text-xs text-muted-foreground">
-            Your role is {memberRole?.replace(/_/g, " ") || "member"}. Only project managers can change access.
-          </p>
+          <div className="border-t border-border/60 pt-4">
+            <p className="rounded-md border border-border/60 px-3 py-3 text-xs text-muted-foreground">
+              Your role is {memberRole?.replace(/_/g, " ") || "member"}. Only project managers can change access.
+            </p>
+          </div>
         ) : (
           <>
-            <section className="space-y-2">
+            <section className="space-y-2 border-t border-border/60 pt-4">
               <div>
                 <p className="text-xs font-medium">Invite a device</p>
                 <p className="text-[11px] text-muted-foreground">Paste the other device&apos;s public czd_… identity.</p>
@@ -349,5 +368,16 @@ export function HeaderProjectShareButton({
         ) : null}
       </DialogContent>
     </Dialog>
+    <StartCollaborationDialog
+      isOpen={startSessionOpen}
+      onOpenChange={setStartSessionOpen}
+      projectId={projectId}
+      projectName={projectName || "this project"}
+      currentBranch={syncContext?.activeBranch ?? null}
+      targetBranch={syncContext?.sharedBranch ?? "main"}
+      hasGitRepo={Boolean(syncContext?.gitCwd)}
+      uncommittedFileCount={dirtySnapshot?.changedFiles ?? 0}
+    />
+    </>
   );
 }

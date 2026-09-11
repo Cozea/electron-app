@@ -1,0 +1,42 @@
+/**
+ * The bar under the project header: the live session on the active branch, or a
+ * pointer to this device's session on another branch.
+ *
+ * Master Specification: Section 5.3, 23.2
+ * Phase: P23
+ */
+
+import { SessionBranchNotice, SessionWorkbenchControls } from "./SessionWorkbenchControls"
+import type { LiveSessionController } from "./useLiveSession"
+
+export function LiveSessionBar({ live }: { live: LiveSessionController }) {
+  if (live.session && live.sync) {
+    return (
+      <SessionWorkbenchControls
+        branchName={live.session.branchName}
+        targetBranch={live.session.targetBranch}
+        lifecycle={live.session.lifecycle}
+        sync={live.sync}
+        members={live.members}
+        membership={live.membership}
+        canManage={live.canManage}
+        busyAction={live.busyAction}
+        onJoin={live.join}
+        onLeave={live.leave}
+        onPause={live.pause}
+        onResume={live.resume}
+        onEnd={live.end}
+      />
+    )
+  }
+
+  const other = live.otherSessions[0]
+  if (!other) return null
+  return (
+    <SessionBranchNotice
+      branchName={other.branchName}
+      busy={live.busyAction === "switch"}
+      onSwitch={() => live.switchToBranch(other.branchName)}
+    />
+  )
+}

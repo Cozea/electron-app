@@ -149,9 +149,11 @@ export class CollaborationSessionHost {
   private statusTimer: NodeJS.Timeout | null = null
   private readonly skippedPaths = new Set<string>()
   private lastError: { code: string; message: string } | null = null
+  private readonly gitService?: GitService
 
   constructor(options: CollaborationSessionHostOptions) {
     this.publicSessionId = options.publicSessionId
+    this.gitService = options.gitService
     this.workspaceId = options.workspaceId
     this.workspaceRoot = path.resolve(options.workspaceRoot)
     this.ticket = options.ticket
@@ -415,10 +417,16 @@ export class CollaborationSessionHost {
     this.flushSubmit()
   }
 
-  /** First attach to a folder with files: adopt the ones that match the session, refuse the rest. */
+  /**
+   * First attach to a folder with files. Files that match the session are adopted.
+   * A different file the session may replace is one Git holds unchanged at HEAD, as
+   * in a fresh clone of the session branch: the session's version is written over it
+   * (Section 6.3, Git-assisted bootstrap). Any other difference is work only this
+   * folder has, so the folder is refused rather than overwritten.
+   */
   private async adoptMatchingFiles(): Promise<void> {
     const matching: Array<{ entry: ProjectEntryRecord; diskHash: string; size: number; mtimeMs: number }> = []
-    const differing: string[] = []
+    const differing: ProjectEntryRecord[] = []
     for (const entry of this.replica.tree.listLiveEntries()) {
       if (entry.kind !== "text") continue
       const absolutePath = await this.resolveEntryPath(entry.path)
@@ -427,22 +435,43 @@ export class CollaborationSessionHost {
       if (!stat) continue
       const bytes = stat.isFile() ? await fs.readFile(absolutePath) : null
       if (!bytes || bytes.toString("utf8") !== this.replica.textDocs.getTextContent(entry.fileId)) {
-        differing.push(entry.path)
+        differing.push(entry)
         continue
       }
       matching.push({ entry, diskHash: sha256(bytes), size: stat.size, mtimeMs: stat.mtimeMs })
     }
 
-    if (differing.length > 0) {
-      const sample = differing.slice(0, 5).join(", ")
+    const restorable = differing.length > 0 ? await this.filesGitCanRestore() : null
+    const blocking = differing.filter((entry) => !restorable?.has(entry.path))
+    if (blocking.length > 0) {
+      const sample = blocking
+        .slice(0, 5)
+        .map((entry) => entry.path)
+        .join(", ")
+      const count = `${blocking.length} ${blocking.length === 1 ? "file" : "files"}`
       throw new SessionHostError(
         "WORKSPACE_CONFLICT",
-        `${differing.length} ${differing.length === 1 ? "file" : "files"} in ${this.workspaceRoot} differ from the session (${sample}). Attach the session to an empty folder.`,
+        restorable
+          ? `${count} in ${this.workspaceRoot} differ from the session and hold changes Git does not have (${sample}). Commit or stash them, then join again.`
+          : `${count} in ${this.workspaceRoot} differ from the session (${sample}). Join from an empty folder or a clean checkout of the session branch.`,
       )
     }
     for (const { entry, diskHash, size, mtimeMs } of matching) {
       this.adapter.initializeBaseline(entry.fileId)
       this.recordDiskState(entry, diskHash, { size, mtimeMs })
+    }
+    // Git keeps the versions these replace, at HEAD.
+    for (const entry of differing) await this.materializer.materializeFile(entry.fileId, Date.now())
+  }
+
+  /** Files Git holds unchanged at HEAD, relative to the folder; null outside a Git work tree. */
+  private async filesGitCanRestore(): Promise<Set<string> | null> {
+    if (!this.gitService) return null
+    try {
+      return await this.gitService.listUnmodifiedTrackedFiles(this.workspaceRoot)
+    } catch (error) {
+      console.warn("[CollaborationSessionHost] Could not read Git state for the join", error)
+      return null
     }
   }
 

@@ -19,8 +19,9 @@ import { ProjectSyncProvider } from "@/contexts/project/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery";
-import { findBranchSession, resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
-import { useDaemonCollaborationSession } from "@/features/collaboration/daemon/useDaemonCollaborationSession";
+import { resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
+import { LiveSessionBar } from "@/features/collaboration/live/LiveSessionBar";
+import { useLiveSession } from "@/features/collaboration/live/useLiveSession";
 import { buildLegacyProjectPath, buildProjectPath } from "@/contexts/project/projectRoutes";
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution";
@@ -310,26 +311,26 @@ export function ProjectLayout({
     activeBranch,
     sharedBranch: collabBranch,
     sessions: collaborationSessionsQuery.data,
+    sessionsUseDaemon: featureFlags.daemonCollaboration,
   });
-  // Behind a flag, the daemon syncs the folder for a live session and the in-app
-  // engine stands down for that branch; it takes over again if the daemon is unreachable.
-  const branchSession = findBranchSession(collaborationSessionsQuery.data, activeBranch);
-  const daemonCollaboration = useDaemonCollaborationSession({
-    enabled: featureFlags.daemonCollaboration && Boolean(project?._id) && isConvexAuthReady,
-    session: branchSession,
+  // The daemon syncs this folder with the branch's live session while this device
+  // is in it; the in-app engine leaves session branches alone.
+  const liveSession = useLiveSession({
+    enabled: Boolean(project?._id) && isConvexAuthReady,
+    daemonEnabled: featureFlags.daemonCollaboration,
+    sessions: collaborationSessionsQuery.data,
+    activeBranch,
     projectId: project?._id ? String(project._id) : null,
     workspaceId: runtimeWorkspaceId,
     rootPath: activeProjectRootPath,
     principalId: principalId ? String(principalId) : null,
+    onBranchSwitched: refreshLaneState,
   });
-  const daemonOwnsCollaboration =
-    daemonCollaboration.phase !== "off" && daemonCollaboration.phase !== "unavailable";
   const collaborationEnabled =
     shouldEnableProjectRuntime &&
     Boolean(runtimeWorkspaceId) &&
     Boolean(project?._id) &&
-    collaborationGate.enabled &&
-    !daemonOwnsCollaboration;
+    collaborationGate.enabled;
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;
@@ -543,6 +544,7 @@ export function ProjectLayout({
             className="flex flex-col flex-1 min-w-0 overflow-hidden bg-background md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none md:peer-data-[variant=inset]:bg-transparent"
           >
             {headerElement}
+            {isSettingsModeRoute ? null : <LiveSessionBar live={liveSession} />}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
               <div
                 className={cn(

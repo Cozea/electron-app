@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { EventEmitter } from "node:events"
 import fs from "node:fs/promises"
@@ -10,6 +11,7 @@ import { ProjectdClient, projectdSessionTopic, type ProjectdSessionStatus } from
 import { CollaborationSessionHost } from "../../apps/projectd/src/collaboration/CollaborationSessionHost"
 import type { RoomConnector } from "../../apps/projectd/src/collaboration/SessionRoomClient"
 import type { FileEventSource, NativeFSEventItem } from "../../apps/projectd/src/filesystem/FSEventsClient"
+import { GitService } from "../../apps/projectd/src/git/GitService"
 import { ProjectdServer } from "../../apps/projectd/src/server/ProjectdServer"
 import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 import {
@@ -86,6 +88,31 @@ function readFile(root: string, relativePath: string): Promise<string | null> {
   return fs.readFile(path.join(root, relativePath), "utf8").catch(() => null)
 }
 
+function git(root: string, ...args: string[]): void {
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Cozea Test",
+      "-c",
+      "user.email=test@cozea.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+      ...args,
+    ],
+    { cwd: root, stdio: "ignore" },
+  )
+}
+
+/** Makes the folder a repository whose HEAD holds exactly what is on disk. */
+function commitEverything(root: string): void {
+  git(root, "init", "-q", "-b", "main")
+  git(root, "add", "-A")
+  git(root, "commit", "-q", "-m", "checkout")
+}
+
 async function createPeer(
   room: RoomHost,
   name: string,
@@ -97,6 +124,7 @@ async function createPeer(
     connector?: RoomConnector
     ttlSeconds?: number
     onTicketNeeded?: () => void
+    gitService?: GitService
   } = {},
 ): Promise<Peer> {
   const root = options.root ?? (await tempFolder(name))
@@ -114,6 +142,7 @@ async function createPeer(
     ticket: { wsUrl: WS_URL, token, role },
     db: options.db ?? new ProjectdDatabase(":memory:"),
     actor: { actorType: "user", principalId: `principal_${name}` },
+    gitService: options.gitService,
     connectorFactory: () => options.connector ?? room.connector(),
     fileEventSource: events,
     submitDelayMs: 5,
@@ -282,6 +311,40 @@ describe("projectd session host", () => {
     const clone = await createPeer(room, "clone", roomKey, { root: cloneRoot })
     await startLive(clone, "the matching folder")
     expect(room.storage.batchCount()).toBe(1)
+  })
+
+  it("replaces files a clean Git checkout holds and refuses changes Git does not have", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const creatorRoot = await tempFolder("creator")
+    await writeFiles(creatorRoot, { "README.md": "# Demo v2\n", "src/app.ts": "export const answer = 42\n" })
+    const creator = await createPeer(room, "creator", roomKey, { root: creatorRoot })
+    await startLive(creator, "the creator")
+    await waitFor(() => creator.host.status().pendingBatches === 0, "the seed to be acknowledged")
+    const seededBatches = room.storage.batchCount()
+
+    // A checkout of the branch as last committed; the session has moved on since.
+    const cloneRoot = await tempFolder("clone")
+    await writeFiles(cloneRoot, { "README.md": "# Demo v1\n", "src/app.ts": "export const answer = 42\n" })
+    commitEverything(cloneRoot)
+    const clone = await createPeer(room, "clone", roomKey, { root: cloneRoot, gitService: new GitService() })
+    await startLive(clone, "the clean checkout")
+    expect(await clone.read("README.md")).toBe("# Demo v2\n")
+    expect(room.storage.batchCount()).toBe(seededBatches)
+
+    // The same checkout with an uncommitted edit holds work only this folder has.
+    const editedRoot = await tempFolder("edited")
+    await writeFiles(editedRoot, { "README.md": "# Demo v1\n" })
+    commitEverything(editedRoot)
+    await writeFiles(editedRoot, { "README.md": "# Demo v1, edited here\n" })
+    const edited = await createPeer(room, "edited", roomKey, { root: editedRoot, gitService: new GitService() })
+    await edited.host.start()
+    await waitFor(() => edited.host.state === "failed", "the edited checkout to be refused")
+    expect(edited.host.status().lastError).toMatchObject({
+      code: "WORKSPACE_CONFLICT",
+      message: expect.stringContaining("Commit or stash"),
+    })
+    expect(await edited.read("README.md")).toBe("# Demo v1, edited here\n")
   })
 
   it("asks for a new ticket when the token has expired", async () => {

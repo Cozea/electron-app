@@ -109,6 +109,8 @@ export interface DaemonSessionTarget {
 
 export interface DaemonSessionConnection {
   readonly roomKeyBase64: string
+  /** Stops handling the session's daemon events, leaving the session attached. */
+  stopListening(): void
   disconnect(): Promise<void>
 }
 
@@ -159,6 +161,7 @@ export async function connectDaemonSession(
 
   return {
     roomKeyBase64,
+    stopListening: unsubscribe,
     disconnect: async () => {
       unsubscribe()
       await deps.daemon.detach(target.publicSessionId)

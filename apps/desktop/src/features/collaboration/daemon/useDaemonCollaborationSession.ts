@@ -1,7 +1,7 @@
 /**
  * Runs the branch's live session through the cozea-projectd daemon while the
- * project is open, behind featureFlags.daemonCollaboration, and shares the room
- * key with members who joined after this device got it.
+ * project is open, and shares the room key with members who joined after this
+ * device got it.
  */
 
 import { useEffect, useRef, useState } from "react"
@@ -24,6 +24,10 @@ import {
 } from "./daemonSessionConnector"
 
 const KEY_RETRY_MS = 10_000
+// The daemon may still be starting, or restarting after an app update.
+const UNAVAILABLE_RETRY_MS = [3_000, 10_000, 30_000, 60_000]
+// A restarted daemon has forgotten its sessions, so an attached session checks it is still there.
+const ATTACHED_CHECK_MS = 15_000
 
 export type DaemonSessionPhase = "off" | "connecting" | "waiting_for_key" | "attached" | "unavailable"
 
@@ -125,9 +129,28 @@ export function useDaemonCollaborationSession(input: {
     let cancelled = false
     let connection: DaemonSessionConnection | null = null
     let retryTimer: ReturnType<typeof setTimeout> | null = null
+    let checkTimer: ReturnType<typeof setInterval> | null = null
+    let failures = 0
+
+    const stopChecking = () => {
+      if (checkTimer) clearInterval(checkTimer)
+      checkTimer = null
+    }
+
+    // Attaches again when the daemon no longer has the session, after a restart or while it is down.
+    const checkAttachment = async () => {
+      const result = await window.electronAPI.projectd.sessions.status(connectTarget.publicSessionId)
+      if (cancelled || (result.success && result.status)) return
+      stopChecking()
+      connection?.stopListening()
+      connection = null
+      void attempt()
+    }
 
     const attempt = async () => {
-      setState({ phase: "connecting", status: null, error: null })
+      setState((current) =>
+        current.phase === "unavailable" ? current : { phase: "connecting", status: null, error: null },
+      )
       try {
         const connected = await connectDaemonSession(deps, connectTarget, (status) => {
           if (!cancelled) setState({ phase: "attached", status, error: status.lastError?.message ?? null })
@@ -137,8 +160,10 @@ export function useDaemonCollaborationSession(input: {
           return
         }
         connection = connected
+        failures = 0
         roomKeyRef.current = connected.roomKeyBase64
         setState((current) => (current.phase === "attached" ? current : { phase: "attached", status: null, error: null }))
+        checkTimer = setInterval(() => void checkAttachment(), ATTACHED_CHECK_MS)
       } catch (error) {
         if (cancelled) return
         if (error instanceof SessionKeyNotSharedError) {
@@ -148,6 +173,8 @@ export function useDaemonCollaborationSession(input: {
         }
         console.warn("[DaemonSession] The daemon could not take this session", error)
         setState({ phase: "unavailable", status: null, error: error instanceof Error ? error.message : String(error) })
+        retryTimer = setTimeout(() => void attempt(), UNAVAILABLE_RETRY_MS[Math.min(failures, UNAVAILABLE_RETRY_MS.length - 1)])
+        failures += 1
       }
     }
     void attempt()
@@ -155,6 +182,7 @@ export function useDaemonCollaborationSession(input: {
     return () => {
       cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
+      stopChecking()
       roomKeyRef.current = null
       if (connection) void connection.disconnect()
     }

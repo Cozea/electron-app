@@ -168,7 +168,8 @@ export const getByPublicId = publicQuery({
 })
 
 // Returns an empty list instead of throwing for callers without access, because
-// ProjectLayout reads it on every project open.
+// ProjectLayout reads it on every project open. Each session carries the caller's own
+// membership status (null when not a member), so the app knows which sessions it is in.
 export const listByProject = publicQuery({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
@@ -176,11 +177,46 @@ export const listByProject = publicQuery({
     if (!caller || !(await canAccessProject(ctx, args.projectId, caller._id))) {
       return []
     }
-    return await ctx.db
+    const sessions = await ctx.db
       .query("collaborationSessions")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
       .filter((q) => q.neq(q.field("lifecycle"), "CLOSED"))
       .collect()
+    const results = []
+    for (const session of sessions) {
+      const membership = await getMembership(ctx, session._id, caller._id)
+      results.push({ ...session, viewerMembership: membership?.status ?? null })
+    }
+    return results
+  },
+})
+
+/** The session's members, for the session bar and the Share dialog; empty for callers without project access. */
+export const listMembers = publicQuery({
+  args: { sessionId: v.id("collaborationSessions") },
+  handler: async (ctx, args) => {
+    const caller = await getCallerOrNull(ctx)
+    const session = await ctx.db.get(args.sessionId)
+    if (!caller || !session || !(await canAccessProject(ctx, session.projectId, caller._id))) {
+      return []
+    }
+    const members = await ctx.db
+      .query("collaborationSessionMembers")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect()
+    const results = []
+    for (const member of members) {
+      if (member.status === "revoked") continue
+      const principal = await ctx.db.get(member.principalId)
+      results.push({
+        principalId: member.principalId,
+        displayName: principal?.displayName ?? "A Cozea device",
+        role: member.role,
+        status: member.status,
+        isSelf: member.principalId === caller._id,
+      })
+    }
+    return results
   },
 })
 

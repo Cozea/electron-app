@@ -406,3 +406,42 @@ describe("collaborationSessions session room keys", () => {
     ).rejects.toThrow(/Viewers cannot create/)
   })
 })
+
+describe("collaborationSessions members for the session bar", () => {
+  it("lists the session's members for devices with project access and marks the caller", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world, { accessMode: "organization_available" })
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+
+    expect(await runConvexHandler(sessions.listMembers, world.owner.ctx, { sessionId })).toEqual([
+      { principalId: world.owner.id, displayName: "Owner", role: "project_manager", status: "active", isSelf: true },
+      { principalId: world.teammate.id, displayName: "Teammate", role: "developer", status: "active", isSelf: false },
+    ])
+    expect(await runConvexHandler(sessions.listMembers, world.outsider.ctx, { sessionId })).toEqual([])
+    expect(await runConvexHandler(sessions.listMembers, world.anonymous, { sessionId })).toEqual([])
+
+    // Revoked devices drop out of the list.
+    await runConvexHandler(sessions.revokeMember, world.owner.ctx, { sessionId, memberPrincipalId: world.teammate.id })
+    expect(await runConvexHandler(sessions.listMembers, world.owner.ctx, { sessionId })).toEqual([
+      expect.objectContaining({ principalId: world.owner.id }),
+    ])
+  })
+
+  it("tells each device its own membership in the project's sessions", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world, { accessMode: "organization_available" })
+    const membershipOf = async (device: { ctx: unknown }) =>
+      (
+        await runConvexHandler<Array<{ viewerMembership: string | null }>>(sessions.listByProject, device.ctx, {
+          projectId: world.projectId,
+        })
+      )[0]?.viewerMembership
+
+    expect(await membershipOf(world.owner)).toBe("active")
+    expect(await membershipOf(world.teammate)).toBeNull()
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+    expect(await membershipOf(world.teammate)).toBe("active")
+    await runConvexHandler(sessions.leave, world.teammate.ctx, { sessionId })
+    expect(await membershipOf(world.teammate)).toBe("left")
+  })
+})
