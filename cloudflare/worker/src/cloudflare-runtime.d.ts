@@ -11,14 +11,33 @@ interface DurableObjectNamespace<T = DurableObjectStub> {
 
 interface DurableObjectState<T = unknown> {
   acceptWebSocket(socket: WebSocket): void
+  getWebSockets(tag?: string): WebSocket[]
+  blockConcurrencyWhile<R>(callback: () => Promise<R>): Promise<R>
   storage: DurableObjectStorage
+}
+
+interface DurableObjectListOptions {
+  start?: string
+  startAfter?: string
+  end?: string
+  prefix?: string
+  reverse?: boolean
+  limit?: number
 }
 
 interface DurableObjectStorage {
   get<T>(key: string): Promise<T | undefined>
   put<T>(key: string, value: T): Promise<void>
+  put<T>(entries: Record<string, T>): Promise<void>
   delete(key: string): Promise<boolean>
+  list<T>(options?: DurableObjectListOptions): Promise<Map<string, T>>
   transaction<T>(closure: (transaction: DurableObjectStorage) => Promise<T>): Promise<T>
+}
+
+/** WebSocket Hibernation: per-socket state that survives eviction of the object. */
+interface WebSocket {
+  serializeAttachment(value: unknown): void
+  deserializeAttachment(): unknown
 }
 
 interface DurableObject {

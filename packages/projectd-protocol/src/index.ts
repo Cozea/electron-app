@@ -137,6 +137,58 @@ export interface ProjectdShutdownResult {
   shuttingDown: true
 }
 
+// ─── Collaboration sessions (P10, P13) ─────────────────────────────────────────
+
+export type ProjectdSessionRole = "viewer" | "developer" | "project_manager"
+
+/** A short-lived credential for one session room, issued by the gateway. */
+export interface ProjectdSessionTicket {
+  wsUrl: string
+  token: string
+  role?: ProjectdSessionRole
+}
+
+export interface ProjectdSessionAttachParams {
+  publicSessionId: string
+  workspaceId: string
+  projectId: string
+  /** Absolute path of the folder the session syncs. */
+  rootPath: string
+  /** The session's 32-byte room key, base64. Only this user's local socket carries it. */
+  roomKeyBase64: string
+  ticket: ProjectdSessionTicket
+  actor?: { principalId?: string; identityKey?: string }
+}
+
+export type ProjectdSessionState =
+  | "starting"
+  | "syncing"
+  | "live"
+  | "reconnecting"
+  | "waiting_for_ticket"
+  | "stopped"
+  | "failed"
+
+export interface ProjectdSessionStatus {
+  publicSessionId: string
+  workspaceId: string
+  rootPath: string
+  state: ProjectdSessionState
+  role: ProjectdSessionRole
+  lastAppliedSessionSeq: number
+  pendingBatches: number
+  fileCount: number
+  /** Files kept on this machine: binaries, and text too large for one batch. */
+  skippedPaths: string[]
+  lastError: { code: string; message: string } | null
+  updatedAt: number
+}
+
+/** Topic carrying one session's `status` and `ticket_needed` events. */
+export function projectdSessionTopic(publicSessionId: string): string {
+  return `session:${publicSessionId}`
+}
+
 // ─── Framing utilities (Line-delimited JSON) ───────────────────────────────────
 
 export function encodeMessage(msg: ProjectdClientMessage | ProjectdServerMessage): string {

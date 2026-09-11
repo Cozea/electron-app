@@ -5,10 +5,114 @@
  * Phase: P02
  */
 
-import { ipcMain } from "electron"
+import { ipcMain, type WebContents } from "electron"
+import {
+  projectdSessionTopic,
+  type ProjectdSessionAttachParams,
+  type ProjectdSessionTicket,
+} from "@cozea/projectd-protocol"
 import { getSharedProjectdClient } from "./ProjectdClient"
 
+const SESSION_EVENT_CHANNEL = "projectd:sessions:event"
+
+interface SessionEventForwarding {
+  readonly senders: Set<WebContents>
+  unsubscribe: (() => void) | null
+}
+
+// Windows that attached each session; the daemon's events for it are relayed to them.
+const sessionForwarding = new Map<string, SessionEventForwarding>()
+
+function toFailure(err: unknown): { success: false; error: string; code?: string } {
+  return {
+    success: false,
+    error: err instanceof Error ? err.message : String(err),
+    code: (err as { code?: string } | null)?.code,
+  }
+}
+
+async function forwardSessionEvents(publicSessionId: string, sender: WebContents): Promise<void> {
+  let forwarding = sessionForwarding.get(publicSessionId)
+  if (!forwarding) {
+    const created: SessionEventForwarding = { senders: new Set(), unsubscribe: null }
+    sessionForwarding.set(publicSessionId, created)
+    forwarding = created
+    try {
+      created.unsubscribe = await getSharedProjectdClient().subscribe(
+        projectdSessionTopic(publicSessionId),
+        (event) => {
+          for (const target of created.senders) {
+            if (target.isDestroyed()) {
+              created.senders.delete(target)
+              continue
+            }
+            target.send(SESSION_EVENT_CHANNEL, { publicSessionId, event: event.event, payload: event.payload })
+          }
+        },
+      )
+    } catch (error) {
+      sessionForwarding.delete(publicSessionId)
+      throw error
+    }
+  }
+  if (!forwarding.senders.has(sender)) {
+    forwarding.senders.add(sender)
+    sender.once("destroyed", () => stopForwarding(publicSessionId, sender))
+  }
+}
+
+function stopForwarding(publicSessionId: string, sender?: WebContents): void {
+  const forwarding = sessionForwarding.get(publicSessionId)
+  if (!forwarding) return
+  if (sender) forwarding.senders.delete(sender)
+  else forwarding.senders.clear()
+  if (forwarding.senders.size === 0) {
+    forwarding.unsubscribe?.()
+    sessionForwarding.delete(publicSessionId)
+  }
+}
+
 export function registerProjectdHandlers(): void {
+  ipcMain.handle("projectd:sessions:attach", async (event, params: ProjectdSessionAttachParams) => {
+    try {
+      await forwardSessionEvents(params.publicSessionId, event.sender)
+      const status = await getSharedProjectdClient().attachSession(params)
+      return { success: true, status }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
+  ipcMain.handle("projectd:sessions:detach", async (_event, publicSessionId: string) => {
+    try {
+      const { detached } = await getSharedProjectdClient().detachSession(publicSessionId)
+      stopForwarding(publicSessionId)
+      return { success: true, detached }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
+  ipcMain.handle("projectd:sessions:status", async (_event, publicSessionId: string) => {
+    try {
+      return { success: true, status: await getSharedProjectdClient().getSessionStatus(publicSessionId) }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
+  ipcMain.handle(
+    "projectd:sessions:updateTicket",
+    async (_event, req: { publicSessionId: string; ticket: ProjectdSessionTicket }) => {
+      try {
+        const status = await getSharedProjectdClient().updateSessionTicket(req.publicSessionId, req.ticket)
+        return { success: true, status }
+      } catch (err) {
+        return toFailure(err)
+      }
+    },
+  )
+
   ipcMain.handle("projectd:health", async () => {
     const client = getSharedProjectdClient()
     try {

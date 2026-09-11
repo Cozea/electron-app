@@ -1,9 +1,33 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { promisify } from "node:util"
 
-const execFileAsync = promisify(execFile)
+/**
+ * Runs the helper with optional stdin. Secrets travel on stdin because argv is
+ * readable by every local process through the process list.
+ */
+function runHelperProcess(helperPath: string, args: string[], input?: string): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(helperPath, args, { maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (!error) {
+        resolve({ stdout, stderr })
+        return
+      }
+      // The helper prints a JSON error reply before exiting non-zero; surface its message.
+      try {
+        const reply = JSON.parse(stdout.trim()) as { error?: string }
+        if (reply.error) {
+          reject(new Error(reply.error))
+          return
+        }
+      } catch {
+        // Not a helper reply
+      }
+      reject(error)
+    })
+    child.stdin?.end(input ?? "")
+  })
+}
 
 export interface VolumeCapabilitiesResult {
   path: string
@@ -49,12 +73,12 @@ export class NativeMacHelper {
     return process.platform === "darwin" && fs.existsSync(this.helperPath)
   }
 
-  private async runCommand(args: string[]): Promise<any> {
+  private async runCommand(args: string[], input?: string): Promise<any> {
     if (!this.isAvailable) {
       throw new Error(`native macOS helper not found at '${this.helperPath}'`)
     }
 
-    const { stdout, stderr } = await execFileAsync(this.helperPath, args)
+    const { stdout, stderr } = await runHelperProcess(this.helperPath, args, input)
     const trimmed = stdout.trim()
     if (!trimmed) {
       if (stderr) throw new Error(stderr)
@@ -73,7 +97,7 @@ export class NativeMacHelper {
   }
 
   async saveIdentity(jsonString: string): Promise<void> {
-    await this.runCommand(["keychain-save", jsonString])
+    await this.runCommand(["keychain-save"], jsonString)
   }
 
   async loadIdentity(): Promise<string | null> {
@@ -93,13 +117,7 @@ export class NativeMacHelper {
   }
 
   async signChallenge(challenge: string, privateKeyD: string): Promise<string> {
-    const res = await this.runCommand([
-      "sign-challenge",
-      "--challenge",
-      challenge,
-      "--key",
-      privateKeyD,
-    ])
+    const res = await this.runCommand(["sign-challenge", "--challenge", challenge], privateKeyD)
     return res.signature
   }
 

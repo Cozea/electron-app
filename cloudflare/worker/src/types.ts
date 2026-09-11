@@ -72,6 +72,8 @@ export interface SessionClaims {
   principalId: string
   clientType: 'web' | 'electron'
   protocolVersion: string
+  /** Set on session-room tokens; viewers may read the room but not write to it. */
+  sessionRole?: 'viewer' | 'developer' | 'project_manager'
   exp: number
   iat: number
 }
@@ -111,6 +113,7 @@ export interface Env {
   DEVICE_AUTH_PREVIOUS_PUBLIC_JWK?: string
   DEVICE_AUTH_PREVIOUS_KEY_ID?: string
   COLLAB_ROOM: DurableObjectNamespaceLike
+  COLLAB_SESSION_ROOM: DurableObjectNamespaceLike
   DEVAPP_RUNTIME_BUILD: DurableObjectNamespaceLike
   DEVAPP_SANDBOX: DurableObjectNamespace<import('./durableObjects/CozeaDevAppSandbox').CozeaDevAppSandbox>
   DEVAPP_BUILD_INPUTS: R2Bucket

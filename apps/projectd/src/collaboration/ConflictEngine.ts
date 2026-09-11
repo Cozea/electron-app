@@ -115,26 +115,24 @@ export class ConflictEngine {
   static detectDeleteModifyConflicts(
     entries: ProjectEntryRecord[],
     structuralOps: StructuralOp[],
-    hasConcurrentEdit: (fileId: string) => boolean,
+    hasConcurrentEdit: (fileId: string, deleteOp: StructuralOp) => boolean,
   ): DeleteModifyConflict[] {
     const conflicts: DeleteModifyConflict[] = []
     const deletedEntries = entries.filter((e) => e.deleted)
 
     for (const entry of deletedEntries) {
-      if (hasConcurrentEdit(entry.fileId)) {
-        // Find latest delete op for this fileId
-        const deleteOp = structuralOps
-          .filter((op) => op.fileId === entry.fileId && op.kind === "delete")
-          .sort((a, b) => b.createdAt - a.createdAt)[0]
+      // Find latest delete op for this fileId
+      const deleteOp = structuralOps
+        .filter((op) => op.fileId === entry.fileId && op.kind === "delete")
+        .sort((a, b) => b.createdAt - a.createdAt)[0]
 
-        if (deleteOp) {
-          conflicts.push({
-            kind: "delete_modify",
-            fileId: entry.fileId,
-            path: entry.path,
-            deleteOp,
-          })
-        }
+      if (deleteOp && hasConcurrentEdit(entry.fileId, deleteOp)) {
+        conflicts.push({
+          kind: "delete_modify",
+          fileId: entry.fileId,
+          path: entry.path,
+          deleteOp,
+        })
       }
     }
 

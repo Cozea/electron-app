@@ -1,5 +1,11 @@
 import type { Session } from './types'
 import type {
+  ProjectdHealthResult,
+  ProjectdSessionAttachParams,
+  ProjectdSessionStatus,
+  ProjectdSessionTicket,
+} from '@cozea/projectd-protocol'
+import type {
   ScheduledTaskDraft,
   ScheduledTaskMutationResult,
   ScheduledTaskRunReport,
@@ -1545,6 +1551,21 @@ export interface WorkbenchSessionSnapshot {
   hasNativePreviewSession: boolean
 }
 
+export type { ProjectdSessionAttachParams, ProjectdSessionStatus, ProjectdSessionTicket }
+
+/** A daemon session event relayed by Electron; a `status` event carries a ProjectdSessionStatus. */
+export interface ProjectdSessionEvent {
+  publicSessionId: string
+  event: string
+  payload: unknown
+}
+
+export interface ProjectdCallFailure {
+  success: false
+  error: string
+  code?: string
+}
+
 export interface ElectronAPI {
   platform: NodeJS.Platform
   windowContext: ElectronWindowContext
@@ -1598,6 +1619,24 @@ export interface ElectronAPI {
     isToolAvailable: (options: { toolName: string }) => Promise<boolean>
     getToolDefinition: (options: { toolName: string }) => Promise<IntegrationToolDefinition | null>
     listTools: () => Promise<IntegrationToolDefinition[]>
+  }
+  /** The cozea-projectd daemon. Calls fail with a ProjectdCallFailure when it is not running. */
+  projectd: {
+    health: () => Promise<{ success: true; health: ProjectdHealthResult } | ProjectdCallFailure>
+    sessions: {
+      attach: (
+        params: ProjectdSessionAttachParams,
+      ) => Promise<{ success: true; status: ProjectdSessionStatus } | ProjectdCallFailure>
+      detach: (publicSessionId: string) => Promise<{ success: true; detached: boolean } | ProjectdCallFailure>
+      status: (
+        publicSessionId: string,
+      ) => Promise<{ success: true; status: ProjectdSessionStatus | null } | ProjectdCallFailure>
+      updateTicket: (
+        publicSessionId: string,
+        ticket: ProjectdSessionTicket,
+      ) => Promise<{ success: true; status: ProjectdSessionStatus } | ProjectdCallFailure>
+      onEvent: (listener: (event: ProjectdSessionEvent) => void) => () => void
+    }
   }
   collab: {
     isEncryptionAvailable: () => Promise<boolean>

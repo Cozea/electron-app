@@ -131,6 +131,11 @@ jobs:
             source "$BASH_ENV"
             bun run typecheck:tests
       - run:
+          name: Typecheck projectd
+          command: |
+            source "$BASH_ENV"
+            bun run typecheck:projectd
+      - run:
           name: Lint
           command: |
             source "$BASH_ENV"

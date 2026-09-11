@@ -6,7 +6,13 @@
 
 import * as Y from "yjs"
 
-import { TreeDoc, type ChangeActor, type EntryKind, type ProjectEntryRecord } from "./TreeDoc"
+import {
+  TreeDoc,
+  type ChangeActor,
+  type EntryKind,
+  type ProjectEntryRecord,
+  type StructuralOp,
+} from "./TreeDoc"
 import { TextDocRegistry } from "./TextDocRegistry"
 import { BinaryStore, type BinaryRevision, type BinaryConflict } from "./BinaryStore"
 import {
@@ -36,6 +42,12 @@ export interface ReplicaSnapshot {
   timestamp: number
 }
 
+/** File IDs whose tree entry, text or binary revision a peer batch changed. */
+export type RemoteChangeListener = (fileIds: ReadonlySet<string>) => void
+
+// Marks transactions that apply peer or restored state, as opposed to local edits.
+const PEER_ORIGIN = Symbol("cozea-peer-update")
+
 export class SessionReplica {
   readonly sessionId: string
   readonly clientId: string
@@ -43,8 +55,16 @@ export class SessionReplica {
   readonly textDocs: TextDocRegistry
   readonly binaryStore: BinaryStore
 
+  // Export watermarks: per doc, the structs this replica already sent or received
+  // from a peer. exportBatch sends what lies beyond them, so they must never cover
+  // local edits that have not been exported yet.
   private lastTreeStateVector: Uint8Array
   private lastTextStateVectors = new Map<string, Uint8Array>()
+  // Docs with local edits since the last export. A Yjs delta always carries the
+  // doc's whole delete set, so a non-empty delta does not mean anything changed.
+  private treeDirty = false
+  private readonly dirtyTextDocs = new Set<string>()
+  private readonly remoteChangeListeners = new Set<RemoteChangeListener>()
 
   constructor(sessionId: string, clientId?: string) {
     this.sessionId = sessionId
@@ -54,6 +74,20 @@ export class SessionReplica {
     this.binaryStore = new BinaryStore()
 
     this.lastTreeStateVector = Y.encodeStateVector(this.tree.doc)
+    this.tree.doc.on("update", (_update: Uint8Array, origin: unknown) => {
+      if (origin !== PEER_ORIGIN) this.treeDirty = true
+    })
+    this.textDocs.onUpdate((fileId, origin) => {
+      if (origin !== PEER_ORIGIN) this.dirtyTextDocs.add(fileId)
+    })
+  }
+
+  /** Subscribes to changes that peer batches make; returns the unsubscribe function. */
+  onRemoteChange(listener: RemoteChangeListener): () => void {
+    this.remoteChangeListeners.add(listener)
+    return () => {
+      this.remoteChangeListeners.delete(listener)
+    }
   }
 
   createFile(params: {
@@ -83,7 +117,15 @@ export class SessionReplica {
   }
 
   deleteFile(fileId: string, actor: ChangeActor): ProjectEntryRecord {
-    return this.tree.deleteEntry(fileId, actor)
+    const entry = this.tree.getEntry(fileId)
+    // Record which text edits this delete had seen (Section 10.18).
+    const textStateVector =
+      entry?.kind === "text"
+        ? this.textDocs.has(fileId)
+          ? stateVectorToRecord(this.textDocs.getStateVector(fileId))
+          : {}
+        : undefined
+    return this.tree.deleteEntry(fileId, actor, textStateVector)
   }
 
   updateTextContent(fileId: string, content: string): void {
@@ -97,28 +139,26 @@ export class SessionReplica {
     const operations: BatchOperation[] = []
 
     // 1. Export TreeDoc delta
-    const treeDelta = Y.encodeStateAsUpdate(this.tree.doc, this.lastTreeStateVector)
-    if (treeDelta.length > 2) {
+    if (this.treeDirty) {
       operations.push({
         type: "tree-yjs",
-        update: treeDelta,
+        update: Y.encodeStateAsUpdate(this.tree.doc, this.lastTreeStateVector),
       })
       this.lastTreeStateVector = Y.encodeStateVector(this.tree.doc)
+      this.treeDirty = false
     }
 
     // 2. Export TextDoc deltas
-    for (const fileId of this.textDocs.listFileIds()) {
-      const lastVector = this.lastTextStateVectors.get(fileId)
-      const textDelta = this.textDocs.encodeStateAsUpdate(fileId, lastVector)
-      if (textDelta.length > 2) {
-        operations.push({
-          type: "text-yjs",
-          docId: fileId,
-          update: textDelta,
-        })
-        this.lastTextStateVectors.set(fileId, this.textDocs.getStateVector(fileId))
-      }
+    for (const fileId of this.dirtyTextDocs) {
+      if (!this.textDocs.has(fileId)) continue
+      operations.push({
+        type: "text-yjs",
+        docId: fileId,
+        update: this.textDocs.encodeStateAsUpdate(fileId, this.lastTextStateVectors.get(fileId)),
+      })
+      this.lastTextStateVectors.set(fileId, this.textDocs.getStateVector(fileId))
     }
+    this.dirtyTextDocs.clear()
 
     if (operations.length === 0) {
       return null
@@ -134,30 +174,44 @@ export class SessionReplica {
   }
 
   /**
-   * Applies an inbound remote collaboration batch to this replica.
+   * Applies an inbound remote collaboration batch to this replica and returns the
+   * IDs of the files it changed.
    */
-  applyBatch(batch: CollaborationBatch | null | undefined): void {
-    if (!batch || !Array.isArray(batch.operations)) return
+  applyBatch(batch: CollaborationBatch | null | undefined): ReadonlySet<string> {
+    const changed = new Set<string>()
+    if (!batch || !Array.isArray(batch.operations)) return changed
 
-    for (const op of batch.operations) {
-      switch (op.type) {
-        case "tree-yjs":
-          Y.applyUpdate(this.tree.doc, op.update)
-          break
-        case "text-yjs":
-          this.textDocs.applyUpdate(op.docId, op.update)
-          break
-        case "binary-revision":
-          this.binaryStore.addRevision(op.revision)
-          break
+    const recordEntryChanges: Parameters<Y.Map<ProjectEntryRecord>["observe"]>[0] = (event) => {
+      for (const fileId of event.keysChanged) changed.add(fileId)
+    }
+    this.tree.entries.observe(recordEntryChanges)
+    try {
+      for (const op of batch.operations) {
+        switch (op.type) {
+          case "tree-yjs":
+            this.lastTreeStateVector = applyPeerUpdate(this.tree.doc, op.update, this.lastTreeStateVector).watermark
+            break
+          case "text-yjs": {
+            const { doc } = this.textDocs.getOrCreate(op.docId)
+            const applied = applyPeerUpdate(doc, op.update, this.lastTextStateVectors.get(op.docId))
+            this.lastTextStateVectors.set(op.docId, applied.watermark)
+            if (applied.changed) changed.add(op.docId)
+            break
+          }
+          case "binary-revision":
+            this.binaryStore.addRevision(op.revision)
+            changed.add(op.revision.fileId)
+            break
+        }
       }
+    } finally {
+      this.tree.entries.unobserve(recordEntryChanges)
     }
 
-    // Update state vectors
-    this.lastTreeStateVector = Y.encodeStateVector(this.tree.doc)
-    for (const fileId of this.textDocs.listFileIds()) {
-      this.lastTextStateVectors.set(fileId, this.textDocs.getStateVector(fileId))
+    if (changed.size > 0) {
+      for (const listener of this.remoteChangeListeners) listener(changed)
     }
+    return changed
   }
 
   captureSnapshot(): ReplicaSnapshot {
@@ -175,9 +229,9 @@ export class SessionReplica {
   }
 
   restoreSnapshot(snapshot: ReplicaSnapshot): void {
-    Y.applyUpdate(this.tree.doc, snapshot.treeUpdate)
+    Y.applyUpdate(this.tree.doc, snapshot.treeUpdate, PEER_ORIGIN)
     for (const [fileId, update] of Object.entries(snapshot.textUpdates)) {
-      this.textDocs.applyUpdate(fileId, update)
+      this.textDocs.applyUpdate(fileId, update, PEER_ORIGIN)
     }
 
     this.lastTreeStateVector = Y.encodeStateVector(this.tree.doc)
@@ -204,10 +258,7 @@ export class SessionReplica {
     const deleteModifyConflicts = ConflictEngine.detectDeleteModifyConflicts(
       allEntries,
       structuralOps,
-      (fileId) => {
-        // Has text edits if doc exists and text length > 0
-        return this.textDocs.has(fileId) && this.textDocs.getTextContent(fileId).length > 0
-      },
+      (fileId, deleteOp) => this.hasTextEditsUnseenBy(fileId, deleteOp),
     )
 
     const binaryConflicts: BinaryConflict[] = []
@@ -227,4 +278,59 @@ export class SessionReplica {
       binaryConflicts,
     }
   }
+
+  /**
+   * True when the file's text holds edits the delete had not seen: an edit concurrent
+   * with the delete, or one made after it. A delete recorded without a text state
+   * vector cannot prove either, so it never reports a conflict.
+   */
+  private hasTextEditsUnseenBy(fileId: string, deleteOp: StructuralOp): boolean {
+    const seen = deleteOp.textStateVector
+    if (!seen || !this.textDocs.has(fileId)) return false
+
+    for (const [client, clock] of Y.decodeStateVector(this.textDocs.getStateVector(fileId))) {
+      if (clock > (seen[String(client)] ?? 0)) return true
+    }
+    return false
+  }
+}
+
+function stateVectorToRecord(stateVector: Uint8Array): Record<string, number> {
+  const record: Record<string, number> = {}
+  for (const [client, clock] of Y.decodeStateVector(stateVector)) {
+    record[String(client)] = clock
+  }
+  return record
+}
+
+/**
+ * Applies a peer update and returns the export watermark advanced by exactly the
+ * structs the update integrated. Advancing it to the doc's full state instead would
+ * mark local edits that were never exported as sent, and they would never leave.
+ * `changed` is true when the update altered the doc, deletions included.
+ */
+function applyPeerUpdate(
+  doc: Y.Doc,
+  update: Uint8Array,
+  watermark: Uint8Array | undefined,
+): { watermark: Uint8Array; changed: boolean } {
+  const before = Y.decodeStateVector(Y.encodeStateVector(doc))
+  let changed = false
+  const markChanged = () => {
+    changed = true
+  }
+  doc.on("update", markChanged)
+  try {
+    Y.applyUpdate(doc, update, PEER_ORIGIN)
+  } finally {
+    doc.off("update", markChanged)
+  }
+
+  const advanced = watermark ? Y.decodeStateVector(watermark) : new Map<number, number>()
+  for (const [client, clock] of Y.decodeStateVector(Y.encodeStateVector(doc))) {
+    if (clock > (before.get(client) ?? 0) && clock > (advanced.get(client) ?? 0)) {
+      advanced.set(client, clock)
+    }
+  }
+  return { watermark: Y.encodeStateVector(advanced), changed }
 }

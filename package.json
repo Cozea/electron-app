@@ -47,6 +47,7 @@
     "typecheck": "bun run --cwd apps/desktop typecheck",
     "typecheck:electron": "bun run --cwd apps/desktop typecheck:electron",
     "typecheck:tests": "bunx tsc --project tsconfig.tests.json",
+    "typecheck:projectd": "bunx tsc --project apps/projectd/tsconfig.json",
     "typecheck:cloudflare": "bunx tsc --project cloudflare/worker/tsconfig.json",
     "lint": "bunx --bun oxlint apps/desktop/src apps/desktop/electron convex shared tests apps/desktop/electron.vite.config.ts vitest.config.ts",
     "test": "bunx vitest run",

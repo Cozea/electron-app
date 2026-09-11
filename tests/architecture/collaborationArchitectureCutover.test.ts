@@ -68,16 +68,24 @@ describe("P26 collaboration architecture cutover guardrails", () => {
     expect(violations).toEqual([])
   })
 
-  it("fails CI if activeBranch === collabBranch decides collaboration membership", () => {
-    const layoutPath = path.join(
-      repoRoot,
-      "apps/desktop/src/features/projects/layouts/ProjectLayout.tsx",
+  it("fails CI if branch equality decides collaboration ahead of a session record", () => {
+    const layout = fs.readFileSync(
+      path.join(repoRoot, "apps/desktop/src/features/projects/layouts/ProjectLayout.tsx"),
+      "utf8",
     )
-    const content = fs.readFileSync(layoutPath, "utf8")
+    const gate = fs.readFileSync(
+      path.join(repoRoot, "apps/desktop/src/features/collaboration/collaborationGate.ts"),
+      "utf8",
+    )
 
-    // The old naive branch-equality gate must NOT be present
-    expect(content).not.toContain("activeBranch === collabBranch;")
-    expect(content).toContain("activeSessionForBranch")
+    // ProjectLayout delegates the decision and never compares branches itself.
+    expect(layout).toContain("resolveCollaborationGate(")
+    expect(layout).not.toMatch(/activeBranch\s*===\s*collabBranch/)
+    // The gate consults the branch's session record before the shared-branch
+    // fallback, so a session always outranks branch equality.
+    const sessionCheck = gate.indexOf("if (session)")
+    expect(sessionCheck).toBeGreaterThan(-1)
+    expect(sessionCheck).toBeLessThan(gate.indexOf("input.activeBranch === input.sharedBranch"))
   })
 
   it("fails CI if source-editor tile is added as collaboration requirement", () => {

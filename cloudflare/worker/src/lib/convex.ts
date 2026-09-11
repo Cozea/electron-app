@@ -277,6 +277,39 @@ async function runQuery<T>(env: Env, name: string, args: Record<string, unknown>
   return (await getClient(env).query(asQuery(name), args)) as T
 }
 
+export interface SessionRoomAccess {
+  principalId: string
+  identityKey: string
+  projectId: string
+  role: 'viewer' | 'developer' | 'project_manager'
+}
+
+export async function authorizeSessionRoomInConvex(
+  env: Env,
+  auth: DeviceAccessClaims,
+  publicSessionId: string,
+): Promise<SessionRoomAccess> {
+  const principal = await requireActiveDeviceAccessInConvex(env, auth)
+  const access = await runServerQuery<{
+    allowed: boolean
+    reason?: string
+    projectId?: string
+    role?: SessionRoomAccess['role']
+  }>(env, 'collaborationSessions:getRoomAccessForServer', {
+    publicSessionId,
+    principalId: principal.principalId,
+  })
+  if (!access.allowed || !access.projectId || !access.role) {
+    throw new Error(access.reason ?? 'The authenticated device cannot join this session room')
+  }
+  return {
+    principalId: principal.principalId,
+    identityKey: principal.identityKey,
+    projectId: access.projectId,
+    role: access.role,
+  }
+}
+
 export async function createCollabSessionFromConvex(
   env: Env,
   body: SessionRequestBody,

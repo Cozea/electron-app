@@ -21,17 +21,24 @@ func printJSON<T: Codable>(_ response: HelperResponse<T>) {
     }
 }
 
+/// Secrets (identity JSON, private keys) arrive on stdin so they never appear in the
+/// process list the way argv does.
+func readStandardInput() -> String {
+    let data = FileHandle.standardInput.readDataToEndOfFile()
+    return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+}
+
 func runCLI() {
     let args = CommandLine.arguments.dropFirst()
     let command = args.first ?? "help"
 
     switch command {
     case "keychain-save":
-        guard args.count >= 2 else {
-            fputs("Usage: cozea-projectd-mac-helper keychain-save <json-string>\n", stderr)
+        let json = readStandardInput()
+        guard !json.isEmpty else {
+            fputs("Usage: cozea-projectd-mac-helper keychain-save < identity.json\n", stderr)
             exit(1)
         }
-        let json = args.dropFirst().joined(separator: " ")
         do {
             try KeychainService.shared.saveIdentity(jsonString: json)
             printJSON(HelperResponse(id: "1", success: true, result: ["status": "saved"], error: nil))
@@ -63,18 +70,13 @@ func runCLI() {
 
     case "sign-challenge":
         var challenge = ""
-        var keyD = ""
         let subArgs = Array(args.dropFirst())
-        for i in 0..<subArgs.count {
-            if subArgs[i] == "--challenge" && i + 1 < subArgs.count {
-                challenge = subArgs[i + 1]
-            }
-            if subArgs[i] == "--key" && i + 1 < subArgs.count {
-                keyD = subArgs[i + 1]
-            }
+        for i in 0..<subArgs.count where subArgs[i] == "--challenge" && i + 1 < subArgs.count {
+            challenge = subArgs[i + 1]
         }
+        let keyD = readStandardInput()
         guard !challenge.isEmpty, !keyD.isEmpty else {
-            fputs("Usage: cozea-projectd-mac-helper sign-challenge --challenge <str> --key <base64url-d>\n", stderr)
+            fputs("Usage: cozea-projectd-mac-helper sign-challenge --challenge <str> < base64url-d\n", stderr)
             exit(1)
         }
         do {
@@ -187,10 +189,10 @@ func runCLI() {
     default:
         print("""
         cozea-projectd-mac-helper commands:
-          keychain-save <json-string>
+          keychain-save < identity.json
           keychain-load
           keychain-delete
-          sign-challenge --challenge <str> --key <base64url-d>
+          sign-challenge --challenge <str> < base64url-d
           volume-probe <path>
           launchagent-status
           launchagent-register --exec <path> --socket <path>

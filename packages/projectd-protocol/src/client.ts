@@ -11,6 +11,9 @@ import {
   type ProjectdHealthResult,
   type ProjectdRequest,
   type ProjectdServerMessage,
+  type ProjectdSessionAttachParams,
+  type ProjectdSessionStatus,
+  type ProjectdSessionTicket,
   type ProjectdShutdownResult,
 } from "./index"
 
@@ -325,6 +328,30 @@ export class ProjectdClient {
 
   async gitCheckIgnore(cwd: string, paths: string[]): Promise<string[]> {
     return this.request<string[]>("git.checkIgnore", { cwd, paths })
+  }
+
+  /** Starts syncing a folder with a session; progress arrives as `status` events on its topic. */
+  async attachSession(params: ProjectdSessionAttachParams): Promise<ProjectdSessionStatus> {
+    return this.request<ProjectdSessionStatus>("sessions.attach", params)
+  }
+
+  async detachSession(publicSessionId: string): Promise<{ detached: boolean }> {
+    return this.request<{ detached: boolean }>("sessions.detach", { publicSessionId })
+  }
+
+  async listSessions(): Promise<ProjectdSessionStatus[]> {
+    return this.request<ProjectdSessionStatus[]>("sessions.list")
+  }
+
+  async getSessionStatus(publicSessionId: string): Promise<ProjectdSessionStatus | null> {
+    return this.request<ProjectdSessionStatus | null>("sessions.status", { publicSessionId })
+  }
+
+  async updateSessionTicket(
+    publicSessionId: string,
+    ticket: ProjectdSessionTicket,
+  ): Promise<ProjectdSessionStatus> {
+    return this.request<ProjectdSessionStatus>("sessions.updateTicket", { publicSessionId, ticket })
   }
 
   disconnect(): void {

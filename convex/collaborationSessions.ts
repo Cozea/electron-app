@@ -2,31 +2,180 @@
  * Collaboration Sessions control plane mutations and queries.
  *
  * Master Specification: Section 4.1, 6.1 - 6.8, 25.1 - 25.4
+ *
+ * Every function acts for the authenticated device. Caller identity never comes from
+ * arguments, access is checked against the session's project, and lifecycle changes
+ * follow the shared session state machine.
  */
 
-import { mutation, query } from "./_generated/server"
-import { v } from "convex/values"
+import { ConvexError, v } from "convex/values"
 
-export const get = query({
+import type { Doc, Id } from "./_generated/dataModel"
+import { query as publicQuery, type MutationCtx, type QueryCtx } from "./_generated/server"
+import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { requireAuthenticatedDevice, type DevicePrincipal } from "./lib/deviceAuth"
+import { isOrgMember } from "./lib/orgAccess"
+import { canAccessProject, canEditProject, canManageProject } from "./lib/projectAccess"
+import { isDeviceIdentityKey, normalizeDeviceIdentityKey } from "../shared/deviceIdentity"
+import { canTransitionSessionLifecycle } from "../shared/collaboration/stateMachines"
+
+type Session = Doc<"collaborationSessions">
+type SessionMember = Doc<"collaborationSessionMembers">
+type SessionInvitation = Doc<"collaborationSessionInvitations">
+type SessionLifecycle = Session["lifecycle"]
+type SessionRole = SessionMember["role"]
+
+const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const sessionRole = v.union(v.literal("viewer"), v.literal("developer"), v.literal("project_manager"))
+
+// ─── Access helpers ───────────────────────────────────────────────────────────
+
+async function getCallerOrNull(ctx: QueryCtx): Promise<DevicePrincipal | null> {
+  try {
+    return await requireAuthenticatedDevice(ctx)
+  } catch (error) {
+    if (error instanceof ConvexError) return null
+    throw error
+  }
+}
+
+async function readableSession(ctx: QueryCtx, session: Session | null): Promise<Session | null> {
+  if (!session) return null
+  const caller = await getCallerOrNull(ctx)
+  if (!caller) return null
+  return (await canAccessProject(ctx, session.projectId, caller._id)) ? session : null
+}
+
+async function requireSession(ctx: MutationCtx, sessionId: Id<"collaborationSessions">): Promise<Session> {
+  const session = await ctx.db.get(sessionId)
+  if (!session) {
+    throw new ConvexError("Collaboration session not found")
+  }
+  return session
+}
+
+async function getMembership(
+  ctx: QueryCtx | MutationCtx,
+  sessionId: Id<"collaborationSessions">,
+  principalId: Id<"devicePrincipals">,
+): Promise<SessionMember | null> {
+  return await ctx.db
+    .query("collaborationSessionMembers")
+    .withIndex("by_session_and_principal", (q) => q.eq("sessionId", sessionId).eq("principalId", principalId))
+    .first()
+}
+
+async function hasActiveMembers(ctx: MutationCtx, sessionId: Id<"collaborationSessions">): Promise<boolean> {
+  const member = await ctx.db
+    .query("collaborationSessionMembers")
+    .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+    .filter((q) => q.eq(q.field("status"), "active"))
+    .first()
+  return member !== null
+}
+
+/** Pause, resume, close, invite and revoke are global actions for session or project managers (Section 25.4). */
+async function requireSessionManager(ctx: MutationCtx, session: Session, caller: DevicePrincipal): Promise<void> {
+  const membership = await getMembership(ctx, session._id, caller._id)
+  if (membership?.status === "active" && membership.role === "project_manager") return
+  if (await canManageProject(ctx, session.projectId, caller._id)) return
+  throw new ConvexError("Only session or project managers can do that")
+}
+
+/** Walks the session state machine so every intermediate state is a legal step (Section 4.1). */
+function walkLifecycle(from: SessionLifecycle, steps: readonly SessionLifecycle[]): SessionLifecycle {
+  let current = from
+  for (const next of steps) {
+    if (!canTransitionSessionLifecycle(current, next)) {
+      throw new ConvexError(`A ${current.toLowerCase()} session cannot become ${next.toLowerCase()}`)
+    }
+    current = next
+  }
+  return current
+}
+
+function isClosedOrClosing(session: Session): boolean {
+  return session.lifecycle === "CLOSED" || session.lifecycle === "CLOSING"
+}
+
+function isInvitationFor(invite: SessionInvitation, caller: DevicePrincipal): boolean {
+  return (
+    invite.targetPrincipalId === caller._id ||
+    (invite.targetIdentityKey !== undefined &&
+      invite.targetIdentityKey === normalizeDeviceIdentityKey(caller.identityKey))
+  )
+}
+
+async function findPendingInvitation(
+  ctx: MutationCtx,
+  sessionId: Id<"collaborationSessions">,
+  caller: DevicePrincipal,
+  now: number,
+): Promise<SessionInvitation | null> {
+  const pending = await ctx.db
+    .query("collaborationSessionInvitations")
+    .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+    .filter((q) => q.eq(q.field("status"), "pending"))
+    .collect()
+  return pending.find((invite) => invite.expiresAt > now && isInvitationFor(invite, caller)) ?? null
+}
+
+/**
+ * Accepting a session invitation grants project access when the device has none
+ * (Section 6.3). The grant never exceeds developer: a session role does not make
+ * anyone a project manager.
+ */
+async function ensureProjectAccess(
+  ctx: MutationCtx,
+  projectId: Id<"projects">,
+  principalId: Id<"devicePrincipals">,
+  role: SessionRole,
+  addedBy: Id<"devicePrincipals">,
+  now: number,
+): Promise<void> {
+  const project = await ctx.db.get(projectId)
+  if (!project || project.status === "deleted") {
+    throw new ConvexError("Project not found")
+  }
+  if (await canAccessProject(ctx, projectId, principalId)) return
+  await ctx.db.insert("projectMembers", {
+    projectId,
+    principalId,
+    role: role === "viewer" ? "viewer" : "developer",
+    addedAt: now,
+    addedBy,
+  })
+}
+
+// ─── Queries ──────────────────────────────────────────────────────────────────
+
+export const get = publicQuery({
   args: { sessionId: v.id("collaborationSessions") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.sessionId)
+    return await readableSession(ctx, await ctx.db.get(args.sessionId))
   },
 })
 
-export const getByPublicId = query({
+export const getByPublicId = publicQuery({
   args: { publicSessionId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const session = await ctx.db
       .query("collaborationSessions")
       .withIndex("by_public_session_id", (q) => q.eq("publicSessionId", args.publicSessionId))
       .first()
+    return await readableSession(ctx, session)
   },
 })
 
-export const listByProject = query({
+// Returns an empty list instead of throwing for callers without access, because
+// ProjectLayout reads it on every project open.
+export const listByProject = publicQuery({
   args: { projectId: v.id("projects") },
   handler: async (ctx, args) => {
+    const caller = await getCallerOrNull(ctx)
+    if (!caller || !(await canAccessProject(ctx, args.projectId, caller._id))) {
+      return []
+    }
     return await ctx.db
       .query("collaborationSessions")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -35,261 +184,37 @@ export const listByProject = query({
   },
 })
 
-export const create = mutation({
-  args: {
-    projectId: v.id("projects"),
-    repositoryBindingId: v.string(),
-    branchName: v.string(),
-    targetBranch: v.string(),
-    accessMode: v.union(v.literal("invite_only"), v.literal("organization_available")),
-    organizationId: v.optional(v.id("organizations")),
-    creatorPrincipalId: v.id("devicePrincipals"),
-  },
-  handler: async (ctx, args) => {
-    // Check branch uniqueness: no duplicate non-closed session for the same branch (Section 6.1)
-    const existing = await ctx.db
-      .query("collaborationSessions")
-      .withIndex("by_project_and_branch", (q) =>
-        q.eq("projectId", args.projectId).eq("branchName", args.branchName),
-      )
-      .filter((q) => q.neq(q.field("lifecycle"), "CLOSED"))
-      .first()
-
-    if (existing) {
-      throw new Error(
-        `A non-closed collaboration session already exists for branch '${args.branchName}' (session: ${existing.publicSessionId})`,
-      )
-    }
-
-    const now = Date.now()
-    const publicSessionId = `czs_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
-
-    const sessionId = await ctx.db.insert("collaborationSessions", {
-      publicSessionId,
-      projectId: args.projectId,
-      repositoryBindingId: args.repositoryBindingId,
-      branchName: args.branchName,
-      targetBranch: args.targetBranch,
-      createdByPrincipalId: args.creatorPrincipalId,
-      lifecycle: "ACTIVE",
-      accessMode: args.accessMode,
-      organizationId: args.organizationId,
-      createdAt: now,
-      updatedAt: now,
-      pausedAt: undefined,
-      closedAt: undefined,
-      lastDurableSeq: 0,
-      lastSnapshotSeq: 0,
-      lastAutoGitCheckpointSeq: undefined,
-      lastAutoGitCommitOid: undefined,
-    })
-
-    // Add creator as project_manager member
-    await ctx.db.insert("collaborationSessionMembers", {
-      sessionId,
-      projectId: args.projectId,
-      principalId: args.creatorPrincipalId,
-      role: "project_manager",
-      status: "active",
-      joinedAt: now,
-    })
-
-    // Initialize AutoGit election state
-    await ctx.db.insert("collaborationAutoGit", {
-      sessionId,
-      leaderIdentityKey: undefined,
-      leaseGeneration: 0,
-      leaseExpiresAt: 0,
-      updatedAt: now,
-    })
-
-    return { sessionId, publicSessionId }
-  },
-})
-
-export const join = mutation({
-  args: {
-    sessionId: v.id("collaborationSessions"),
-    principalId: v.id("devicePrincipals"),
-  },
-  handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId)
-    if (!session) {
-      throw new Error("Collaboration session not found")
-    }
-    if (session.lifecycle === "CLOSED") {
-      throw new Error("Cannot join closed collaboration session")
-    }
-
-    const now = Date.now()
-
-    // Check existing membership
-    const existingMember = await ctx.db
-      .query("collaborationSessionMembers")
-      .withIndex("by_session_and_principal", (q) =>
-        q.eq("sessionId", args.sessionId).eq("principalId", args.principalId),
-      )
-      .first()
-
-    if (existingMember) {
-      if (existingMember.status === "revoked") {
-        throw new Error("Device access to this session has been revoked")
-      }
-      if (existingMember.status === "left") {
-        await ctx.db.patch(existingMember._id, { status: "active", joinedAt: now })
-      }
-      return { memberId: existingMember._id, status: "active" }
-    }
-
-    // Access control: if invite_only, verify valid accepted invitation
-    if (session.accessMode === "invite_only") {
-      const invite = await ctx.db
-        .query("collaborationSessionInvitations")
-        .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
-        .filter((q) => q.eq(q.field("targetPrincipalId"), args.principalId))
-        .filter((q) => q.eq(q.field("status"), "pending"))
-        .first()
-
-      if (!invite) {
-        throw new Error("Invitation required to join this invite-only session")
-      }
-
-      await ctx.db.patch(invite._id, { status: "accepted", resolvedAt: now })
-    }
-
-    // Ensure project membership atomically (Section 6.1 / 6.3)
-    const projectMember = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_principal", (q) =>
-        q.eq("projectId", session.projectId).eq("principalId", args.principalId),
-      )
-      .first()
-
-    if (!projectMember) {
-      await ctx.db.insert("projectMembers", {
-        projectId: session.projectId,
-        principalId: args.principalId,
-        role: "developer",
-        addedAt: now,
-        addedBy: session.createdByPrincipalId,
-      })
-    }
-
-    const memberId = await ctx.db.insert("collaborationSessionMembers", {
-      sessionId: args.sessionId,
-      projectId: session.projectId,
-      principalId: args.principalId,
-      role: "developer",
-      status: "active",
-      joinedAt: now,
-    })
-
-    // If session was DORMANT, revive to ACTIVE
-    if (session.lifecycle === "DORMANT") {
-      await ctx.db.patch(session._id, { lifecycle: "ACTIVE", updatedAt: now })
-    }
-
-    return { memberId, status: "active" }
-  },
-})
-
-export const leave = mutation({
-  args: {
-    sessionId: v.id("collaborationSessions"),
-    principalId: v.id("devicePrincipals"),
-  },
-  handler: async (ctx, args) => {
-    const member = await ctx.db
-      .query("collaborationSessionMembers")
-      .withIndex("by_session_and_principal", (q) =>
-        q.eq("sessionId", args.sessionId).eq("principalId", args.principalId),
-      )
-      .first()
-
-    if (member) {
-      await ctx.db.patch(member._id, { status: "left", leftAt: Date.now() })
-    }
-
-    // If no active members remain, transition to DORMANT (Section 4.1)
-    const activeMembers = await ctx.db
-      .query("collaborationSessionMembers")
-      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
-      .filter((q) => q.eq(q.field("status"), "active"))
-      .collect()
-
-    if (activeMembers.length === 0) {
-      await ctx.db.patch(args.sessionId, { lifecycle: "DORMANT", updatedAt: Date.now() })
-    }
-
-    return { success: true }
-  },
-})
-
-export const pause = mutation({
-  args: {
-    sessionId: v.id("collaborationSessions"),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now()
-    await ctx.db.patch(args.sessionId, {
-      lifecycle: "PAUSED",
-      pausedAt: now,
-      updatedAt: now,
-    })
-    return { success: true }
-  },
-})
-
-export const resume = mutation({
-  args: {
-    sessionId: v.id("collaborationSessions"),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now()
-    await ctx.db.patch(args.sessionId, {
-      lifecycle: "ACTIVE",
-      pausedAt: undefined,
-      updatedAt: now,
-    })
-    return { success: true }
-  },
-})
-
-export const close = mutation({
-  args: {
-    sessionId: v.id("collaborationSessions"),
-  },
-  handler: async (ctx, args) => {
-    const now = Date.now()
-    await ctx.db.patch(args.sessionId, {
-      lifecycle: "CLOSED",
-      closedAt: now,
-      updatedAt: now,
-    })
-    return { success: true }
-  },
-})
-
 export const listIncomingInvitations = query({
-  args: {
-    principalId: v.id("devicePrincipals"),
-  },
-  handler: async (ctx, args) => {
+  args: {},
+  handler: async (ctx) => {
+    const caller = await requireAuthenticatedDevice(ctx)
     const now = Date.now()
-    const invitations = await ctx.db
+
+    const byPrincipal = await ctx.db
       .query("collaborationSessionInvitations")
-      .withIndex("by_target_principal", (q) => q.eq("targetPrincipalId", args.principalId))
+      .withIndex("by_target_principal", (q) => q.eq("targetPrincipalId", caller._id))
       .filter((q) => q.eq(q.field("status"), "pending"))
-      .filter((q) => q.gt(q.field("expiresAt"), now))
       .collect()
+    const byIdentity = await ctx.db
+      .query("collaborationSessionInvitations")
+      .withIndex("by_target_identity", (q) =>
+        q.eq("targetIdentityKey", normalizeDeviceIdentityKey(caller.identityKey)),
+      )
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect()
+
+    const invitations = new Map<Id<"collaborationSessionInvitations">, SessionInvitation>()
+    for (const invite of [...byPrincipal, ...byIdentity]) {
+      if (invite.expiresAt > now) invitations.set(invite._id, invite)
+    }
 
     const results = []
-    for (const invite of invitations) {
+    for (const invite of invitations.values()) {
       const session = await ctx.db.get(invite.sessionId)
       const project = await ctx.db.get(invite.projectId)
       const inviter = await ctx.db.get(invite.createdByPrincipalId)
 
-      if (session && project) {
+      if (session && project && session.lifecycle !== "CLOSED") {
         results.push({
           invitationId: invite._id,
           sessionId: session._id,
@@ -311,62 +236,711 @@ export const listIncomingInvitations = query({
   },
 })
 
-export const resolveInvitation = mutation({
+function requireGatewaySecret(serverSecret: string): void {
+  const expected = process.env.AI_GATEWAY_SECRET
+  if (!expected || serverSecret !== expected) {
+    throw new ConvexError("Unauthorized")
+  }
+}
+
+// Server-only admission check for the gateway's session-room route (Section 13.1).
+export const getRoomAccessForServer = publicQuery({
   args: {
-    invitationId: v.id("collaborationSessionInvitations"),
-    accept: v.boolean(),
+    publicSessionId: v.string(),
     principalId: v.id("devicePrincipals"),
+    serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
-    const invite = await ctx.db.get(args.invitationId)
-    if (!invite || invite.status !== "pending") {
-      throw new Error("Invitation not found or no longer pending")
+    requireGatewaySecret(args.serverSecret)
+
+    const session = await ctx.db
+      .query("collaborationSessions")
+      .withIndex("by_public_session_id", (q) => q.eq("publicSessionId", args.publicSessionId))
+      .first()
+    if (!session) {
+      return { allowed: false as const, reason: "Collaboration session not found" }
+    }
+    if (session.lifecycle !== "ACTIVE") {
+      return {
+        allowed: false as const,
+        reason: `The session is ${session.lifecycle.toLowerCase()}; resume or rejoin it first`,
+      }
+    }
+    const member = await getMembership(ctx, session._id, args.principalId)
+    if (!member || member.status !== "active") {
+      return { allowed: false as const, reason: "Join the session before connecting to it" }
+    }
+    if (!(await canAccessProject(ctx, session.projectId, args.principalId))) {
+      return { allowed: false as const, reason: "The device cannot access this project" }
+    }
+    return { allowed: true as const, projectId: session.projectId, role: member.role }
+  },
+})
+
+// ─── Mutations ────────────────────────────────────────────────────────────────
+
+// The authenticated builder requires edit access to args.projectId before this runs.
+export const create = mutation({
+  args: {
+    projectId: v.id("projects"),
+    repositoryBindingId: v.string(),
+    branchName: v.string(),
+    targetBranch: v.string(),
+    accessMode: v.union(v.literal("invite_only"), v.literal("organization_available")),
+    organizationId: v.optional(v.id("organizations")),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const branchName = args.branchName.trim()
+    const targetBranch = args.targetBranch.trim()
+    if (!branchName || !targetBranch) {
+      throw new ConvexError("Session and target branch names are required")
+    }
+
+    const project = await ctx.db.get(args.projectId)
+    if (!project || project.status === "deleted") {
+      throw new ConvexError("Project not found")
+    }
+
+    // Organization availability is tied to the project's own organization (Section 6.4).
+    let organizationId: Id<"organizations"> | undefined
+    if (args.accessMode === "organization_available") {
+      if (!project.organizationId) {
+        throw new ConvexError("Only organization projects can make a session available to the organization")
+      }
+      if (args.organizationId && args.organizationId !== project.organizationId) {
+        throw new ConvexError("The session's organization must be the project's organization")
+      }
+      organizationId = project.organizationId
+    }
+
+    // Check branch uniqueness: no duplicate non-closed session for the same branch (Section 6.1)
+    const existing = await ctx.db
+      .query("collaborationSessions")
+      .withIndex("by_project_and_branch", (q) =>
+        q.eq("projectId", args.projectId).eq("branchName", branchName),
+      )
+      .filter((q) => q.neq(q.field("lifecycle"), "CLOSED"))
+      .first()
+
+    if (existing) {
+      throw new ConvexError(
+        `A non-closed collaboration session already exists for branch '${branchName}' (session: ${existing.publicSessionId})`,
+      )
     }
 
     const now = Date.now()
+    const publicSessionId = `czs_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
 
-    if (!args.accept) {
-      await ctx.db.patch(invite._id, { status: "declined", resolvedAt: now })
-      return { accepted: false }
-    }
+    const sessionId = await ctx.db.insert("collaborationSessions", {
+      publicSessionId,
+      projectId: args.projectId,
+      repositoryBindingId: args.repositoryBindingId,
+      branchName,
+      targetBranch,
+      createdByPrincipalId: caller._id,
+      lifecycle: "ACTIVE",
+      accessMode: args.accessMode,
+      organizationId,
+      createdAt: now,
+      updatedAt: now,
+      pausedAt: undefined,
+      closedAt: undefined,
+      lastDurableSeq: 0,
+      lastSnapshotSeq: 0,
+      lastAutoGitCheckpointSeq: undefined,
+      lastAutoGitCommitOid: undefined,
+    })
 
-    const session = await ctx.db.get(invite.sessionId)
-    if (!session || session.lifecycle === "CLOSED") {
-      throw new Error("Session no longer available")
-    }
-
-    // Atomically ensure project membership
-    const projectMember = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_and_principal", (q) =>
-        q.eq("projectId", session.projectId).eq("principalId", args.principalId),
-      )
-      .first()
-
-    if (!projectMember) {
-      await ctx.db.insert("projectMembers", {
-        projectId: session.projectId,
-        principalId: args.principalId,
-        role: "developer",
-        addedAt: now,
-        addedBy: invite.createdByPrincipalId,
-      })
-    }
-
-    // Add session membership
-    const memberId = await ctx.db.insert("collaborationSessionMembers", {
-      sessionId: session._id,
-      projectId: session.projectId,
-      principalId: args.principalId,
-      role: invite.role,
+    // Add creator as project_manager member
+    await ctx.db.insert("collaborationSessionMembers", {
+      sessionId,
+      projectId: args.projectId,
+      principalId: caller._id,
+      role: "project_manager",
       status: "active",
       joinedAt: now,
     })
 
+    // Initialize AutoGit election state
+    await ctx.db.insert("collaborationAutoGit", {
+      sessionId,
+      leaderIdentityKey: undefined,
+      leaseGeneration: 0,
+      leaseExpiresAt: 0,
+      updatedAt: now,
+    })
+
+    return { sessionId, publicSessionId }
+  },
+})
+
+export const inviteParticipant = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+    targetPrincipalId: v.optional(v.id("devicePrincipals")),
+    targetIdentityKey: v.optional(v.string()),
+    role: v.optional(sessionRole),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    if (isClosedOrClosing(session)) {
+      throw new ConvexError("Cannot invite people to a closed collaboration session")
+    }
+    await requireSessionManager(ctx, session, caller)
+
+    let targetPrincipalId = args.targetPrincipalId
+    let targetIdentityKey = args.targetIdentityKey ? normalizeDeviceIdentityKey(args.targetIdentityKey) : undefined
+    if (targetIdentityKey && !isDeviceIdentityKey(targetIdentityKey)) {
+      throw new ConvexError("The invitation target is not a Cozea device identity")
+    }
+    if (targetPrincipalId) {
+      const target = await ctx.db.get(targetPrincipalId)
+      if (!target) {
+        throw new ConvexError("Invited device not found")
+      }
+      if (target.identityKey) {
+        targetIdentityKey = normalizeDeviceIdentityKey(target.identityKey)
+      }
+    } else if (targetIdentityKey) {
+      const identityKey = targetIdentityKey
+      const target = await ctx.db
+        .query("devicePrincipals")
+        .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey))
+        .unique()
+      targetPrincipalId = target?._id
+    } else {
+      throw new ConvexError("Choose who to invite")
+    }
+    if (targetPrincipalId === caller._id) {
+      throw new ConvexError("You are already in this session")
+    }
+
+    const now = Date.now()
+    // One pending invitation per target keeps the Inbox free of duplicates.
+    const pending = await ctx.db
+      .query("collaborationSessionInvitations")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect()
+    const duplicate = pending.find(
+      (invite) =>
+        invite.expiresAt > now &&
+        ((targetPrincipalId !== undefined && invite.targetPrincipalId === targetPrincipalId) ||
+          (targetIdentityKey !== undefined && invite.targetIdentityKey === targetIdentityKey)),
+    )
+    if (duplicate) {
+      return { invitationId: duplicate._id, duplicate: true }
+    }
+
+    const invitationId = await ctx.db.insert("collaborationSessionInvitations", {
+      sessionId: session._id,
+      projectId: session.projectId,
+      targetPrincipalId,
+      targetIdentityKey,
+      role: args.role ?? "developer",
+      status: "pending",
+      createdByPrincipalId: caller._id,
+      createdAt: now,
+      expiresAt: now + INVITATION_TTL_MS,
+    })
+
+    return { invitationId, duplicate: false }
+  },
+})
+
+export const join = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    if (isClosedOrClosing(session)) {
+      throw new ConvexError("Cannot join closed collaboration session")
+    }
+
+    const now = Date.now()
+    const existingMember = await getMembership(ctx, session._id, caller._id)
+    if (existingMember?.status === "revoked") {
+      throw new ConvexError("Device access to this session has been revoked")
+    }
+
+    let memberId: Id<"collaborationSessionMembers">
+    if (existingMember) {
+      // Membership is sticky, but still requires access to the project today.
+      if (!(await canAccessProject(ctx, session.projectId, caller._id))) {
+        throw new ConvexError("You no longer have access to this project")
+      }
+      if (existingMember.status === "left") {
+        await ctx.db.patch(existingMember._id, { status: "active", joinedAt: now, leftAt: undefined })
+      }
+      memberId = existingMember._id
+    } else if (session.accessMode === "invite_only") {
+      const invite = await findPendingInvitation(ctx, session._id, caller, now)
+      if (!invite) {
+        throw new ConvexError("Invitation required to join this invite-only session")
+      }
+      await ensureProjectAccess(ctx, session.projectId, caller._id, invite.role, invite.createdByPrincipalId, now)
+      await ctx.db.patch(invite._id, { status: "accepted", resolvedAt: now })
+      memberId = await ctx.db.insert("collaborationSessionMembers", {
+        sessionId: session._id,
+        projectId: session.projectId,
+        principalId: caller._id,
+        role: invite.role,
+        status: "active",
+        joinedAt: now,
+      })
+    } else {
+      // Organization-available sessions admit members of the project's organization
+      // and never grant project permissions they do not already have (Section 6.4).
+      const project = await ctx.db.get(session.projectId)
+      if (
+        !project ||
+        project.status === "deleted" ||
+        !session.organizationId ||
+        project.organizationId !== session.organizationId ||
+        !(await isOrgMember(ctx, session.organizationId, caller._id)) ||
+        !(await canAccessProject(ctx, session.projectId, caller._id))
+      ) {
+        throw new ConvexError("Only members of the project's organization can join this session")
+      }
+      const role = (await canEditProject(ctx, session.projectId, caller._id)) ? "developer" : "viewer"
+      memberId = await ctx.db.insert("collaborationSessionMembers", {
+        sessionId: session._id,
+        projectId: session.projectId,
+        principalId: caller._id,
+        role,
+        status: "active",
+        joinedAt: now,
+      })
+    }
+
+    // If session was DORMANT, revive to ACTIVE
+    if (session.lifecycle === "DORMANT") {
+      await ctx.db.patch(session._id, { lifecycle: "ACTIVE", updatedAt: now })
+    }
+
+    return { memberId, status: "active" as const }
+  },
+})
+
+export const leave = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    const member = await getMembership(ctx, session._id, caller._id)
+    if (!member || member.status !== "active") {
+      return { success: true }
+    }
+
+    const now = Date.now()
+    await ctx.db.patch(member._id, { status: "left", leftAt: now })
+
+    // Zero participants makes an ACTIVE session DORMANT; leaving never closes or
+    // reopens a session (Section 4.1, C32, C33).
+    if (session.lifecycle === "ACTIVE" && !(await hasActiveMembers(ctx, session._id))) {
+      await ctx.db.patch(session._id, { lifecycle: "DORMANT", updatedAt: now })
+    }
+
+    return { success: true }
+  },
+})
+
+// ─── Session room keys (Section 26.2) ─────────────────────────────────────────
+// The room key encrypts every session batch end to end. The first active writer
+// creates it and wraps a copy for its own device; any device holding it wraps a
+// copy for each member who joins later. The server only ever stores wrapped copies.
+
+const SESSION_KEY_VERSION = 1
+
+async function requireActiveMember(
+  ctx: QueryCtx | MutationCtx,
+  sessionId: Id<"collaborationSessions">,
+  caller: DevicePrincipal,
+): Promise<SessionMember> {
+  const member = await getMembership(ctx, sessionId, caller._id)
+  if (!member || member.status !== "active") {
+    throw new ConvexError("Join the session first")
+  }
+  return member
+}
+
+async function findSessionKeyCopy(
+  ctx: QueryCtx | MutationCtx,
+  sessionId: Id<"collaborationSessions">,
+  identityKey: string,
+): Promise<Doc<"collaborationSessionKeys"> | null> {
+  const copies = await ctx.db
+    .query("collaborationSessionKeys")
+    .withIndex("by_session_and_recipient", (q) =>
+      q.eq("sessionId", sessionId).eq("recipientIdentityKey", normalizeDeviceIdentityKey(identityKey)),
+    )
+    .collect()
+  return (
+    copies
+      .filter((copy) => copy.keyVersion === SESSION_KEY_VERSION && copy.revokedAt === undefined)
+      .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null
+  )
+}
+
+async function sessionKeyExists(
+  ctx: QueryCtx | MutationCtx,
+  sessionId: Id<"collaborationSessions">,
+): Promise<boolean> {
+  const copy = await ctx.db
+    .query("collaborationSessionKeys")
+    .withIndex("by_session_and_version", (q) => q.eq("sessionId", sessionId).eq("keyVersion", SESSION_KEY_VERSION))
+    .first()
+  return copy !== null
+}
+
+/** The calling device's wrapped copy of the session room key, or why it has none. */
+export const getSessionKeyForDevice = query({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await ctx.db.get(args.sessionId)
+    if (!session) {
+      throw new ConvexError("Collaboration session not found")
+    }
+    await requireActiveMember(ctx, session._id, caller)
+
+    const copy = await findSessionKeyCopy(ctx, session._id, caller.identityKey)
+    if (copy) {
+      return {
+        status: "ready" as const,
+        keyVersion: copy.keyVersion,
+        wrappedKey: copy.wrappedKey,
+        wrapAlgorithm: copy.wrapAlgorithm,
+        senderPublicKeyJwk: copy.senderPublicKeyJwk,
+      }
+    }
+    return {
+      status: (await sessionKeyExists(ctx, session._id))
+        ? ("missing_for_device" as const)
+        : ("not_initialized" as const),
+      keyVersion: SESSION_KEY_VERSION,
+    }
+  },
+})
+
+/** Stores the first copy of a new session key, wrapped by the calling device for itself. */
+export const initializeSessionKey = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    if (isClosedOrClosing(session)) {
+      throw new ConvexError("This session is closed")
+    }
+    const member = await requireActiveMember(ctx, session._id, caller)
+    if (member.role === "viewer") {
+      throw new ConvexError("Viewers cannot create the session key")
+    }
+    if (await sessionKeyExists(ctx, session._id)) {
+      return { created: false, keyVersion: SESSION_KEY_VERSION }
+    }
+
+    const identityKey = normalizeDeviceIdentityKey(caller.identityKey)
+    await ctx.db.insert("collaborationSessionKeys", {
+      sessionId: session._id,
+      keyVersion: SESSION_KEY_VERSION,
+      recipientPrincipalId: caller._id,
+      recipientIdentityKey: identityKey,
+      senderIdentityKey: identityKey,
+      senderPublicKeyJwk: caller.encryptionPublicKeyJwk,
+      wrapAlgorithm: args.wrapAlgorithm,
+      wrappedKey: args.wrappedKey,
+      createdAt: Date.now(),
+    })
+    return { created: true, keyVersion: SESSION_KEY_VERSION }
+  },
+})
+
+/** Active members with no copy of the session key, for a device that holds one to wrap it for. */
+export const listMembersNeedingSessionKey = query({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await ctx.db.get(args.sessionId)
+    if (!session || isClosedOrClosing(session)) return []
+    const membership = await getMembership(ctx, session._id, caller._id)
+    if (membership?.status !== "active") return []
+    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey))) return []
+
+    const members = await ctx.db
+      .query("collaborationSessionMembers")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .collect()
+    const recipients: Array<{
+      principalId: Id<"devicePrincipals">
+      identityKey: string
+      encryptionPublicKeyJwk: string
+    }> = []
+    for (const member of members) {
+      const principal = await ctx.db.get(member.principalId)
+      if (!principal || principal.status !== "active") continue
+      if (await findSessionKeyCopy(ctx, session._id, principal.identityKey)) continue
+      recipients.push({
+        principalId: principal._id,
+        identityKey: principal.identityKey,
+        encryptionPublicKeyJwk: principal.encryptionPublicKeyJwk,
+      })
+    }
+    return recipients
+  },
+})
+
+/** A device holding the session key stores a copy wrapped for another active member. */
+export const shareSessionKey = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+    recipientPrincipalId: v.id("devicePrincipals"),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    if (isClosedOrClosing(session)) {
+      throw new ConvexError("This session is closed")
+    }
+    await requireActiveMember(ctx, session._id, caller)
+    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey))) {
+      throw new ConvexError("Only devices that hold the session key can share it")
+    }
+    const recipientMembership = await getMembership(ctx, session._id, args.recipientPrincipalId)
+    if (recipientMembership?.status !== "active") {
+      throw new ConvexError("The recipient is not an active member of this session")
+    }
+    const recipient = await ctx.db.get(args.recipientPrincipalId)
+    if (!recipient || recipient.status !== "active") {
+      throw new ConvexError("The recipient device is not active")
+    }
+    if (await findSessionKeyCopy(ctx, session._id, recipient.identityKey)) {
+      return { shared: false }
+    }
+
+    await ctx.db.insert("collaborationSessionKeys", {
+      sessionId: session._id,
+      keyVersion: SESSION_KEY_VERSION,
+      recipientPrincipalId: recipient._id,
+      recipientIdentityKey: normalizeDeviceIdentityKey(recipient.identityKey),
+      senderIdentityKey: normalizeDeviceIdentityKey(caller.identityKey),
+      senderPublicKeyJwk: caller.encryptionPublicKeyJwk,
+      wrapAlgorithm: args.wrapAlgorithm,
+      wrappedKey: args.wrappedKey,
+      createdAt: Date.now(),
+    })
+    return { shared: true }
+  },
+})
+
+export const revokeMember = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+    memberPrincipalId: v.id("devicePrincipals"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    await requireSessionManager(ctx, session, caller)
+    if (args.memberPrincipalId === caller._id) {
+      throw new ConvexError("Use Leave to remove yourself from a session")
+    }
+
+    const now = Date.now()
+    const member = await getMembership(ctx, session._id, args.memberPrincipalId)
+    if (member && member.status !== "revoked") {
+      await ctx.db.patch(member._id, { status: "revoked", leftAt: member.leftAt ?? now })
+    }
+
+    // The device keeps any key it already unwrapped; rotating the key is not built yet.
+    const keyCopies = await ctx.db
+      .query("collaborationSessionKeys")
+      .withIndex("by_session_and_version", (q) => q.eq("sessionId", session._id))
+      .collect()
+    for (const copy of keyCopies) {
+      if (copy.recipientPrincipalId === args.memberPrincipalId && copy.revokedAt === undefined) {
+        await ctx.db.patch(copy._id, { revokedAt: now })
+      }
+    }
+
+    const target = await ctx.db.get(args.memberPrincipalId)
+    const targetIdentityKey = target?.identityKey ? normalizeDeviceIdentityKey(target.identityKey) : undefined
+    const pending = await ctx.db
+      .query("collaborationSessionInvitations")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect()
+    for (const invite of pending) {
+      if (
+        invite.targetPrincipalId === args.memberPrincipalId ||
+        (targetIdentityKey !== undefined && invite.targetIdentityKey === targetIdentityKey)
+      ) {
+        await ctx.db.patch(invite._id, { status: "revoked", resolvedAt: now })
+      }
+    }
+
+    if (session.lifecycle === "ACTIVE" && !(await hasActiveMembers(ctx, session._id))) {
+      await ctx.db.patch(session._id, { lifecycle: "DORMANT", updatedAt: now })
+    }
+
+    return { success: true }
+  },
+})
+
+export const pause = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    await requireSessionManager(ctx, session, caller)
+    if (session.lifecycle === "PAUSED") {
+      return { success: true }
+    }
+
+    // PAUSING completes in the same mutation until projectd reports the final
+    // snapshot and checkpoint (Section 6.7).
+    const lifecycle = walkLifecycle(session.lifecycle, ["PAUSING", "PAUSED"])
+    const now = Date.now()
+    await ctx.db.patch(session._id, {
+      lifecycle,
+      pausedAt: now,
+      updatedAt: now,
+    })
+    return { success: true }
+  },
+})
+
+export const resume = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    await requireSessionManager(ctx, session, caller)
+    if (session.lifecycle === "ACTIVE") {
+      return { success: true }
+    }
+
+    const lifecycle = walkLifecycle(session.lifecycle, ["ACTIVE"])
+    const now = Date.now()
+    await ctx.db.patch(session._id, {
+      lifecycle,
+      pausedAt: undefined,
+      updatedAt: now,
+    })
+    return { success: true }
+  },
+})
+
+export const close = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    await requireSessionManager(ctx, session, caller)
+    if (session.lifecycle === "CLOSED") {
+      return { success: true }
+    }
+
+    const steps: SessionLifecycle[] = canTransitionSessionLifecycle(session.lifecycle, "CLOSED")
+      ? ["CLOSED"]
+      : ["CLOSING", "CLOSED"]
+    const lifecycle = walkLifecycle(session.lifecycle, steps)
+    const now = Date.now()
+    await ctx.db.patch(session._id, {
+      lifecycle,
+      closedAt: now,
+      updatedAt: now,
+    })
+    return { success: true }
+  },
+})
+
+export const resolveInvitation = mutation({
+  args: {
+    invitationId: v.id("collaborationSessionInvitations"),
+    accept: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const invite = await ctx.db.get(args.invitationId)
+    if (!invite || !isInvitationFor(invite, caller)) {
+      throw new ConvexError("Invitation not found")
+    }
+    if (invite.status !== "pending") {
+      throw new ConvexError("Invitation is no longer pending")
+    }
+
+    const now = Date.now()
+    if (invite.expiresAt <= now) {
+      await ctx.db.patch(invite._id, { status: "expired", resolvedAt: now })
+      return { accepted: false as const, reason: "expired" as const }
+    }
+
+    if (!args.accept) {
+      await ctx.db.patch(invite._id, { status: "declined", resolvedAt: now })
+      return { accepted: false as const, reason: "declined" as const }
+    }
+
+    const session = await ctx.db.get(invite.sessionId)
+    if (!session || isClosedOrClosing(session)) {
+      throw new ConvexError("Session no longer available")
+    }
+
+    const existingMember = await getMembership(ctx, session._id, caller._id)
+    if (existingMember?.status === "revoked") {
+      throw new ConvexError("Device access to this session has been revoked")
+    }
+
+    // Atomically ensure project access, then session membership (Section 6.3)
+    await ensureProjectAccess(ctx, session.projectId, caller._id, invite.role, invite.createdByPrincipalId, now)
+
+    let memberId: Id<"collaborationSessionMembers">
+    if (existingMember) {
+      if (existingMember.status !== "active") {
+        await ctx.db.patch(existingMember._id, { status: "active", joinedAt: now, leftAt: undefined })
+      }
+      memberId = existingMember._id
+    } else {
+      memberId = await ctx.db.insert("collaborationSessionMembers", {
+        sessionId: session._id,
+        projectId: session.projectId,
+        principalId: caller._id,
+        role: invite.role,
+        status: "active",
+        joinedAt: now,
+      })
+    }
+
     await ctx.db.patch(invite._id, { status: "accepted", resolvedAt: now })
+    if (session.lifecycle === "DORMANT") {
+      await ctx.db.patch(session._id, { lifecycle: "ACTIVE", updatedAt: now })
+    }
 
     return {
-      accepted: true,
+      accepted: true as const,
       sessionId: session._id,
       publicSessionId: session.publicSessionId,
       projectId: session.projectId,

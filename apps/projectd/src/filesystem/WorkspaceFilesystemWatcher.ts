@@ -22,7 +22,7 @@ import type { ScopePolicy } from "./ScopePolicy"
 import { StableFileReader } from "./StableRead"
 import type { MaterializationIndex } from "./MaterializationIndex"
 import { WorkspaceScanner } from "./Scanner"
-import { FSEventsClient, type NativeFSEventItem } from "./FSEventsClient"
+import { FSEventsClient, type FileEventSource, type NativeFSEventItem } from "./FSEventsClient"
 
 export type WatcherLifecycle = "stopped" | "starting" | "reconciling" | "ready"
 
@@ -61,11 +61,10 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
   readonly index: MaterializationIndex
   readonly scanner: WorkspaceScanner
   readonly stableReader: StableFileReader
-  readonly fseventsClient: FSEventsClient
+  readonly fseventsClient: FileEventSource
 
   private lifecycle: WatcherLifecycle = "stopped"
   private bufferedHints: NativeFSEventItem[] = []
-  private isProcessingEvent = false
 
   constructor(options: {
     workspaceRoot: string
@@ -73,7 +72,7 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     scopePolicy: ScopePolicy
     index: MaterializationIndex
     stableReader?: StableFileReader
-    fseventsClient?: FSEventsClient
+    fseventsClient?: FileEventSource
   }) {
     super()
     this.workspaceRoot = path.resolve(options.workspaceRoot)

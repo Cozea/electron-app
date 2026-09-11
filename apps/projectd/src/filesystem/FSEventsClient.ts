@@ -1,6 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { EventEmitter } from "node:events"
-import fs from "node:fs"
 import readline from "node:readline"
 
 import { NativeMacHelper } from "../native/NativeMacHelper"
@@ -18,7 +17,15 @@ export interface NativeFSEventItem {
   dropped: boolean
 }
 
-export class FSEventsClient extends EventEmitter {
+/** What the workspace watcher needs from a file event source; FSEventsClient is the native one. */
+export interface FileEventSource {
+  start(): Promise<void>
+  stop(): void
+  on(event: "events", listener: (items: NativeFSEventItem[]) => void): unknown
+  on(event: "dropped", listener: (reason: string) => void): unknown
+}
+
+export class FSEventsClient extends EventEmitter implements FileEventSource {
   readonly path: string
   readonly helper: NativeMacHelper
   private proc: ChildProcess | null = null

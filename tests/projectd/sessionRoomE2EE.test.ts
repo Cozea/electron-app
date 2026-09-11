@@ -7,7 +7,6 @@ import type { ChangeActor } from "../../apps/projectd/src/collaboration/TreeDoc"
 
 describe("P10 Cloud session room, global sequence, E2EE, durable replay", () => {
   const actorA: ChangeActor = { actorType: "user", principalId: "u_a" }
-  const _actorB: ChangeActor = { actorType: "user", principalId: "u_b" }
   const sharedKey = randomBytes(32) // 256-bit AES-GCM room key
 
   it("encrypts and decrypts batches client-side using AES-256-GCM (Section 13.5)", () => {
@@ -18,7 +17,7 @@ describe("P10 Cloud session room, global sequence, E2EE, durable replay", () => 
       roomKey: sharedKey,
     })
 
-    const _file = replicaA.createFile({
+    replicaA.createFile({
       path: "secret.ts",
       kind: "text",
       content: "top secret encryption test",

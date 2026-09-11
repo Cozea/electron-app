@@ -4,6 +4,66 @@ Authoritative specification: [docs/collaboration/collaboration-autogit-master-pl
 
 ---
 
+## Audit correction — 2026-09-11
+
+An audit on 2026-09-11 found that this ledger overstated progress. Every phase from P00 to P26 read `complete`, but most were library code that only tests import. Phases were marked complete on the strength of unit tests and typechecks, neither of which exercises wiring, and the recorded "0 errors" never included `tsc -p apps/projectd`. Report: https://claude.ai/code/artifact/f25f47b2-e10d-4c89-bddc-9f4719bdf0ba
+
+The `Status:` line of each phase below has been corrected. The phase logs are kept as they were written.
+
+| Status | Meaning |
+|---|---|
+| complete | Done as the plan describes and reachable from a real entry point |
+| partial | Part of the phase runs in the product; the rest does not |
+| library only | Implemented and unit-tested, but no entry point imports it |
+| not mounted | The UI exists, but nothing renders it |
+| tests only | Only tests exist |
+| stub | Placeholder implementation |
+| not done | The phase's changes were not made |
+| blocked | Cannot start until earlier phases are wired |
+
+Entry points: renderer `main.tsx`, Electron `main.ts` and `preload.ts`, projectd `main.ts`, and the worker's `index.ts`.
+
+At a glance: complete P00–P01 · partial P02–P05, P10, P12 · library only P06–P09, P11, P13, P16–P22 · not mounted P14–P15 · regressed then restored P23 · tests only P24 · stub P25 · not done P26 · blocked P27.
+
+### Remediation on `fix/collab-audit-remediation`
+
+- **P23 gate restored.** `apps/desktop/src/features/collaboration/collaborationGate.ts` enables the existing engine on the shared branch again. A session record decides only when one exists for the active branch. An architecture test fails if branch equality is checked ahead of the session record.
+- **Session control plane authenticated.** Every function in `convex/collaborationSessions.ts` identifies the calling device instead of trusting a principal ID from the client, and checks project access. Added invitations by device or identity key, revocation, lifecycle changes through the session state machine, and `getRoomAccessForServer` for the gateway. Project deletion now purges the five session tables.
+- **Audit defects V1–V8 fixed**, each with a regression test in `tests/projectd/collaborationAuditRegressions.test.ts`.
+- **P10 headless slice.** `CollaborationSessionRoom` is bound in `wrangler.jsonc` (migration `v4`). Sockets must authenticate with a session token for that room, and viewer tokens are read-only. `POST /collab/sessions/connect` issues tokens only to active members of an active session. `apps/projectd/src/collaboration/SessionRoomClient.ts` converges two clients against the real room code across disconnects, offline edits, eviction and lost acknowledgements (`tests/projectd/sessionRoomHeadless.test.ts`).
+- **Helper secrets off argv.** The macOS helper reads identity JSON and private keys from stdin.
+- **Sessions run in projectd.** `apps/projectd/src/collaboration/CollaborationSessionHost.ts` connects the session replica to the room, with a durable outbound queue, persisted text baselines, and reconnects on fresh tickets. It also connects the replica to one folder: disk edits go in through the snapshot adapter and peer edits come out through the materializer, taking turns on one queue.
+  - The daemon exposes it as `sessions.attach`, `detach`, `list`, `status` and `updateTicket`, with `status` and `ticket_needed` events.
+  - Convex gained session room keys: `getSessionKeyForDevice`, `initializeSessionKey`, `listMembersNeedingSessionKey` and `shareSessionKey`.
+  - Electron relays the calls through `window.electronAPI.projectd.sessions`, and `useDaemonCollaborationSession` attaches the branch's live session behind `VITE_FF_DAEMON_COLLABORATION`.
+  - End-to-end tests: `tests/projectd/collaborationSessionHost.test.ts`.
+- **CI and test isolation.** `typecheck:projectd` runs in CI. Tests default every `COZEA_*` state path into a temporary directory (`tests/helpers/isolateCozeaState.ts`), and the real-Keychain test runs only with `COZEA_TEST_REAL_KEYCHAIN=1`.
+
+Verified on 2026-09-11, after the step 1 work:
+- Full vitest: 400 files passed and 1 skipped; 2958 tests passed and 5 skipped.
+- The session host and room tests passed 10 runs in a row.
+- Typecheck: app, electron, tests, projectd, Convex and the worker.
+- oxlint.
+
+Still open:
+- Nothing is deployed. The worker needs the `v4` Durable Object migration, and Convex needs the changed session functions, including the new session-key functions. The renderer changes depend on that Convex deploy.
+- Nothing starts the daemon for users, so the daemon path stays behind `VITE_FF_DAEMON_COLLABORATION`, which is off. With it off, the in-app Yjs engine still runs every live session.
+- Daemon-hosted sessions have these limits:
+  - Only text syncs. Binaries and files over 512 KiB stay local, and symlinks are not shared.
+  - A local rename arrives as a delete plus a new file.
+  - The replica is rebuilt from the room each time the daemon starts.
+- No legacy owner was removed (P26), and the P14 and P15 UI is still not mounted.
+- Known defects not yet fixed:
+  - `ConflictEngine` lowercases every path.
+  - `.conflict` backups are written inside the workspace. They now stay on this machine instead of syncing.
+  - Revoking a member does not rotate the session key.
+  - `BackgroundDeviceIdentity` calls `/auth/device/token`, which the worker does not serve.
+  - The rebase conflict bundle is empty and the rebase never pushes.
+  - The P16 lease is enforced only on the client.
+  - Binary revisions never reach AutoGit commits.
+
+---
+
 ## P00 — Rebaseline, preserve product truth, and create the ledger
 
 Status: complete
@@ -169,7 +229,7 @@ Exit-gate evidence:
 
 ## P02 — Standalone projectd and local client protocol
 
-Status: complete
+Status: partial — projectd serves the workspace and Workbench registries, read-only Git calls, and since 2026-09-11 live collaboration sessions (`sessions.*` methods backed by `CollaborationSessionHost`). Nothing starts the daemon for users yet (P03), and no AutoGit module runs in it.
 
 Baseline:
 - base commit: `2fd158ef` (P01 complete commit)
@@ -261,7 +321,7 @@ Exit-gate evidence:
 
 ## P03 — macOS helper, LaunchAgent, Keychain identity
 
-Status: complete
+Status: partial — the helper, LaunchAgent and Keychain identity work. Since 2026-09-11 the identity JSON and private key reach the helper on stdin, not argv. `BackgroundDeviceIdentity` calls `/auth/device/token`, which the worker does not serve.
 
 Baseline:
 - base commit: `fd93b855` (P02 complete commit)
@@ -347,7 +407,7 @@ Exit-gate evidence:
 
 ## P04 — Daemon-owned workspace + Workbench registry
 
-Status: complete
+Status: partial — the daemon serves the workspace and Workbench registries. Since 2026-09-11 attaching a session registers its folder there, but Session Workbenches (P13) are not built on it.
 
 Baseline:
 - base commit: `a2617aab` (P03 complete commit)
@@ -429,7 +489,7 @@ Exit-gate evidence:
 
 ## P05 — GitService consolidation foundation
 
-Status: complete
+Status: partial — the daemon serves read-only Git calls, but the app's own Git owners, including `gitSyncService`, still run.
 
 Baseline:
 - base commit: `9dec878b` (P04 complete commit)
@@ -519,7 +579,7 @@ Exit-gate evidence:
 
 ## P06 — Native FSEvents + scanner/materialization index
 
-Status: complete
+Status: library only — the FSEvents client and scanner are unit-tested, but no entry point imports them.
 
 Baseline:
 - base commit: `e9194488` (P05 complete commit)
@@ -611,7 +671,7 @@ Exit-gate evidence:
 
 ## P07 — CRDT tree + per-text-file docs in projectd
 
-Status: complete
+Status: library only — no entry point imports the CRDT replica. Fixed 2026-09-11: project paths are validated (no `..`, `.git`, absolute or NUL paths), and delete/modify conflicts compare against the text the deleter had seen.
 
 Baseline:
 - base commit: `53b0932c` (P06 complete commit)
@@ -697,7 +757,7 @@ Exit-gate evidence:
 
 ## P08 — Snapshot-anchored filesystem -> CRDT adapter
 
-Status: complete
+Status: library only — no entry point imports it. Fixed 2026-09-11: the snapshot mismatch warning no longer logs file contents.
 
 Baseline:
 - base commit: `3f662864` (P07 complete commit)
@@ -777,7 +837,7 @@ Exit-gate evidence:
 
 ## P09 — CRDT -> filesystem materializer
 
-Status: complete
+Status: library only — no entry point imports it. Fixed 2026-09-11: writes stay inside the workspace (symlinked parents are refused), the baseline is captured atomically, and files changed on disk are kept on delete and rename.
 
 Baseline:
 - base commit: `eef1a57b` (P08 complete commit)
@@ -845,7 +905,7 @@ Exit-gate evidence:
 
 ## P10 — Cloud session room, global sequence, E2EE, durable replay
 
-Status: complete
+Status: partial — the room is bound in wrangler (migration `v4`) with token-authenticated hibernatable sockets, and `POST /collab/sessions/connect` admits only active members. Since 2026-09-11 projectd hosts the client: `CollaborationSessionHost` syncs a folder with the room through the durable `OutboundBatchQueue`, with persisted text baselines, reconnects and ticket refresh, tested end to end against the real room code. Not deployed, and the app side is behind `VITE_FF_DAEMON_COLLABORATION`, which is off by default.
 
 Baseline:
 - base commit: `21f20dee` (P09 complete commit)
@@ -914,7 +974,7 @@ Exit-gate evidence:
 
 ## P11 — Binary live collaboration
 
-Status: complete
+Status: library only — no entry point imports it, and binary revisions never reach AutoGit commits.
 
 Baseline:
 - base commit: `f81cffde` (P10 complete commit)
@@ -983,7 +1043,7 @@ Exit-gate evidence:
 
 ## P12 — Session control plane, invitation/access model
 
-Status: complete
+Status: partial — since 2026-09-11 every function authenticates the calling device and checks project access, with invitations, revocation, and purge on project deletion. Session room keys: the first writer creates the key, and devices holding it share wrapped copies with members who join later; revoking a member revokes its copy but does not rotate the key. The app has no mounted create or join flow.
 
 Baseline:
 - base commit: `1ae7c25f` (P11 complete commit)
@@ -1056,7 +1116,7 @@ Exit-gate evidence:
 
 ## P13 — Local Session Workbench and multi-Workbench switching
 
-Status: complete
+Status: library only — no entry point creates Session Workbenches. Daemon-hosted sessions (P10) sync a folder the app chooses, not a Session Workbench.
 
 Baseline:
 - base commit: `eea5b26f` (P12 complete commit)
@@ -1120,7 +1180,7 @@ Exit-gate evidence:
 
 ## P14 — Share/Create session UX
 
-Status: complete
+Status: not mounted — the Share/Create UI exists, but nothing renders it. Since 2026-09-11 it no longer sends a principal ID chosen by the client.
 
 Baseline:
 - base commit: `0dcf3a37` (P13 complete commit)
@@ -1185,7 +1245,7 @@ Exit-gate evidence:
 
 ## P15 — Inbox invite acceptance and Resume flow
 
-Status: complete
+Status: not mounted — the invitation card and Resume flow exist, but nothing renders them. Since 2026-09-11 the card handles expired invitations.
 
 Baseline:
 - base commit: `e653b426` (P14 complete commit)
@@ -1250,7 +1310,7 @@ Exit-gate evidence:
 
 ## P16 — AutoGit leader lease
 
-Status: complete
+Status: library only — the lease is enforced only on the client.
 
 Baseline:
 - base commit: `2feef787` (P15 complete commit)
@@ -1320,7 +1380,7 @@ Exit-gate evidence:
 
 ## P17 — AutoGit barriers, deterministic checkpoint commit, periodic push
 
-Status: complete
+Status: library only — no entry point runs checkpoints. Fixed 2026-09-11: checkpoints drop paths deleted since the parent commit and refuse binaries that have no blob in it.
 
 Baseline:
 - base commit: `4a2883f7` (P16 complete commit)
@@ -1386,7 +1446,7 @@ Exit-gate evidence:
 
 ## P18 — Local Git baseline advancement after AutoGit checkpoint
 
-Status: complete
+Status: library only — no entry point imports it.
 
 Baseline:
 - base commit: `a5cb5408` (P17 complete commit)
@@ -1447,7 +1507,7 @@ Exit-gate evidence:
 
 ## P19 — External Git interoperability and controlled GitHub sync
 
-Status: complete
+Status: library only — no entry point imports it.
 
 Baseline:
 - base commit: `8dcde251` (P18 complete commit)
@@ -1512,7 +1572,7 @@ Exit-gate evidence:
 
 ## P20 — Target tracking and rebase recommendation
 
-Status: complete
+Status: library only — no entry point imports it.
 
 Baseline:
 - base commit: `af3ce101` (P19 complete commit)
@@ -1577,7 +1637,7 @@ Exit-gate evidence:
 
 ## P21 — Explicit isolated Rebase from main
 
-Status: complete
+Status: library only — no entry point imports it. The conflict bundle is empty and the coordinator never pushes. Fixed 2026-09-11: without an explicit barrier it no longer assumes sessionSeq 100.
 
 Baseline:
 - base commit: `32c5dda8` (P20 complete commit)
@@ -1643,7 +1703,7 @@ Exit-gate evidence:
 
 ## P22 — Merge/PR controls
 
-Status: complete
+Status: library only — no entry point imports it. Fixed 2026-09-11: a direct merge refuses a checkpoint that moved after review or a checked-out target with tracked changes, and fast-forwards a checked-out target instead of moving its ref underneath it.
 
 Baseline:
 - base commit: `06327dd4` (P21 complete commit)
@@ -1706,7 +1766,7 @@ Exit-gate evidence:
 
 ## P23 — Electron collaboration UI cutover
 
-Status: complete
+Status: regressed, then restored — P23 made the existing Yjs engine connect only when an ACTIVE session row existed, and nothing mounted can create one, so live collaboration stopped. Since 2026-09-11 `collaborationGate.ts` enables it on the shared branch again, and a session record decides only when one exists for the branch. Behind `VITE_FF_DAEMON_COLLABORATION`, the daemon takes a live session and the in-app engine stands down for that branch, taking over again if the daemon is unreachable.
 
 Baseline:
 - base commit: `96eb2b91` (P22 complete commit)
@@ -1767,7 +1827,7 @@ Exit-gate evidence:
 
 ## P24 — Capability integration qualification
 
-Status: complete
+Status: tests only — no packaged or two-Mac qualification has run.
 
 Baseline:
 - base commit: `4d41c320` (P23 complete commit)
@@ -1829,7 +1889,7 @@ Exit-gate evidence:
 
 ## P25 — Microphone/session media
 
-Status: complete
+Status: stub — see the 2026-09-11 audit report.
 
 Baseline:
 - base commit: `3103af37` (P24 complete commit)
@@ -1889,7 +1949,7 @@ Exit-gate evidence:
 
 ## P26 — Remove legacy collaboration and duplicate Git owners
 
-Status: complete
+Status: not done — no legacy owner was removed. `YjsProjectContext`, `CollabWsProvider`, `useYjsFileWriteback` and `gitSyncService` still have production callers.
 
 Baseline:
 - base commit: `24fcc5b4` (P25 complete commit)
@@ -1956,7 +2016,7 @@ Exit-gate evidence:
 
 ## P27 — Packaged two-Mac release qualification
 
-Status: ready-for-qualification
+Status: blocked — depends on P02–P26 being wired into the app and deployed.
 
 Baseline:
 - base commit: `fbf71650` (P26 complete commit)

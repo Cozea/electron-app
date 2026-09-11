@@ -11,6 +11,7 @@
 import path from "node:path"
 import os from "node:os"
 
+import { normalizeProjectPath } from "../collaboration/projectPath"
 import type { GitService } from "../git/GitService"
 import type { BarrierSnapshot } from "./BarrierCapture"
 
@@ -75,17 +76,47 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
     }
 
     try {
-      // If parentOid exists, read parent tree into temporary index
+      // Start from the parent tree so content the snapshot does not carry as bytes
+      // (binary blobs) keeps its Git object. A parent that cannot be read fails the
+      // checkpoint rather than producing a commit that drops the whole tree.
+      let indexedPaths = new Set<string>()
       if (parentOid) {
         await this.gitService.process.execute(["read-tree", parentOid], {
           cwd: repoPath,
           env: gitEnv,
-          allowNonZeroExit: true,
+        })
+        const listed = await this.gitService.process.execute(["ls-files", "-z"], {
+          cwd: repoPath,
+          env: gitEnv,
+        })
+        indexedPaths = new Set(listed.stdout.split("\0").filter(Boolean))
+      }
+
+      // The commit is the barrier snapshot (C21): paths deleted or renamed away in
+      // the CRDT leave the tree instead of lingering from the parent.
+      const snapshotPaths = new Set(snapshot.files.map((file) => normalizeProjectPath(file.path)))
+      const stalePaths = [...indexedPaths].filter((indexedPath) => !snapshotPaths.has(indexedPath))
+      if (stalePaths.length > 0) {
+        await this.gitService.process.execute(["update-index", "--force-remove", "-z", "--stdin"], {
+          cwd: repoPath,
+          env: gitEnv,
+          stdin: `${stalePaths.join("\0")}\0`,
         })
       }
 
+      const unresolvedBinaries = snapshot.files.filter(
+        (file) => file.kind === "binary" && !indexedPaths.has(normalizeProjectPath(file.path)),
+      )
+      if (unresolvedBinaries.length > 0) {
+        throw new Error(
+          `Checkpoint has no Git blob for binary ${unresolvedBinaries.map((file) => file.path).join(", ")}: ` +
+            "binary bytes are not part of the barrier snapshot and the parent commit has nothing at that path",
+        )
+      }
+
       // Write each file in the barrier snapshot into Git object database
-      for (const file of snapshot.files) {
+      for (const snapshotFile of snapshot.files) {
+        const file = { ...snapshotFile, path: normalizeProjectPath(snapshotFile.path) }
         if (file.kind === "text" && file.textContent !== undefined) {
           // Write blob via hash-object
           const blobRes = await this.gitService.process.execute(

@@ -3,8 +3,10 @@ import { ContainerProxy, proxyToSandbox } from '@cloudflare/sandbox'
 import { handleHealth } from './routes/health'
 import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
+import { handleSessionRoomConnect, PUBLIC_SESSION_ID_PATTERN } from './routes/sessionRoom'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
+import { CollaborationSessionRoom } from './durableObjects/CollaborationSessionRoom'
 import { DevAppRuntimeBuild } from './durableObjects/DevAppRuntimeBuild'
 import { CozeaDevAppSandbox } from './durableObjects/CozeaDevAppSandbox'
 import {
@@ -158,6 +160,29 @@ export default {
         return await handleCompleteDevAppRuntimeBuild(request, env, internalCompleteMatch[1])
       }
 
+      if (request.method === 'POST' && url.pathname === '/collab/sessions/connect') {
+        try {
+          return await handleSessionRoomConnect(request, env)
+        } catch (error) {
+          return protocolError(
+            'SESSION_ROOM_REJECTED',
+            error instanceof Error ? error.message : 'Invalid session room request',
+            { status: 403 },
+            false,
+            origin,
+          )
+        }
+      }
+
+      if (url.pathname === '/collab/sessions/ws') {
+        const sessionId = url.searchParams.get('sessionId')
+        if (!sessionId || !PUBLIC_SESSION_ID_PATTERN.test(sessionId)) {
+          return protocolError('BAD_REQUEST', 'sessionId query parameter is required', { status: 400 }, false, origin)
+        }
+        const room = env.COLLAB_SESSION_ROOM.get(env.COLLAB_SESSION_ROOM.idFromName(`session:${sessionId}`))
+        return room.fetch(request)
+      }
+
       if (url.pathname === '/collab/ws') {
         const roomId = url.searchParams.get('roomId')
         if (!roomId) {
@@ -180,4 +205,4 @@ export default {
   },
 } satisfies ExportedHandler<Env>
 
-export { CollabRoom, CozeaDevAppSandbox, ContainerProxy, DevAppRuntimeBuild }
+export { CollabRoom, CollaborationSessionRoom, CozeaDevAppSandbox, ContainerProxy, DevAppRuntimeBuild }

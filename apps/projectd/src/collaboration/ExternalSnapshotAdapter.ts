@@ -101,8 +101,9 @@ export class ExternalSnapshotAdapter {
     // Step 4: Verify shadow text equals stored baseline B
     const shadowInitial = shadowText.toString()
     if (shadowInitial !== baseline.text) {
+      // Lengths only: file contents never go to logs.
       console.warn(
-        `[ExternalSnapshotAdapter] Baseline mismatch for ${fileId}: shadow='${shadowInitial}', baseline='${baseline.text}'. Resetting shadow.`,
+        `[ExternalSnapshotAdapter] Baseline mismatch for ${fileId} (shadow ${shadowInitial.length} chars, baseline ${baseline.text.length} chars). Resetting shadow.`,
       )
       shadowDoc.transact(() => {
         shadowText.delete(0, shadowText.length)

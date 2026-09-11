@@ -18,6 +18,9 @@ import { cn } from "@/lib/utils";
 import { ProjectSyncProvider } from "@/contexts/project/ProjectSyncContext";
 import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
+import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery";
+import { findBranchSession, resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
+import { useDaemonCollaborationSession } from "@/features/collaboration/daemon/useDaemonCollaborationSession";
 import { buildLegacyProjectPath, buildProjectPath } from "@/contexts/project/projectRoutes";
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution";
@@ -297,20 +300,36 @@ export function ProjectLayout({
     collabLane?.branch ?? recordedDefaultBranch ?? FALLBACK_SHARED_BRANCH;
   const activeBranch = activeLane?.branch ?? collabBranch;
 
-  // P23 Cutover: Collaboration is enabled when an active session exists,
-  // NOT by mere branch equality (activeBranch === collabBranch). Invariants C06, C31.
-  const activeCollabSessions = useQuery(
+  // A session record for the branch decides collaboration when one exists; the
+  // shared branch keeps collaborating without one. See resolveCollaborationGate.
+  const collaborationSessionsQuery = useSafeConvexQuery(
     api.collaborationSessions.listByProject,
-    project?._id ? { projectId: project._id } : "skip",
+    project?._id && isConvexAuthReady ? { projectId: project._id } : "skip",
   );
-  const activeSessionForBranch = activeCollabSessions?.find(
-    (s) => s.branchName === activeBranch && s.lifecycle === "ACTIVE",
-  );
+  const collaborationGate = resolveCollaborationGate({
+    activeBranch,
+    sharedBranch: collabBranch,
+    sessions: collaborationSessionsQuery.data,
+  });
+  // Behind a flag, the daemon syncs the folder for a live session and the in-app
+  // engine stands down for that branch; it takes over again if the daemon is unreachable.
+  const branchSession = findBranchSession(collaborationSessionsQuery.data, activeBranch);
+  const daemonCollaboration = useDaemonCollaborationSession({
+    enabled: featureFlags.daemonCollaboration && Boolean(project?._id) && isConvexAuthReady,
+    session: branchSession,
+    projectId: project?._id ? String(project._id) : null,
+    workspaceId: runtimeWorkspaceId,
+    rootPath: activeProjectRootPath,
+    principalId: principalId ? String(principalId) : null,
+  });
+  const daemonOwnsCollaboration =
+    daemonCollaboration.phase !== "off" && daemonCollaboration.phase !== "unavailable";
   const collaborationEnabled =
     shouldEnableProjectRuntime &&
     Boolean(runtimeWorkspaceId) &&
     Boolean(project?._id) &&
-    Boolean(activeSessionForBranch);
+    collaborationGate.enabled &&
+    !daemonOwnsCollaboration;
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;

@@ -23,6 +23,8 @@ export const TRANSIENT_EDITOR_PATTERNS = [
   /^\.#/,
   /\.tmp\./,
   /\.crswap$/,
+  // Local copies the materializer keeps when disk diverged; they stay on this machine.
+  /\.conflict\.\d+$/,
 ]
 
 export class ScopePolicy {

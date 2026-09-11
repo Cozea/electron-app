@@ -41,7 +41,7 @@ export class GitBaselineAdopter {
     const currentStatus = await this.gitService.getStatus(cwd)
     const oldHeadOid = currentStatus.headOid ?? ""
 
-    if (currentStatus.isConflicted) {
+    if (currentStatus.files.some((file) => file.isConflicted)) {
       return {
         success: false,
         oldHeadOid,

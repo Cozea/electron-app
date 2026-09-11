@@ -4,6 +4,7 @@
  * Master Specification: Section 12.3, 12.4, 12.10
  */
 
+import type { Dirent } from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
 
@@ -50,7 +51,7 @@ export class WorkspaceScanner {
 
     while (queue.length > 0) {
       const currentDir = queue.shift()!
-      let dirEntries: fs.Dirent[]
+      let dirEntries: Dirent[]
 
       try {
         dirEntries = await fs.readdir(currentDir, { withFileTypes: true })
@@ -60,7 +61,7 @@ export class WorkspaceScanner {
         continue
       }
 
-      const filesToCheck: { rel: string; abs: string; dirent: fs.Dirent }[] = []
+      const filesToCheck: { rel: string; abs: string; dirent: Dirent }[] = []
 
       for (const entry of dirEntries) {
         const absPath = path.join(currentDir, entry.name)

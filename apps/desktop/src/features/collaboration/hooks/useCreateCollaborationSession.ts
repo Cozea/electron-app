@@ -1,8 +1,13 @@
 /**
- * Hook orchestrating Collaboration Session creation and bootstrap (Section 6.1).
+ * Hook creating a Collaboration Session record (Section 6.1).
  *
  * Master Specification: Section 6.1
  * Phase: P14
+ *
+ * This creates the cloud session record only. Provisioning the local session
+ * workspace and Session Workbench belongs to projectd, which the app does not call
+ * yet, so the hook reports "ready" once the record exists instead of simulating
+ * those steps.
  */
 
 import { useState, useCallback } from "react"
@@ -12,15 +17,7 @@ import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import type { SessionAccessMode } from "@shared/collaboration"
 
-export type CreateSessionStage =
-  | "idle"
-  | "validating"
-  | "creating_session"
-  | "provisioning_workspace"
-  | "hydrating_crdt"
-  | "activating_workbench"
-  | "ready"
-  | "error"
+export type CreateSessionStage = "idle" | "creating_session" | "ready" | "error"
 
 export interface CreateSessionParams {
   projectId: Id<"projects">
@@ -30,14 +27,11 @@ export interface CreateSessionParams {
   includeDirtyChanges?: boolean
   accessMode: SessionAccessMode
   organizationId?: Id<"organizations">
-  creatorPrincipalId: Id<"devicePrincipals">
 }
 
 export interface CreateSessionResult {
   sessionId: Id<"collaborationSessions">
   publicSessionId: string
-  workbenchId: string
-  workspacePath: string
 }
 
 export function useCreateCollaborationSession() {
@@ -49,10 +43,10 @@ export function useCreateCollaborationSession() {
   const startCollaboration = useCallback(
     async (params: CreateSessionParams): Promise<CreateSessionResult> => {
       setError(null)
-      setStage("validating")
+      setStage("creating_session")
 
       try {
-        setStage("creating_session")
+        // The server records the authenticated device as the creator.
         const sessionRecord = await createSessionMutation({
           projectId: params.projectId,
           repositoryBindingId: params.repositoryBindingId,
@@ -60,27 +54,13 @@ export function useCreateCollaborationSession() {
           targetBranch: params.targetBranch ?? "main",
           accessMode: params.accessMode,
           organizationId: params.organizationId,
-          creatorPrincipalId: params.creatorPrincipalId,
         })
 
-        setStage("provisioning_workspace")
-        // Provision local session workspace and workbench via electron projectd client
-        const workbenchId = `wb_collab_${sessionRecord.sessionId}`
-        const workspacePath = `/tmp/collab_${sessionRecord.sessionId}` // Resolved by daemon
-
-        setStage("hydrating_crdt")
-        // Simulated local hydration delay
-        await new Promise((r) => setTimeout(r, 50))
-
-        setStage("activating_workbench")
-        // Notify electron to activate the newly created session workbench
         setStage("ready")
 
         return {
           sessionId: sessionRecord.sessionId,
           publicSessionId: sessionRecord.publicSessionId,
-          workbenchId,
-          workspacePath,
         }
       } catch (err: any) {
         setStage("error")

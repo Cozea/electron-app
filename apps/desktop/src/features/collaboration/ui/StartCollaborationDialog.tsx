@@ -77,7 +77,6 @@ export function StartCollaborationDialog({
         targetBranch: "main",
         includeDirtyChanges: isDirty ? includeDirty : false,
         accessMode,
-        creatorPrincipalId: principalId,
       })
 
       onSessionStarted?.({
@@ -216,9 +215,6 @@ export function StartCollaborationDialog({
               <Spinner className="h-4 w-4" />
               <span>
                 {stage === "creating_session" && "Creating cloud session..."}
-                {stage === "provisioning_workspace" && "Setting up local session workspace..."}
-                {stage === "hydrating_crdt" && "Hydrating project CRDT..."}
-                {stage === "activating_workbench" && "Activating Session Workbench..."}
               </span>
             </div>
           )}

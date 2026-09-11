@@ -6,8 +6,8 @@
 
 import { EventEmitter } from "node:events"
 import type { AutoGitLease, AutoGitLifecycle, SessionId } from "@shared/collaboration"
-import { canTransitionAutoGitLifecycle, assertValidAutoGitTransition } from "@shared/collaboration"
-import { LeaderLeaseClient, LEASE_DURATION_MS, type EligibilityReport } from "./LeaderLeaseClient"
+import { assertValidAutoGitTransition } from "@shared/collaboration"
+import { LeaderLeaseClient, type EligibilityReport } from "./LeaderLeaseClient"
 
 export class AutoGitCoordinator extends EventEmitter {
   readonly sessionId: SessionId

@@ -1,21 +1,35 @@
 /**
  * Session-scoped Durable Object for Collaboration & AutoGit.
  *
- * Master Specification: Section 13.1 - 13.10, 14.5, 15.3
+ * Master Specification: Section 13.1 - 13.10, 15.3
  * Responsibilities:
- * - Session room identity: session:<sessionId> (Section 13.1)
- * - WebSocket Hibernation (Section 13.2)
+ * - Session room identity: session:<publicSessionId> (Section 13.1)
+ * - WebSocket Hibernation: per-socket state lives in socket attachments, never in
+ *   instance memory, so it survives eviction (Section 13.2)
  * - Global monotonic sessionSeq (Section 13.3)
- * - Batch idempotency (Section 13.10)
- * - AutoGit leader lease coordination (Section 14.5)
+ * - Batch idempotency by batchId (Section 13.10)
  * - CRDT barrier creation (Section 15.3)
- * - Durable update log and replay cursor (Section 13.6 - 13.8)
+ * - Durable encrypted update log and replay (Section 13.6 - 13.8)
+ *
+ * The room only stores and relays ciphertext. A socket must present a session token
+ * for this room before it can read or write; viewer tokens can read but not write.
  */
+
+import { verifySessionToken } from '../lib/jwt'
+import type { Env, SessionClaims } from '../types'
+
+/** Must match SESSION_ROOM_PROTOCOL_VERSION in apps/projectd/src/collaboration/SessionRoomClient.ts. */
+export const SESSION_ROOM_PROTOCOL_VERSION = 'session-room/1'
+export const MAX_ENCRYPTED_BATCH_CHARS = 1024 * 1024
+const REPLAY_PAGE_SIZE = 256
+const BATCH_KEY_PREFIX = 'batch:'
+const BATCH_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
 
 export interface StoredSessionBatch {
   sessionSeq: number
   batchId: string
   clientId: string
+  principalId: string
   encryptedPayload: string // Base64 encoded E2EE payload
   serverTime: number
 }
@@ -26,202 +40,297 @@ export interface StoredBarrier {
   serverTime: number
 }
 
-export interface StoredAutoGitLease {
-  leaderIdentityKey: string
-  leaseGeneration: number
-  leaseExpiresAt: number
-  lastRenewedAt: number
+interface SocketAttachment {
+  roomId: string
+  authenticated: boolean
+  principalId?: string
+  clientId?: string
+  canWrite?: boolean
 }
 
-export class CollaborationSessionRoom {
-  private readonly state: DurableObjectState
-  private readonly sockets = new Set<WebSocket>()
-  private currentSeq = 0
-  private lease: StoredAutoGitLease | null = null
-  private initialized = false
+type ClientMessage =
+  | { type: 'hello'; token: unknown; clientId: unknown; protocolVersion: unknown }
+  | { type: 'sync_request'; knownSeq: unknown }
+  | { type: 'submit_batch'; batchId: unknown; encryptedPayload: unknown }
+  | { type: 'barrier_request' }
 
-  constructor(state: DurableObjectState) {
-    this.state = state
+function batchKey(sessionSeq: number): string {
+  return `${BATCH_KEY_PREFIX}${String(sessionSeq).padStart(16, '0')}`
+}
+
+function toWireBatch(batch: StoredSessionBatch) {
+  return {
+    sessionSeq: batch.sessionSeq,
+    batchId: batch.batchId,
+    clientId: batch.clientId,
+    encryptedPayload: batch.encryptedPayload,
   }
+}
 
-  private async ensureInitialized(): Promise<void> {
-    if (this.initialized) return
+export class CollaborationSessionRoom implements DurableObject {
+  private readonly state: DurableObjectState
+  private readonly env: Env
+  private currentSeq = 0
+  private readonly ready: Promise<void>
 
-    const storedSeq = await this.state.storage.get<number>("currentSeq")
-    this.currentSeq = storedSeq ?? 0
-
-    const storedLease = await this.state.storage.get<StoredAutoGitLease>("lease")
-    this.lease = storedLease ?? null
-
-    this.initialized = true
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state
+    this.env = env
+    this.ready = state.blockConcurrencyWhile(async () => {
+      this.currentSeq = (await state.storage.get<number>('currentSeq')) ?? 0
+    })
   }
 
   async fetch(request: Request): Promise<Response> {
-    await this.ensureInitialized()
-
-    const url = new URL(request.url)
-
-    // Handle WebSocket upgrade
-    if (request.headers.get("Upgrade") === "websocket") {
-      const pair = new WebSocketPair()
-      const [client, server] = Object.values(pair)
-
-      this.state.acceptWebSocket(server)
-      this.sockets.add(server)
-      server.send(
-        JSON.stringify({
-          type: "session_ready",
-          currentSeq: this.currentSeq,
-          lease: this.lease,
-          serverTime: Date.now(),
-        }),
-      )
-
-      return new Response(null, { status: 101, webSocket: client })
+    if (request.headers.get('upgrade') !== 'websocket') {
+      return new Response('Expected websocket upgrade', { status: 426 })
+    }
+    const sessionId = new URL(request.url).searchParams.get('sessionId')
+    if (!sessionId) {
+      return new Response('sessionId is required', { status: 400 })
     }
 
-    if (url.pathname === "/batch" && request.method === "POST") {
-      const body = (await request.json()) as any
-      const result = await this.acceptBatch(body)
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
-
-    if (url.pathname === "/barrier" && request.method === "POST") {
-      const result = await this.createBarrier()
-      return new Response(JSON.stringify(result), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
-
-    if (url.pathname === "/replay" && request.method === "GET") {
-      const fromSeq = Number(url.searchParams.get("fromSeq")) || 0
-      const batches = await this.getBatchesAfter(fromSeq)
-      return new Response(JSON.stringify({ batches, currentSeq: this.currentSeq }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
-    }
-
-    return new Response("Not found", { status: 404 })
+    const pair = new WebSocketPair()
+    const [client, server] = Object.values(pair)
+    this.acceptSocket(server, `session:${sessionId}`)
+    return new Response(null, { status: 101, webSocket: client })
   }
 
-  async acceptBatch(batch: {
+  /** Registers a hibernatable socket that must authenticate for roomId before anything else. */
+  acceptSocket(socket: WebSocket, roomId: string): void {
+    this.state.acceptWebSocket(socket)
+    const attachment: SocketAttachment = { roomId, authenticated: false }
+    socket.serializeAttachment(attachment)
+  }
+
+  async webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    await this.ready
+
+    let parsed: ClientMessage
+    try {
+      parsed = JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message)) as ClientMessage
+    } catch {
+      this.reject(socket, 'BAD_REQUEST', 'Malformed websocket message')
+      return
+    }
+
+    const attachment = socket.deserializeAttachment() as SocketAttachment | null
+    if (!attachment) {
+      this.reject(socket, 'BAD_REQUEST', 'Unknown socket')
+      return
+    }
+
+    if (parsed.type === 'hello') {
+      await this.handleHello(socket, attachment, parsed)
+      return
+    }
+    if (!attachment.authenticated) {
+      this.reject(socket, 'UNAUTHENTICATED', 'Send hello with a session token first')
+      return
+    }
+
+    switch (parsed.type) {
+      case 'sync_request':
+        await this.handleSyncRequest(socket, parsed.knownSeq)
+        return
+      case 'submit_batch':
+        await this.handleSubmitBatch(socket, attachment, parsed)
+        return
+      case 'barrier_request':
+        await this.handleBarrierRequest(socket, attachment)
+        return
+      default:
+        this.sendError(socket, 'BAD_REQUEST', 'Unknown message type')
+    }
+  }
+
+  webSocketClose(socket: WebSocket, code: number, reason: string): void {
+    try {
+      socket.close(code, reason)
+    } catch {
+      // Already closed
+    }
+  }
+
+  webSocketError(socket: WebSocket): void {
+    try {
+      socket.close(1011, 'socket error')
+    } catch {
+      // Already closed
+    }
+  }
+
+  /** Assigns the next sessionSeq, or returns the original one for a batchId it has already stored. */
+  async acceptBatch(input: {
     batchId: string
     clientId: string
+    principalId: string
     encryptedPayload: string
-  }): Promise<{ sessionSeq: number; duplicate: boolean }> {
+  }): Promise<{ stored: StoredSessionBatch; duplicate: boolean }> {
+    await this.ready
+
     // Section 13.10: Idempotency check
-    const existingSeq = await this.state.storage.get<number>(`idemp:${batch.batchId}`)
+    const existingSeq = await this.state.storage.get<number>(`batch-id:${input.batchId}`)
     if (existingSeq !== undefined) {
-      return { sessionSeq: existingSeq, duplicate: true }
+      const existing = await this.state.storage.get<StoredSessionBatch>(batchKey(existingSeq))
+      if (existing) {
+        return { stored: existing, duplicate: true }
+      }
     }
 
     this.currentSeq += 1
-    const sessionSeq = this.currentSeq
-
-    const storedBatch: StoredSessionBatch = {
-      sessionSeq,
-      batchId: batch.batchId,
-      clientId: batch.clientId,
-      encryptedPayload: batch.encryptedPayload,
+    const stored: StoredSessionBatch = {
+      sessionSeq: this.currentSeq,
+      ...input,
       serverTime: Date.now(),
     }
-
-    await this.state.storage.put(`batch:${sessionSeq}`, storedBatch)
-    await this.state.storage.put(`idemp:${batch.batchId}`, sessionSeq)
-    await this.state.storage.put("currentSeq", sessionSeq)
-
-    // Broadcast to connected WebSocket participants
-    const broadcastPayload = JSON.stringify({
-      type: "session_batch",
-      sessionSeq,
-      batch: storedBatch,
+    await this.state.storage.put({
+      currentSeq: stored.sessionSeq,
+      [batchKey(stored.sessionSeq)]: stored,
+      [`batch-id:${input.batchId}`]: stored.sessionSeq,
     })
+    return { stored, duplicate: false }
+  }
 
-    for (const ws of this.sockets) {
+  private async handleHello(
+    socket: WebSocket,
+    attachment: SocketAttachment,
+    message: Extract<ClientMessage, { type: 'hello' }>,
+  ): Promise<void> {
+    if (attachment.authenticated) {
+      this.sendError(socket, 'BAD_REQUEST', 'This socket is already authenticated')
+      return
+    }
+    if (message.protocolVersion !== SESSION_ROOM_PROTOCOL_VERSION) {
+      this.reject(socket, 'INVALID_PROTOCOL_VERSION', `Expected protocol ${SESSION_ROOM_PROTOCOL_VERSION}`)
+      return
+    }
+    if (typeof message.clientId !== 'string' || !BATCH_ID_PATTERN.test(message.clientId)) {
+      this.reject(socket, 'BAD_REQUEST', 'hello requires a clientId')
+      return
+    }
+
+    let claims: SessionClaims
+    try {
+      claims = await verifySessionToken(this.env, String(message.token))
+    } catch (error) {
+      this.reject(socket, 'INVALID_SESSION_TOKEN', error instanceof Error ? error.message : 'Invalid session token')
+      return
+    }
+    if (claims.roomId !== attachment.roomId || claims.protocolVersion !== SESSION_ROOM_PROTOCOL_VERSION) {
+      this.reject(socket, 'ROOM_MISMATCH', 'The session token is for a different session')
+      return
+    }
+
+    const authenticated: SocketAttachment = {
+      roomId: attachment.roomId,
+      authenticated: true,
+      principalId: claims.principalId,
+      clientId: message.clientId,
+      canWrite: claims.sessionRole !== 'viewer',
+    }
+    socket.serializeAttachment(authenticated)
+    this.send(socket, { type: 'ready', headSeq: this.currentSeq, serverTime: Date.now() })
+  }
+
+  private async handleSyncRequest(socket: WebSocket, knownSeq: unknown): Promise<void> {
+    const fromSeq = typeof knownSeq === 'number' && Number.isSafeInteger(knownSeq) && knownSeq >= 0 ? knownSeq : 0
+    const page = await this.state.storage.list<StoredSessionBatch>({
+      prefix: BATCH_KEY_PREFIX,
+      start: batchKey(fromSeq + 1),
+      limit: REPLAY_PAGE_SIZE,
+    })
+    const batches = [...page.values()]
+    this.send(socket, {
+      type: 'sync_delta',
+      fromSeq,
+      toSeq: batches.length > 0 ? batches[batches.length - 1].sessionSeq : fromSeq,
+      headSeq: this.currentSeq,
+      batches: batches.map(toWireBatch),
+    })
+  }
+
+  private async handleSubmitBatch(
+    socket: WebSocket,
+    attachment: SocketAttachment,
+    message: Extract<ClientMessage, { type: 'submit_batch' }>,
+  ): Promise<void> {
+    if (!attachment.canWrite) {
+      this.sendError(socket, 'FORBIDDEN', 'Viewers cannot change session files')
+      return
+    }
+    const { batchId, encryptedPayload } = message
+    if (typeof batchId !== 'string' || !BATCH_ID_PATTERN.test(batchId)) {
+      this.sendError(socket, 'BAD_REQUEST', 'submit_batch requires a batchId')
+      return
+    }
+    if (typeof encryptedPayload !== 'string' || encryptedPayload.length === 0) {
+      this.sendError(socket, 'BAD_REQUEST', 'submit_batch requires an encrypted payload')
+      return
+    }
+    if (encryptedPayload.length > MAX_ENCRYPTED_BATCH_CHARS) {
+      this.sendError(socket, 'BATCH_TOO_LARGE', `Batches are limited to ${MAX_ENCRYPTED_BATCH_CHARS} characters`)
+      return
+    }
+
+    const { stored, duplicate } = await this.acceptBatch({
+      batchId,
+      clientId: attachment.clientId ?? 'unknown',
+      principalId: attachment.principalId ?? 'unknown',
+      encryptedPayload,
+    })
+    this.send(socket, { type: 'batch_ack', batchId, sessionSeq: stored.sessionSeq, duplicate })
+    if (!duplicate) {
+      this.broadcast(socket, { type: 'session_batch', batch: toWireBatch(stored) })
+    }
+  }
+
+  private async handleBarrierRequest(socket: WebSocket, attachment: SocketAttachment): Promise<void> {
+    if (!attachment.canWrite) {
+      this.sendError(socket, 'FORBIDDEN', 'Viewers cannot request checkpoints')
+      return
+    }
+    const barrier: StoredBarrier = {
+      barrierId: `barrier_${crypto.randomUUID().replace(/-/g, '')}`,
+      sessionSeq: this.currentSeq,
+      serverTime: Date.now(),
+    }
+    await this.state.storage.put(`barrier:${barrier.barrierId}`, barrier)
+    this.send(socket, { type: 'barrier_ack', barrier })
+  }
+
+  private broadcast(except: WebSocket, message: unknown): void {
+    const payload = JSON.stringify(message)
+    for (const socket of this.state.getWebSockets()) {
+      if (socket === except) continue
+      const attachment = socket.deserializeAttachment() as SocketAttachment | null
+      if (!attachment?.authenticated) continue
       try {
-        ws.send(broadcastPayload)
+        socket.send(payload)
       } catch {
         // Closed
       }
     }
-
-    return { sessionSeq, duplicate: false }
   }
 
-  async getBatchesAfter(fromSeq: number): Promise<StoredSessionBatch[]> {
-    const batches: StoredSessionBatch[] = []
-    for (let s = fromSeq + 1; s <= this.currentSeq; s++) {
-      const b = await this.state.storage.get<StoredSessionBatch>(`batch:${s}`)
-      if (b) {
-        batches.push(b)
-      }
-    }
-    return batches
-  }
-
-  async createBarrier(): Promise<StoredBarrier> {
-    const barrierId = `barrier_${crypto.randomUUID().slice(0, 12)}`
-    const barrier: StoredBarrier = {
-      barrierId,
-      sessionSeq: this.currentSeq,
-      serverTime: Date.now(),
-    }
-
-    await this.state.storage.put(`barrier:${barrierId}`, barrier)
-    return barrier
-  }
-
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    const text = typeof message === "string" ? message : new TextDecoder().decode(message)
+  private send(socket: WebSocket, message: unknown): void {
     try {
-      const parsed = JSON.parse(text)
-      if (parsed.type === "sync_request") {
-        const fromSeq = Number(parsed.knownSeq) || 0
-        const batches = await this.getBatchesAfter(fromSeq)
-        ws.send(
-          JSON.stringify({
-            type: "sync_delta",
-            fromSeq,
-            toSeq: this.currentSeq,
-            batches,
-          }),
-        )
-      } else if (parsed.type === "submit_batch") {
-        const res = await this.acceptBatch(parsed.batch)
-        ws.send(
-          JSON.stringify({
-            type: "batch_ack",
-            batchId: parsed.batch.batchId,
-            sessionSeq: res.sessionSeq,
-            duplicate: res.duplicate,
-          }),
-        )
-      } else if (parsed.type === "barrier_request") {
-        const barrier = await this.createBarrier()
-        ws.send(
-          JSON.stringify({
-            type: "barrier_ack",
-            barrier,
-          }),
-        )
-      }
-    } catch (err: any) {
-      ws.send(JSON.stringify({ type: "error", error: err.message }))
+      socket.send(JSON.stringify(message))
+    } catch {
+      // Closed
     }
   }
 
-  webSocketClose(ws: WebSocket): void {
-    this.sockets.delete(ws)
-    ws.close()
+  private sendError(socket: WebSocket, code: string, message: string): void {
+    this.send(socket, { type: 'error', code, message, recoverable: true })
   }
 
-  webSocketError(ws: WebSocket): void {
-    this.sockets.delete(ws)
-    ws.close()
+  private reject(socket: WebSocket, code: string, message: string): void {
+    this.send(socket, { type: 'error', code, message, recoverable: false })
+    try {
+      socket.close(1008, code)
+    } catch {
+      // Already closed
+    }
   }
 }

@@ -8,18 +8,21 @@
  * - Divergent disk protection (preserves un-ingested local changes);
  * - Symlink and file mode (+x) application;
  * - Materialization index and baseline store updates;
- * - Path collision suppression (Invariant C18).
+ * - Path collision suppression (Invariant C18);
+ * - Tree paths confined to the workspace (Invariant C37);
+ * - Renames and deletes remove only bytes this materializer wrote.
  */
 
 import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import path from "node:path"
-import * as Y from "yjs"
 
 import type { BaselineStore } from "../collaboration/BaselineStore"
-import type { MaterializationIndex } from "./MaterializationIndex"
+import { InvalidProjectPathError } from "../collaboration/projectPath"
+import type { MaterializationIndex, MaterializedEntry } from "./MaterializationIndex"
 import type { SessionReplica } from "../collaboration/SessionReplica"
 import type { ProjectEntryRecord } from "../collaboration/TreeDoc"
+import { resolveWorkspaceFilePath } from "./workspacePath"
 
 export interface MaterializerOptions {
   workspaceRoot: string
@@ -48,7 +51,6 @@ export class FilesystemMaterializer {
   readonly maxDelayMs: number
 
   private pendingQueue = new Map<string, PendingMaterialization>()
-  private isMaterializing = false
   public lastLatencyMs = 0
 
   constructor(options: MaterializerOptions) {
@@ -139,40 +141,63 @@ export class FilesystemMaterializer {
       return
     }
 
-    const absPath = path.join(this.workspaceRoot, entry.path)
+    const previous = this.index.getByFileId(this.sessionId, fileId)
 
     // Handle deleted entry
     if (entry.deleted) {
-      await this.handleDeletion(entry, absPath)
+      await this.handleDeletion(entry, previous)
       this.lastLatencyMs = Date.now() - queuedAt
       return
     }
 
+    const absPath = await this.resolvePath(entry.fileId, entry.path)
+    if (!absPath) return
+
+    let wrote = false
     if (entry.kind === "symlink") {
-      await this.handleSymlink(entry, absPath)
-      this.lastLatencyMs = Date.now() - queuedAt
-      return
-    }
-
-    if (entry.kind === "text") {
+      wrote = await this.handleSymlink(entry, absPath)
+    } else if (entry.kind === "text") {
       await this.handleTextMaterialization(entry, absPath)
-      this.lastLatencyMs = Date.now() - queuedAt
-      return
+      wrote = true
+    }
+    if (!wrote) return
+
+    // A rename or move leaves the old path on disk unless it is removed here.
+    if (previous && previous.relativePath !== entry.path) {
+      await this.removeStaleMaterialization(previous, absPath)
+    }
+    this.lastLatencyMs = Date.now() - queuedAt
+  }
+
+  private async resolvePath(fileId: string, relativePath: string): Promise<string | null> {
+    try {
+      return await resolveWorkspaceFilePath(this.workspaceRoot, relativePath)
+    } catch (error) {
+      if (error instanceof InvalidProjectPathError) {
+        console.warn(`[Materializer] Refusing to materialize ${fileId}: ${error.message}`)
+        return null
+      }
+      throw error
     }
   }
 
   private async handleTextMaterialization(entry: ProjectEntryRecord, absPath: string): Promise<void> {
+    // Read the text and its Yjs state together, before any await, so the baseline
+    // describes exactly the bytes written even if peer updates land mid-write.
     const content = this.replica.textDocs.getTextContent(entry.fileId)
-    const contentHash = createHash("sha256").update(content).digest("hex")
+    const snapshotUpdate = this.replica.textDocs.encodeStateAsUpdate(entry.fileId)
+    const stateVector = this.replica.textDocs.getStateVector(entry.fileId)
+    const contentHash = sha256(content)
 
     // Ensure parent directory exists
     const dir = path.dirname(absPath)
     await fs.mkdir(dir, { recursive: true })
 
     // Divergent disk protection (Section 28.3):
-    // If file already exists on disk, verify it equals last known baseline
+    // If a regular file already exists on disk, verify it equals last known baseline
     const baseline = this.baselineStore.getBaseline(entry.fileId)
-    try {
+    const existing = await fs.lstat(absPath).catch(() => null)
+    if (existing?.isFile()) {
       const diskExisting = await fs.readFile(absPath, "utf8")
       if (baseline && diskExisting !== baseline.text && diskExisting !== content) {
         // Disk has divergent local edits! Save backup to prevent data loss
@@ -180,8 +205,6 @@ export class FilesystemMaterializer {
         await fs.writeFile(backupPath, diskExisting, "utf8")
         console.warn(`[Materializer] Preserved divergent local file at ${backupPath}`)
       }
-    } catch {
-      // File does not exist on disk yet
     }
 
     // Atomic write: write to temporary file in same folder, then rename
@@ -204,22 +227,19 @@ export class FilesystemMaterializer {
       state: "materialized",
     })
 
-    // Update BaselineStore
-    const shadowDoc = new Y.Doc({ guid: `shadow:${entry.fileId}` })
-    const shadowText = shadowDoc.getText("content")
-    shadowDoc.transact(() => shadowText.insert(0, content))
+    // Baseline B is the live doc as written, so a later external save diffs against
+    // shared Yjs history and merges with concurrent peer edits (Section 10.11).
     this.baselineStore.setBaseline({
       fileId: entry.fileId,
       text: content,
-      stateVector: Y.encodeStateVector(shadowDoc),
-      snapshotUpdate: Y.encodeStateAsUpdate(shadowDoc),
+      stateVector,
+      snapshotUpdate,
       contentHash,
     })
-    shadowDoc.destroy()
   }
 
-  private async handleSymlink(entry: ProjectEntryRecord, absPath: string): Promise<void> {
-    if (!entry.symlinkTarget) return
+  private async handleSymlink(entry: ProjectEntryRecord, absPath: string): Promise<boolean> {
+    if (!entry.symlinkTarget) return false
 
     const dir = path.dirname(absPath)
     await fs.mkdir(dir, { recursive: true })
@@ -232,7 +252,7 @@ export class FilesystemMaterializer {
 
     await fs.symlink(entry.symlinkTarget, absPath)
     const stat = await fs.lstat(absPath)
-    const targetHash = createHash("sha256").update(entry.symlinkTarget).digest("hex")
+    const targetHash = sha256(entry.symlinkTarget)
 
     this.index.recordMaterialization({
       sessionId: this.sessionId,
@@ -245,16 +265,63 @@ export class FilesystemMaterializer {
       diskMtimeMs: stat.mtimeMs,
       state: "materialized",
     })
+    return true
   }
 
-  private async handleDeletion(entry: ProjectEntryRecord, absPath: string): Promise<void> {
-    try {
-      await fs.unlink(absPath)
-    } catch {
-      // Already deleted
+  private async handleDeletion(entry: ProjectEntryRecord, previous: MaterializedEntry | null): Promise<void> {
+    const relativePath = previous?.relativePath ?? entry.path
+    const absPath = await this.resolvePath(entry.fileId, relativePath)
+
+    if (absPath) {
+      const diskHash = await hashDiskEntry(absPath, previous?.kind ?? entry.kind)
+      if (diskHash !== null) {
+        const expectedHash = previous?.diskHash ?? this.baselineStore.getBaseline(entry.fileId)?.contentHash
+        if (diskHash !== expectedHash) {
+          // Bytes nobody ingested: keep them, so the delete surfaces as a
+          // delete/modify conflict instead of silently discarding work (C18).
+          console.warn(`[Materializer] Kept ${relativePath}: it changed locally after the last sync`)
+          return
+        }
+        await fs.unlink(absPath)
+      }
     }
 
     this.index.remove(this.sessionId, entry.fileId)
     this.baselineStore.deleteBaseline(entry.fileId)
+  }
+
+  private async removeStaleMaterialization(previous: MaterializedEntry, currentAbsPath: string): Promise<void> {
+    const staleAbsPath = await this.resolvePath(previous.fileId, previous.relativePath)
+    if (!staleAbsPath) return
+
+    const staleStat = await fs.lstat(staleAbsPath).catch(() => null)
+    if (!staleStat) return
+
+    // On a case-insensitive volume a case-only rename writes the same file.
+    const currentStat = await fs.lstat(currentAbsPath)
+    if (staleStat.ino === currentStat.ino && staleStat.dev === currentStat.dev) return
+
+    const diskHash = await hashDiskEntry(staleAbsPath, previous.kind)
+    if (diskHash !== previous.diskHash) {
+      console.warn(`[Materializer] Kept ${previous.relativePath} after its rename: it changed locally after the last sync`)
+      return
+    }
+    await fs.unlink(staleAbsPath)
+  }
+}
+
+function sha256(data: string | Buffer): string {
+  return createHash("sha256").update(data).digest("hex")
+}
+
+async function hashDiskEntry(absPath: string, kind: string): Promise<string | null> {
+  try {
+    if (kind === "symlink") {
+      return sha256(await fs.readlink(absPath))
+    }
+    return sha256(await fs.readFile(absPath))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
+    throw error
   }
 }

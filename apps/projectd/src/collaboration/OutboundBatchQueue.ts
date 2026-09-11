@@ -73,6 +73,14 @@ export class OutboundBatchQueue {
     stmt.run(sessionSeq, batchId)
   }
 
+  /** Deletes a session's acknowledged batches: the room holds them from then on. */
+  pruneAcked(sessionId: string): number {
+    const result = this.db.db
+      .prepare("DELETE FROM outbound_batches WHERE session_id = ? AND state = 'acked'")
+      .run(sessionId)
+    return Number(result.changes)
+  }
+
   markFailed(batchId: string, error: string): void {
     const stmt = this.db.db.prepare(
       "UPDATE outbound_batches SET state = 'failed', last_error = ? WHERE batch_id = ?",

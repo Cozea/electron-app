@@ -47,7 +47,7 @@ describe('desktop-first loading architecture', () => {
     const source = read('apps/desktop/src/features/projects/layouts/ProjectLayout.tsx')
     expect(source).toContain('const workspaceProjectId = project?._id ? String(project._id) : routeProjectId ?? null')
     expect(source).toContain('featureFlags.localWorkspaceCatalog ? workspaceProjectId : null')
-    expect(source).toContain('Boolean(project?._id) &&\n    Boolean(activeSessionForBranch)')
+    expect(source).toContain('Boolean(project?._id) &&\n    collaborationGate.enabled')
     expect(source).toContain('projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}')
   })
 

@@ -804,7 +804,7 @@ export const deleteProject = mutation({
 })
 
 const PROJECT_PURGE_BATCH_SIZE = 64
-const PROJECT_PURGE_FINAL_STAGE = 29
+const PROJECT_PURGE_FINAL_STAGE = 34
 
 async function deleteRows<TableName extends TableNames>(
   ctx: MutationCtx,
@@ -813,6 +813,32 @@ async function deleteRows<TableName extends TableNames>(
   for (const row of rows) {
     await ctx.db.delete(row._id)
   }
+}
+
+/**
+ * Collaboration session child rows are keyed by session rather than project, so they
+ * are found through the project's sessions. Deletes at most one batch per call.
+ */
+async function deleteCollaborationSessionRows<TableName extends TableNames>(
+  ctx: MutationCtx,
+  projectId: Id<"projects">,
+  takeForSession: (
+    sessionId: Id<"collaborationSessions">,
+    limit: number,
+  ) => Promise<ReadonlyArray<{ _id: Id<TableName> }>>,
+): Promise<number> {
+  const sessions = await ctx.db
+    .query("collaborationSessions")
+    .withIndex("by_project", (q) => q.eq("projectId", projectId))
+    .collect()
+  let deleted = 0
+  for (const session of sessions) {
+    const rows = await takeForSession(session._id, PROJECT_PURGE_BATCH_SIZE - deleted)
+    await deleteRows(ctx, rows)
+    deleted += rows.length
+    if (deleted >= PROJECT_PURGE_BATCH_SIZE) break
+  }
+  return deleted
 }
 
 async function deleteProjectPurgeStage(
@@ -1057,6 +1083,43 @@ async function deleteProjectPurgeStage(
         if (row.storageId) await ctx.storage.delete(row.storageId)
         await ctx.db.delete(row._id)
       }
+      return rows.length
+    }
+    case 29:
+      return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
+        ctx.db
+          .query("collaborationSessionMembers")
+          .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+          .take(limit),
+      )
+    case 30:
+      return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
+        ctx.db
+          .query("collaborationSessionInvitations")
+          .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+          .take(limit),
+      )
+    case 31:
+      return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
+        ctx.db
+          .query("collaborationSessionKeys")
+          .withIndex("by_session_and_version", (q) => q.eq("sessionId", sessionId))
+          .take(limit),
+      )
+    case 32:
+      return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
+        ctx.db
+          .query("collaborationAutoGit")
+          .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
+          .take(limit),
+      )
+    case 33: {
+      // Sessions go last, once nothing keyed by their ID remains.
+      const rows = await ctx.db
+        .query("collaborationSessions")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
       return rows.length
     }
     default:

@@ -6,15 +6,14 @@ import { NativeMacHelper } from "../../apps/projectd/src/native/NativeMacHelper"
 
 const subtle = webcrypto.subtle
 
-function base64UrlToBytes(str: string): Uint8Array {
-  let b64 = str.replace(/-/g, "+").replace(/_/g, "/")
-  while (b64.count % 4 !== 0 && b64.length % 4 !== 0) {
-    b64 += "="
-  }
-  return new Uint8Array(Buffer.from(b64, "base64"))
+function base64UrlToBytes(str: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(Buffer.from(str, "base64url"))
 }
 
-describe("P03 macOS helper, Keychain identity, and cloud auth", () => {
+// The helper is a macOS build artifact; elsewhere these suites have nothing to run.
+const helperAvailable = new NativeMacHelper().isAvailable
+
+describe.skipIf(!helperAvailable)("P03 macOS helper, Keychain identity, and cloud auth", () => {
   const helper = new NativeMacHelper()
 
   describe("NativeMacHelper CLI operations", () => {
@@ -37,7 +36,9 @@ describe("P03 macOS helper, Keychain identity, and cloud auth", () => {
       )
     })
 
-    it("saves, loads, and deletes test identity in macOS Keychain", async () => {
+    // Writes, then deletes, the real app.cozea.projectd.identity Keychain item, which
+    // destroys this Mac's projectd identity. Opt in with COZEA_TEST_REAL_KEYCHAIN=1.
+    it.skipIf(process.env.COZEA_TEST_REAL_KEYCHAIN !== "1")("saves, loads, and deletes test identity in macOS Keychain", async () => {
       expect(helper.isAvailable).toBe(true)
 
       const testPayload = JSON.stringify({
@@ -69,7 +70,6 @@ describe("P03 macOS helper, Keychain identity, and cloud auth", () => {
         ["sign", "verify"],
       )
       const privateJwk = await subtle.exportKey("jwk", keyPair.privateKey)
-      const _publicJwk = await subtle.exportKey("jwk", keyPair.publicKey)
 
       expect(privateJwk.d).toBeDefined()
 

@@ -11,13 +11,27 @@ import * as Y from "yjs"
 
 export const MAX_TEXT_CRDT_BYTES = 8 * 1024 * 1024 // 8 MiB initial safety limit
 
+/** Called after every change to a text doc, with the transaction origin. */
+export type TextDocUpdateListener = (fileId: string, origin: unknown) => void
+
 export class TextDocRegistry {
   private readonly docs = new Map<string, Y.Doc>()
+  private readonly updateListeners = new Set<TextDocUpdateListener>()
+
+  onUpdate(listener: TextDocUpdateListener): () => void {
+    this.updateListeners.add(listener)
+    return () => {
+      this.updateListeners.delete(listener)
+    }
+  }
 
   getOrCreate(fileId: string): { doc: Y.Doc; text: Y.Text } {
     let doc = this.docs.get(fileId)
     if (!doc) {
       doc = new Y.Doc({ guid: `text:${fileId}` })
+      doc.on("update", (_update: Uint8Array, origin: unknown) => {
+        for (const listener of this.updateListeners) listener(fileId, origin)
+      })
       this.docs.set(fileId, doc)
     }
     const text = doc.getText("content")
@@ -45,9 +59,9 @@ export class TextDocRegistry {
     })
   }
 
-  applyUpdate(fileId: string, update: Uint8Array): void {
+  applyUpdate(fileId: string, update: Uint8Array, origin?: unknown): void {
     const { doc } = this.getOrCreate(fileId)
-    Y.applyUpdate(doc, update)
+    Y.applyUpdate(doc, update, origin)
   }
 
   encodeStateAsUpdate(fileId: string, targetStateVector?: Uint8Array): Uint8Array {

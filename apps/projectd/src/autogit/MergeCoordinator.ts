@@ -66,38 +66,24 @@ export class MergeCoordinator {
     const behindCount = match ? Number(match[1]) : 0
     const aheadCount = match ? Number(match[2]) : 0
 
-    // Use git merge-tree --write-tree to compute clean merge preview
+    // git merge-tree --write-tree exits 0 for a clean merge and 1 for conflicts; with
+    // --name-only -z it prints the tree OID and then every conflicted path, whatever
+    // the conflict kind (content, modify/delete, rename, add/add, file/directory).
     const mergeTreeRes = await this.gitService.process.execute(
-      ["merge-tree", "--write-tree", targetOid, sessionOid],
+      ["merge-tree", "--write-tree", "--name-only", "-z", "--no-messages", targetOid, sessionOid],
       { cwd: repoPath, allowNonZeroExit: true },
     )
-
-    if (mergeTreeRes.success) {
-      const treeOid = mergeTreeRes.stdout.split("\n")[0].trim()
-      return {
-        canMergeCleanly: true,
-        mergeTreeOid: treeOid,
-        conflictingFiles: [],
-        aheadCount,
-        behindCount,
-        sessionCheckpointOid: sessionOid,
-        targetOid,
-      }
+    if (mergeTreeRes.exitCode !== 0 && mergeTreeRes.exitCode !== 1) {
+      throw new Error(`git merge-tree failed: ${mergeTreeRes.stderr.trim() || `exit code ${mergeTreeRes.exitCode}`}`)
     }
 
-    // Conflicted merge preview
-    const conflictingFiles: string[] = []
-    const lines = mergeTreeRes.stdout.split("\n")
-    for (const line of lines) {
-      if (line.startsWith("CONFLICT (content): Merge conflict in ")) {
-        conflictingFiles.push(line.replace("CONFLICT (content): Merge conflict in ", "").trim())
-      }
-    }
+    const [treeOid, ...conflictedPaths] = mergeTreeRes.stdout.split("\0")
+    const canMergeCleanly = mergeTreeRes.exitCode === 0
 
     return {
-      canMergeCleanly: false,
-      mergeTreeOid: null,
-      conflictingFiles,
+      canMergeCleanly,
+      mergeTreeOid: canMergeCleanly ? treeOid.trim() : null,
+      conflictingFiles: canMergeCleanly ? [] : [...new Set(conflictedPaths.filter(Boolean))],
       aheadCount,
       behindCount,
       sessionCheckpointOid: sessionOid,
@@ -107,6 +93,9 @@ export class MergeCoordinator {
 
   /**
    * Section 22.2: Executes direct merge into target branch in isolated worktree.
+   *
+   * Merges the previewed session commit, not whatever the branch points at by then,
+   * and moves the target ref only if it still points at the previewed target commit.
    */
   async executeDirectMerge(params: {
     repoPath: string
@@ -114,16 +103,38 @@ export class MergeCoordinator {
     targetBranch: BranchName
     strategy?: MergeStrategy
     message?: string
+    /** The checkpoint the user reviewed; the merge refuses if the session branch moved since. */
+    reviewedCheckpointOid?: string
   }): Promise<MergeExecutionResult> {
     const { repoPath, sessionBranch, targetBranch, strategy = "merge", message } = params
 
     const preview = await this.computeMergePreview({ repoPath, sessionBranch, targetBranch })
+    if (params.reviewedCheckpointOid && preview.sessionCheckpointOid !== params.reviewedCheckpointOid) {
+      return {
+        success: false,
+        strategy,
+        error: `'${sessionBranch}' moved since it was reviewed; preview the merge again`,
+      }
+    }
     if (!preview.canMergeCleanly) {
       return {
         success: false,
         strategy,
         conflicts: preview.conflictingFiles,
         error: "Merge conflicts prevent direct merge",
+      }
+    }
+
+    // Advancing a branch that is checked out here would leave the working tree
+    // behind, so that case fast-forwards the checkout instead, and only when it has
+    // no tracked changes.
+    const status = await this.gitService.getStatus(repoPath)
+    const targetCheckedOut = status.headRef === String(targetBranch)
+    if (targetCheckedOut && status.files.some((file) => !file.isUntracked && !file.isIgnored)) {
+      return {
+        success: false,
+        strategy,
+        error: `'${targetBranch}' is checked out in ${repoPath} with uncommitted changes; commit or stash them first`,
       }
     }
 
@@ -143,7 +154,7 @@ export class MergeCoordinator {
 
       if (strategy === "squash") {
         await this.gitService.process.execute(
-          ["merge", "--squash", String(sessionBranch)],
+          ["merge", "--squash", preview.sessionCheckpointOid],
           { cwd: isolatedWorktree },
         )
         await this.gitService.process.execute(["commit", "-m", commitMsg], {
@@ -151,7 +162,7 @@ export class MergeCoordinator {
         })
       } else {
         await this.gitService.process.execute(
-          ["merge", "--no-ff", "-m", commitMsg, String(sessionBranch)],
+          ["merge", "--no-ff", "-m", commitMsg, preview.sessionCheckpointOid],
           { cwd: isolatedWorktree },
         )
       }
@@ -162,19 +173,14 @@ export class MergeCoordinator {
         })
       ).stdout.trim()
 
-      // Update target branch ref
-      await this.gitService.process.execute(
-        ["update-ref", `refs/heads/${targetBranch}`, mergeOid],
-        { cwd: repoPath },
-      )
-
-      // If repoPath is on targetBranch, mixed reset to advance index
-      const status = await this.gitService.getStatus(repoPath)
-      if (status.headRef === String(targetBranch)) {
-        await this.gitService.process.execute(["reset", "--mixed", mergeOid], {
-          cwd: repoPath,
-          allowNonZeroExit: true,
-        })
+      if (targetCheckedOut) {
+        await this.gitService.process.execute(["merge", "--ff-only", mergeOid], { cwd: repoPath })
+      } else {
+        // The old-value argument makes the update fail if the target moved meanwhile.
+        await this.gitService.process.execute(
+          ["update-ref", `refs/heads/${targetBranch}`, mergeOid, preview.targetOid],
+          { cwd: repoPath },
+        )
       }
 
       return {

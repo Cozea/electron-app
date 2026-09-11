@@ -9,6 +9,8 @@
 
 import * as Y from "yjs"
 
+import { normalizeProjectPath } from "./projectPath"
+
 export type EntryKind = "text" | "binary" | "symlink"
 
 export interface ChangeActor {
@@ -55,6 +57,11 @@ export interface StructuralOp {
   newKind?: EntryKind
   newSymlinkTarget?: string
   baseStructuralOpId?: string | null
+  /**
+   * On delete ops: the text doc state vector (clientId -> clock) the deleting replica
+   * had seen, so a text edit it had not seen reads as a delete/modify conflict (10.18).
+   */
+  textStateVector?: Record<string, number>
   actor: ChangeActor
   createdAt: number
 }
@@ -82,8 +89,9 @@ export class TreeDoc {
     this.structuralOps = this.doc.getMap<StructuralOp>("structuralOps")
   }
 
+  /** Throws InvalidProjectPathError for paths that could escape the project. */
   normalizePath(p: string): string {
-    return p.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "")
+    return normalizeProjectPath(p)
   }
 
   getEntry(fileId: string): ProjectEntryRecord | null {
@@ -196,7 +204,11 @@ export class TreeDoc {
     return updated
   }
 
-  deleteEntry(fileId: string, actor: ChangeActor): ProjectEntryRecord {
+  deleteEntry(
+    fileId: string,
+    actor: ChangeActor,
+    textStateVector?: Record<string, number>,
+  ): ProjectEntryRecord {
     const existing = this.getEntry(fileId)
     if (!existing) {
       throw new Error(`Cannot delete non-existent entry '${fileId}'`)
@@ -216,6 +228,7 @@ export class TreeDoc {
       kind: "delete",
       fromPath: existing.path,
       baseStructuralOpId: existing.lastStructuralOpId,
+      textStateVector,
       actor,
       createdAt: now,
     }

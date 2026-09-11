@@ -19,7 +19,7 @@ import { assertValidRebaseTransition } from "@shared/collaboration"
 
 import type { GitService } from "../git/GitService"
 import type { SessionReplica } from "../collaboration/SessionReplica"
-import { BarrierCapture } from "./BarrierCapture"
+import { BarrierCapture, type BarrierDescriptor } from "./BarrierCapture"
 import { CheckpointBuilder } from "./CheckpointBuilder"
 import { BoundedDiff } from "../collaboration/BoundedDiff"
 
@@ -60,7 +60,8 @@ export class RebaseCoordinator {
     targetBranch: BranchName
     replica: SessionReplica
     isUserAction: boolean
-    leaseGeneration?: number
+    /** The room barrier at sequence N; without one the basis is local and unsequenced (sessionSeq 0). */
+    barrier?: BarrierDescriptor
     onBeforeCompute?: () => Promise<void>
   }): Promise<RebaseExecutionResult> {
     const {
@@ -70,16 +71,15 @@ export class RebaseCoordinator {
       targetBranch,
       replica,
       isUserAction,
-      leaseGeneration = 1,
     } = params
 
     // Enforce Invariant C25: Rebase requires explicit user action
     assertValidRebaseTransition("SUGGESTED", "REQUESTED", { isUserAction })
 
     // Step 2: Capture rebase basis B at barrier sequence N (Section 21.3)
-    const barrier = {
+    const barrier: BarrierDescriptor = params.barrier ?? {
       barrierId: `rebase_bar_${Date.now()}`,
-      sessionSeq: 100, // Current seq
+      sessionSeq: 0,
       serverTime: Date.now(),
     }
     const snapshotB = BarrierCapture.captureSnapshot(barrier, replica)

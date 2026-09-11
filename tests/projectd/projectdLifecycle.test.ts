@@ -78,7 +78,7 @@ describe("P02 projectd daemon & client protocol lifecycle", () => {
       await client.connect()
 
       const received: any[] = []
-      const unsubscribe = await client.subscribe("workspace:changes", (evt) => {
+      const unsubscribe = await client.subscribe("workspace:changes", (evt: unknown) => {
         received.push(evt)
       })
 

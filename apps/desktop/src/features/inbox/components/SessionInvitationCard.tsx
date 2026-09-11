@@ -33,11 +33,9 @@ export interface SessionInvitationItem {
 
 export function SessionInvitationCard({
   item,
-  principalId,
   onAccepted,
 }: {
   item: SessionInvitationItem
-  principalId: Id<"devicePrincipals">
   onAccepted?: (result: { projectId: string; sessionId: string; branchName: string }) => void
 }) {
   const [isBusy, setIsBusy] = useState(false)
@@ -46,13 +44,18 @@ export function SessionInvitationCard({
   const handleAction = async (accept: boolean) => {
     setIsBusy(true)
     try {
+      // The server resolves the invitation for the authenticated device.
       const res = await resolveInvitation({
         invitationId: item.invitationId,
         accept,
-        principalId,
       })
 
-      if (accept && res.accepted) {
+      if (!res.accepted && res.reason === "expired") {
+        appToast.error({
+          title: "Invitation expired",
+          description: `Ask for a new invitation to ${item.projectName}.`,
+        })
+      } else if (res.accepted) {
         appToast.success({
           title: "Invitation accepted",
           description: `You joined collaboration session for ${item.projectName} on branch ${item.branchName}.`,

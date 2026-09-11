@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import net from "node:net"
+import path from "node:path"
 
 import {
   asProjectId,
@@ -13,16 +14,24 @@ import {
   LineMessageDecoder,
   PROJECTD_DEFAULT_DAEMON_VERSION,
   PROJECTD_PROTOCOL_VERSION,
+  projectdSessionTopic,
   type ProjectdClientMessage,
   type ProjectdError,
+  type ProjectdErrorCode,
   type ProjectdEventMessage,
   type ProjectdHandshakeResponse,
   type ProjectdHealthResult,
   type ProjectdRequest,
   type ProjectdResponse,
   type ProjectdServerMessage,
+  type ProjectdSessionAttachParams,
+  type ProjectdSessionStatus,
+  type ProjectdSessionTicket,
 } from "@cozea/projectd-protocol"
 
+import { CollaborationSessionHost } from "../collaboration/CollaborationSessionHost"
+import type { RoomConnector } from "../collaboration/SessionRoomClient"
+import type { FileEventSource } from "../filesystem/FSEventsClient"
 import { ProjectdDatabase } from "../storage/Database"
 import { SqliteWorkbenchStore } from "../workbenches/SqliteWorkbenchStore"
 import { WorkspaceRegistry } from "../workspaces/WorkspaceRegistry"
@@ -43,6 +52,78 @@ export interface ProjectdServerOptions {
   database?: ProjectdDatabase
   dbPath?: string
   sourceCatalogPath?: string
+  /** Opens session room connections; tests substitute an in-memory room. */
+  sessionConnectorFactory?: (wsUrl: string) => RoomConnector
+  /** File event source for each attached folder; FSEvents when the native helper exists. */
+  fileEventSourceFactory?: (rootPath: string) => FileEventSource
+  sessionRescanIntervalMs?: number
+}
+
+const PUBLIC_SESSION_ID_PATTERN = /^czs_[a-f0-9]{16}$/
+
+class ProjectdRequestError extends Error {
+  readonly code: ProjectdErrorCode
+
+  constructor(code: ProjectdErrorCode, message: string) {
+    super(message)
+    this.code = code
+  }
+}
+
+function invalidParams(message: string): ProjectdRequestError {
+  return new ProjectdRequestError("INVALID_PARAMS", message)
+}
+
+function requireSessionId(params: unknown): string {
+  const publicSessionId = (params as { publicSessionId?: unknown } | undefined)?.publicSessionId
+  if (typeof publicSessionId !== "string" || !PUBLIC_SESSION_ID_PATTERN.test(publicSessionId)) {
+    throw invalidParams("A collaboration session ID (czs_…) is required")
+  }
+  return publicSessionId
+}
+
+function parseTicket(value: unknown): ProjectdSessionTicket {
+  const ticket = (value ?? {}) as Partial<ProjectdSessionTicket>
+  if (
+    typeof ticket.wsUrl !== "string" ||
+    !/^wss?:\/\//.test(ticket.wsUrl) ||
+    typeof ticket.token !== "string" ||
+    !ticket.token
+  ) {
+    throw invalidParams("The ticket needs the room's wsUrl and token")
+  }
+  const role = ticket.role === "viewer" || ticket.role === "project_manager" ? ticket.role : "developer"
+  return { wsUrl: ticket.wsUrl, token: ticket.token, role }
+}
+
+function parseAttachParams(params: unknown) {
+  const attach = (params ?? {}) as Partial<ProjectdSessionAttachParams>
+  const publicSessionId = requireSessionId(attach)
+  if (
+    typeof attach.workspaceId !== "string" ||
+    !attach.workspaceId ||
+    typeof attach.projectId !== "string" ||
+    !attach.projectId
+  ) {
+    throw invalidParams("workspaceId and projectId are required")
+  }
+  if (typeof attach.rootPath !== "string" || !path.isAbsolute(attach.rootPath)) {
+    throw invalidParams("rootPath must be an absolute folder path")
+  }
+  const roomKey =
+    typeof attach.roomKeyBase64 === "string" ? Buffer.from(attach.roomKeyBase64, "base64") : Buffer.alloc(0)
+  if (roomKey.length !== 32) {
+    throw invalidParams("roomKeyBase64 must hold the session's 32-byte room key")
+  }
+  return {
+    publicSessionId,
+    workspaceId: attach.workspaceId,
+    projectId: attach.projectId,
+    rootPath: path.resolve(attach.rootPath),
+    roomKey: new Uint8Array(roomKey),
+    ticket: parseTicket(attach.ticket),
+    actor: attach.actor,
+  }
 }
 
 export class ProjectdServer {
@@ -58,9 +139,16 @@ export class ProjectdServer {
   private server: net.Server | null = null
   private connections = new Set<ConnectionState>()
   private isShuttingDown = false
+  private readonly sessionHosts = new Map<string, CollaborationSessionHost>()
+  private readonly sessionConnectorFactory?: (wsUrl: string) => RoomConnector
+  private readonly fileEventSourceFactory?: (rootPath: string) => FileEventSource
+  private readonly sessionRescanIntervalMs?: number
 
   constructor(options?: ProjectdServerOptions) {
     this.socketPath = options?.socketPath ?? getProjectdSocketPath()
+    this.sessionConnectorFactory = options?.sessionConnectorFactory
+    this.fileEventSourceFactory = options?.fileEventSourceFactory
+    this.sessionRescanIntervalMs = options?.sessionRescanIntervalMs
     this.version = options?.version ?? PROJECTD_DEFAULT_DAEMON_VERSION
     this.startedAt = Date.now()
 
@@ -671,6 +759,21 @@ export class ProjectdServer {
           })
         break
       }
+      case "sessions.attach":
+        this.reply(state, req.id, () => this.attachSession(req.params))
+        break
+      case "sessions.detach":
+        this.reply(state, req.id, () => this.detachSession(req.params))
+        break
+      case "sessions.list":
+        this.reply(state, req.id, () => [...this.sessionHosts.values()].map((host) => host.status()))
+        break
+      case "sessions.status":
+        this.reply(state, req.id, () => this.sessionHosts.get(requireSessionId(req.params))?.status() ?? null)
+        break
+      case "sessions.updateTicket":
+        this.reply(state, req.id, () => this.updateSessionTicket(req.params))
+        break
       default: {
         this.sendError(state, req.id, {
           code: "METHOD_NOT_FOUND",
@@ -678,6 +781,105 @@ export class ProjectdServer {
         })
       }
     }
+  }
+
+  /** Answers a request with whatever the work returns or throws. */
+  private reply(state: ConnectionState, id: string, work: () => unknown): void {
+    void Promise.resolve()
+      .then(work)
+      .then(
+        (result) => this.sendMessage(state, { type: "response", id, success: true, result }),
+        (err: unknown) =>
+          this.sendError(state, id, {
+            code: err instanceof ProjectdRequestError ? err.code : "INTERNAL_ERROR",
+            message: err instanceof Error ? err.message : String(err),
+          }),
+      )
+  }
+
+  /**
+   * Starts syncing a folder with a session and answers straight away; the host
+   * reports progress as `status` events on the session's topic.
+   */
+  private async attachSession(params: unknown): Promise<ProjectdSessionStatus> {
+    const attach = parseAttachParams(params)
+    const existing = this.sessionHosts.get(attach.publicSessionId)
+    if (existing && existing.state !== "failed") {
+      if (existing.workspaceRoot !== attach.rootPath) {
+        throw new ProjectdRequestError(
+          "ALREADY_EXISTS",
+          `Session ${attach.publicSessionId} already syncs ${existing.workspaceRoot}`,
+        )
+      }
+      existing.updateTicket(attach.ticket)
+      return existing.status()
+    }
+    if (existing) {
+      this.sessionHosts.delete(attach.publicSessionId)
+      await existing.stop()
+    }
+    for (const host of this.sessionHosts.values()) {
+      if (host.workspaceRoot === attach.rootPath) {
+        throw new ProjectdRequestError(
+          "ALREADY_EXISTS",
+          `${attach.rootPath} already syncs session ${host.publicSessionId}`,
+        )
+      }
+    }
+    const folder = await fs.promises.stat(attach.rootPath).catch(() => null)
+    if (!folder?.isDirectory()) {
+      throw invalidParams(`Folder not found: ${attach.rootPath}`)
+    }
+
+    await this.workspaceRegistry.registerWorkspace({
+      workspaceId: asWorkspaceId(attach.workspaceId),
+      projectId: asProjectId(attach.projectId),
+      rootPath: attach.rootPath,
+      source: "collaboration-session",
+    })
+
+    const topic = projectdSessionTopic(attach.publicSessionId)
+    const host = new CollaborationSessionHost({
+      publicSessionId: attach.publicSessionId,
+      workspaceId: attach.workspaceId,
+      workspaceRoot: attach.rootPath,
+      roomKey: attach.roomKey,
+      ticket: attach.ticket,
+      db: this.db,
+      gitService: this.gitService,
+      actor: {
+        actorType: "user",
+        principalId: attach.actor?.principalId,
+        identityKey: attach.actor?.identityKey,
+      },
+      connectorFactory: this.sessionConnectorFactory,
+      fileEventSource: this.fileEventSourceFactory?.(attach.rootPath),
+      rescanIntervalMs: this.sessionRescanIntervalMs,
+      onStatus: (status) => this.broadcast(topic, "status", status),
+      onTicketNeeded: () => this.broadcast(topic, "ticket_needed", { publicSessionId: attach.publicSessionId }),
+    })
+    this.sessionHosts.set(attach.publicSessionId, host)
+    void host.start()
+    return host.status()
+  }
+
+  private async detachSession(params: unknown): Promise<{ detached: boolean }> {
+    const publicSessionId = requireSessionId(params)
+    const host = this.sessionHosts.get(publicSessionId)
+    if (!host) return { detached: false }
+    this.sessionHosts.delete(publicSessionId)
+    await host.stop()
+    return { detached: true }
+  }
+
+  private updateSessionTicket(params: unknown): ProjectdSessionStatus {
+    const publicSessionId = requireSessionId(params)
+    const host = this.sessionHosts.get(publicSessionId)
+    if (!host) {
+      throw new ProjectdRequestError("NOT_FOUND", `Session ${publicSessionId} is not attached`)
+    }
+    host.updateTicket(parseTicket((params as { ticket?: unknown }).ticket))
+    return host.status()
   }
 
   broadcast(topic: string, event: string, payload: unknown): void {
@@ -698,6 +900,10 @@ export class ProjectdServer {
   async stop(): Promise<void> {
     if (this.isShuttingDown) return
     this.isShuttingDown = true
+
+    const hosts = [...this.sessionHosts.values()]
+    this.sessionHosts.clear()
+    await Promise.allSettled(hosts.map((host) => host.stop()))
 
     for (const conn of this.connections) {
       try {

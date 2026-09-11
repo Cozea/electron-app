@@ -2,7 +2,6 @@
 import {
   getProjectdSocketPath,
   ProjectdClient,
-  type ProjectdHealthResult,
 } from "@cozea/projectd-protocol"
 
 async function run(): Promise<void> {

@@ -22,6 +22,10 @@
         "class_name": "CollabRoom",
       },
       {
+        "name": "COLLAB_SESSION_ROOM",
+        "class_name": "CollaborationSessionRoom",
+      },
+      {
         "name": "DEVAPP_RUNTIME_BUILD",
         "class_name": "DevAppRuntimeBuild",
       },
@@ -43,6 +47,10 @@
     {
       "tag": "v3",
       "new_sqlite_classes": ["CozeaDevAppSandbox"],
+    },
+    {
+      "tag": "v4",
+      "new_sqlite_classes": ["CollaborationSessionRoom"],
     },
   ],
   "containers": [

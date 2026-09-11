@@ -161,6 +161,17 @@ export class ProjectdDatabase {
         resolved_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_conflicts_session ON collab_conflicts(session_id, state);
+
+      CREATE TABLE IF NOT EXISTS text_baselines (
+        session_id TEXT NOT NULL,
+        file_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        state_vector BLOB NOT NULL,
+        snapshot_update BLOB NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY(session_id, file_id)
+      );
     `)
   }
 

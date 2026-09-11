@@ -5,6 +5,9 @@ import type {
   ElectronAPI,
   ElectronWindowContext,
   GpuAccelerationDiagnostics,
+  ProjectdSessionAttachParams,
+  ProjectdSessionEvent,
+  ProjectdSessionTicket,
   RuntimeKind,
   SyncOp,
   SyncWriteFile,
@@ -305,6 +308,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
       wrapAlgorithm?: string
     }) => ipcRenderer.invoke('collab:unwrapRecoveryKit', options),
     deleteDeviceIdentity: () => ipcRenderer.invoke('collab:deleteDeviceIdentity'),
+  },
+  projectd: {
+    health: () => ipcRenderer.invoke('projectd:health'),
+    sessions: {
+      attach: (params: ProjectdSessionAttachParams) => ipcRenderer.invoke('projectd:sessions:attach', params),
+      detach: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:detach', publicSessionId),
+      status: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:status', publicSessionId),
+      updateTicket: (publicSessionId: string, ticket: ProjectdSessionTicket) =>
+        ipcRenderer.invoke('projectd:sessions:updateTicket', { publicSessionId, ticket }),
+      onEvent: (listener: (event: ProjectdSessionEvent) => void) => {
+        const handler = (_event: unknown, payload: ProjectdSessionEvent) => listener(payload)
+        ipcRenderer.on('projectd:sessions:event', handler)
+        return () => {
+          ipcRenderer.removeListener('projectd:sessions:event', handler)
+        }
+      },
+    },
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),

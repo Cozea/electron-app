@@ -39,7 +39,8 @@
       "@cozea/client-runtime": ["../../packages/client-runtime/src/index.ts"],
       "@cozea/client-runtime/*": ["../../packages/client-runtime/src/*"],
       "@cozea/substrate-contracts": ["../../packages/substrate-contracts/src/index.ts"],
-      "@cozea/substrate-client-runtime": ["../../packages/substrate-client-runtime/src/index.ts"]
+      "@cozea/substrate-client-runtime": ["../../packages/substrate-client-runtime/src/index.ts"],
+      "@cozea/projectd-protocol": ["../../packages/projectd-protocol/src/index.ts"]
     }
   },
   "include": ["src"],

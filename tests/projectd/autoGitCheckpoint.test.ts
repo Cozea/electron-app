@@ -113,7 +113,7 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
 
   it("creates checkpoint commit with symlinks and file modes without mutating working directory", async () => {
     const replica = new SessionReplica(sessionId, "leader_client")
-    const _execFile = replica.createFile({
+    replica.createFile({
       path: "bin/start.sh",
       kind: "text",
       mode: 0o100755, // +x
