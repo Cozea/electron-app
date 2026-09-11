@@ -1508,6 +1508,72 @@ Exit-gate evidence:
 - External Git cannot accidentally broadcast checkout/rebase as ordinary CRDT edits.
 - Controlled GitHub sync fetches in hidden mirror, not live working tree.
 
+---
+
+## P20 — Target tracking and rebase recommendation
+
+Status: complete
+
+Baseline:
+- base commit: `af3ce101` (P19 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- None (rebase recommendations did not exist; branches were statically compared)
+
+Production owners after:
+- Same live production runtime owners (P20 introduces TargetBranchTracker, behind/ahead commit metrics, changed path overlap analysis, and explicit suggestion heuristics in projectd)
+- Target tracker: [apps/projectd/src/autogit/TargetBranchTracker.ts](apps/projectd/src/autogit/TargetBranchTracker.ts)
+
+Files created:
+- [apps/projectd/src/autogit/TargetBranchTracker.ts](apps/projectd/src/autogit/TargetBranchTracker.ts) (Section 20.1 - 20.3 divergence tracking, overlap analysis, and explicit recommendation heuristics)
+- [tests/projectd/targetBranchTracking.test.ts](tests/projectd/targetBranchTracking.test.ts) (4 tests for aligned state, 20+ commit threshold, overlapping file changes, and cooldown dismissal)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (31 test files, 163 tests)
+  evidence: all 4 tests in `tests/projectd/targetBranchTracking.test.ts` passed
+
+Manual qualification:
+- scenario: Target aligned with session (Section 20.1)
+  result: Verified target tracking reports IDLE, recommended = false, and 0 commits behind when branches are aligned.
+- scenario: Substantially moved heuristic (Section 20.3)
+  result: Verified target moving ahead by 20+ commits triggers SUGGESTED status with clear explanation.
+- scenario: Overlapping file changes (Section 20.3)
+  result: Verified target modifying files concurrently modified by the session triggers suggestion at 5+ commits.
+- scenario: Explicit user action invariant (Invariant C25)
+  result: Verified tracker sets lifecycle to SUGGESTED, never REQUESTED or running without explicit user approval.
+
+Known follow-ups:
+- Phase P21 will implement explicit isolated Rebase from main.
+
+Exit-gate evidence:
+- UI can accurately explain why rebase is recommended.
+- No rebase can start automatically (Invariant C25 enforced).
+
+
 
 
 
