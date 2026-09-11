@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@cozea/projectd-protocol": "workspace:*",
+    "diff-match-patch": "^1.0.5",
     "yjs": "14.0.0-16"
   }
 }

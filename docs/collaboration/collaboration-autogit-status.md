@@ -693,6 +693,87 @@ Exit-gate evidence:
 - Stable file IDs survive renames.
 - Path collision reducer and conflict engine prevent silent overwrites.
 
+---
+
+## P08 — Snapshot-anchored filesystem -> CRDT adapter
+
+Status: complete
+
+Baseline:
+- base commit: `3f662864` (P07 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- External file ingress: [apps/desktop/src/hooks/useAgentFileSync.ts](apps/desktop/src/hooks/useAgentFileSync.ts) (calls naive `applyExternalChange` diffing live doc C against disk D)
+
+Production owners after:
+- Same live production runtime owners (P08 introduces the snapshot-anchored ingress adapter, bounded diff engine, baseline store, and durable outbound queue in projectd)
+- Snapshot-anchored adapter: [apps/projectd/src/collaboration/ExternalSnapshotAdapter.ts](apps/projectd/src/collaboration/ExternalSnapshotAdapter.ts) (Section 10.11: diffs baseline B -> D on shadow doc, encodes Yjs delta from baseline state vector, and applies to live C)
+- Bounded diff engine: [apps/projectd/src/collaboration/BoundedDiff.ts](apps/projectd/src/collaboration/BoundedDiff.ts) (Section 10.13: diff-match-patch with bounded timeout and prefix/suffix fallback)
+- Baseline store: [apps/projectd/src/collaboration/BaselineStore.ts](apps/projectd/src/collaboration/BaselineStore.ts) (materialized text B, state vector, and snapshot update)
+- Outbound queue: [apps/projectd/src/collaboration/OutboundBatchQueue.ts](apps/projectd/src/collaboration/OutboundBatchQueue.ts) (Section 9.5: SQLite-backed `outbound_batches` table with monotonic local order)
+
+Files created:
+- [apps/projectd/src/collaboration/BoundedDiff.ts](apps/projectd/src/collaboration/BoundedDiff.ts) (bounded diff with timeout and prefix/suffix fallback)
+- [apps/projectd/src/collaboration/BaselineStore.ts](apps/projectd/src/collaboration/BaselineStore.ts) (stores materialized text baseline B and Yjs state vector)
+- [apps/projectd/src/collaboration/ExternalSnapshotAdapter.ts](apps/projectd/src/collaboration/ExternalSnapshotAdapter.ts) (snapshot-anchored filesystem -> CRDT translation)
+- [apps/projectd/src/collaboration/OutboundBatchQueue.ts](apps/projectd/src/collaboration/OutboundBatchQueue.ts) (durable SQLite outbound queue)
+- [tests/projectd/externalSnapshotAdapter.test.ts](tests/projectd/externalSnapshotAdapter.test.ts) (7 tests for critical concurrency, micro-granular deltas, emojis, newlines, formatters, and durability)
+
+Files modified:
+- [apps/projectd/package.json](apps/projectd/package.json) (declared `diff-match-patch` dependency)
+- [apps/projectd/src/storage/Database.ts](apps/projectd/src/storage/Database.ts) (added `outbound_batches` table)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (62.50 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (19 test files, 119 tests)
+  evidence: all 7 tests in `tests/projectd/externalSnapshotAdapter.test.ts` passed
+
+Manual qualification:
+- scenario: Critical concurrency test (Section 10.11 - 10.12)
+  result: Verified external save D based on baseline B merges cleanly using B's Yjs ancestry with concurrent live remote update C, preserving remote edits ("amazing ") while applying local edits ("!").
+- scenario: Micro-granular update size
+  result: Verified single character insertions and deletions generate tiny deltas (< 100 bytes) rather than full-file replacements.
+- scenario: Unicode and multi-byte emojis
+  result: Verified UTF-16 surrogate boundaries and multi-byte emojis (🚀, 🎉) are preserved without corruption.
+- scenario: Newline / EOL variations
+  result: Verified CR/LF and LF formatting transitions handled properly.
+- scenario: Whole-file formatter rewrites
+  result: Verified whole-file formatting is correctly converted to clean Yjs deltas.
+- scenario: Pathological diff timeout fallback
+  result: Verified BoundedDiff computes common prefix and suffix fallback within timeout.
+- scenario: Outbound durable queue
+  result: Verified OutboundBatchQueue stores batches in SQLite with local_order, supporting offline queueing and state transitions.
+
+Known follow-ups:
+- Phase P09 will implement CRDT -> filesystem materializer.
+
+Exit-gate evidence:
+- External saves produce micro-granular Yjs updates with correct concurrent behavior.
+- Snapshot-anchored diffing prevents deletion of concurrent remote edits.
+- Durable SQLite outbound queue operational.
+
+
 
 
 

@@ -127,6 +127,19 @@ export class ProjectdDatabase {
         conflict_state TEXT NOT NULL DEFAULT 'clean',
         PRIMARY KEY(session_id, normalized_path, file_id)
       );
+
+      CREATE TABLE IF NOT EXISTS outbound_batches (
+        batch_id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending',
+        local_order INTEGER NOT NULL,
+        payload_json TEXT NOT NULL,
+        acked_session_seq INTEGER,
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_outbound_session_state ON outbound_batches(session_id, state);
     `)
   }
 
