@@ -1639,6 +1639,70 @@ Exit-gate evidence:
 - Explicit rebase updates live session and Git branch without losing post-barrier collaboration.
 - Isolated worktree computation ensures zero interference with live working tree during compute.
 
+---
+
+## P22 — Merge/PR controls
+
+Status: complete
+
+Baseline:
+- base commit: `06327dd4` (P21 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- None (merging was not automated across sessions)
+
+Production owners after:
+- Same live production runtime owners (P22 introduces MergeCoordinator preflighting isolated merge previews, computing merge trees, and executing direct or squash merges in isolated worktrees)
+- Merge coordinator: [apps/projectd/src/autogit/MergeCoordinator.ts](apps/projectd/src/autogit/MergeCoordinator.ts) (merge preview, conflict detection, direct merge, and squash merge)
+
+Files created:
+- [apps/projectd/src/autogit/MergeCoordinator.ts](apps/projectd/src/autogit/MergeCoordinator.ts) (Section 22 isolated merge preview and execution)
+- [tests/projectd/mergeCoordinator.test.ts](tests/projectd/mergeCoordinator.test.ts) (3 tests for clean merge preview, conflicting merge preview, and direct merge in isolated worktree)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (33 test files, 170 tests)
+  evidence: all 3 tests in `tests/projectd/mergeCoordinator.test.ts` passed
+
+Manual qualification:
+- scenario: Isolated merge preview (Section 22.1)
+  result: Verified git merge-tree --write-tree computes merge readiness, ahead/behind counts, and conflicting files without touching working tree.
+- scenario: Direct merge execution in isolated worktree (Section 22.2)
+  result: Verified direct merge into target branch executes in detached worktree and updates target ref safely.
+- scenario: Merge operates on immutable reviewed Git checkpoint (Invariant C28)
+  result: Verified merge target is based on immutable session checkpoint OID rather than moving in-memory CRDT state.
+
+Known follow-ups:
+- Phase P23 will implement Electron collaboration UI cutover.
+
+Exit-gate evidence:
+- Merge operates on immutable reviewed Git checkpoint, not moving CRDT state.
+- Isolated worktree computation prevents race conditions or dirty working tree interference.
+
+
 
 
 
