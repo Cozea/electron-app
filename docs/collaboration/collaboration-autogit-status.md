@@ -1181,6 +1181,72 @@ Exit-gate evidence:
 - Creator reaches live Session Workbench without source workspace destruction.
 - Modal preflights repo, branches, dirty changes, and access policy.
 
+---
+
+## P15 — Inbox invite acceptance and Resume flow
+
+Status: complete
+
+Baseline:
+- base commit: `e653b426` (P14 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Inbox: [apps/desktop/src/features/inbox/pages/InboxPage.tsx](apps/desktop/src/features/inbox/pages/InboxPage.tsx) (project device enrollment invitations only)
+
+Production owners after:
+- Same live production runtime owners (P15 establishes the SessionInvitationCard, atomic acceptance, and failure recovery handling)
+- Session invitation card: [apps/desktop/src/features/inbox/components/SessionInvitationCard.tsx](apps/desktop/src/features/inbox/components/SessionInvitationCard.tsx)
+- Session invitation queries: `listIncomingInvitations` and `resolveInvitation` in [convex/collaborationSessions.ts](convex/collaborationSessions.ts)
+
+Files created:
+- [apps/desktop/src/features/inbox/components/SessionInvitationCard.tsx](apps/desktop/src/features/inbox/components/SessionInvitationCard.tsx) (Section 6.3 Inbox card with project name, branch, target, role, and accept/decline actions)
+- [tests/collaboration/inboxSessionInviteFlow.test.ts](tests/collaboration/inboxSessionInviteFlow.test.ts) (4 tests for atomic acceptance, network failure retry, disk space exhausted handling, and closed session denial)
+
+Files modified:
+- [convex/collaborationSessions.ts](convex/collaborationSessions.ts) (added `listIncomingInvitations` and `resolveInvitation`)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bunx tsc --project convex/tsconfig.json --noEmit`
+  result: passed (0 errors)
+  evidence: convex functions clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/collaboration/inboxSessionInviteFlow.test.ts`
+  result: passed (1 test file, 4 tests)
+  evidence: all 4 tests passed
+
+Manual qualification:
+- scenario: Atomic invitation acceptance (Section 6.3)
+  result: Verified accepting an invitation atomically establishes both project and session membership.
+- scenario: Network disconnection failure tolerance
+  result: Verified network failure after acceptance retains memberships and leaves local workspace in a retryable blocked state rather than rolling back.
+- scenario: Closed session denial
+  result: Verified invitations for sessions that have since transitioned to CLOSED cannot be accepted.
+
+Known follow-ups:
+- Phase P16 will implement AutoGit leader lease.
+
+Exit-gate evidence:
+- Invitee and returning participant land at exact live session state.
+- Membership is never rolled back on local disk or network error.
+
+
 
 
 

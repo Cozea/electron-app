@@ -269,3 +269,109 @@ export const close = mutation({
     return { success: true }
   },
 })
+
+export const listIncomingInvitations = query({
+  args: {
+    principalId: v.id("devicePrincipals"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now()
+    const invitations = await ctx.db
+      .query("collaborationSessionInvitations")
+      .withIndex("by_target_principal", (q) => q.eq("targetPrincipalId", args.principalId))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .filter((q) => q.gt(q.field("expiresAt"), now))
+      .collect()
+
+    const results = []
+    for (const invite of invitations) {
+      const session = await ctx.db.get(invite.sessionId)
+      const project = await ctx.db.get(invite.projectId)
+      const inviter = await ctx.db.get(invite.createdByPrincipalId)
+
+      if (session && project) {
+        results.push({
+          invitationId: invite._id,
+          sessionId: session._id,
+          publicSessionId: session.publicSessionId,
+          projectId: project._id,
+          projectName: project.name,
+          branchName: session.branchName,
+          targetBranch: session.targetBranch,
+          role: invite.role,
+          sessionLifecycle: session.lifecycle,
+          inviterName: inviter?.displayName ?? "A team member",
+          expiresAt: invite.expiresAt,
+          createdAt: invite.createdAt,
+        })
+      }
+    }
+
+    return results
+  },
+})
+
+export const resolveInvitation = mutation({
+  args: {
+    invitationId: v.id("collaborationSessionInvitations"),
+    accept: v.boolean(),
+    principalId: v.id("devicePrincipals"),
+  },
+  handler: async (ctx, args) => {
+    const invite = await ctx.db.get(args.invitationId)
+    if (!invite || invite.status !== "pending") {
+      throw new Error("Invitation not found or no longer pending")
+    }
+
+    const now = Date.now()
+
+    if (!args.accept) {
+      await ctx.db.patch(invite._id, { status: "declined", resolvedAt: now })
+      return { accepted: false }
+    }
+
+    const session = await ctx.db.get(invite.sessionId)
+    if (!session || session.lifecycle === "CLOSED") {
+      throw new Error("Session no longer available")
+    }
+
+    // Atomically ensure project membership
+    const projectMember = await ctx.db
+      .query("projectMembers")
+      .withIndex("by_project_and_principal", (q) =>
+        q.eq("projectId", session.projectId).eq("principalId", args.principalId),
+      )
+      .first()
+
+    if (!projectMember) {
+      await ctx.db.insert("projectMembers", {
+        projectId: session.projectId,
+        principalId: args.principalId,
+        role: "developer",
+        addedAt: now,
+        addedBy: invite.createdByPrincipalId,
+      })
+    }
+
+    // Add session membership
+    const memberId = await ctx.db.insert("collaborationSessionMembers", {
+      sessionId: session._id,
+      projectId: session.projectId,
+      principalId: args.principalId,
+      role: invite.role,
+      status: "active",
+      joinedAt: now,
+    })
+
+    await ctx.db.patch(invite._id, { status: "accepted", resolvedAt: now })
+
+    return {
+      accepted: true,
+      sessionId: session._id,
+      publicSessionId: session.publicSessionId,
+      projectId: session.projectId,
+      branchName: session.branchName,
+      memberId,
+    }
+  },
+})
