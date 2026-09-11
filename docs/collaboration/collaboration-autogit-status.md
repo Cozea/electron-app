@@ -1052,6 +1052,71 @@ Exit-gate evidence:
 - 5 Convex collaboration tables declared and typechecked.
 - Branch uniqueness, access modes, and atomic project membership verified.
 
+---
+
+## P13 — Local Session Workbench and multi-Workbench switching
+
+Status: complete
+
+Baseline:
+- base commit: `eea5b26f` (P12 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Workbench switcher: single active branch state in renderer local storage
+
+Production owners after:
+- Same live production runtime owners (P13 establishes daemon WorkbenchManager coordinating multi-workbench switching and dedicated managed session clones)
+- Workbench manager: [apps/projectd/src/workbenches/WorkbenchManager.ts](apps/projectd/src/workbenches/WorkbenchManager.ts) (provisions `~/Library/Application Support/Cozea/Collaboration/<projectId>/<sessionId>/repo`, manages ordinary and session workbenches)
+
+Files created:
+- [apps/projectd/src/workbenches/WorkbenchManager.ts](apps/projectd/src/workbenches/WorkbenchManager.ts) (multi-workbench creation, session clone provisioning, and atomic active switcher)
+- [tests/projectd/workbenchManager.test.ts](tests/projectd/workbenchManager.test.ts) (tests for independent multi-workbench persistence and zero-filesystem mutation during active switches)
+
+Files modified:
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (24 test files, 138 tests)
+  evidence: all 2 tests in `tests/projectd/workbenchManager.test.ts` passed
+
+Manual qualification:
+- scenario: Multi-workbench persistence (Section 5.1)
+  result: Verified a project can persist ordinary main WB, ordinary feature WB, and dedicated Session WB simultaneously.
+- scenario: Dedicated managed session clone workspace (Section 7.1)
+  result: Verified Session Workbench provisions an isolated standalone clone directory under Application Support without mutating the ordinary workspace.
+- scenario: Atomic switching without workspace rewrite (Section 5.2)
+  result: Verified switching active workbench updates the active record and idles the prior record without modifying or touching files in either workspace directory.
+
+Known follow-ups:
+- Phase P14 will implement Share/Create session UX.
+
+Exit-gate evidence:
+- One project can persist many local Workbenches with one locally active at a time.
+- Dedicated managed session clone created under `~/Library/Application Support/Cozea/Collaboration/<projectId>/<sessionId>/repo`.
+- Switching active workbench does not mutate workspace directories.
+
+
 
 
 
