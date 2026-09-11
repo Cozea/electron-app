@@ -607,6 +607,93 @@ Exit-gate evidence:
 - Hash-based echo classification active (zero time windows).
 - Startup buffering + full scan reconciliation proven in automated tests.
 
+---
+
+## P07 — CRDT tree + per-text-file docs in projectd
+
+Status: complete
+
+Baseline:
+- base commit: `53b0932c` (P06 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Yjs text document model: [apps/desktop/src/lib/yjs/YjsProjectDoc.ts](apps/desktop/src/lib/yjs/YjsProjectDoc.ts) and [shared/yjsCore.ts](shared/yjsCore.ts) (monolithic path-keyed Y.Doc)
+- Binary sync: [apps/desktop/src/lib/sync/BinaryFileSync.ts](apps/desktop/src/lib/sync/BinaryFileSync.ts)
+
+Production owners after:
+- Same live production runtime owners (P07 implements the multiplexed CRDT tree, stable file IDs, per-text-file doc registry, and binary revision store in projectd)
+- Multiplexed tree doc: [apps/projectd/src/collaboration/TreeDoc.ts](apps/projectd/src/collaboration/TreeDoc.ts) (stable sortable `fileId`s, structural operation history, tombstones, atomic directory rename)
+- Conflict engine: [apps/projectd/src/collaboration/ConflictEngine.ts](apps/projectd/src/collaboration/ConflictEngine.ts) (path uniqueness reducer, concurrent rename detector, delete-modify detector)
+- Text document registry: [apps/projectd/src/collaboration/TextDocRegistry.ts](apps/projectd/src/collaboration/TextDocRegistry.ts) (multiplexed `text:<fileId>` docs, 8 MiB limit, UTF-8/NUL classification, sticky typing)
+- Binary store: [apps/projectd/src/collaboration/BinaryStore.ts](apps/projectd/src/collaboration/BinaryStore.ts) (append-only revision ledger, sibling revision conflict detection)
+- Session replica: [apps/projectd/src/collaboration/SessionReplica.ts](apps/projectd/src/collaboration/SessionReplica.ts) (coordinates tree, text, and binary collaboration batches and snapshots)
+
+Files created:
+- [apps/projectd/src/collaboration/TreeDoc.ts](apps/projectd/src/collaboration/TreeDoc.ts) (root TreeDoc with stable file IDs, structural history, and tombstones)
+- [apps/projectd/src/collaboration/ConflictEngine.ts](apps/projectd/src/collaboration/ConflictEngine.ts) (path collision reducer, concurrent renames, delete-modify)
+- [apps/projectd/src/collaboration/TextDocRegistry.ts](apps/projectd/src/collaboration/TextDocRegistry.ts) (per-file Y.Doc multiplexer and sticky classification)
+- [apps/projectd/src/collaboration/BinaryStore.ts](apps/projectd/src/collaboration/BinaryStore.ts) (append-only binary revisions and sibling conflict detection)
+- [apps/projectd/src/collaboration/SessionReplica.ts](apps/projectd/src/collaboration/SessionReplica.ts) (replica coordinator with batch import/export and snapshots)
+- [tests/projectd/crdtReplica.test.ts](tests/projectd/crdtReplica.test.ts) (9 comprehensive tests covering all concurrency and convergence fixtures)
+
+Files modified:
+- [apps/projectd/package.json](apps/projectd/package.json) (declared `yjs` dependency)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` (62.0 KB) and `cozea-projectctl.mjs` (14.75 KB)
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (18 test files, 112 tests)
+  evidence: all 9 tests in `tests/projectd/crdtReplica.test.ts` passed
+
+Manual qualification:
+- scenario: Concurrent text insertions
+  result: Verified two replicas converge deterministically on identical text.
+- scenario: Concurrent text delete/insert
+  result: Verified regional delete and insert converge accurately.
+- scenario: Rename + text edit (Invariant C17)
+  result: Verified stable fileId preserves content connection across rename.
+- scenario: Concurrent rename detection (Section 10.7)
+  result: Verified diverging renames from same base operation generate `concurrent_rename` conflict while preserving both in structural history.
+- scenario: Delete vs concurrent edit (Section 10.18)
+  result: Verified concurrent text modification on tombstoned entry produces `delete_modify` conflict without silent resurrection or data loss.
+- scenario: Path collision reducer (Section 10.6, Invariant C18)
+  result: Verified multiple fileIds claiming one path create explicit `path_collision` conflict without silent overwrites.
+- scenario: Mode (chmod) and symlinks (Section 10.20, 10.21)
+  result: Verified executable mode and symlink target replication.
+- scenario: Binary sibling revisions (Section 11.2, 11.3)
+  result: Verified append-only binary revision ledger and detection of sibling revisions branching off same base.
+- scenario: Deterministic convergence under shuffled operation delivery (Exit Gate)
+  result: Verified Replica C (forward batch order) and Replica D (shuffled batch order) converge to 100% identical project state across tree entries, file contents, and structural operations.
+
+Known follow-ups:
+- Phase P08 will implement snapshot-anchored filesystem -> CRDT adapter.
+
+Exit-gate evidence:
+- Two in-memory replicas converge on project state independent of operation delivery order.
+- Stable file IDs survive renames.
+- Path collision reducer and conflict engine prevent silent overwrites.
+
+
 
 
 
