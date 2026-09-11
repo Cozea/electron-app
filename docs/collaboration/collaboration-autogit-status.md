@@ -265,7 +265,7 @@ Status: complete
 
 Baseline:
 - base commit: `fd93b855` (P02 complete commit)
-- implementation commit: <pending>
+- implementation commit: `12a7b49d`
 - review commit: <pending>
 
 Production owners before:
