@@ -523,7 +523,7 @@ Status: complete
 
 Baseline:
 - base commit: `e9194488` (P05 complete commit)
-- implementation commit: <pending>
+- implementation commit: `487b4692`
 - review commit: <pending>
 
 Production owners before:
