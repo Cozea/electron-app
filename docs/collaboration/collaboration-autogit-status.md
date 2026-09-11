@@ -1702,6 +1702,68 @@ Exit-gate evidence:
 - Merge operates on immutable reviewed Git checkpoint, not moving CRDT state.
 - Isolated worktree computation prevents race conditions or dirty working tree interference.
 
+---
+
+## P23 — Electron collaboration UI cutover
+
+Status: complete
+
+Baseline:
+- base commit: `96eb2b91` (P22 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Collaboration activation: branch equality `activeBranch === collabBranch` in [apps/desktop/src/features/projects/layouts/ProjectLayout.tsx](apps/desktop/src/features/projects/layouts/ProjectLayout.tsx)
+
+Production owners after:
+- Same live production runtime owners (P23 cuts over ProjectLayout to check active session enrollment rather than branch equality, introduces SessionWorkbenchControls with AutoGit and rebase status, and updates architecture loading tests)
+- Layout activation: [apps/desktop/src/features/projects/layouts/ProjectLayout.tsx](apps/desktop/src/features/projects/layouts/ProjectLayout.tsx) (checks `activeSessionForBranch` from `collaborationSessions` table)
+- Session controls: [apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx](apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx)
+
+Files created:
+- [apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx](apps/desktop/src/features/workbench/collaboration/SessionWorkbenchControls.tsx) (session banner, leader badge, rebase suggestion banner, checkpoint button, participant avatar stack)
+- [tests/collaboration/electronUiCutover.test.ts](tests/collaboration/electronUiCutover.test.ts) (2 tests verifying non-activation by mere branch equality and activation via active session)
+
+Files modified:
+- [apps/desktop/src/features/projects/layouts/ProjectLayout.tsx](apps/desktop/src/features/projects/layouts/ProjectLayout.tsx) (removed branch-equality collaboration gate, replaced with active session query)
+- [tests/architecture/desktopFirstLoadingPolicy.test.ts](tests/architecture/desktopFirstLoadingPolicy.test.ts) (updated pinned architecture assertion to active session check)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (34 test files, 172 tests)
+  evidence: all 2 tests in `tests/collaboration/electronUiCutover.test.ts` and 42 architecture tests passed
+
+Manual qualification:
+- scenario: Branch equality elimination (Invariants C06, C31)
+  result: Verified ProjectLayout no longer activates collaboration when activeBranch === collabBranch without a genuine ACTIVE session in the database.
+- scenario: Session controls and AutoGit status banner
+  result: Verified SessionWorkbenchControls renders branch badge, leader/follower state, last checkpoint commit, rebase suggestion banner, and checkpoint actions.
+
+Known follow-ups:
+- Phase P24 will qualify capability interactions across Assistant, Terminal, DevServer, DevApps, and Memory.
+
+Exit-gate evidence:
+- Closing renderer does not stop background CRDT/session.
+- Branch-equality collaboration activation removed.
+
+
 
 
 

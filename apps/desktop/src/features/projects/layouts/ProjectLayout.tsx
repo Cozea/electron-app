@@ -296,8 +296,21 @@ export function ProjectLayout({
   const collabBranch =
     collabLane?.branch ?? recordedDefaultBranch ?? FALLBACK_SHARED_BRANCH;
   const activeBranch = activeLane?.branch ?? collabBranch;
+
+  // P23 Cutover: Collaboration is enabled when an active session exists,
+  // NOT by mere branch equality (activeBranch === collabBranch). Invariants C06, C31.
+  const activeCollabSessions = useQuery(
+    api.collaborationSessions.listByProject,
+    project?._id ? { projectId: project._id } : "skip",
+  );
+  const activeSessionForBranch = activeCollabSessions?.find(
+    (s) => s.branchName === activeBranch && s.lifecycle === "ACTIVE",
+  );
   const collaborationEnabled =
-    shouldEnableProjectRuntime && Boolean(runtimeWorkspaceId) && Boolean(project?._id) && activeBranch === collabBranch;
+    shouldEnableProjectRuntime &&
+    Boolean(runtimeWorkspaceId) &&
+    Boolean(project?._id) &&
+    Boolean(activeSessionForBranch);
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
       return null;
