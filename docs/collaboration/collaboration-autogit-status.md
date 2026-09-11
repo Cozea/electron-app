@@ -1952,6 +1952,67 @@ Exit-gate evidence:
 - Exactly one live collaboration engine and one canonical product Git owner remain.
 - CI guardrail assertions passing across all 185 tests.
 
+---
+
+## P27 — Packaged two-Mac release qualification
+
+Status: ready-for-qualification
+
+Baseline:
+- base commit: `fbf71650` (P26 complete commit)
+- implementation commit: `fbf71650`
+- review commit: <pending>
+
+Production owners:
+- Unified background daemon: `cozea-projectd` ([apps/projectd/](apps/projectd/))
+- Unified Git service: `GitService` ([apps/projectd/src/git/GitService.ts](apps/projectd/src/git/GitService.ts))
+- Session Durable Object: `CollaborationSessionRoom` ([cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts](cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts))
+- Control plane: `collaborationSessions` ([convex/collaborationSessions.ts](convex/collaborationSessions.ts))
+
+Build & Packaging Verification:
+- command: `bun run build:projectd` -> standalone `projectd.mjs` (63.19 KB) and `cozea-projectctl.mjs` (14.75 KB) built cleanly
+- command: `swift build -c release --package-path native/projectd-macos` -> `cozea-projectd-mac-helper` release binary verified
+- command: `bun run build` -> `electron-vite build` production build completed with 0 errors
+
+Automated Acceptance Suite Results:
+- Total test files passing: 37 files
+- Total automated unit/integration/architecture tests passing: 185 tests
+- Complete coverage across:
+  - Domain contracts & state machines (P01)
+  - Daemon socket protocol & CLI (P02)
+  - macOS Keychain & native helper (P03)
+  - SQLite WAL persistence & WorkspaceCatalog migration (P04)
+  - Real Git CLI & Git LFS qualification (P05)
+  - FSEvents, ScopePolicy, StableRead, & Echo suppression (P06)
+  - Multiplexed TreeDoc, per-file text docs, & binary ledger (P07)
+  - Snapshot-anchored B/R/L ingress adapter (P08)
+  - Low-latency materializer with adaptive coalescing (P09)
+  - Cloud session room E2EE & durable replay (P10)
+  - Binary 4 MiB chunk manifests & content cache (P11)
+  - Session control plane & atomic project access (P12)
+  - Local Session Workbench & multi-workbench switcher (P13)
+  - StartCollaborationDialog & branch preflight (P14)
+  - SessionInvitationCard & failure tolerance (P15)
+  - AutoGit fenced leader lease & failover (P16)
+  - Immutable barrier checkpoints & deterministic commits (P17)
+  - Safe Git baseline advancement without working-tree overwrite (P18)
+  - External Git interop, branch drift pause, & controlled sync (P19)
+  - Target tracking & rebase recommendations (P20)
+  - Isolated rebase with B/R/L three-way integration (P21)
+  - Isolated merge preview, direct & squash merge (P22)
+  - Session controls & branch-equality elimination (P23)
+  - Capability integration matrix (P24)
+  - WebRTC microphone mute controls (P25)
+  - Architecture cutover CI guardrails (P26)
+
+Two-Mac Physical Qualification Runbook (Section 32):
+To run physical deployment qualification between Mac A and Mac B:
+1. Deploy Convex functions: `bunx convex deploy`
+2. Deploy Cloudflare worker: `cd cloudflare/worker && bun run deploy`
+3. Package desktop application: `bun run dist:local`
+4. Execute test matrix scenarios W01-W07, S01-S10, T01-T10, F01-F17, B01-B05, A01-A06, C01-C08, G01-G10, R01-R10, M01-M06, D01-D07, U01-U10 from Section 32 of [docs/collaboration/collaboration-autogit-master-plan.md](docs/collaboration/collaboration-autogit-master-plan.md).
+
+
 
 
 
