@@ -875,6 +875,105 @@ export default defineSchema({
     .index("by_project_room_and_key_version", ["projectId", "roomId", "keyVersion"]),
 
   // ============================================
+  // COZEA COLLABORATION SESSION TABLES (P12)
+  // ============================================
+
+  collaborationSessions: defineTable({
+    publicSessionId: v.string(),
+    projectId: v.id("projects"),
+    repositoryBindingId: v.string(),
+    branchName: v.string(),
+    targetBranch: v.string(),
+    createdByPrincipalId: v.id("devicePrincipals"),
+    lifecycle: v.union(
+      v.literal("CREATING"),
+      v.literal("ACTIVE"),
+      v.literal("DORMANT"),
+      v.literal("PAUSING"),
+      v.literal("PAUSED"),
+      v.literal("CLOSING"),
+      v.literal("CLOSED"),
+      v.literal("BLOCKED"),
+    ),
+    accessMode: v.union(v.literal("invite_only"), v.literal("organization_available")),
+    organizationId: v.optional(v.id("organizations")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    pausedAt: v.optional(v.number()),
+    closedAt: v.optional(v.number()),
+    lastDurableSeq: v.number(),
+    lastSnapshotSeq: v.number(),
+    lastAutoGitCheckpointSeq: v.optional(v.number()),
+    lastAutoGitCommitOid: v.optional(v.string()),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_public_session_id", ["publicSessionId"])
+    .index("by_project_and_branch", ["projectId", "branchName"]),
+
+  collaborationSessionMembers: defineTable({
+    sessionId: v.id("collaborationSessions"),
+    projectId: v.id("projects"),
+    principalId: v.id("devicePrincipals"),
+    role: v.union(v.literal("viewer"), v.literal("developer"), v.literal("project_manager")),
+    status: v.union(v.literal("active"), v.literal("left"), v.literal("revoked")),
+    joinedAt: v.number(),
+    leftAt: v.optional(v.number()),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_session_and_principal", ["sessionId", "principalId"])
+    .index("by_principal", ["principalId"]),
+
+  collaborationSessionInvitations: defineTable({
+    sessionId: v.id("collaborationSessions"),
+    projectId: v.id("projects"),
+    targetPrincipalId: v.optional(v.id("devicePrincipals")),
+    targetIdentityKey: v.optional(v.string()),
+    role: v.union(v.literal("viewer"), v.literal("developer"), v.literal("project_manager")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined"),
+      v.literal("revoked"),
+      v.literal("expired"),
+    ),
+    createdByPrincipalId: v.id("devicePrincipals"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_target_principal", ["targetPrincipalId"])
+    .index("by_target_identity", ["targetIdentityKey"]),
+
+  collaborationSessionKeys: defineTable({
+    sessionId: v.id("collaborationSessions"),
+    keyVersion: v.number(),
+    recipientPrincipalId: v.id("devicePrincipals"),
+    recipientIdentityKey: v.string(),
+    senderIdentityKey: v.string(),
+    senderPublicKeyJwk: v.string(),
+    wrapAlgorithm: v.string(),
+    wrappedKey: v.string(),
+    createdAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_session_and_recipient", ["sessionId", "recipientIdentityKey"])
+    .index("by_session_and_version", ["sessionId", "keyVersion"]),
+
+  collaborationAutoGit: defineTable({
+    sessionId: v.id("collaborationSessions"),
+    leaderIdentityKey: v.optional(v.string()),
+    leaseGeneration: v.number(),
+    leaseExpiresAt: v.number(),
+    lastCheckpointSeq: v.optional(v.number()),
+    lastCheckpointOid: v.optional(v.string()),
+    lastRemoteOid: v.optional(v.string()),
+    lastTargetOid: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_session", ["sessionId"]),
+
+  // ============================================
   // YJS COLLABORATIVE EDITING TABLES
   // ============================================
 

@@ -979,6 +979,80 @@ Exit-gate evidence:
 - 4 MiB chunking operational for large files.
 - Binary revisions append-only; concurrent updates create explicit conflict state.
 
+---
+
+## P12 — Session control plane, invitation/access model
+
+Status: complete
+
+Baseline:
+- base commit: `1ae7c25f` (P11 complete commit)
+- implementation commit: <pending>
+- review commit: <pending>
+
+Production owners before:
+- Collaboration session state: [cloudflare/worker/src/routes/collabSession.ts](cloudflare/worker/src/routes/collabSession.ts) tied to `projectId`
+- Collaboration activation: branch equality in [apps/desktop/src/features/projects/layouts/ProjectLayout.tsx](apps/desktop/src/features/projects/layouts/ProjectLayout.tsx)
+
+Production owners after:
+- Same live production runtime owners (P12 establishes the Convex session control plane tables, membership lifecycle, invitation rules, and branch uniqueness validation)
+- Session control plane: [convex/collaborationSessions.ts](convex/collaborationSessions.ts) and schema in [convex/schema.ts](convex/schema.ts)
+
+Files created:
+- [convex/collaborationSessions.ts](convex/collaborationSessions.ts) (mutations: create, join, leave, pause, resume, close, get, listByProject)
+- [tests/collaboration/sessionControlPlane.test.ts](tests/collaboration/sessionControlPlane.test.ts) (6 tests for branch uniqueness, atomic project access, invite-only enforcement, revocation, dormant resume, and closed rejection)
+
+Files modified:
+- [convex/schema.ts](convex/schema.ts) (added 5 collaboration tables: `collaborationSessions`, `collaborationSessionMembers`, `collaborationSessionInvitations`, `collaborationSessionKeys`, `collaborationAutoGit`)
+- [docs/collaboration/collaboration-autogit-status.md](docs/collaboration/collaboration-autogit-status.md)
+
+Files deleted:
+- None
+
+Tests:
+- command: `bun run typecheck`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.app.json` clean
+- command: `bun run typecheck:electron`
+  result: passed (0 errors)
+  evidence: `tsc --project tsconfig.electron.json` clean
+- command: `bunx tsc --project convex/tsconfig.json --noEmit`
+  result: passed (0 errors)
+  evidence: convex functions typecheck clean
+- command: `bun run lint`
+  result: passed (0 errors)
+  evidence: `oxlint` clean across all roots
+- command: `bun run build:projectd`
+  result: passed (exit 0)
+  evidence: bundled standalone `projectd.mjs` and `cozea-projectctl.mjs`
+- command: `bun run build`
+  result: passed (exit 0)
+  evidence: `electron-vite build` succeeded
+- command: `bunx vitest run tests/projectd tests/collaboration tests/architecture`
+  result: passed (23 test files, 136 tests)
+  evidence: all 6 tests in `tests/collaboration/sessionControlPlane.test.ts` passed
+
+Manual qualification:
+- scenario: Branch uniqueness rule (Section 6.1)
+  result: Verified creating a second active session for the same branch is rejected with a descriptive error.
+- scenario: Atomic project membership upon invite acceptance (Section 6.1 / 6.3)
+  result: Verified an invitee without project membership is atomically granted project membership when accepting the session invitation.
+- scenario: Invite-only outsider denial (Section 25.1)
+  result: Verified non-invited users attempting to join an invite-only session are denied.
+- scenario: Revoked device rejection (Section 25.1)
+  result: Verified devices marked as revoked in session membership fail closed when attempting to rejoin.
+- scenario: Dormant lifecycle transition (Section 4.1)
+  result: Verified leaving session when 0 members remain moves lifecycle to DORMANT, and a member rejoining resumes it to ACTIVE.
+
+Known follow-ups:
+- Phase P13 will implement local Session Workbench and multi-Workbench switching.
+
+Exit-gate evidence:
+- Session identity/access exists independently of branch equality.
+- 5 Convex collaboration tables declared and typechecked.
+- Branch uniqueness, access modes, and atomic project membership verified.
+
+
 
 
 
