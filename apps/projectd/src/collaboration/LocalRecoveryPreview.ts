@@ -1,3 +1,8 @@
+import type {
+  ProjectdRecoveryConflictKind,
+  ProjectdRecoveryPreviewEntry,
+  ProjectdRecoveryPreviewResult,
+} from "@cozea/projectd-protocol"
 import type { ProjectdDatabase } from "../storage/Database"
 import type { BackgroundSessionIntent } from "./BackgroundSessionStore"
 import { LocalReplicaStore } from "./LocalReplicaStore"
@@ -10,45 +15,9 @@ const MAX_PAGE_SIZE = 100
 const MAX_TEXT_PREVIEW_BYTES = 8 * 1024
 const MAX_SYMLINK_PREVIEW_BYTES = 4 * 1024
 
-export type LocalRecoveryConflictKind =
-  | "path_collision"
-  | "concurrent_rename"
-  | "delete_modify"
-  | "binary_concurrent_revision"
-
-export interface LocalRecoveryPreviewFile {
-  /** Stable only while the retained state is unchanged; callers must treat a missing cursor as stale. */
-  cursor: string
-  fileId: string | null
-  path: string
-  kind: "text" | "binary" | "symlink"
-  mode: number
-  deleted: boolean
-  size: number | null
-  textPreview: string | null
-  textTruncated: boolean
-  symlinkTarget: string | null
-  symlinkTargetTruncated: boolean
-  revisionCount: number
-  pendingBinaryVersions: number
-  conflictKinds: LocalRecoveryConflictKind[]
-}
-
-export interface LocalRecoveryPreviewResult {
-  publicSessionId: string
-  snapshotSequence: number | null
-  pendingBatches: number
-  pendingBinaryVersions: number
-  totalEntries: number
-  entries: LocalRecoveryPreviewFile[]
-  nextCursor: string | null
-  conflicts: {
-    pathCollisions: number
-    concurrentRenames: number
-    deleteModify: number
-    binary: number
-  }
-}
+export type LocalRecoveryConflictKind = ProjectdRecoveryConflictKind
+export type LocalRecoveryPreviewFile = ProjectdRecoveryPreviewEntry
+export type LocalRecoveryPreviewResult = ProjectdRecoveryPreviewResult
 
 export interface LocalRecoveryPreviewOptions {
   afterCursor?: string
@@ -64,7 +33,7 @@ export function previewLocalRecovery(
   db: ProjectdDatabase,
   descriptor: BackgroundSessionIntent,
   options: LocalRecoveryPreviewOptions = {},
-): LocalRecoveryPreviewResult {
+): ProjectdRecoveryPreviewResult {
   if (!descriptor.roomKeyBase64) throw new Error("The local recovery key is unavailable")
   const roomKey = Buffer.from(descriptor.roomKeyBase64, "base64")
   if (roomKey.length !== 32) throw new Error("The local recovery key is invalid")
@@ -92,9 +61,9 @@ export function previewLocalRecovery(
   for (const queued of pending) replica.applyBatch(queued.batch)
 
   const conflicts = replica.detectConflicts()
-  const conflictKinds = new Map<string, Set<LocalRecoveryConflictKind>>()
-  const mark = (fileId: string, kind: LocalRecoveryConflictKind) => {
-    const kinds = conflictKinds.get(fileId) ?? new Set<LocalRecoveryConflictKind>()
+  const conflictKinds = new Map<string, Set<ProjectdRecoveryConflictKind>>()
+  const mark = (fileId: string, kind: ProjectdRecoveryConflictKind) => {
+    const kinds = conflictKinds.get(fileId) ?? new Set<ProjectdRecoveryConflictKind>()
     kinds.add(kind)
     conflictKinds.set(fileId, kinds)
   }
@@ -116,7 +85,7 @@ export function previewLocalRecovery(
   }
 
   let binaryConflicts = 0
-  const entries: LocalRecoveryPreviewFile[] = replica.tree.listAllEntries().map((entry) => {
+  const entries: ProjectdRecoveryPreviewEntry[] = replica.tree.listAllEntries().map((entry) => {
     const stagedForEntry = stagedByFileId.get(entry.fileId) ?? []
     for (const record of stagedForEntry) unmatchedStaged.delete(record.revisionId)
     let size: number | null = null
