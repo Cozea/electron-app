@@ -19,23 +19,18 @@ import {
   type RepoMetadata,
 } from './gitSyncShared'
 
-interface GitRemoteSyncAuthOptions {
+interface GitRemoteSyncOptions {
   repoUrl?: string
-  extraHeader?: string
-  provider?: string
-  accessToken?: string
-  encryptedCredentials?: string
-  keyId?: string
   debug?: boolean
 }
 
-export interface GitFetchMainOptions extends GitRemoteSyncAuthOptions {
+export interface GitFetchMainOptions extends GitRemoteSyncOptions {
   projectPath: string
   remote?: string
   branch?: string
 }
 
-export interface GitPullMainOptions extends GitRemoteSyncAuthOptions {
+export interface GitPullMainOptions extends GitRemoteSyncOptions {
   projectPath: string
   remote?: string
   branch?: string
@@ -43,7 +38,7 @@ export interface GitPullMainOptions extends GitRemoteSyncAuthOptions {
   allowUnrelatedHistories?: boolean
 }
 
-export interface GitPushMainOptions extends GitRemoteSyncAuthOptions {
+export interface GitPushMainOptions extends GitRemoteSyncOptions {
   projectPath: string
   remote?: string
   branch?: string
@@ -58,11 +53,7 @@ interface GitRemoteSyncHelpers {
   debug: (enabled: boolean | undefined, event: string, payload: Record<string, unknown>) => void
   getRepoMetadata: (projectPath: string) => Promise<RepoMetadata>
   setRemoteUrl: (projectPath: string, repoUrl: string) => Promise<{ success: boolean; error?: string }>
-  resolveExtraHeader: (options: GitRemoteSyncAuthOptions) => string | undefined
-  runGit: (
-    args: string[],
-    options: { cwd: string; timeoutMs: number; extraHeader?: string }
-  ) => Promise<GitCommandResult>
+  runGit: (args: string[], options: { cwd: string; timeoutMs: number }) => Promise<GitCommandResult>
   getRevision: (projectPath: string, ref: string) => Promise<string | null>
   getCurrentBranch: (projectPath: string) => Promise<string | null>
   getStatus: (options: {
@@ -129,9 +120,7 @@ export async function fetchMain(
   }
 
   const fetchResult = await helpers.runGit(['fetch', '--prune', remote, branch], {
-    cwd: projectPath,
-    extraHeader: helpers.resolveExtraHeader(options),
-    timeoutMs: 120_000,
+    cwd: projectPath,    timeoutMs: 120_000,
   })
   if (!fetchResult.success) {
     if (isMissingRemoteBranchError(fetchResult.error ?? '')) {
@@ -257,9 +246,7 @@ export async function pullMain(
           branch,
         ]
   const pull = await helpers.runGit(pullArgs, {
-    cwd: projectPath,
-    extraHeader: helpers.resolveExtraHeader(options),
-    timeoutMs: 120_000,
+    cwd: projectPath,    timeoutMs: 120_000,
   })
   if (!pull.success) {
     const statusAfterFailure = await helpers.getStatus({
@@ -340,9 +327,7 @@ export async function pushMain(
   }
 
   const push = await helpers.runGit(['push', remote, `HEAD:${branch}`], {
-    cwd: projectPath,
-    extraHeader: helpers.resolveExtraHeader(options),
-    timeoutMs: 120_000,
+    cwd: projectPath,    timeoutMs: 120_000,
   })
   if (!push.success) {
     if (isShallowUpdateRejected(push.error ?? '')) {
@@ -367,9 +352,7 @@ export async function pushMain(
       }
 
       const retryPush = await helpers.runGit(['push', remote, `HEAD:${branch}`], {
-        cwd: projectPath,
-        extraHeader: helpers.resolveExtraHeader(options),
-        timeoutMs: 120_000,
+        cwd: projectPath,        timeoutMs: 120_000,
       })
       if (!retryPush.success) {
         return {

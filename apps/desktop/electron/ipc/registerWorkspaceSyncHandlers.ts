@@ -327,11 +327,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         workspaceId: string
         repoUrl: string
         branch?: string
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
         debug?: boolean
       }
     ) => {
@@ -358,11 +353,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         workspaceId: string
         remote?: string
         branch?: string
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
         debug?: boolean
       }
     ) => {
@@ -413,11 +403,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         branch?: string
         strategy?: 'merge' | 'ff-only'
         allowUnrelatedHistories?: boolean
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
         debug?: boolean
       }
     ) => {
@@ -445,11 +430,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         remote?: string
         branch?: string
         repoUrl?: string
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
         debug?: boolean
       }
     ) => {
@@ -498,11 +478,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         workspaceId: string
         repoUrl: string
         branch?: string
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
         debug?: boolean
       }
     ) => {
@@ -575,11 +550,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         remote?: string
         branch?: string
         repoUrl?: string
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
         debug?: boolean
       }
     ) => {
@@ -657,11 +627,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         workspaceId: string
         remote?: string
         branch?: string
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
       }
     ) => {
       let projectPath: string
@@ -689,11 +654,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         remote?: string
         branch?: string
         addAll?: boolean
-        extraHeader?: string
-        provider?: string
-        accessToken?: string
-        encryptedCredentials?: string
-        keyId?: string
       }
     ) => {
       let projectPath: string

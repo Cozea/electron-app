@@ -2252,11 +2252,6 @@ export interface ElectronAPI {
       workspaceId: string
       repoUrl: string
       branch?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => Promise<GitSyncCloneResult>
     gitFetchMain: (options: {
@@ -2264,11 +2259,6 @@ export interface ElectronAPI {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => Promise<GitSyncFetchResult>
     gitStatus: (options: {
@@ -2284,11 +2274,6 @@ export interface ElectronAPI {
       repoUrl?: string
       strategy?: 'merge' | 'ff-only'
       allowUnrelatedHistories?: boolean
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => Promise<GitSyncPullResult>
     gitReplayLocalCommits: (options: {
@@ -2296,11 +2281,6 @@ export interface ElectronAPI {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => Promise<GitSyncReplayResult>
     gitClassifyRepoHealth: (options: {
@@ -2313,11 +2293,6 @@ export interface ElectronAPI {
       workspaceId: string
       repoUrl: string
       branch?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => Promise<GitSyncSalvageResult>
     gitReadConflictFile: (options: { workspaceId: string; filePath: string }) => Promise<GitConflictFileResult>
@@ -2331,11 +2306,6 @@ export interface ElectronAPI {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => Promise<GitSyncRestoreResult>
     gitAdoptWorkspace: (options: {
@@ -2350,11 +2320,6 @@ export interface ElectronAPI {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
     }) => Promise<GitSyncPushResult>
     gitCommitAndPush: (options: {
       workspaceId: string
@@ -2363,11 +2328,6 @@ export interface ElectronAPI {
       branch?: string
       repoUrl?: string
       addAll?: boolean
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
     }) => Promise<GitSyncCommitPushResult>
     gitCaptureCheckpoint: (options: {
       workspaceId: string

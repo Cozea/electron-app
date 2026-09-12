@@ -791,11 +791,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       workspaceId: string
       repoUrl: string
       branch?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => ipcRenderer.invoke('workspaceSync:gitCloneIfMissing', options),
     gitFetchMain: (options: {
@@ -803,11 +798,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => ipcRenderer.invoke('workspaceSync:gitFetchMain', options),
     gitStatus: (options: { workspaceId: string; remote?: string; branch?: string; debug?: boolean }) =>
@@ -819,11 +809,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       repoUrl?: string
       strategy?: 'merge' | 'ff-only'
       allowUnrelatedHistories?: boolean
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => ipcRenderer.invoke('workspaceSync:gitPullMain', options),
     gitReplayLocalCommits: (options: {
@@ -831,11 +816,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => ipcRenderer.invoke('workspaceSync:gitReplayLocalCommits', options),
     gitClassifyRepoHealth: (options: { workspaceId: string; remote?: string; branch?: string; debug?: boolean }) =>
@@ -844,11 +824,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       workspaceId: string
       repoUrl: string
       branch?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => ipcRenderer.invoke('workspaceSync:gitSalvageReclone', options),
     gitReadConflictFile: (options: { workspaceId: string; filePath: string }) =>
@@ -860,11 +835,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
       debug?: boolean
     }) => ipcRenderer.invoke('workspaceSync:gitRestoreMain', options),
     gitAdoptWorkspace: (options: { workspaceId: string; branch?: string; repoUrl?: string; debug?: boolean }) =>
@@ -876,11 +846,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       remote?: string
       branch?: string
       repoUrl?: string
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
     }) => ipcRenderer.invoke('workspaceSync:gitPushMain', options),
     gitCommitAndPush: (options: {
       workspaceId: string
@@ -889,11 +854,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       branch?: string
       repoUrl?: string
       addAll?: boolean
-      extraHeader?: string
-      provider?: string
-      accessToken?: string
-      encryptedCredentials?: string
-      keyId?: string
     }) => ipcRenderer.invoke('workspaceSync:gitCommitAndPush', options),
     gitCaptureCheckpoint: (options: {
       workspaceId: string
