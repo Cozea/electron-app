@@ -19,7 +19,7 @@ import { createHash } from "node:crypto"
 import type { GitExecuteOptions } from "../git/GitProcess"
 import type { GitService } from "../git/GitService"
 import { fallbackIdentityEnv } from "../git/identity"
-import type { GitHubSessionPullRequest } from "./GitHubSessionPullRequest"
+import type { GitHubSessionPullRequest, SessionPullRequestIdentity } from "./GitHubSessionPullRequest"
 import { executeScopedNetworkGit, type RepositoryCredentialProvider } from "../git/ScopedNetworkGit"
 
 const REMOTE_TIMEOUT_MS = 60_000
@@ -129,7 +129,9 @@ export class SessionMerger {
       throw new MergeError("REVIEW_CHANGED", "Save and review the current session before creating a pull request.")
     }
     const repo = await this.repository()
-    if (!repo.remoteUrl) throw new MergeError("PR_UNAVAILABLE", "This repository has no remote URL.")
+    if (!repo.remoteUrl || !(await this.options.pullRequests.canCreate(repo.remoteUrl))) {
+      throw new MergeError("PR_UNAVAILABLE", "This repository is not provisioned for background pull requests.")
+    }
     return this.options.pullRequests.ensure({ remoteUrl: repo.remoteUrl, branch: preview.branch,
       targetBranch: preview.targetBranch, checkpointOid: preview.checkpointOid, targetOid: preview.targetOid })
   }
@@ -160,6 +162,22 @@ export class SessionMerger {
     const counts = await this.git(repo.root, ["rev-list", "--left-right", "--count", `${targetOid}...${checkpointOid}`])
     const [behind = 0, ahead = 0] = counts.stdout.trim().split(/\s+/).map((value) => Number(value) || 0)
     const merged = await this.mergeTree(repo.root, targetOid, checkpointOid)
+    let durablePullRequestUrl: string | null = null
+    let canCreatePullRequest = false
+    if (repo.remoteUrl && this.options.pullRequests) {
+      const identity: SessionPullRequestIdentity = { remoteUrl: repo.remoteUrl, branch: branchName, targetBranch }
+      const persisted = this.options.pullRequests.persisted(identity)
+      if (persisted) {
+        try {
+          durablePullRequestUrl = (await this.options.pullRequests.refresh(identity))?.url ?? persisted.url
+        } catch {
+          // A previously verified PR remains useful recovery/navigation metadata when
+          // GitHub is temporarily unavailable. The next review retries refresh.
+          durablePullRequestUrl = persisted.url
+        }
+      }
+      canCreatePullRequest = await this.options.pullRequests.canCreate(repo.remoteUrl)
+    }
     return {
       branch: branchName,
       targetBranch,
@@ -170,8 +188,8 @@ export class SessionMerger {
       clean: merged.clean,
       conflictingPaths: merged.conflicts,
       unsavedChanges: input.unsavedChanges,
-      pullRequestUrl: repo.remoteUrl ? pullRequestUrl(repo.remoteUrl, branchName, targetBranch) : null,
-      canCreatePullRequest: Boolean(this.options.pullRequests),
+      pullRequestUrl: durablePullRequestUrl ?? (repo.remoteUrl ? pullRequestUrl(repo.remoteUrl, branchName, targetBranch) : null),
+      canCreatePullRequest,
     }
   }
 
@@ -240,7 +258,7 @@ export class SessionMerger {
     }
     const output = `${pushed.stderr}\n${pushed.stdout}`
     if (/GH006|GH013|protected branch|hook declined|not allowed to push|pushes to this branch are not allowed/i.test(output)) {
-      if (this.options.pullRequests && repo.remoteUrl && input.unsavedChanges === 0) {
+      if (this.options.pullRequests && repo.remoteUrl && preview.canCreatePullRequest && input.unsavedChanges === 0) {
         try {
           const pullRequest = await this.createPullRequest({ ...input, reviewedTargetOid: preview.targetOid })
           return { outcome: "needs_pull_request", pullRequest, pullRequestUrl: pullRequest.url,
