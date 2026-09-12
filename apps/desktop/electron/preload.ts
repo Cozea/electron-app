@@ -321,6 +321,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     sessions: {
       listRecovery: () => ipcRenderer.invoke('projectd:sessions:recovery:list'),
+      previewRecovery: (publicSessionId: string, afterCursor?: string, limit?: number) =>
+        ipcRenderer.invoke('projectd:sessions:recovery:preview', publicSessionId, afterCursor, limit),
       exportRecovery: (publicSessionId: string, source?: 'local' | 'cloud', projectId?: string) => ipcRenderer.invoke('projectd:sessions:recovery:export', publicSessionId, source, projectId),
       shareRecoveryKeys: (publicSessionId: string, projectId: string) => ipcRenderer.invoke('projectd:sessions:recovery:shareKeys', publicSessionId, projectId),
       attach: (params: ProjectdSessionAttachParams) => ipcRenderer.invoke('projectd:sessions:attach', params),
