@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 
 import { GitLfs, type GitLfsCleaner } from "../git/GitLfs"
-import type { GitExecutionResult } from "../git/GitProcess"
+import type { GitProcessResult } from "../git/GitProcess"
 
 export interface CheckpointGitOptions {
   env?: Record<string, string>
@@ -10,12 +10,13 @@ export interface CheckpointGitOptions {
   maxBuffer?: number
 }
 
-export type CheckpointGitRunner = (args: string[], options?: CheckpointGitOptions) => Promise<GitExecutionResult>
+export type CheckpointGitRunner = (args: string[], options?: CheckpointGitOptions) => Promise<GitProcessResult>
 
 export class UnsupportedGitFilterError extends Error {
   readonly code = "GIT_FILTER_UNSUPPORTED"
+  readonly paths: ReadonlyArray<{ path: string; driver: string }>
 
-  constructor(readonly paths: ReadonlyArray<{ path: string; driver: string }>) {
+  constructor(paths: ReadonlyArray<{ path: string; driver: string }>) {
     const shown = paths.slice(0, 3).map(({ path, driver }) => `${path} (${driver})`).join(", ")
     const remainder = paths.length > 3 ? ` and ${paths.length - 3} more` : ""
     super(
@@ -23,27 +24,32 @@ export class UnsupportedGitFilterError extends Error {
         "Only Git LFS is executed automatically; publish these paths with normal Git or remove the custom filter before retrying.",
     )
     this.name = "UnsupportedGitFilterError"
+    this.paths = paths
   }
 }
 
 export class GitLfsUnavailableError extends Error {
   readonly code = "GIT_LFS_UNAVAILABLE"
+  readonly filePath: string
 
-  constructor(readonly filePath: string) {
+  constructor(filePath: string) {
     super(
       `Git LFS is required to save ${filePath}, but git-lfs is not available on this Mac. ` +
         "Install or restore Git LFS, then retry the checkpoint.",
     )
     this.name = "GitLfsUnavailableError"
+    this.filePath = filePath
   }
 }
 
 export class GitLfsCleanError extends Error {
   readonly code = "GIT_LFS_FAILED"
+  readonly filePath: string
 
-  constructor(readonly filePath: string, cause: unknown) {
+  constructor(filePath: string, cause: unknown) {
     super(`Git LFS could not prepare ${filePath} for the checkpoint: ${cause instanceof Error ? cause.message : String(cause)}`)
     this.name = "GitLfsCleanError"
+    this.filePath = filePath
   }
 }
 
@@ -62,7 +68,11 @@ export interface LfsAvailabilityState {
  * contacting the LFS server.
  */
 export class CheckpointFilterPolicy {
-  constructor(private readonly lfs: GitLfsCleaner) {}
+  private readonly lfs: GitLfsCleaner
+
+  constructor(lfs: GitLfsCleaner) {
+    this.lfs = lfs
+  }
 
   async drivers(
     git: CheckpointGitRunner,
