@@ -30,8 +30,18 @@ export interface BinaryObjectStoreOptions {
   fetchFn?: typeof fetch
 }
 
+export interface BinaryUploadSource {
+  /** Exact plaintext byte size. */
+  size: number
+  /** SHA-256 of the complete plaintext source, computed by the stable-reader boundary. */
+  contentHash: string
+  /** Reads exactly this range without requiring the complete file in memory. */
+  read(offset: number, length: number): Promise<Buffer>
+}
+
 export interface BinaryObjectClient {
   upload(bytes: Buffer | Uint8Array): Promise<BinaryManifest>
+  uploadFrom?(source: BinaryUploadSource): Promise<BinaryManifest>
   download(manifest: BinaryManifest): Promise<Buffer>
   downloadTo?(manifest: BinaryManifest, write: (chunk: Buffer) => Promise<void>): Promise<void>
 }
@@ -73,18 +83,46 @@ export class SessionBinaryObjectStore implements BinaryObjectClient {
     this.fetchFn = options.fetchFn ?? fetch
   }
 
-  /** Encrypts and uploads fixed-size chunks, returning immutable plaintext metadata. */
+  /** Convenience wrapper for small/in-memory callers. */
   async upload(bytes: Buffer | Uint8Array): Promise<BinaryManifest> {
     const content = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes)
-    const contentHash = sha256(content)
-    const chunks: BinaryChunkDescriptor[] = []
+    return this.uploadFrom({
+      size: content.length,
+      contentHash: sha256(content),
+      read: async (offset, length) => content.subarray(offset, offset + length),
+    })
+  }
 
+  /**
+   * Encrypts and uploads fixed-size chunks without materializing the whole source.
+   * The expected whole-content hash prevents a file that changes between a prior
+   * stable scan and this upload from being published under stale metadata.
+   *
+   * PUT is immutable. On retry, a 412 means that exact chunk reference already
+   * exists; it is downloaded, authenticated and hash-checked before continuing.
+   * This makes interruption recovery naturally resumable at the 4 MiB chunk boundary.
+   */
+  async uploadFrom(source: BinaryUploadSource): Promise<BinaryManifest> {
+    if (!Number.isSafeInteger(source.size) || source.size < 0 || !/^[a-f0-9]{64}$/.test(source.contentHash)) {
+      throw new BinaryObjectStoreError("BAD_SOURCE", "Binary upload source has invalid size or content hash")
+    }
+    const chunks: BinaryChunkDescriptor[] = []
+    const completeHash = createHash("sha256")
     let offset = 0
     let index = 0
-    while (offset < content.length) {
-      const chunk = content.subarray(offset, Math.min(offset + CHUNK_SIZE_BYTES, content.length))
+
+    while (offset < source.size) {
+      const expectedSize = Math.min(CHUNK_SIZE_BYTES, source.size - offset)
+      const chunk = await source.read(offset, expectedSize)
+      if (!Buffer.isBuffer(chunk) || chunk.length !== expectedSize) {
+        throw new BinaryObjectStoreError(
+          "SOURCE_CHANGED",
+          `Binary upload source returned ${Buffer.isBuffer(chunk) ? chunk.length : 0} bytes; expected ${expectedSize}`,
+        )
+      }
+      completeHash.update(chunk)
       const chunkHash = sha256(chunk)
-      const encryptedRef = `v1/${this.activeKeyVersion}/${contentHash}/${index}/${chunkHash}`
+      const encryptedRef = `v1/${this.activeKeyVersion}/${source.contentHash}/${index}/${chunkHash}`
       const encrypted = this.encryptChunk(this.activeKeyVersion, encryptedRef, chunk)
       const created = await this.putChunk(encryptedRef, encrypted)
       if (!created) {
@@ -98,9 +136,12 @@ export class SessionBinaryObjectStore implements BinaryObjectClient {
       index += 1
     }
 
+    if (completeHash.digest("hex") !== source.contentHash) {
+      throw new BinaryObjectStoreError("SOURCE_CHANGED", "Binary upload source no longer matches its stable SHA-256")
+    }
     return {
-      contentHash,
-      size: content.length,
+      contentHash: source.contentHash,
+      size: source.size,
       chunkSize: CHUNK_SIZE_BYTES,
       chunks,
     }
