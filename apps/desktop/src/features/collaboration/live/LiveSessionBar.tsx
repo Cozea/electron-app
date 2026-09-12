@@ -21,8 +21,13 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         members={live.members}
         membership={live.membership}
         canManage={live.canManage}
+        canEdit={live.canEdit}
+        target={live.target}
         busyAction={live.busyAction}
         onSaveNow={live.saveNow}
+        onIgnoreEnvironmentFiles={live.ignoreEnvironmentFiles}
+        onCheckTarget={live.checkTarget}
+        onDismissTarget={live.dismissTarget}
         onJoin={live.join}
         onLeave={live.leave}
         onPause={live.pause}

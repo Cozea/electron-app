@@ -126,6 +126,12 @@ function parseAttachParams(params: unknown) {
     branchName:
       typeof attach.branchName === "string" && attach.branchName.trim() ? attach.branchName.trim() : undefined,
     shareEnvironmentFiles: attach.shareEnvironmentFiles === true,
+    targetBranch:
+      typeof attach.targetBranch === "string" && attach.targetBranch.trim() ? attach.targetBranch.trim() : undefined,
+    sessionStartedAt:
+      typeof attach.sessionStartedAt === "number" && Number.isFinite(attach.sessionStartedAt)
+        ? attach.sessionStartedAt
+        : undefined,
   }
 }
 
@@ -780,6 +786,17 @@ export class ProjectdServer {
       case "sessions.checkpointNow":
         this.reply(state, req.id, () => this.checkpointSession(req.params))
         break
+      case "sessions.ignoreEnvironmentFiles":
+        this.reply(state, req.id, async () => ({
+          paths: await this.requireSessionHost(req.params).ignoreEnvironmentFiles(),
+        }))
+        break
+      case "sessions.checkTarget":
+        this.reply(state, req.id, () => this.requireSessionHost(req.params).checkTarget())
+        break
+      case "sessions.dismissTarget":
+        this.reply(state, req.id, () => this.requireSessionHost(req.params).dismissTargetRecommendation())
+        break
       default: {
         this.sendError(state, req.id, {
           code: "METHOD_NOT_FOUND",
@@ -855,6 +872,8 @@ export class ProjectdServer {
       gitService: this.gitService,
       branchName: attach.branchName,
       shareEnvironmentFiles: attach.shareEnvironmentFiles,
+      targetBranch: attach.targetBranch,
+      sessionStartedAt: attach.sessionStartedAt,
       actor: {
         actorType: "user",
         principalId: attach.actor?.principalId,
@@ -888,6 +907,15 @@ export class ProjectdServer {
     }
     host.updateTicket(parseTicket((params as { ticket?: unknown }).ticket))
     return host.status()
+  }
+
+  private requireSessionHost(params: unknown): CollaborationSessionHost {
+    const publicSessionId = requireSessionId(params)
+    const host = this.sessionHosts.get(publicSessionId)
+    if (!host) {
+      throw new ProjectdRequestError("NOT_FOUND", `Session ${publicSessionId} is not attached`)
+    }
+    return host
   }
 
   /** Saves an attached session to its Git branch now, or asks the device that saves to. */

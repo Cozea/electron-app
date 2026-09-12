@@ -165,10 +165,15 @@ export interface ProjectdSessionAttachParams {
   branchName?: string
   /**
    * Share the project's env files (.env) through the session although Git ignores
-   * them. They travel end to end encrypted like every session file, and AutoGit never
-   * commits them.
+   * them. They travel end to end encrypted like every session file. AutoGit commits
+   * only what Git's ignore rules allow, and holds saving while a new env file isn't
+   * ignored.
    */
   shareEnvironmentFiles?: boolean
+  /** The branch the session's work merges into, such as main; the daemon tracks how far it moved (P20). */
+  targetBranch?: string
+  /** When the session started, in epoch milliseconds. */
+  sessionStartedAt?: number
 }
 
 export type ProjectdSessionState =
@@ -202,6 +207,8 @@ export interface ProjectdAutoGitStatus {
   saving: boolean
   /** Why saving stopped, why this device cannot push, or why Git here lags behind. */
   detail: string | null
+  /** What kind of stop `detail` describes, such as ENV_NOT_IGNORED, so the app can offer the fix. */
+  detailCode?: string | null
   lastError: { code: string; message: string } | null
 }
 
@@ -209,6 +216,28 @@ export interface ProjectdCheckpointResult {
   /** saved: this device saved, or had nothing new; requested: the leader was asked; no_leader: no device can push. */
   outcome: "saved" | "requested" | "no_leader"
   lastCheckpoint: ProjectdCheckpointSummary | null
+}
+
+/** How far the branch a session's work merges into has moved (Section 20). */
+export interface ProjectdTargetStatus {
+  /** The target branch, such as main. */
+  branch: string
+  /** Commits on the target that the session branch doesn't have. */
+  behind: number
+  /** Commits on the session branch that the target doesn't have. */
+  ahead: number
+  /** Files the target changed since the session branch split from it. */
+  changedPathCount: number
+  /** Up to ten of those files that the session changed too. */
+  overlappingPaths: string[]
+  /** Whether rebasing the session onto the target is worth it now. Nothing rebases on its own. */
+  recommended: boolean
+  /** Why, in words for the session bar. */
+  reason: string | null
+  checkedAt: number | null
+  checking: boolean
+  /** Why the last check failed, such as a remote that could not be reached. */
+  error: string | null
 }
 
 export interface ProjectdSessionStatus {
@@ -228,6 +257,8 @@ export interface ProjectdSessionStatus {
   pausedReason?: string | null
   /** Absent from daemons older than AutoGit, and null when the folder is not a Git repository. */
   autoGit?: ProjectdAutoGitStatus | null
+  /** How far the target branch moved; null without a target or a Git repository. */
+  target?: ProjectdTargetStatus | null
 }
 
 /** Topic carrying one session's `status` and `ticket_needed` events. */

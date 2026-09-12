@@ -197,4 +197,42 @@ describe("AutoGit lease in the session room", () => {
     a.client.setLeaderNotice(generationOf(a.client), null)
     await waitFor(() => b.client.autoGitState?.lease?.notice === null, "the notice to clear")
   })
+
+  it("records that the last checkpoint still holds the session, and carries what kind of stop a notice is", async () => {
+    const room = newRoom()
+    const roomKey = randomBytes(32)
+    const a = createClient(room, "c_a", roomKey)
+    const b = createClient(room, "c_b", roomKey)
+    await a.client.connect()
+    await b.client.connect()
+    a.client.setAutoGitEligibility(true)
+    await waitFor(() => leaderOf(b.client) === "c_a", "a to lead")
+    const generation = generationOf(a.client)
+
+    const first = await a.client.requestBarrier(generation)
+    await expect(a.client.markSavedThrough(generation, first.barrierId)).rejects.toMatchObject({ code: "NO_CHECKPOINT" })
+    await a.client.publishCheckpoint(generation, checkpointAt(first, "a"))
+
+    // An edit Git has nothing to take from, such as an ignored env file.
+    a.replica.createFile({ path: ".env", kind: "text", content: "KEY=1", actor: { actorType: "user" } })
+    a.client.submitLocalChanges()
+    await waitFor(() => a.client.pendingBatchCount === 0, "the edit to be acknowledged")
+    const later = await a.client.requestBarrier(generation)
+    expect(later.sessionSeq).toBe(1)
+    // Only the leader speaks for AutoGit.
+    await expect(b.client.markSavedThrough(generation, later.barrierId)).rejects.toMatchObject({ code: "LEASE_STALE" })
+    expect(await a.client.markSavedThrough(generation, later.barrierId)).toMatchObject({
+      commitOid: "a".repeat(40),
+      sessionSeq: 0,
+      savedThroughSeq: 1,
+    })
+    await waitFor(() => b.client.autoGitState?.checkpoint?.savedThroughSeq === 1, "members to hear the session is saved")
+
+    a.client.setLeaderNotice(generation, ".env isn't ignored by Git.", "ENV_NOT_IGNORED")
+    await waitFor(() => b.client.autoGitState?.lease?.noticeCode === "ENV_NOT_IGNORED", "members to get the notice's kind")
+    a.client.setLeaderNotice(generation, "Something else.", "not a code")
+    await waitFor(() => b.client.autoGitState?.lease?.notice === "Something else.", "the next notice")
+    expect(b.client.autoGitState?.lease?.noticeCode).toBeNull()
+    expect(room.errors).toEqual([])
+  })
 })

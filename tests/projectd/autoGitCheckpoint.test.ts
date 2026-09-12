@@ -238,7 +238,7 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
     expect(head.stdout.trim()).toBe(parentOid)
   })
 
-  it("never adds env files or anything else Git ignores", async () => {
+  it("leaves out what Git ignores, env files included", async () => {
     const ignoreRules = ".env*\n!.env.example\n*.log\n"
     fs.mkdirSync(path.join(testRepoDir, "src"), { recursive: true })
     fs.writeFileSync(path.join(testRepoDir, ".gitignore"), ignoreRules)
@@ -251,11 +251,9 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
     replica.createFile({ path: ".env.example", kind: "text", content: "API_KEY=\nREGION=\n", actor })
     replica.createFile({ path: "src/app.ts", kind: "text", content: "export const answer = 43\n", actor })
     replica.createFile({ path: "notes.md", kind: "text", content: "# Notes\n", actor })
-    // The session carries these, and Git must never get them: ignored env files, an env
-    // file this repository forgot to ignore, and an ignored log.
+    // The session carries these, and Git's own rules keep them out: ignored env files and an ignored log.
     replica.createFile({ path: ".env", kind: "text", content: "API_KEY=secret\n", actor })
     replica.createFile({ path: "apps/web/.env.local", kind: "text", content: "TOKEN=secret\n", actor })
-    replica.createFile({ path: ".dev.vars", kind: "text", content: "SECRET=1\n", actor })
     replica.createFile({ path: "debug.log", kind: "text", content: "noise\n", actor })
     const snapshot = BarrierCapture.captureSnapshot(
       { barrierId: "barrier_env_test", sessionSeq: 3, serverTime: 1726000200000 },
@@ -272,6 +270,46 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
 
     expect(await listTree(result.commitOid)).toEqual([".env.example", ".gitignore", "notes.md", "src/app.ts"])
     expect(await showFile(`${result.commitOid}:.env.example`)).toBe("API_KEY=\nREGION=\n")
+  })
+
+  it("stops for a new env file Git doesn't ignore, and commits one Git already tracks", async () => {
+    fs.writeFileSync(path.join(testRepoDir, ".env"), "PORT=3000\n")
+    fs.writeFileSync(path.join(testRepoDir, "app.ts"), "export {}\n")
+    const parentOid = commitAll(testRepoDir)
+
+    // The repository commits its .env, so Git's rules say changes to it are committed too.
+    const tracked = new SessionReplica(sessionId, "leader_client")
+    tracked.createFile({ path: ".env", kind: "text", content: "PORT=4000\n", actor })
+    tracked.createFile({ path: "app.ts", kind: "text", content: "export {}\n", actor })
+    const committed = await checkpointBuilder.buildCheckpointCommit({
+      repoPath: testRepoDir,
+      sessionId,
+      parentOid,
+      leaseGeneration: 1,
+      snapshot: BarrierCapture.captureSnapshot(
+        { barrierId: "barrier_tracked_env", sessionSeq: 2, serverTime: 1726000200000 },
+        tracked,
+      ),
+    })
+    expect(await showFile(`${committed.commitOid}:.env`)).toBe("PORT=4000\n")
+
+    // A new env file nothing ignores is likely a secret: the checkpoint waits instead.
+    const untracked = new SessionReplica(sessionId, "leader_client")
+    untracked.createFile({ path: ".env", kind: "text", content: "PORT=4000\n", actor })
+    untracked.createFile({ path: "app.ts", kind: "text", content: "export {}\n", actor })
+    untracked.createFile({ path: "worker/.dev.vars", kind: "text", content: "SECRET=1\n", actor })
+    await expect(
+      checkpointBuilder.buildCheckpointCommit({
+        repoPath: testRepoDir,
+        sessionId,
+        parentOid,
+        leaseGeneration: 1,
+        snapshot: BarrierCapture.captureSnapshot(
+          { barrierId: "barrier_new_env", sessionSeq: 3, serverTime: 1726000200000 },
+          untracked,
+        ),
+      }),
+    ).rejects.toMatchObject({ name: "UnignoredEnvironmentFilesError", paths: ["worker/.dev.vars"] })
   })
 
   it("reports a checkpoint that would change nothing", async () => {

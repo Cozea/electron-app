@@ -23,11 +23,13 @@ import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationS
 import {
   describeAutoGit,
   describeLiveSessionSync,
+  describeTarget,
   resolveMembership,
   type LiveSessionAction,
   type LiveSessionAutoGitView,
   type LiveSessionMember,
   type LiveSessionSyncView,
+  type LiveSessionTargetView,
   type SessionMembership,
 } from "./liveSessionModel"
 
@@ -43,6 +45,8 @@ export interface LiveSessionRecord {
   repositoryUrl?: string | null
   /** Whether env files travel with the session although Git ignores them. */
   shareEnvironmentFiles?: boolean
+  /** When the session started, in epoch milliseconds. */
+  createdAt?: number
 }
 
 export interface LiveSessionController {
@@ -56,8 +60,15 @@ export interface LiveSessionController {
   sync: LiveSessionSyncView | null
   /** How the session is saved to its branch; null when the daemon does not sync this folder. */
   autoGit: LiveSessionAutoGitView | null
+  /** How far the branch the session merges into has moved; null until it has been checked. */
+  target: LiveSessionTargetView | null
+  /** Whether this device may change the session's files. */
+  canEdit: boolean
   busyAction: LiveSessionAction | null
   saveNow: () => void
+  ignoreEnvironmentFiles: () => void
+  checkTarget: () => void
+  dismissTarget: () => void
   join: () => void
   leave: () => void
   pause: () => void
@@ -83,6 +94,26 @@ async function saveSessionNow(publicSessionId: string, branchName: string): Prom
     case "no_leader":
       throw new Error("No member's Mac can push this session's branch right now.")
   }
+}
+
+/** Adds the session's env files that Git doesn't ignore to .gitignore, so saving to Git resumes. */
+async function ignoreSessionEnvironmentFiles(publicSessionId: string): Promise<void> {
+  const response = await window.electronAPI.projectd.sessions.ignoreEnvironmentFiles(publicSessionId)
+  if (!response.success) throw new Error(response.error)
+  if (response.paths.length === 0) {
+    appToast.info({ title: ".gitignore already covers the session's env files" })
+    return
+  }
+  appToast.success({
+    title: "Added to .gitignore",
+    description: `${response.paths.join(", ")}. Saving to Git resumes once .gitignore reaches the Mac that saves.`,
+  })
+}
+
+async function checkSessionTarget(publicSessionId: string): Promise<void> {
+  const response = await window.electronAPI.projectd.sessions.checkTarget(publicSessionId)
+  if (!response.success) throw new Error(response.error)
+  if (response.target?.error) throw new Error(response.target.error)
 }
 
 export function useLiveSession(input: {
@@ -192,9 +223,24 @@ export function useLiveSession(input: {
         })
       : null,
     autoGit: session ? describeAutoGit(daemonStatus, leaderName) : null,
+    target: session ? describeTarget(daemonStatus?.target ?? null) : null,
+    canEdit,
     busyAction,
     saveNow: () => {
       if (session) run("save", "Could not save to Git", () => saveSessionNow(session.publicSessionId, session.branchName))
+    },
+    ignoreEnvironmentFiles: () => {
+      if (session) {
+        run("ignore_env", "Could not update .gitignore", () => ignoreSessionEnvironmentFiles(session.publicSessionId))
+      }
+    },
+    checkTarget: () => {
+      if (session) {
+        run("check_target", `Could not check ${session.targetBranch}`, () => checkSessionTarget(session.publicSessionId))
+      }
+    },
+    dismissTarget: () => {
+      if (session) void window.electronAPI.projectd.sessions.dismissTarget(session.publicSessionId)
     },
     join: onSession("join", "Could not join the session", joinSession),
     leave: onSession("leave", "Could not leave the session", leaveSession),

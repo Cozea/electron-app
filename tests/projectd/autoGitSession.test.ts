@@ -130,6 +130,22 @@ function remoteHead(remote: string): string {
   return git(remote, "rev-parse", `refs/heads/${BRANCH}`)
 }
 
+/** A commit pushed to the session branch by someone outside the session; returns the new head. */
+async function pushFromOutside(
+  remote: string,
+  files: Record<string, string>,
+  options: { resetTo?: string } = {},
+): Promise<string> {
+  const outsideRoot = await tempFolder("outside")
+  git(outsideRoot, "clone", "-q", "-b", BRANCH, remote, ".")
+  if (options.resetTo) git(outsideRoot, "reset", "-q", "--hard", options.resetTo)
+  await writeFiles(outsideRoot, files)
+  git(outsideRoot, "add", "-A")
+  git(outsideRoot, "commit", "-q", "-m", "Outside the session")
+  git(outsideRoot, "push", "-q", ...(options.resetTo ? ["--force"] : []), "origin", BRANCH)
+  return remoteHead(remote)
+}
+
 function newRoom(options: { leaseMs?: number } = {}): RoomHost {
   const room = new RoomHost(worker, options)
   cleanups.push(() => room.dispose())
@@ -140,7 +156,13 @@ async function createPeer(
   room: RoomHost,
   name: string,
   roomKey: Buffer,
-  options: { root: string; clientId: string; timing?: Partial<AutoGitTiming>; shareEnvironmentFiles?: boolean },
+  options: {
+    root: string
+    clientId: string
+    timing?: Partial<AutoGitTiming>
+    shareEnvironmentFiles?: boolean
+    targetBranch?: string
+  },
 ): Promise<Peer> {
   const events = new ManualFileEvents()
   const token = await sessionTokenFor(worker, `principal_${name}`)()
@@ -155,6 +177,7 @@ async function createPeer(
     gitService: new GitService(),
     branchName: BRANCH,
     shareEnvironmentFiles: options.shareEnvironmentFiles,
+    targetBranch: options.targetBranch,
     clientId: options.clientId,
     autoGitTiming: options.timing ?? FAST,
     gitPollMs: 20,
@@ -224,7 +247,8 @@ describe("AutoGit in projectd", () => {
     const { creator, joiner } = await startPair(room, repos)
 
     await joiner.write("src/app.ts", "export const answer = 43\n")
-    await waitFor(() => checkpointOf(creator) !== null, "the first checkpoint", GIT_WAIT_MS)
+    // Before any edit, the session's first save records the branch as it stands.
+    await waitFor(() => (checkpointOf(creator) ?? repos.initial) !== repos.initial, "the first checkpoint", GIT_WAIT_MS)
     const first = checkpointOf(creator) ?? ""
     expect(remoteHead(repos.remote)).toBe(first)
     expect(git(repos.remote, "rev-parse", `${first}^`)).toBe(repos.initial)
@@ -304,7 +328,7 @@ describe("AutoGit in projectd", () => {
     expect(git(repos.remote, "show", `${saved}:src/app.ts`)).toBe("export const answer = 43")
   })
 
-  it("saves when any member asks, and stops rather than overwrite commits made outside the session", async () => {
+  it("saves when any member asks", async () => {
     const room = newRoom()
     const repos = await setUpRepositories({ "notes.md": "one\n" })
     const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
@@ -315,25 +339,112 @@ describe("AutoGit in projectd", () => {
     await waitFor(() => checkpointOf(joiner) !== null, "the leader to save on request", GIT_WAIT_MS)
     expect(git(repos.remote, "show", `${checkpointOf(joiner)}:notes.md`)).toBe("one\ntwo")
 
-    // Someone pushes to the branch without the session.
-    const outsideRoot = await tempFolder("outside")
-    git(outsideRoot, "clone", "-q", "-b", BRANCH, repos.remote, ".")
-    await writeFiles(outsideRoot, { "CHANGELOG.md": "outside\n" })
-    git(outsideRoot, "add", "-A")
-    git(outsideRoot, "commit", "-q", "-m", "Outside the session")
-    git(outsideRoot, "push", "-q", "origin", BRANCH)
-    const outside = remoteHead(repos.remote)
+  })
 
+  it("merges commits pushed from outside the session and builds the next save on them", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\ntwo\nthree\nfour\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
+    await joiner.write("notes.md", "one\ntwo\nthree\nfour\nfive\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo\nthree\nfour\nfive\n", "the creator to get the edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+
+    // Outside the session someone changes the first line and adds a file; the session changes the last line.
+    const outside = await pushFromOutside(repos.remote, {
+      "notes.md": "ONE\ntwo\nthree\nfour\nfive\n",
+      "CHANGELOG.md": "outside\n",
+    })
+    await joiner.write("notes.md", "one\ntwo\nthree\nfour\nFIVE\n")
+    await waitFor(
+      async () => (await creator.read("notes.md")) === "one\ntwo\nthree\nfour\nFIVE\n",
+      "the creator to get the next edit",
+    )
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+
+    const merged = "ONE\ntwo\nthree\nfour\nFIVE\n"
+    for (const [peer, label] of [
+      [creator, "creator"],
+      [joiner, "joiner"],
+    ] as const) {
+      await waitFor(
+        async () => (await peer.read("notes.md")) === merged && (await peer.read("CHANGELOG.md")) === "outside\n",
+        `the ${label}'s folder to hold both sides`,
+        GIT_WAIT_MS,
+      )
+    }
+    const saved = remoteHead(repos.remote)
+    expect(git(repos.remote, "rev-parse", `${saved}^`)).toBe(outside)
+    expect(git(repos.remote, "show", `${saved}:notes.md`)).toBe(merged.trimEnd())
+    expect(autoGitOf(creator)).toMatchObject({ state: "leader", lastError: null })
+  })
+
+  it("marks lines both sides changed, and saves once the markers are resolved", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\ntwo\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
+
+    // Pushed before the session's first save, so that save builds on it.
+    const outside = await pushFromOutside(repos.remote, { "notes.md": "one\nTWO from outside\n" })
+    await joiner.write("notes.md", "one\ntwo from the session\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo from the session\n", "the creator to get the edit")
+    await expect(creator.host.checkpointNow()).rejects.toMatchObject({ code: "CONFLICT_MARKERS" })
+    expect(remoteHead(repos.remote)).toBe(outside)
+
+    await waitFor(
+      async () => (await joiner.read("notes.md"))?.includes("<<<<<<< live session") === true,
+      "the conflict to reach the joiner",
+      GIT_WAIT_MS,
+    )
+    const conflicted = (await joiner.read("notes.md")) ?? ""
+    expect(conflicted).toContain("two from the session")
+    expect(conflicted).toContain("TWO from outside")
+    expect(conflicted).toContain(`>>>>>>> origin/${BRANCH}`)
+    await waitFor(() => autoGitOf(joiner)?.detailCode === "CONFLICT_MARKERS", "the joiner to hear why saving waits")
+
+    await joiner.write("notes.md", "one\ntwo from the session\nTWO from outside\n")
+    await waitFor(
+      async () => (await creator.read("notes.md")) === "one\ntwo from the session\nTWO from outside\n",
+      "the creator to get the resolution",
+    )
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    const saved = remoteHead(repos.remote)
+    expect(git(repos.remote, "rev-parse", `${saved}^`)).toBe(outside)
+    expect(git(repos.remote, "show", `${saved}:notes.md`)).toBe("one\ntwo from the session\nTWO from outside")
+  })
+
+  it("stops rather than overwrite a branch rewritten outside the session", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
+    await joiner.write("notes.md", "one\ntwo\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo\n", "the creator to get the edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+
+    // Someone force-pushes history that drops the session's save.
+    const rewritten = await pushFromOutside(repos.remote, { "CHANGELOG.md": "outside\n" }, { resetTo: repos.initial })
     await joiner.write("notes.md", "one\ntwo\nthree\n")
     await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo\nthree\n", "the creator to get the next edit")
     await expect(creator.host.checkpointNow()).rejects.toMatchObject({ code: "REMOTE_CHANGED" })
-    expect(remoteHead(repos.remote)).toBe(outside)
+    expect(remoteHead(repos.remote)).toBe(rewritten)
     expect(autoGitOf(creator)).toMatchObject({
       state: "blocked",
       detail: expect.stringContaining(`${BRANCH} changed on origin outside the session`),
     })
     await waitFor(() => autoGitOf(joiner)?.state === "blocked", "the joiner to hear why saving stopped")
     expect(autoGitOf(joiner)?.detail).toContain("rather than overwrite those commits")
+  })
+
+  it("merges an outside push while nobody edits", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\n" })
+    const { creator, joiner } = await startPair(room, repos, { ...FAST, remotePollMs: 100 })
+    await waitFor(() => checkpointOf(creator) === repos.initial, "the session's first save", GIT_WAIT_MS)
+
+    const outside = await pushFromOutside(repos.remote, { "CHANGELOG.md": "outside\n" })
+    await waitFor(async () => (await joiner.read("CHANGELOG.md")) === "outside\n", "the outside commit to reach the joiner", GIT_WAIT_MS)
+    // The session holds exactly that commit, so it becomes the session's save.
+    await waitFor(() => checkpointOf(joiner) === outside, "the outside commit to become the session's save", GIT_WAIT_MS)
+    expect(remoteHead(repos.remote)).toBe(outside)
   })
 
   it("hands saving to another member's Mac when the leader leaves", async () => {
@@ -345,7 +456,7 @@ describe("AutoGit in projectd", () => {
     await waitFor(() => autoGitOf(joiner)?.state === "leader", "the joiner to take over", GIT_WAIT_MS)
 
     await joiner.write("notes.md", "one\nfrom the joiner\n")
-    await waitFor(() => checkpointOf(joiner) !== null, "the new leader's checkpoint", GIT_WAIT_MS)
+    await waitFor(() => (checkpointOf(joiner) ?? repos.initial) !== repos.initial, "the new leader's checkpoint", GIT_WAIT_MS)
     const saved = checkpointOf(joiner) ?? ""
     expect(remoteHead(repos.remote)).toBe(saved)
     expect(git(repos.remote, "show", `${saved}:notes.md`)).toBe("one\nfrom the joiner")
@@ -382,5 +493,116 @@ describe("AutoGit in projectd", () => {
     expect(joiner.host.status().pausedReason).toContain("in the middle of a merge")
     await fs.rm(mergeHead)
     await waitFor(() => joiner.host.state === "live", "the joiner to resume after the merge", GIT_WAIT_MS)
+  })
+
+  it("holds saving while a shared env file isn't ignored, until someone adds it to .gitignore", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "src/app.ts": "export const answer = 42\n" })
+    await writeFiles(repos.creatorRoot, { ".env": "API_KEY=creator\n" })
+    const roomKey = randomBytes(32)
+    const creator = await createPeer(room, "creator", roomKey, {
+      root: repos.creatorRoot,
+      clientId: "c_a",
+      shareEnvironmentFiles: true,
+    })
+    await startLive(creator, "the creator")
+    await waitFor(() => autoGitOf(creator)?.state !== "no_leader", "the creator to lead", GIT_WAIT_MS)
+    const joiner = await createPeer(room, "joiner", roomKey, {
+      root: repos.joinerRoot,
+      clientId: "c_b",
+      shareEnvironmentFiles: true,
+    })
+    await startLive(joiner, "the joiner")
+
+    await creator.write("src/app.ts", "export const answer = 43\n")
+    await waitFor(() => autoGitOf(joiner)?.detailCode === "ENV_NOT_IGNORED", "the joiner to hear why saving waits", GIT_WAIT_MS)
+    expect(autoGitOf(creator)).toMatchObject({
+      state: "blocked",
+      detail:
+        ".env isn't ignored by Git, so saving the session to Git is on hold rather than commit it. Add it to .gitignore to resume.",
+    })
+    expect(remoteHead(repos.remote)).toBe(repos.initial)
+
+    expect(await joiner.host.ignoreEnvironmentFiles()).toEqual([".env"])
+    await waitFor(() => remoteHead(repos.remote) !== repos.initial, "the session to be saved once .env is ignored", GIT_WAIT_MS)
+    const saved = remoteHead(repos.remote)
+    expect(git(repos.remote, "ls-tree", "-r", "--name-only", saved).split("\n")).toEqual([".gitignore", "src/app.ts"])
+    expect(git(repos.remote, "show", `${saved}:.gitignore`)).toContain("/.env")
+    await waitFor(async () => (await creator.read(".gitignore"))?.includes("/.env") === true, "the creator to get .gitignore")
+  })
+
+  it("stops counting env-only edits as unsaved once the leader finds nothing new for Git", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ ".gitignore": ".env\n", "src/app.ts": "export const answer = 42\n" })
+    await writeFiles(repos.creatorRoot, { ".env": "API_KEY=creator\n" })
+    const roomKey = randomBytes(32)
+    const creator = await createPeer(room, "creator", roomKey, {
+      root: repos.creatorRoot,
+      clientId: "c_a",
+      shareEnvironmentFiles: true,
+    })
+    await startLive(creator, "the creator")
+    const joiner = await createPeer(room, "joiner", roomKey, {
+      root: repos.joinerRoot,
+      clientId: "c_b",
+      shareEnvironmentFiles: true,
+    })
+    await startLive(joiner, "the joiner")
+
+    await creator.write("src/app.ts", "export const answer = 43\n")
+    await waitFor(
+      () =>
+        remoteHead(repos.remote) !== repos.initial &&
+        checkpointOf(joiner) === remoteHead(repos.remote) &&
+        autoGitOf(joiner)?.unsavedChanges === 0,
+      "the edit to be saved",
+      GIT_WAIT_MS,
+    )
+    const saved = remoteHead(repos.remote)
+
+    await joiner.write(".env", "API_KEY=rotated\n")
+    await waitFor(async () => (await creator.read(".env")) === "API_KEY=rotated\n", "the env edit to reach the creator")
+    await waitFor(
+      () => autoGitOf(joiner)?.unsavedChanges === 0 && autoGitOf(creator)?.unsavedChanges === 0,
+      "both members to see the env edit needs no save",
+      GIT_WAIT_MS,
+    )
+    expect(checkpointOf(joiner)).toBe(saved)
+    expect(remoteHead(repos.remote)).toBe(saved)
+  })
+
+  it("tells the session how far the branch it merges into moved, and never rebases", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\n" })
+    // main starts where the session branch does, then moves on without it.
+    git(repos.creatorRoot, "push", "-q", "origin", `${BRANCH}:refs/heads/main`)
+    const mainRoot = await tempFolder("main")
+    git(mainRoot, "clone", "-q", "-b", "main", repos.remote, ".")
+    for (let index = 1; index <= 3; index += 1) {
+      await writeFiles(mainRoot, { [`main-${index}.md`]: `${index}\n` })
+      git(mainRoot, "add", "-A")
+      git(mainRoot, "commit", "-q", "-m", `main ${index}`)
+    }
+    git(mainRoot, "push", "-q", "origin", "main")
+
+    const creator = await createPeer(room, "creator", randomBytes(32), {
+      root: repos.creatorRoot,
+      clientId: "c_a",
+      targetBranch: "main",
+    })
+    await startLive(creator, "the creator")
+    const before = git(repos.creatorRoot, "rev-parse", BRANCH)
+
+    expect(await creator.host.checkTarget()).toMatchObject({
+      branch: "main",
+      behind: 3,
+      ahead: 0,
+      recommended: true,
+      reason: "main has 3 commits this session's branch doesn't have.",
+      error: null,
+    })
+    expect(creator.host.status().target).toMatchObject({ behind: 3, recommended: true })
+    expect(creator.host.dismissTargetRecommendation()).toMatchObject({ behind: 3, recommended: false, reason: null })
+    expect(git(repos.creatorRoot, "rev-parse", BRANCH)).toBe(before)
   })
 })

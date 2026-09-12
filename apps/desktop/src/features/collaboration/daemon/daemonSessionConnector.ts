@@ -109,6 +109,10 @@ export interface DaemonSessionTarget {
   branchName?: string | null
   /** Share env files (.env) through the session although Git ignores them. */
   shareEnvironmentFiles?: boolean
+  /** The branch the session's work merges into; the daemon tracks how far it moved. */
+  targetBranch?: string | null
+  /** When the session started, in epoch milliseconds. */
+  sessionStartedAt?: number | null
 }
 
 export interface DaemonSessionConnection {
@@ -155,6 +159,8 @@ export async function connectDaemonSession(
       actor: target.principalId ? { principalId: target.principalId } : undefined,
       ...(target.branchName ? { branchName: target.branchName } : {}),
       ...(target.shareEnvironmentFiles ? { shareEnvironmentFiles: true } : {}),
+      ...(target.targetBranch ? { targetBranch: target.targetBranch } : {}),
+      ...(target.sessionStartedAt ? { sessionStartedAt: target.sessionStartedAt } : {}),
     })
     if (!result.success) {
       throw new Error(result.error)

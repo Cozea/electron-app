@@ -24,9 +24,11 @@ import type {
   ProjectdSessionState,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
+  ProjectdTargetStatus,
 } from "@cozea/projectd-protocol"
 
-import { AutoGitAgent, AutoGitError, type AutoGitTiming } from "../autogit/AutoGitAgent"
+import { AutoGitAgent, AutoGitError, type AutoGitTiming, type SessionFileChange } from "../autogit/AutoGitAgent"
+import { TargetWatcher } from "../autogit/TargetWatcher"
 import { FSEventsClient, type FileEventSource } from "../filesystem/FSEventsClient"
 import { MaterializationIndex } from "../filesystem/MaterializationIndex"
 import { FilesystemMaterializer } from "../filesystem/Materializer"
@@ -38,6 +40,7 @@ import type { GitService } from "../git/GitService"
 import { NativeMacHelper } from "../native/NativeMacHelper"
 import type { ProjectdDatabase } from "../storage/Database"
 import { BaselineStore } from "./BaselineStore"
+import { BoundedDiff } from "./BoundedDiff"
 import { ExternalSnapshotAdapter } from "./ExternalSnapshotAdapter"
 import { OutboundBatchQueue } from "./OutboundBatchQueue"
 import { InvalidProjectPathError, normalizeProjectPath } from "./projectPath"
@@ -93,8 +96,14 @@ export interface CollaborationSessionHostOptions {
   gitService?: GitService
   /** The session's branch: the folder syncs only while it is checked out, and AutoGit saves to it. */
   branchName?: string
-  /** Share env files (.env) through the session although Git ignores them; AutoGit never commits them. */
+  /** Share env files (.env) through the session although Git ignores them. */
   shareEnvironmentFiles?: boolean
+  /** The branch the session's work merges into; the host tracks how far it moved (P20). */
+  targetBranch?: string
+  /** When the session started, for the target tracker's "running for over a day" rule. */
+  sessionStartedAt?: number
+  /** How often the target branch is fetched and measured. */
+  targetCheckIntervalMs?: number
   /** Fixes this device's replica client id; tests use it to choose which device leads. */
   clientId?: string
   autoGitTiming?: Partial<AutoGitTiming>
@@ -149,8 +158,10 @@ export class CollaborationSessionHost {
   readonly baselines: BaselineStore
   readonly queue: OutboundBatchQueue
   readonly watcher: WorkspaceFilesystemWatcher
+  readonly target: TargetWatcher | null
 
   private readonly adapter: ExternalSnapshotAdapter
+  private readonly textDiff = new BoundedDiff()
   private readonly materializer: FilesystemMaterializer
   private readonly autoGit: AutoGitAgent | null
   private readonly actor: ChangeActor
@@ -268,8 +279,22 @@ export class CollaborationSessionHost {
             maxTextFileBytes: this.maxTextFileBytes,
             runExclusive: (work) => this.exclusive(work),
             flushLocalChanges: () => this.flushAndAwaitAcks(),
+            applySessionChanges: (changes) => this.applySessionChanges(changes),
             onChange: () => this.emitStatusSoon(),
             timing: options.autoGitTiming,
+          })
+        : null
+    const targetBranch = options.targetBranch?.trim() || null
+    this.target =
+      this.branchName && targetBranch && targetBranch !== this.branchName && options.gitService
+        ? new TargetWatcher({
+            workspaceRoot: this.workspaceRoot,
+            branchName: this.branchName,
+            targetBranch,
+            gitService: options.gitService,
+            sessionStartedAt: options.sessionStartedAt,
+            intervalMs: options.targetCheckIntervalMs,
+            onChange: () => this.emitStatusSoon(),
           })
         : null
     this.watcher.on("event", (event: NormalizedFsEvent) => this.handleFileEvent(event))
@@ -356,6 +381,50 @@ export class CollaborationSessionHost {
     return this.autoGit.checkpointNow()
   }
 
+  /**
+   * Adds the session's env files that Git doesn't ignore to the folder's .gitignore,
+   * which then syncs like any file. Saving to Git resumes once it reaches the Mac that
+   * saves. Returns the paths added.
+   */
+  async ignoreEnvironmentFiles(): Promise<string[]> {
+    if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Viewers can't change the session's files.")
+    if (!this.gitService) throw new SessionHostError("AUTOGIT_OFF", "This session's folder is not a Git repository.")
+    const environmentFiles = this.replica.tree
+      .listLiveEntries()
+      .filter((entry) => entry.kind === "text" && isSharedEnvironmentFile(entry.path))
+      .map((entry) => entry.path)
+    if (environmentFiles.length === 0) return []
+    const ignored = await this.gitService.checkIgnore(this.workspaceRoot, environmentFiles)
+    const missing = environmentFiles.filter((filePath) => !ignored.has(filePath)).sort()
+    if (missing.length === 0) return []
+    const gitignorePath = path.join(this.workspaceRoot, ".gitignore")
+    const existing = await fs.readFile(gitignorePath, "utf8").catch(() => "")
+    const lines = [
+      ...(existing && !existing.endsWith("\n") ? [""] : []),
+      "# Env files shared through the Cozea live session. Git keeps them out of commits.",
+      ...missing.map((filePath) => `/${filePath}`),
+    ]
+    await fs.appendFile(gitignorePath, `${lines.join("\n")}\n`)
+    // The folder's watcher would find it too; this sends it without waiting for the event.
+    await this.enqueue(() => this.ingestChange(".gitignore", gitignorePath))
+    return missing
+  }
+
+  /** Fetches the target branch and measures it now (P20); null for a session without one. */
+  async checkTarget(): Promise<ProjectdTargetStatus | null> {
+    if (!this.target) return null
+    const status = await this.target.checkNow(true)
+    this.emitStatusSoon()
+    return status
+  }
+
+  /** Hides the rebase recommendation for a while. */
+  dismissTargetRecommendation(): ProjectdTargetStatus | null {
+    const status = this.target?.dismiss() ?? null
+    this.emitStatusSoon()
+    return status
+  }
+
   async stop(): Promise<void> {
     if (this.hostState === "stopped") return
     // Unsent local edits go to the durable queue and leave on the next attach.
@@ -385,6 +454,7 @@ export class CollaborationSessionHost {
       updatedAt: Date.now(),
       pausedReason: this.gitPause,
       autoGit: this.autoGit?.status() ?? null,
+      target: this.target?.status() ?? null,
     }
   }
 
@@ -529,6 +599,7 @@ export class CollaborationSessionHost {
     }
     this.refreshState()
     void this.autoGit?.start()
+    this.target?.start()
   }
 
   private async seedFromFolder(): Promise<void> {
@@ -712,6 +783,66 @@ export class CollaborationSessionHost {
     this.index.remove(this.publicSessionId, entry.fileId)
     this.baselines.deleteBaseline(entry.fileId)
     this.scheduleSubmit()
+  }
+
+  /**
+   * Applies AutoGit's merge of commits pushed from outside the session, as edits by
+   * this device, and writes them to this folder. Nothing is applied when a file no
+   * longer reads as the merge found it; those paths come back so it can merge again.
+   */
+  private async applySessionChanges(changes: SessionFileChange[]): Promise<string[]> {
+    const currentText = (filePath: string): string | null => {
+      const entry = this.findLiveEntry(filePath)
+      return entry?.kind === "text" ? this.replica.textDocs.getTextContent(entry.fileId) : null
+    }
+    const changedMeanwhile = changes
+      .filter((change) => currentText(change.path) !== change.expected)
+      .map((change) => change.path)
+    if (changedMeanwhile.length > 0) return changedMeanwhile
+
+    const touched: string[] = []
+    for (const change of changes) {
+      const entry = this.findLiveEntry(change.path)
+      if (change.text === null) {
+        if (!entry) continue
+        this.replica.deleteFile(entry.fileId, this.actor)
+        touched.push(entry.fileId)
+      } else if (entry) {
+        this.replaceText(entry.fileId, change.text)
+        touched.push(entry.fileId)
+      } else {
+        const created = this.replica.createFile({
+          path: change.path,
+          kind: "text",
+          content: change.text,
+          mode: change.mode,
+          actor: this.actor,
+        })
+        touched.push(created.fileId)
+      }
+    }
+    for (const fileId of touched) await this.materializer.materializeFile(fileId, Date.now())
+    this.flushSubmit()
+    return []
+  }
+
+  /** Edits a text doc into `next` with the smallest change, so concurrent peer edits merge around it. */
+  private replaceText(fileId: string, next: string): void {
+    const { doc, text } = this.replica.textDocs.getOrCreate(fileId)
+    const ops = this.textDiff.computeDiff(text.toString(), next)
+    doc.transact(() => {
+      let index = 0
+      for (const op of ops) {
+        if (op.op === "equal") {
+          index += op.text.length
+        } else if (op.op === "delete") {
+          text.delete(index, op.text.length)
+        } else {
+          text.insert(index, op.text)
+          index += op.text.length
+        }
+      }
+    }, this.actor)
   }
 
   private recordDiskState(
@@ -1050,6 +1181,7 @@ export class CollaborationSessionHost {
     }
     // A leader gives its lease up while the connection is still open.
     this.autoGit?.stop()
+    this.target?.stop()
     this.watcher.stop()
     this.unsubscribeRemote()
     this.roomClient.disconnect()

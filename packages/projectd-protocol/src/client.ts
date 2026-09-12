@@ -15,6 +15,7 @@ import {
   type ProjectdCheckpointResult,
   type ProjectdSessionStatus,
   type ProjectdSessionTicket,
+  type ProjectdTargetStatus,
   type ProjectdShutdownResult,
 } from "./index"
 
@@ -363,6 +364,21 @@ export class ProjectdClient {
   /** Saves the session to its Git branch now, or asks the device that saves to. */
   async checkpointSession(publicSessionId: string): Promise<ProjectdCheckpointResult> {
     return this.request<ProjectdCheckpointResult>("sessions.checkpointNow", { publicSessionId })
+  }
+
+  /** Adds the session's env files that Git doesn't ignore to the folder's .gitignore. */
+  async ignoreSessionEnvironmentFiles(publicSessionId: string): Promise<{ paths: string[] }> {
+    return this.request<{ paths: string[] }>("sessions.ignoreEnvironmentFiles", { publicSessionId })
+  }
+
+  /** Fetches the session's target branch and measures it now. */
+  async checkSessionTarget(publicSessionId: string): Promise<ProjectdTargetStatus | null> {
+    return this.request<ProjectdTargetStatus | null>("sessions.checkTarget", { publicSessionId }, 90_000)
+  }
+
+  /** Hides the rebase recommendation for a while. */
+  async dismissSessionTarget(publicSessionId: string): Promise<ProjectdTargetStatus | null> {
+    return this.request<ProjectdTargetStatus | null>("sessions.dismissTarget", { publicSessionId })
   }
 
   disconnect(): void {

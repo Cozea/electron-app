@@ -121,6 +121,31 @@ export function registerProjectdHandlers(): void {
     }
   })
 
+  ipcMain.handle("projectd:sessions:ignoreEnvironmentFiles", async (_event, publicSessionId: string) => {
+    try {
+      const { paths } = await getSharedProjectdClient().ignoreSessionEnvironmentFiles(publicSessionId)
+      return { success: true, paths }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
+  ipcMain.handle("projectd:sessions:checkTarget", async (_event, publicSessionId: string) => {
+    try {
+      return { success: true, target: await getSharedProjectdClient().checkSessionTarget(publicSessionId) }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
+  ipcMain.handle("projectd:sessions:dismissTarget", async (_event, publicSessionId: string) => {
+    try {
+      return { success: true, target: await getSharedProjectdClient().dismissSessionTarget(publicSessionId) }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
   ipcMain.handle("projectd:health", async () => {
     const client = getSharedProjectdClient()
     try {

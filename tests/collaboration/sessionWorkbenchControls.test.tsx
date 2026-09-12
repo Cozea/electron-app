@@ -106,6 +106,59 @@ describe("P23 session bar", () => {
     expect(markup).toMatch(/class="[^"]*text-destructive[^"]*">2 files differ from the session\.</)
   })
 
+  it("offers to add env files to .gitignore when saving waits on them, to members who can edit", () => {
+    const autoGit = {
+      tone: "attention" as const,
+      label: "Git saves on hold",
+      detail: ".env is not ignored by Git, so saving is on hold.",
+      title: null,
+      canSave: true,
+      fix: "ignore_env" as const,
+    }
+    const props = {
+      branchName: "feature/live",
+      targetBranch: "main",
+      lifecycle: "ACTIVE",
+      sync: LIVE,
+      autoGit,
+      members: MEMBERS,
+      membership: "active" as const,
+      canManage: false,
+      onIgnoreEnvironmentFiles: noop,
+      ...HANDLERS,
+    }
+    expect(renderToStaticMarkup(<SessionWorkbenchControls {...props} canEdit />)).toContain("Add to .gitignore")
+    expect(renderToStaticMarkup(<SessionWorkbenchControls {...props} canEdit={false} />)).not.toContain("Add to .gitignore")
+  })
+
+  it("says how far the branch the session merges into moved, with a check and a dismissal", () => {
+    const markup = renderToStaticMarkup(
+      <SessionWorkbenchControls
+        branchName="feature/live"
+        targetBranch="main"
+        lifecycle="ACTIVE"
+        sync={LIVE}
+        members={MEMBERS}
+        membership="active"
+        canManage={false}
+        target={{
+          label: "main is 6 commits ahead",
+          detail: "Rebase recommended: main changed src/app.ts, which the session changed too.",
+          recommended: true,
+          tone: "working",
+          checking: false,
+          title: null,
+        }}
+        onCheckTarget={noop}
+        onDismissTarget={noop}
+        {...HANDLERS}
+      />,
+    )
+    expect(markup).toContain("main is 6 commits ahead · Rebase recommended: main changed src/app.ts")
+    expect(markup).toContain(">Check main<")
+    expect(markup).toContain(">Dismiss<")
+  })
+
   it("points a member at their session on another branch", () => {
     const markup = renderToStaticMarkup(<SessionBranchNotice branchName="feature/live" onSwitch={noop} />)
     expect(markup).toContain("feature/live")

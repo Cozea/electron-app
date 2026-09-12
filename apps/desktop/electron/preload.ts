@@ -318,6 +318,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
       updateTicket: (publicSessionId: string, ticket: ProjectdSessionTicket) =>
         ipcRenderer.invoke('projectd:sessions:updateTicket', { publicSessionId, ticket }),
       checkpointNow: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:checkpointNow', publicSessionId),
+      ignoreEnvironmentFiles: (publicSessionId: string) =>
+        ipcRenderer.invoke('projectd:sessions:ignoreEnvironmentFiles', publicSessionId),
+      checkTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:checkTarget', publicSessionId),
+      dismissTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:dismissTarget', publicSessionId),
       onEvent: (listener: (event: ProjectdSessionEvent) => void) => {
         const handler = (_event: unknown, payload: ProjectdSessionEvent) => listener(payload)
         ipcRenderer.on('projectd:sessions:event', handler)

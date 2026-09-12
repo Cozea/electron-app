@@ -5,8 +5,8 @@
  * Phase: P23
  *
  * Shows the session's branch, how this folder syncs with it, when the session was
- * last saved to the branch (P16 - P18), who is in it, and the actions this device
- * may take. The microphone joins the bar with P25.
+ * last saved to the branch (P16 - P18), how far the branch it merges into has moved
+ * (P20), who is in it, and the actions this device may take.
  */
 
 import { useState } from "react"
@@ -19,6 +19,7 @@ import type {
   LiveSessionAutoGitView,
   LiveSessionMember,
   LiveSessionSyncView,
+  LiveSessionTargetView,
   SessionMembership,
 } from "@/features/collaboration/live/liveSessionModel"
 import { cn } from "@/lib/utils"
@@ -53,8 +54,15 @@ export interface SessionWorkbenchControlsProps {
   members: readonly LiveSessionMember[]
   membership: SessionMembership
   canManage: boolean
+  /** Whether this device may change the session's files. */
+  canEdit?: boolean
+  /** How far the branch the session merges into has moved. */
+  target?: LiveSessionTargetView | null
   busyAction?: LiveSessionAction | null
   onSaveNow?: () => void
+  onIgnoreEnvironmentFiles?: () => void
+  onCheckTarget?: () => void
+  onDismissTarget?: () => void
   onJoin?: () => void
   onLeave?: () => void
   onPause?: () => void
@@ -71,8 +79,13 @@ export function SessionWorkbenchControls({
   members,
   membership,
   canManage,
+  canEdit = false,
+  target = null,
   busyAction = null,
   onSaveNow,
+  onIgnoreEnvironmentFiles,
+  onCheckTarget,
+  onDismissTarget,
   onJoin,
   onLeave,
   onPause,
@@ -212,9 +225,50 @@ export function SessionWorkbenchControls({
         </p>
       ) : null}
       {autoGit?.detail ? (
-        <p className={cn("pb-0.5 pl-4", autoGit.tone === "attention" ? "text-destructive" : "text-muted-foreground")}>
-          {autoGit.detail}
-        </p>
+        <div className="flex items-center gap-2 pb-0.5 pl-4">
+          <p className={cn("min-w-0", autoGit.tone === "attention" ? "text-destructive" : "text-muted-foreground")}>
+            {autoGit.detail}
+          </p>
+          {autoGit.fix === "ignore_env" && canEdit && membership === "active" && onIgnoreEnvironmentFiles ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className={cn(BAR_BUTTON, "shrink-0")}
+              disabled={busy}
+              onClick={onIgnoreEnvironmentFiles}
+            >
+              {spinnerFor("ignore_env")}
+              Add to .gitignore
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {target && membership === "active" ? (
+        <div className="flex items-center gap-2 pb-0.5 pl-4 text-muted-foreground" title={target.title ?? undefined}>
+          <p className={cn("min-w-0 truncate", target.tone === "attention" ? "text-destructive" : undefined)}>
+            {target.label}
+            {target.detail ? ` · ${target.detail}` : null}
+          </p>
+          {onCheckTarget ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className={cn(BAR_BUTTON, "shrink-0")}
+              disabled={busy || target.checking}
+              onClick={onCheckTarget}
+            >
+              {target.checking || busyAction === "check_target" ? <Spinner size="xs" className="mr-1" /> : null}
+              Check {targetBranch}
+            </Button>
+          ) : null}
+          {target.recommended && onDismissTarget ? (
+            <Button type="button" size="sm" variant="ghost" className={cn(BAR_BUTTON, "shrink-0")} onClick={onDismissTarget}>
+              Dismiss
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

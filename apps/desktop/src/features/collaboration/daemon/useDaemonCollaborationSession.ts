@@ -45,6 +45,8 @@ interface DaemonSessionRecord {
   branchName: string
   lifecycle: string
   shareEnvironmentFiles?: boolean
+  targetBranch?: string
+  createdAt?: number
 }
 
 async function requestSessionTicket(publicSessionId: string): Promise<ProjectdSessionTicket> {
@@ -121,6 +123,8 @@ export function useDaemonCollaborationSession(input: {
           principalId,
           branchName: session.branchName,
           shareEnvironmentFiles: session.shareEnvironmentFiles === true,
+          targetBranch: session.targetBranch ?? null,
+          sessionStartedAt: session.createdAt ?? null,
         }
       : null
   // A string, so a new but equal target object does not reconnect.

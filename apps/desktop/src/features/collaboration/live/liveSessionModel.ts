@@ -5,13 +5,22 @@
  * Phase: P14, P23
  */
 
-import type { ProjectdSessionStatus } from "@cozea/projectd-protocol"
+import type { ProjectdSessionStatus, ProjectdTargetStatus } from "@cozea/projectd-protocol"
 
 import type { DaemonSessionPhase } from "../daemon/useDaemonCollaborationSession"
 
 export type SessionMembership = "active" | "left" | "revoked" | "none"
 
-export type LiveSessionAction = "join" | "leave" | "pause" | "resume" | "end" | "switch" | "save"
+export type LiveSessionAction =
+  | "join"
+  | "leave"
+  | "pause"
+  | "resume"
+  | "end"
+  | "switch"
+  | "save"
+  | "ignore_env"
+  | "check_target"
 
 export interface LiveSessionMember {
   principalId: string
@@ -152,6 +161,14 @@ export interface LiveSessionAutoGitView {
   title: string | null
   /** Whether Save now can reach a Mac that pushes. */
   canSave: boolean
+  /** The fix the bar offers for why saving waits, when there is one. */
+  fix: "ignore_env" | null
+}
+
+// Stops the session itself can lift, and what the bar calls them.
+const HOLD_LABELS: Record<string, string> = {
+  ENV_NOT_IGNORED: "Git saves on hold",
+  CONFLICT_MARKERS: "Git saves wait on conflicts",
 }
 
 function formatSaveTime(publishedAt: number): string {
@@ -172,11 +189,21 @@ export function describeAutoGit(
       ? `${leaderName ?? "Another member"}'s Mac saves the session to Git.`
       : null
   const title = [saver, checkpoint ? `Last commit ${checkpoint.commitOid.slice(0, 7)}.` : null].filter(Boolean).join(" ")
-  const view = { title: title || null, canSave: status.role !== "viewer" && autoGit.leaderPrincipalId !== null }
+  const view = {
+    title: title || null,
+    canSave: status.role !== "viewer" && autoGit.leaderPrincipalId !== null,
+    fix: null,
+  }
 
   switch (autoGit.state) {
     case "blocked":
-      return { ...view, tone: "attention", label: "Git saves stopped", detail: autoGit.detail }
+      return {
+        ...view,
+        tone: "attention",
+        label: HOLD_LABELS[autoGit.detailCode ?? ""] ?? "Git saves stopped",
+        detail: autoGit.detail,
+        fix: autoGit.detailCode === "ENV_NOT_IGNORED" && status.role !== "viewer" ? "ignore_env" : null,
+      }
     case "ineligible":
       return { ...view, tone: "attention", label: "Not saving to Git", detail: autoGit.detail, canSave: false }
     case "no_leader":
@@ -190,6 +217,44 @@ export function describeAutoGit(
         : null
       return { ...view, tone: failure ? "attention" : "live", label, detail: failure ?? autoGit.detail }
     }
+  }
+}
+
+export interface LiveSessionTargetView {
+  /** Short, for the bar: "main is 23 commits ahead". */
+  label: string
+  /** Why a rebase is recommended, or why the check failed. */
+  detail: string | null
+  recommended: boolean
+  tone: LiveSessionTone
+  checking: boolean
+  /** When the target was last checked, and which files both sides changed, for a tooltip. */
+  title: string | null
+}
+
+/** How far the branch the session merges into has moved, for the session bar (Section 20). */
+export function describeTarget(target: ProjectdTargetStatus | null): LiveSessionTargetView | null {
+  if (!target) return null
+  const base = { recommended: false, checking: target.checking, detail: null, title: null }
+  if (target.error) {
+    return { ...base, tone: "attention", label: `Couldn't check ${target.branch}`, detail: target.error }
+  }
+  if (target.checkedAt === null) {
+    return target.checking ? { ...base, tone: "idle", label: `Checking ${target.branch}…` } : null
+  }
+  const checked = `Checked ${target.branch} at ${formatSaveTime(target.checkedAt)}.`
+  if (target.behind === 0) {
+    return { ...base, tone: "idle", label: `Up to date with ${target.branch}`, title: checked }
+  }
+  const overlap =
+    target.overlappingPaths.length > 0 ? ` Both changed: ${target.overlappingPaths.join(", ")}.` : ""
+  return {
+    ...base,
+    tone: target.recommended ? "working" : "idle",
+    label: `${target.branch} is ${countOf(target.behind, "commit", "commits")} ahead`,
+    detail: target.recommended && target.reason ? `Rebase recommended: ${target.reason}` : null,
+    recommended: target.recommended,
+    title: `${checked}${overlap}`,
   }
 }
 

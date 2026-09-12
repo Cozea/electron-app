@@ -13,6 +13,10 @@
  * text over the sync limit, submodules, files under a Git filter such as LFS, and
  * editor files kept on each machine. Staging uses a temporary index, so the
  * repository's own index, HEAD and working tree are untouched.
+ *
+ * New paths go in as Git's own ignore rules allow. A new env file that Git doesn't
+ * ignore stops the build instead: saving waits for someone to ignore it rather than
+ * commit a likely secret, or leave it out behind Git's back.
  */
 
 import { createHash } from "node:crypto"
@@ -56,6 +60,17 @@ export interface CheckpointBuildParams {
   pathPrefix?: string
   /** The largest text file the session syncs. */
   maxTextFileBytes?: number
+}
+
+/** A checkpoint would add env files Git doesn't ignore. Paths are relative to the session's folder. */
+export class UnignoredEnvironmentFilesError extends Error {
+  readonly paths: readonly string[]
+
+  constructor(paths: readonly string[]) {
+    super(`Git doesn't ignore ${paths.join(", ")}`)
+    this.name = "UnignoredEnvironmentFilesError"
+    this.paths = paths
+  }
 }
 
 interface IndexEntry {
@@ -158,12 +173,17 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
         indexEnv,
       })
 
-      // Env files a session shares, and anything else Git ignores, never enter a checkpoint.
-      const keptOutOfGit = await this.pathsKeptOutOfGit(
-        git,
-        [...snapshotFiles.keys()].filter((repoFilePath) => !parentEntries.has(repoFilePath)),
-        indexEnv,
+      // New paths go in as Git's own rules allow: anything Git ignores stays out.
+      const newPaths = [...snapshotFiles.keys()].filter((repoFilePath) => !parentEntries.has(repoFilePath))
+      const keptOutOfGit = await this.ignoredPaths(git, newPaths, indexEnv)
+      const unignoredEnvironmentFiles = newPaths.filter(
+        (repoFilePath) => !keptOutOfGit.has(repoFilePath) && isSharedEnvironmentFile(repoFilePath),
       )
+      if (unignoredEnvironmentFiles.length > 0) {
+        throw new UnignoredEnvironmentFilesError(
+          unignoredEnvironmentFiles.map((repoFilePath) => repoFilePath.slice(prefix.length)),
+        )
+      }
       const updates: string[] = []
       for (const [repoFilePath, file] of snapshotFiles) {
         if (keptOutOfGit.has(repoFilePath)) continue
@@ -317,32 +337,26 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
   }
 
   /**
-   * New paths a checkpoint must never add: env files, even where the repository forgot
-   * to ignore them, and anything Git ignores. A path the parent commit already tracks
-   * stays tracked. When Git cannot read its ignore rules the checkpoint fails, rather
-   * than risk committing a secret.
+   * The new paths Git ignores, which a checkpoint leaves out. A path the parent commit
+   * already tracks stays tracked. When Git cannot read its ignore rules the checkpoint
+   * fails, rather than risk committing what the repository meant to keep out.
    */
-  private async pathsKeptOutOfGit(
-    git: GitRunner,
-    paths: string[],
-    indexEnv: Record<string, string>,
-  ): Promise<Set<string>> {
-    const kept = new Set(paths.filter((repoFilePath) => isSharedEnvironmentFile(repoFilePath)))
-    const candidates = paths.filter((repoFilePath) => !kept.has(repoFilePath))
-    if (candidates.length === 0) return kept
+  private async ignoredPaths(git: GitRunner, paths: string[], indexEnv: Record<string, string>): Promise<Set<string>> {
+    const ignored = new Set<string>()
+    if (paths.length === 0) return ignored
     const result = await git(["check-ignore", "-z", "--stdin"], {
       env: indexEnv,
-      stdin: `${candidates.join("\0")}\0`,
+      stdin: `${paths.join("\0")}\0`,
       allowNonZeroExit: true,
     })
     // Exit 1 means none of the paths is ignored.
     if (!result.success && result.exitCode !== 1) {
       throw new Error(`Git could not read its ignore rules: ${result.stderr.trim() || `exit ${result.exitCode}`}`)
     }
-    for (const ignored of result.stdout.split("\0")) {
-      if (ignored) kept.add(ignored)
+    for (const ignoredPath of result.stdout.split("\0")) {
+      if (ignoredPath) ignored.add(ignoredPath)
     }
-    return kept
+    return ignored
   }
 
   /** Paths under a Git filter such as LFS: their stored bytes are not what the folder holds. */

@@ -5,6 +5,7 @@ import type {
   ProjectdSessionAttachParams,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
+  ProjectdTargetStatus,
 } from '@cozea/projectd-protocol'
 import type {
   ScheduledTaskDraft,
@@ -1552,7 +1553,13 @@ export interface WorkbenchSessionSnapshot {
   hasNativePreviewSession: boolean
 }
 
-export type { ProjectdCheckpointResult, ProjectdSessionAttachParams, ProjectdSessionStatus, ProjectdSessionTicket }
+export type {
+  ProjectdCheckpointResult,
+  ProjectdSessionAttachParams,
+  ProjectdSessionStatus,
+  ProjectdSessionTicket,
+  ProjectdTargetStatus,
+}
 
 /** A daemon session event relayed by Electron; a `status` event carries a ProjectdSessionStatus. */
 export interface ProjectdSessionEvent {
@@ -1640,6 +1647,18 @@ export interface ElectronAPI {
       checkpointNow: (
         publicSessionId: string,
       ) => Promise<{ success: true; result: ProjectdCheckpointResult } | ProjectdCallFailure>
+      /** Adds the session's env files that Git doesn't ignore to the folder's .gitignore. */
+      ignoreEnvironmentFiles: (
+        publicSessionId: string,
+      ) => Promise<{ success: true; paths: string[] } | ProjectdCallFailure>
+      /** Fetches the branch the session merges into and measures it now (P20). */
+      checkTarget: (
+        publicSessionId: string,
+      ) => Promise<{ success: true; target: ProjectdTargetStatus | null } | ProjectdCallFailure>
+      /** Hides the rebase recommendation for a while. */
+      dismissTarget: (
+        publicSessionId: string,
+      ) => Promise<{ success: true; target: ProjectdTargetStatus | null } | ProjectdCallFailure>
       onEvent: (listener: (event: ProjectdSessionEvent) => void) => () => void
     }
   }

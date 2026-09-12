@@ -49,6 +49,8 @@ export interface RoomLease {
   expiresAt: number
   /** Why the leader stopped saving, when it did. */
   notice?: string | null
+  /** What kind of stop the notice describes, such as ENV_NOT_IGNORED. */
+  noticeCode?: string | null
 }
 
 /** The last checkpoint pushed to the session branch (Section 15.10). */
@@ -62,6 +64,8 @@ export interface RoomCheckpoint {
   leaseGeneration: number
   publishedAt: number
   publishedByPrincipalId: string
+  /** The branch still holds the session at this later sequence; absent from older rooms. */
+  savedThroughSeq?: number
 }
 
 export type RoomCheckpointInput = Pick<
@@ -97,6 +101,7 @@ type RequestReply =
   | { type: "barrier_ack"; requestId?: string; barrier: RoomBarrier }
   | { type: "lease_ack"; requestId?: string; lease: RoomLease }
   | { type: "checkpoint_ack"; requestId?: string; checkpoint: RoomCheckpoint }
+  | { type: "checkpoint_clean_ack"; requestId?: string; checkpoint: RoomCheckpoint }
   | { type: "checkpoint_request_ack"; requestId?: string; routed: boolean }
 
 type ServerMessage =
@@ -253,10 +258,10 @@ export class SessionRoomClient {
     this.connection?.send(JSON.stringify({ type: "lease_release", generation }))
   }
 
-  /** Tells every member why the leader stopped saving; null clears it. */
-  setLeaderNotice(generation: number, notice: string | null): void {
+  /** Tells every member why the leader stopped saving, and what kind of stop it is; null clears it. */
+  setLeaderNotice(generation: number, notice: string | null, code: string | null = null): void {
     if (this.clientState !== "live") return
-    this.connection?.send(JSON.stringify({ type: "lease_notice", generation, notice }))
+    this.connection?.send(JSON.stringify({ type: "lease_notice", generation, notice, code }))
   }
 
   /**
@@ -276,6 +281,14 @@ export class SessionRoomClient {
   /** Records a pushed checkpoint in the room, which tells every member (Section 15.10). */
   async publishCheckpoint(generation: number, checkpoint: RoomCheckpointInput): Promise<RoomCheckpoint> {
     return (await this.request("checkpoint_ack", { type: "checkpoint_publish", generation, checkpoint })).checkpoint
+  }
+
+  /**
+   * Records that the last checkpoint still holds the session at this barrier: Git had
+   * nothing new to take, as after an edit to an ignored env file.
+   */
+  async markSavedThrough(generation: number, barrierId: string): Promise<RoomCheckpoint> {
+    return (await this.request("checkpoint_clean_ack", { type: "checkpoint_clean", generation, barrierId })).checkpoint
   }
 
   /** Asks the leader for a checkpoint now. False when no device leads. */
@@ -423,6 +436,7 @@ export class SessionRoomClient {
       case "barrier_ack":
       case "lease_ack":
       case "checkpoint_ack":
+      case "checkpoint_clean_ack":
       case "checkpoint_request_ack":
         this.settleRequest(message)
         return

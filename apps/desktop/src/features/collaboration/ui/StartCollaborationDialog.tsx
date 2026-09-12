@@ -29,7 +29,11 @@ import { Spinner } from "@/components/ui/spinner"
 import { appToast } from "@/lib/appToast"
 import { useCreateCollaborationSession } from "../hooks/useCreateCollaborationSession"
 import { planLiveSessionStart } from "../live/liveSessionModel"
-import { describeSessionRepository, normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
+import {
+  describeSessionRepository,
+  normalizeSessionRepositoryUrl,
+  remoteCarriesCredentials,
+} from "@shared/collaboration/repositoryUrl"
 
 type AccessMode = "invite_only" | "organization_available"
 
@@ -67,6 +71,8 @@ export function StartCollaborationDialog({
   const plan = planLiveSessionStart({ branch: currentBranch, hasGitRepo, sessions })
   const submitting = stage === "creating_session"
   const [repositoryUrl, setRepositoryUrl] = useState<string | null>(null)
+  // The remote exactly as the folder has it, to warn about sign-in details in it.
+  const [originUrl, setOriginUrl] = useState<string | null>(null)
   const [shareEnvironmentFiles, setShareEnvironmentFiles] = useState(true)
 
   useEffect(() => {
@@ -75,10 +81,14 @@ export function StartCollaborationDialog({
     void window.electronAPI.workspace
       ?.getActiveForProject(String(projectId))
       .then((workspace) => {
-        if (!cancelled) setRepositoryUrl(normalizeSessionRepositoryUrl(workspace?.gitOriginUrl))
+        if (cancelled) return
+        setOriginUrl(workspace?.gitOriginUrl ?? null)
+        setRepositoryUrl(normalizeSessionRepositoryUrl(workspace?.gitOriginUrl))
       })
       .catch(() => {
-        if (!cancelled) setRepositoryUrl(null)
+        if (cancelled) return
+        setOriginUrl(null)
+        setRepositoryUrl(null)
       })
     return () => {
       cancelled = true
@@ -143,6 +153,13 @@ export function StartCollaborationDialog({
                 ? `Anyone you invite who has no copy of ${projectName} gets one cloned from ${describeSessionRepository(repositoryUrl)}.`
                 : "This folder has no https or ssh remote to share, so people you invite need their own copy on this branch."}
             </p>
+            {repositoryUrl && remoteCarriesCredentials(originUrl) ? (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400">
+                This folder&apos;s Git remote has sign-in details in its URL. Invitees clone it without them and sign in
+                with their own Git account. To take them out of your remote, run{" "}
+                <code className="font-mono">git remote set-url origin {repositoryUrl}</code>.
+              </p>
+            ) : null}
           </div>
 
           <label className="flex cursor-pointer items-start gap-2 text-sm">
@@ -157,7 +174,8 @@ export function StartCollaborationDialog({
               <span className="block">Share .env files</span>
               <span className="block text-[11px] text-muted-foreground">
                 Everyone in the session gets the same env files, end-to-end encrypted, and a change anyone makes reaches
-                everyone. They never go into Git. Anyone you remove keeps the copies they already have.
+                everyone. Git keeps them out of commits as your .gitignore says; while one isn&apos;t ignored, saving to
+                Git waits and the session bar offers to add it. Anyone you remove keeps the copies they already have.
               </span>
             </span>
           </label>
@@ -165,7 +183,8 @@ export function StartCollaborationDialog({
           {uncommittedFileCount > 0 ? (
             <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
               Your uncommitted changes to {uncommittedFileCount} {uncommittedFileCount === 1 ? "file are" : "files are"}{" "}
-              included: the session starts from this folder as it is now.
+              included: the session starts from this folder as it is now, and pushes them to{" "}
+              {currentBranch ?? "its branch"} soon after it starts.
             </p>
           ) : null}
 

@@ -45,6 +45,22 @@ export function normalizeSessionRepositoryUrl(raw: string | null | undefined): s
   return `${url.protocol}//${login}${url.host}${url.pathname}`
 }
 
+/**
+ * True when a remote URL carries sign-in details, such as https://<token>@github.com/….
+ * Sessions never share them (normalizeSessionRepositoryUrl drops them), and nothing
+ * rewrites the person's remote; the Start dialog tells them instead.
+ */
+export function remoteCarriesCredentials(raw: string | null | undefined): boolean {
+  const value = raw?.trim()
+  if (!value || SCP_LIKE_REMOTE.test(value)) return false
+  try {
+    const url = new URL(value)
+    return url.password !== "" || (url.protocol !== "ssh:" && url.username !== "")
+  } catch {
+    return false
+  }
+}
+
 /** The remote as people read it: host and path, without the scheme or a trailing `.git`. */
 export function describeSessionRepository(url: string): string {
   const scpLike = /^[^@/]+@([^:/]+):(.+)$/.exec(url)

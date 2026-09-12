@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
 
-import type { ProjectdAutoGitStatus, ProjectdSessionStatus } from "@cozea/projectd-protocol"
+import type { ProjectdAutoGitStatus, ProjectdSessionStatus, ProjectdTargetStatus } from "@cozea/projectd-protocol"
 
 import {
   describeAutoGit,
   describeLiveSessionSync,
+  describeTarget,
   resolveMembership,
   type LiveSessionMember,
 } from "@/features/collaboration/live/liveSessionModel"
@@ -162,5 +163,67 @@ describe("how the session bar describes saving to Git", () => {
   it("offers Save now only where a Mac can push and the member may write", () => {
     expect(describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "no_leader", leaderPrincipalId: null }) }))?.canSave).toBe(false)
     expect(describeAutoGit(daemonStatus({ role: "viewer", autoGit: autoGit() }))?.canSave).toBe(false)
+  })
+
+  it("says why saving waits, and offers the fix a member can make", () => {
+    const hold =
+      ".env isn't ignored by Git, so saving the session to Git is on hold rather than commit it. Add it to .gitignore to resume."
+    const held = autoGit({ state: "blocked", detail: hold, detailCode: "ENV_NOT_IGNORED" })
+    expect(describeAutoGit(daemonStatus({ autoGit: held }))).toMatchObject({
+      tone: "attention",
+      label: "Git saves on hold",
+      detail: hold,
+      fix: "ignore_env",
+    })
+    expect(describeAutoGit(daemonStatus({ role: "viewer", autoGit: held }))?.fix).toBeNull()
+    expect(
+      describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "blocked", detail: "Resolve…", detailCode: "CONFLICT_MARKERS" }) })),
+    ).toMatchObject({ label: "Git saves wait on conflicts", fix: null })
+  })
+})
+
+describe("how the session bar describes the branch the session merges into", () => {
+  function target(overrides: Partial<ProjectdTargetStatus> = {}): ProjectdTargetStatus {
+    return {
+      branch: "main",
+      behind: 0,
+      ahead: 2,
+      changedPathCount: 0,
+      overlappingPaths: [],
+      recommended: false,
+      reason: null,
+      checkedAt: new Date(2026, 8, 12, 9, 5).getTime(),
+      checking: false,
+      error: null,
+      ...overrides,
+    }
+  }
+
+  it("stays out of the bar until the target has been checked", () => {
+    expect(describeTarget(null)).toBeNull()
+    expect(describeTarget(target({ checkedAt: null }))).toBeNull()
+    expect(describeTarget(target({ checkedAt: null, checking: true }))).toMatchObject({ label: "Checking main…" })
+  })
+
+  it("says how far the target moved, and explains a recommended rebase", () => {
+    expect(describeTarget(target())).toMatchObject({ label: "Up to date with main", recommended: false })
+    expect(describeTarget(target({ behind: 3 }))).toMatchObject({
+      label: "main is 3 commits ahead",
+      detail: null,
+      recommended: false,
+    })
+    const reason = "main changed src/app.ts, which the session changed too."
+    const view = describeTarget(target({ behind: 6, recommended: true, reason, overlappingPaths: ["src/app.ts"] }))
+    expect(view).toMatchObject({
+      label: "main is 6 commits ahead",
+      detail: `Rebase recommended: ${reason}`,
+      recommended: true,
+    })
+    expect(view?.title).toContain("Both changed: src/app.ts.")
+  })
+
+  it("shows why the check failed", () => {
+    const error = "Git couldn't fetch main from origin: timed out"
+    expect(describeTarget(target({ error }))).toMatchObject({ tone: "attention", label: "Couldn't check main", detail: error })
   })
 })

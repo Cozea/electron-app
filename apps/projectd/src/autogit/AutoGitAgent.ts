@@ -11,9 +11,15 @@
  * on the remote, and records the checkpoint in the room. Every member then moves its
  * local branch and index to the checkpoint and keeps its working tree.
  *
- * AutoGit never overwrites commits it did not make: when the branch changes on the
- * remote outside the session, the leader stops saving and every member is told why.
+ * Commits pushed to the branch from outside the session are merged into the session
+ * as Git would merge them, and the next checkpoint builds on them (Section 18.7).
+ * AutoGit never overwrites commits it did not make: when the branch is rewritten
+ * outside the session, the leader stops saving and every member is told why.
  */
+
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 
 import type {
   ProjectdAutoGitState,
@@ -32,10 +38,12 @@ import {
   type SessionRoomClient,
 } from "../collaboration/SessionRoomClient"
 import type { SessionTransport } from "../collaboration/SessionTransport"
+import { TextDocRegistry } from "../collaboration/TextDocRegistry"
+import { ScopePolicy } from "../filesystem/ScopePolicy"
 import type { GitExecuteOptions } from "../git/GitProcess"
 import type { GitService } from "../git/GitService"
 import { BarrierCapture, type BarrierSnapshot } from "./BarrierCapture"
-import { CheckpointBuilder } from "./CheckpointBuilder"
+import { CheckpointBuilder, UnignoredEnvironmentFilesError, type CheckpointCommitResult } from "./CheckpointBuilder"
 import { GitBaselineAdopter } from "./GitBaselineAdopter"
 
 export interface AutoGitTiming {
@@ -53,6 +61,8 @@ export interface AutoGitTiming {
   eligibilityRecheckMs: number
   /** Limit for one fetch, push or ls-remote. */
   remoteTimeoutMs: number
+  /** How often the leader looks for commits pushed to the branch from outside the session. */
+  remotePollMs: number
 }
 
 export const DEFAULT_AUTOGIT_TIMING: AutoGitTiming = {
@@ -63,11 +73,19 @@ export const DEFAULT_AUTOGIT_TIMING: AutoGitTiming = {
   retryMs: 15_000,
   eligibilityRecheckMs: 60_000,
   remoteTimeoutMs: 60_000,
+  remotePollMs: 60_000,
 }
 
 const ADOPTION_RETRY_MS = 30_000
 // Failures every leader would hit alike; checkpoints stop until someone acts (Section 15.9).
 const BLOCKING_CODES = new Set(["REMOTE_CHANGED", "REMOTE_DIVERGED", "REMOTE_BRANCH_MISSING", "PROTECTED_BRANCH"])
+// Holds the session itself can lift; saving is tried again with the next change.
+const HELD_CODES = new Set(["ENV_NOT_IGNORED", "CONFLICT_MARKERS"])
+// Tries at applying a merge of outside commits while files keep changing under it.
+const MERGE_ATTEMPTS = 3
+// Git's conflict markers. The ======= separator alone also underlines Markdown headings.
+const CONFLICT_MARKER = /^(?:<{7}|>{7})(?: |$)/m
+const REGULAR_OR_ABSENT_MODES = new Set(["000000", "100644", "100755"])
 
 export class AutoGitError extends Error {
   readonly code: string
@@ -77,6 +95,24 @@ export class AutoGitError extends Error {
     this.name = "AutoGitError"
     this.code = code
   }
+}
+
+/** One file of a merge from outside the session: its text as the merge found it, and after. */
+export interface SessionFileChange {
+  path: string
+  /** The session's text when the merge read it; null when the session had no such file. */
+  expected: string | null
+  /** The merged text; null deletes the file. */
+  text: string | null
+  /** For a file the merge creates. */
+  mode?: number
+}
+
+interface ExternalFile {
+  sessionPath: string
+  baseOid: string
+  headOid: string
+  mode: number
 }
 
 export interface AutoGitAgentOptions {
@@ -94,6 +130,11 @@ export interface AutoGitAgentOptions {
   runExclusive: <T>(work: () => Promise<T>) => Promise<T>
   /** Sends unsent local edits and resolves once the room has acknowledged every one. */
   flushLocalChanges: () => Promise<void>
+  /**
+   * Applies files merged from commits pushed outside the session, unless one no longer
+   * reads as `expected`; returns the paths that changed meanwhile. Runs inside runExclusive.
+   */
+  applySessionChanges: (changes: SessionFileChange[]) => Promise<string[]>
   onChange: () => void
   timing?: Partial<AutoGitTiming>
 }
@@ -116,6 +157,19 @@ function firstLine(text: string): string {
       .split("\n")
       .map((line) => line.replace(/^(fatal|error|remote|hint):\s*/, "").trim())
       .find(Boolean) ?? ""
+  )
+}
+
+function formatPaths(paths: readonly string[]): string {
+  const shown = paths.slice(0, 3).join(", ")
+  return paths.length > 3 ? `${shown} and ${paths.length - 3} more` : shown
+}
+
+function describeUnignoredEnvironmentFiles(paths: readonly string[]): string {
+  const one = paths.length === 1
+  return (
+    `${formatPaths(paths)} ${one ? "isn't" : "aren't"} ignored by Git, so saving the session to Git is on hold ` +
+    `rather than commit ${one ? "it" : "them"}. Add ${one ? "it" : "them"} to .gitignore to resume.`
   )
 }
 
@@ -178,6 +232,15 @@ export class AutoGitAgent {
   private renewTimer: NodeJS.Timeout | null = null
   private checkpointTimer: NodeJS.Timeout | null = null
   private eligibilityTimer: NodeJS.Timeout | null = null
+  private remotePollTimer: NodeJS.Timeout | null = null
+  private polling = false
+  // The branch's head on the remote as last seen, and where it stood when saving stopped.
+  private lastRemoteHead: string | null = null
+  private blockedRemoteHead: string | null = null
+  // The newest commit pushed from outside the session and merged into it, until a checkpoint covers it.
+  private integratedHead: string | null = null
+  // Files that merge left with conflict markers; saving waits until they are resolved.
+  private conflictPaths = new Set<string>()
 
   constructor(options: AutoGitAgentOptions) {
     this.options = options
@@ -232,6 +295,8 @@ export class AutoGitAgent {
   /** The session moved: a peer's batch arrived or the room took one of this device's. */
   noteActivity(): void {
     if (this.stopped || !this.repo) return
+    // A hold the session can lift, such as an env file Git doesn't ignore yet, is tried again.
+    if (this.blocked && HELD_CODES.has(this.blocked.code)) this.blocked = null
     if (this.isDirty()) {
       const now = Date.now()
       this.firstDirtyAt ??= now
@@ -274,6 +339,7 @@ export class AutoGitAgent {
         leaderNotice ??
         this.baselineNote ??
         (state === "ineligible" ? this.ineligibleReason : null),
+      detailCode: this.blocked?.code ?? (leaderNotice ? (this.lease?.noticeCode ?? null) : null),
       lastError: this.lastError,
     }
   }
@@ -366,11 +432,14 @@ export class AutoGitAgent {
       this.noticeShown = Boolean(this.lease?.notice)
       this.retryAt = 0
       this.renewTimer = setInterval(() => void this.renew(), this.timing.renewIntervalMs)
+      this.remotePollTimer = setInterval(() => void this.pollRemote(), this.timing.remotePollMs)
       this.scheduleCheckpoint()
       return
     }
     if (this.renewTimer) clearInterval(this.renewTimer)
     this.renewTimer = null
+    if (this.remotePollTimer) clearInterval(this.remotePollTimer)
+    this.remotePollTimer = null
     if (this.checkpointTimer) clearTimeout(this.checkpointTimer)
     this.checkpointTimer = null
   }
@@ -390,10 +459,10 @@ export class AutoGitAgent {
     }
   }
 
-  private setNotice(message: string | null): void {
+  private setNotice(message: string | null, code: string | null = null): void {
     const lease = this.lease
     if (!lease || (message === null && !this.noticeShown)) return
-    this.options.room.setLeaderNotice(lease.generation, message)
+    this.options.room.setLeaderNotice(lease.generation, message, code)
     this.noticeShown = message !== null
   }
 
@@ -447,8 +516,11 @@ export class AutoGitAgent {
     const lease = this.lease
     if (!this.leading || !lease || !this.repo) return
     try {
+      // Commits pushed from outside the session are merged in first, so the barrier holds them.
+      const parent = await this.resolveParent(lease.generation)
+      this.requireConflictsResolved()
       const snapshot = await this.captureAtBarrier(lease.generation)
-      await this.saveSnapshot(lease.generation, snapshot)
+      await this.saveSnapshot(lease.generation, snapshot, parent)
       this.lastError = null
       this.retryAt = 0
       this.lastSuccessAt = Date.now()
@@ -492,18 +564,30 @@ export class AutoGitAgent {
     })
   }
 
-  private async saveSnapshot(generation: number, snapshot: BarrierSnapshot): Promise<void> {
+  private async saveSnapshot(
+    generation: number,
+    snapshot: BarrierSnapshot,
+    parent: { parentOid: string | null; remoteHead: string | null },
+  ): Promise<void> {
     const repo = this.requireRepo()
-    const { parentOid, remoteHead } = await this.resolveParent(generation)
-    const built = await this.builder.buildCheckpointCommit({
-      repoPath: repo.root,
-      sessionId: this.options.publicSessionId,
-      parentOid,
-      leaseGeneration: generation,
-      snapshot,
-      pathPrefix: repo.prefix,
-      maxTextFileBytes: this.options.maxTextFileBytes,
-    })
+    const { parentOid, remoteHead } = parent
+    let built: CheckpointCommitResult
+    try {
+      built = await this.builder.buildCheckpointCommit({
+        repoPath: repo.root,
+        sessionId: this.options.publicSessionId,
+        parentOid,
+        leaseGeneration: generation,
+        snapshot,
+        pathPrefix: repo.prefix,
+        maxTextFileBytes: this.options.maxTextFileBytes,
+      })
+    } catch (error) {
+      if (error instanceof UnignoredEnvironmentFilesError) {
+        throw new AutoGitError("ENV_NOT_IGNORED", describeUnignoredEnvironmentFiles(error.paths))
+      }
+      throw error
+    }
 
     if (built.parentTreeOid !== null && built.treeOid === built.parentTreeOid) {
       // The branch already holds this content. A branch the remote lacks still goes up,
@@ -512,6 +596,7 @@ export class AutoGitAgent {
         this.lease = await this.options.room.renewLease(generation)
         await this.push(parentOid)
       }
+      await this.recordUnchanged(generation, snapshot, built)
       return
     }
 
@@ -542,7 +627,9 @@ export class AutoGitAgent {
     const anchor = this.checkpoint?.commitOid ?? null
 
     if (anchor) {
-      if (remoteHead === anchor) return { parentOid: anchor, remoteHead }
+      // Commits from outside the session already merged into it come after the checkpoint.
+      const known = this.integratedHead ?? anchor
+      if (remoteHead === known) return { parentOid: known, remoteHead }
       if (!remoteHead) {
         throw new AutoGitError(
           "REMOTE_BRANCH_MISSING",
@@ -550,24 +637,40 @@ export class AutoGitAgent {
         )
       }
       await this.fetchBranch()
-      const recovered = await this.ownCheckpointsSince(anchor, remoteHead)
-      if (!recovered) {
-        throw new AutoGitError(
-          "REMOTE_CHANGED",
-          `${branch} changed on ${repo.remote} outside the session, so AutoGit stopped saving to it rather than overwrite those commits.`,
-        )
+      if (!this.integratedHead) {
+        const recovered = await this.ownCheckpointsSince(anchor, remoteHead)
+        if (recovered) {
+          // A leader pushed this and stopped before recording it (Section 15.9).
+          this.acceptCheckpoint(await this.options.room.publishCheckpoint(generation, recovered))
+          return { parentOid: remoteHead, remoteHead }
+        }
       }
-      // A leader pushed this and stopped before recording it (Section 15.9).
-      this.acceptCheckpoint(await this.options.room.publishCheckpoint(generation, recovered))
-      return { parentOid: remoteHead, remoteHead }
+      // Commits pushed on top of the session's branch from outside are merged in (Section 18.7).
+      if (await this.isAncestor(known, remoteHead)) {
+        await this.integrateExternalCommits(known, remoteHead)
+        this.integratedHead = remoteHead
+        return { parentOid: remoteHead, remoteHead }
+      }
+      throw new AutoGitError(
+        "REMOTE_CHANGED",
+        `${branch} changed on ${repo.remote} outside the session and no longer holds the session's last save, so AutoGit stopped saving to it rather than overwrite those commits. Bring ${known.slice(0, 7)} back into the branch's history to resume.`,
+      )
     }
 
     // The first checkpoint builds on whichever of the local and remote branch is ahead.
     const localHead = await this.options.gitService.getCommitOid(repo.root, `refs/heads/${branch}`)
-    if (!remoteHead || localHead === remoteHead) return { parentOid: localHead, remoteHead }
+    const known = this.integratedHead ?? localHead
+    if (!remoteHead || known === remoteHead) return { parentOid: known, remoteHead }
     await this.fetchBranch()
-    if (!localHead || (await this.isAncestor(localHead, remoteHead))) return { parentOid: remoteHead, remoteHead }
-    if (await this.isAncestor(remoteHead, localHead)) return { parentOid: localHead, remoteHead }
+    if (!known) return { parentOid: remoteHead, remoteHead }
+    if (await this.isAncestor(known, remoteHead)) {
+      // Commits pushed since the session started from this branch: the session doesn't
+      // hold them, so they are merged in rather than undone by the checkpoint.
+      await this.integrateExternalCommits(known, remoteHead)
+      this.integratedHead = remoteHead
+      return { parentOid: remoteHead, remoteHead }
+    }
+    if (await this.isAncestor(remoteHead, known)) return { parentOid: known, remoteHead }
     throw new AutoGitError(
       "REMOTE_DIVERGED",
       `${branch} has different commits in this folder and on ${repo.remote}. Bring them together, then save again.`,
@@ -615,6 +718,193 @@ export class AutoGitAgent {
     return newest
   }
 
+  /**
+   * The branch already holds the session at this barrier. Every member is told it is
+   * saved, so nobody keeps counting changes Git has nothing to take from, such as an
+   * edit to an ignored env file.
+   */
+  private async recordUnchanged(
+    generation: number,
+    snapshot: BarrierSnapshot,
+    built: CheckpointCommitResult,
+  ): Promise<void> {
+    const parentOid = built.parentOid
+    if (!parentOid) return
+    if (parentOid !== this.checkpoint?.commitOid) {
+      // A commit the session did not make holds it exactly: the branch as the first save
+      // found it, or commits pushed from outside and merged in. That commit is the checkpoint.
+      const grandparent = await this.git(["rev-parse", "--verify", "--quiet", `${parentOid}^`], {
+        allowNonZeroExit: true,
+      })
+      this.lease = await this.options.room.renewLease(generation)
+      this.acceptCheckpoint(
+        await this.options.room.publishCheckpoint(generation, {
+          commitOid: parentOid,
+          parentOid: grandparent.success ? grandparent.stdout.trim() || null : null,
+          treeOid: built.treeOid,
+          sessionSeq: snapshot.sessionSeq,
+          barrierId: snapshot.barrierId,
+          logicalTreeHash: snapshot.logicalTreeHash,
+        }),
+      )
+      return
+    }
+    // A room from before this message never answers; members then keep counting, and saving is unaffected.
+    void this.options.room
+      .markSavedThrough(generation, snapshot.barrierId)
+      .then((checkpoint) => this.acceptCheckpoint(checkpoint))
+      .catch(() => undefined)
+  }
+
+  /**
+   * Merges commits pushed to the branch from outside the session into the session
+   * (Section 18.7, 19.3), as Git would: a file only one side changed takes that side's
+   * version, and a file both changed merges line by line. Lines both changed get
+   * conflict markers, and saving waits until they are resolved. The result reaches
+   * every member through the session, never through a pull.
+   */
+  private async integrateExternalCommits(base: string, head: string): Promise<void> {
+    const repo = this.requireRepo()
+    const diff = await this.git(
+      ["diff", "--raw", "-z", "--no-renames", "--no-abbrev", base, head, "--", repo.prefix || "."],
+      { allowNonZeroExit: true },
+    )
+    if (!diff.success) throw new AutoGitError("GIT_FAILED", firstLine(diff.stderr) || "git diff failed")
+
+    const scope = new ScopePolicy(this.options.workspaceRoot)
+    const files: ExternalFile[] = []
+    const fields = diff.stdout.split("\0")
+    for (let index = 0; index + 1 < fields.length; index += 2) {
+      const [oldMode = "", newMode = "", baseOid = "", headOid = ""] = (fields[index] ?? "").replace(/^:/, "").split(" ")
+      const repoFilePath = fields[index + 1] ?? ""
+      if (!repoFilePath.startsWith(repo.prefix)) continue
+      const sessionPath = repoFilePath.slice(repo.prefix.length)
+      // Symlinks and submodules don't sync, and neither do the editor files each machine keeps.
+      if (!REGULAR_OR_ABSENT_MODES.has(oldMode) || !REGULAR_OR_ABSENT_MODES.has(newMode)) continue
+      if (scope.isAlwaysIgnored(sessionPath)) continue
+      files.push({ sessionPath, baseOid, headOid, mode: newMode === "100755" ? 0o100755 : 0o100644 })
+    }
+
+    for (let attempt = 0; attempt < MERGE_ATTEMPTS; attempt += 1) {
+      const changes: SessionFileChange[] = []
+      const conflicted: string[] = []
+      for (const file of files) {
+        const merged = await this.mergeExternalFile(file)
+        if (!merged) continue
+        changes.push(merged.change)
+        if (merged.conflicted) conflicted.push(file.sessionPath)
+      }
+      if (changes.length === 0) return
+      // Applied only if no file changed while the merge ran; otherwise it merges again.
+      const changedMeanwhile = await this.options.runExclusive(() => this.options.applySessionChanges(changes))
+      if (changedMeanwhile.length === 0) {
+        for (const conflictedPath of conflicted) this.conflictPaths.add(conflictedPath)
+        return
+      }
+    }
+    throw new AutoGitError(
+      "MERGE_RACED",
+      "Files kept changing while AutoGit merged in commits pushed from outside the session. It tries again shortly.",
+    )
+  }
+
+  /** How one file changed outside the session merges with the session's version; null when nothing changes. */
+  private async mergeExternalFile(file: ExternalFile): Promise<{ change: SessionFileChange; conflicted: boolean } | null> {
+    const [base, theirs] = await Promise.all([this.readBlobText(file.baseOid), this.readBlobText(file.headOid)])
+    // Binary or too large on either side: the session doesn't carry it, and checkpoints keep Git's copy.
+    if (base === undefined || theirs === undefined) return null
+    const entry = this.options.replica.tree.listLiveEntries().find((candidate) => candidate.path === file.sessionPath)
+    if (entry && entry.kind !== "text") return null
+    const ours = entry ? this.options.replica.textDocs.getTextContent(entry.fileId) : null
+    const take = (text: string | null) => ({
+      change: { path: file.sessionPath, expected: ours, text, mode: file.mode },
+      conflicted: false,
+    })
+
+    if (ours === theirs) return null
+    // Deleted outside: the session's copy goes too, unless the session changed it since.
+    if (theirs === null) return ours === base ? take(null) : null
+    // Added outside, or changed outside after the session deleted it: the outside version is kept.
+    if (ours === null || ours === base) return take(theirs)
+    if (base === theirs) return null
+    const merged = await this.mergeText(ours, base ?? "", theirs)
+    return {
+      change: { path: file.sessionPath, expected: ours, text: merged.text, mode: file.mode },
+      conflicted: merged.conflicts > 0,
+    }
+  }
+
+  /** A blob's text: null for no blob, undefined when the session wouldn't carry it as text. */
+  private async readBlobText(oid: string): Promise<string | null | undefined> {
+    if (/^0+$/.test(oid)) return null
+    const size = await this.git(["cat-file", "-s", oid], { allowNonZeroExit: true })
+    if (!size.success || Number(size.stdout.trim()) > this.options.maxTextFileBytes) return undefined
+    const blob = await this.git(["cat-file", "blob", oid], { allowNonZeroExit: true })
+    if (!blob.success) return undefined
+    return TextDocRegistry.classifyContent(blob.stdoutBuffer) === "text" ? blob.stdoutBuffer.toString("utf8") : undefined
+  }
+
+  /** A three-way merge of one file with `git merge-file`, conflict markers and all. */
+  private async mergeText(ours: string, base: string, theirs: string): Promise<{ text: string; conflicts: number }> {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-merge-"))
+    try {
+      const files = [path.join(dir, "session"), path.join(dir, "base"), path.join(dir, "remote")] as const
+      await Promise.all([fs.writeFile(files[0], ours), fs.writeFile(files[1], base), fs.writeFile(files[2], theirs)])
+      const remoteLabel = `${this.requireRepo().remote}/${this.options.branchName}`
+      const result = await this.git(
+        ["merge-file", "-p", "-L", "live session", "-L", "last save", "-L", remoteLabel, ...files],
+        { allowNonZeroExit: true },
+      )
+      // The exit code counts conflicts; a negative one, read as above 127, is an error.
+      const conflicts = result.exitCode ?? -1
+      if (conflicts < 0 || conflicts > 127) {
+        throw new AutoGitError("GIT_FAILED", firstLine(result.stderr) || "git merge-file failed")
+      }
+      return { text: result.stdout, conflicts }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+
+  /** Saving waits while a merge of outside commits has left conflict markers in the session. */
+  private requireConflictsResolved(): void {
+    if (this.conflictPaths.size === 0) return
+    const unresolved = [...this.conflictPaths].filter((conflictPath) => {
+      const entry = this.options.replica.tree.listLiveEntries().find((candidate) => candidate.path === conflictPath)
+      return entry?.kind === "text" && CONFLICT_MARKER.test(this.options.replica.textDocs.getTextContent(entry.fileId))
+    })
+    this.conflictPaths = new Set(unresolved)
+    if (unresolved.length === 0) return
+    throw new AutoGitError(
+      "CONFLICT_MARKERS",
+      `Commits pushed to ${this.options.branchName} from outside the session changed the same lines as the session. Resolve the conflict markers in ${formatPaths(unresolved)} to resume saving to Git.`,
+    )
+  }
+
+  /**
+   * The leader looks at the branch on the remote now and then (Section 18.7), so commits
+   * pushed from outside are merged in while nobody edits, and saving that stopped over
+   * the remote tries again once the branch there changes.
+   */
+  private async pollRemote(): Promise<void> {
+    if (!this.leading || this.inFlight || this.polling || this.stopped) return
+    const known = this.integratedHead ?? this.checkpoint?.commitOid ?? null
+    if (!known || (this.blocked && HELD_CODES.has(this.blocked.code))) return
+    this.polling = true
+    try {
+      const head = await this.lsRemote().catch(() => undefined)
+      if (head === undefined || head === known) return
+      if (this.blocked) {
+        if (head === this.blockedRemoteHead) return
+        this.blocked = null
+      }
+      this.retryAt = 0
+      void this.runCheckpoint()
+    } finally {
+      this.polling = false
+    }
+  }
+
   private handleFailure(error: unknown): void {
     const code = error instanceof AutoGitError || error instanceof RoomRequestError ? error.code : "CHECKPOINT_FAILED"
     const message = describeError(error)
@@ -624,9 +914,10 @@ export class AutoGitAgent {
       this.updateLeadership()
       return
     }
-    if (BLOCKING_CODES.has(code)) {
+    if (BLOCKING_CODES.has(code) || HELD_CODES.has(code)) {
       this.blocked = error instanceof AutoGitError ? error : new AutoGitError(code, message)
-      this.setNotice(message)
+      this.blockedRemoteHead = this.lastRemoteHead
+      this.setNotice(message, code)
       return
     }
     if (code === "AUTH") {
@@ -645,10 +936,18 @@ export class AutoGitAgent {
   // ─── Baseline adoption (Section 16) ──────────────────────────────────────────
 
   private acceptCheckpoint(checkpoint: RoomCheckpoint): void {
-    if (this.checkpoint?.commitOid === checkpoint.commitOid) return
-    if (this.checkpoint && checkpoint.sessionSeq < this.checkpoint.sessionSeq) return
+    const current = this.checkpoint
+    if (current?.commitOid === checkpoint.commitOid) {
+      // The same commit, now known to hold the session through a later barrier.
+      if ((checkpoint.savedThroughSeq ?? 0) <= (current.savedThroughSeq ?? 0)) return
+    } else if (current && checkpoint.sessionSeq < current.sessionSeq) {
+      return
+    } else {
+      // A checkpoint on top of commits merged in from outside covers them.
+      this.integratedHead = null
+    }
     this.checkpoint = checkpoint
-    this.cleanThroughSeq = Math.max(this.cleanThroughSeq, checkpoint.sessionSeq)
+    this.cleanThroughSeq = Math.max(this.cleanThroughSeq, checkpoint.sessionSeq, checkpoint.savedThroughSeq ?? 0)
     if (!this.isDirty()) {
       this.firstDirtyAt = null
       this.lastActivityAt = 0
@@ -719,7 +1018,8 @@ export class AutoGitAgent {
     }
     if (!result.success) throw remoteFailure(repo.remote, result.stderr)
     const line = result.stdout.split("\n").find((entry) => entry.endsWith(`\t${ref}`))
-    return line ? (line.split("\t")[0] ?? null) : null
+    this.lastRemoteHead = line ? (line.split("\t")[0] ?? null) : null
+    return this.lastRemoteHead
   }
 
   private async fetchBranch(): Promise<void> {
@@ -790,8 +1090,10 @@ export class AutoGitAgent {
     if (this.renewTimer) clearInterval(this.renewTimer)
     if (this.checkpointTimer) clearTimeout(this.checkpointTimer)
     if (this.eligibilityTimer) clearTimeout(this.eligibilityTimer)
+    if (this.remotePollTimer) clearInterval(this.remotePollTimer)
     this.renewTimer = null
     this.checkpointTimer = null
     this.eligibilityTimer = null
+    this.remotePollTimer = null
   }
 }

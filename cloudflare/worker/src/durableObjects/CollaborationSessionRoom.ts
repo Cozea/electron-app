@@ -39,6 +39,7 @@ const BARRIER_ID_PATTERN = /^barrier_[0-9a-f]{32}$/
 const OID_PATTERN = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
 const TREE_HASH_PATTERN = /^[0-9a-f]{64}$/
 const MAX_NOTICE_CHARS = 500
+const NOTICE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,39}$/
 
 export interface StoredSessionBatch {
   sessionSeq: number
@@ -65,6 +66,8 @@ export interface StoredLease {
   renewedAt: number
   /** Why the leader stopped saving, shown to every member; cleared with each new lease. */
   notice?: string | null
+  /** What kind of stop the notice describes, such as ENV_NOT_IGNORED, so members can offer the fix. */
+  noticeCode?: string | null
 }
 
 /** The last checkpoint the leader pushed to the session branch (Section 15.10). */
@@ -78,6 +81,8 @@ export interface StoredCheckpoint {
   leaseGeneration: number
   publishedAt: number
   publishedByPrincipalId: string
+  /** The branch still holds the session at this later sequence: a barrier found nothing new for Git. */
+  savedThroughSeq?: number
 }
 
 type CheckpointInput = Pick<
@@ -104,9 +109,10 @@ type ClientMessage =
   | { type: 'autogit_eligibility'; eligible: unknown }
   | { type: 'lease_renew'; requestId: unknown; generation: unknown }
   | { type: 'lease_release'; generation: unknown }
-  | { type: 'lease_notice'; generation: unknown; notice: unknown }
+  | { type: 'lease_notice'; generation: unknown; notice: unknown; code?: unknown }
   | { type: 'barrier_request'; requestId: unknown; generation: unknown }
   | { type: 'checkpoint_publish'; requestId: unknown; generation: unknown; checkpoint: unknown }
+  | { type: 'checkpoint_clean'; requestId: unknown; generation: unknown; barrierId: unknown }
   | { type: 'checkpoint_request'; requestId: unknown }
 
 function batchKey(sessionSeq: number): string {
@@ -130,6 +136,7 @@ function toWireLease(lease: StoredLease) {
     leaderPrincipalId: lease.leaderPrincipalId,
     expiresAt: lease.expiresAt,
     notice: lease.notice ?? null,
+    noticeCode: lease.noticeCode ?? null,
   }
 }
 
@@ -233,7 +240,7 @@ export class CollaborationSessionRoom implements DurableObject {
         await this.handleLeaseRelease(socket, attachment, parsed.generation)
         return
       case 'lease_notice':
-        await this.handleLeaseNotice(attachment, parsed.generation, parsed.notice)
+        await this.handleLeaseNotice(attachment, parsed.generation, parsed.notice, parsed.code)
         return
       case 'barrier_request':
         await this.handleBarrierRequest(socket, attachment, readRequestId(parsed.requestId), parsed.generation)
@@ -245,6 +252,15 @@ export class CollaborationSessionRoom implements DurableObject {
           readRequestId(parsed.requestId),
           parsed.generation,
           parsed.checkpoint,
+        )
+        return
+      case 'checkpoint_clean':
+        await this.handleCheckpointClean(
+          socket,
+          attachment,
+          readRequestId(parsed.requestId),
+          parsed.generation,
+          parsed.barrierId,
         )
         return
       case 'checkpoint_request':
@@ -472,18 +488,24 @@ export class CollaborationSessionRoom implements DurableObject {
   }
 
   /** The leader tells every member why it stopped saving, or clears that. A stale leader is ignored. */
-  private async handleLeaseNotice(attachment: SocketAttachment, generation: unknown, notice: unknown): Promise<void> {
+  private async handleLeaseNotice(
+    attachment: SocketAttachment,
+    generation: unknown,
+    notice: unknown,
+    code: unknown,
+  ): Promise<void> {
     const lease = await this.readLease()
     if (!this.holdsLease(attachment, lease, generation, Date.now())) return
     const next = typeof notice === 'string' && notice.trim() ? notice.trim().slice(0, MAX_NOTICE_CHARS) : null
-    if ((lease.notice ?? null) === next) return
-    await this.state.storage.put(LEASE_KEY, { ...lease, notice: next })
+    const nextCode = next && typeof code === 'string' && NOTICE_CODE_PATTERN.test(code) ? code : null
+    if ((lease.notice ?? null) === next && (lease.noticeCode ?? null) === nextCode) return
+    await this.state.storage.put(LEASE_KEY, { ...lease, notice: next, noticeCode: nextCode })
     await this.broadcastAutoGitState()
   }
 
   /** Ends the current lease now and elects a successor if a device is eligible. */
   private async vacateLease(lease: StoredLease): Promise<void> {
-    await this.state.storage.put(LEASE_KEY, { ...lease, leaderClientId: null, leaderPrincipalId: null, expiresAt: 0, notice: null })
+    await this.state.storage.put(LEASE_KEY, { ...lease, leaderClientId: null, leaderPrincipalId: null, expiresAt: 0, notice: null, noticeCode: null })
     await this.electIfNeeded(true)
   }
 
@@ -511,7 +533,7 @@ export class CollaborationSessionRoom implements DurableObject {
       await this.state.storage.setAlarm(granted.expiresAt)
       changed = true
     } else if (lease.leaderClientId !== null) {
-      await this.state.storage.put(LEASE_KEY, { ...lease, leaderClientId: null, leaderPrincipalId: null, expiresAt: 0, notice: null })
+      await this.state.storage.put(LEASE_KEY, { ...lease, leaderClientId: null, leaderPrincipalId: null, expiresAt: 0, notice: null, noticeCode: null })
       changed = true
     }
     if (changed) await this.broadcastAutoGitState()
@@ -603,6 +625,46 @@ export class CollaborationSessionRoom implements DurableObject {
     }
     await this.state.storage.put(CHECKPOINT_KEY, checkpoint)
     this.send(socket, { type: 'checkpoint_ack', requestId, checkpoint })
+    await this.broadcastAutoGitState()
+  }
+
+  /**
+   * The leader found nothing new for Git at a barrier: the branch already holds the
+   * session through it. Members stop counting those changes as unsaved, such as an
+   * edit to an env file Git ignores.
+   */
+  private async handleCheckpointClean(
+    socket: WebSocket,
+    attachment: SocketAttachment,
+    requestId: string | undefined,
+    generation: unknown,
+    barrierId: unknown,
+  ): Promise<void> {
+    const lease = await this.readLease()
+    if (!this.holdsLease(attachment, lease, generation, Date.now())) {
+      this.sendError(socket, 'LEASE_STALE', 'Only the AutoGit leader can mark the session saved', requestId)
+      return
+    }
+    const barrier =
+      typeof barrierId === 'string' && BARRIER_ID_PATTERN.test(barrierId)
+        ? await this.state.storage.get<StoredBarrier>(`${BARRIER_KEY_PREFIX}${barrierId}`)
+        : undefined
+    if (!barrier) {
+      this.sendError(socket, 'BAD_REQUEST', 'checkpoint_clean needs a barrier this room created', requestId)
+      return
+    }
+    const previous = await this.state.storage.get<StoredCheckpoint>(CHECKPOINT_KEY)
+    if (!previous) {
+      this.sendError(socket, 'NO_CHECKPOINT', 'The room has no checkpoint to mark as current', requestId)
+      return
+    }
+    if (barrier.sessionSeq <= Math.max(previous.sessionSeq, previous.savedThroughSeq ?? 0)) {
+      this.send(socket, { type: 'checkpoint_clean_ack', requestId, checkpoint: previous })
+      return
+    }
+    const checkpoint: StoredCheckpoint = { ...previous, savedThroughSeq: barrier.sessionSeq }
+    await this.state.storage.put(CHECKPOINT_KEY, checkpoint)
+    this.send(socket, { type: 'checkpoint_clean_ack', requestId, checkpoint })
     await this.broadcastAutoGitState()
   }
 
