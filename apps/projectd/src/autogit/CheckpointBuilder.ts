@@ -28,9 +28,19 @@ import { normalizeProjectPath } from "../collaboration/projectPath"
 import { TextDocRegistry } from "../collaboration/TextDocRegistry"
 import { ScopePolicy } from "../filesystem/ScopePolicy"
 import { isSharedEnvironmentFile } from "../filesystem/environmentFiles"
+import { GitLfs, type GitLfsCleaner } from "../git/GitLfs"
 import type { GitService } from "../git/GitService"
 import type { BinaryRevision } from "../collaboration/BinaryStore"
 import type { BarrierSnapshot } from "./BarrierCapture"
+import {
+  CheckpointFilterPolicy,
+  GitLfsCleanError,
+  GitLfsUnavailableError,
+  UnsupportedGitFilterError,
+  type LfsAvailabilityState,
+} from "./CheckpointFilterPolicy"
+
+export { GitLfsCleanError, GitLfsUnavailableError, UnsupportedGitFilterError } from "./CheckpointFilterPolicy"
 
 const DEFAULT_MAX_TEXT_FILE_BYTES = 512 * 1024
 const REGULAR_FILE_MODES = new Set(["100644", "100755"])
@@ -91,6 +101,12 @@ type GitRunner = (
 
 export type BinaryContentResolver = (revision: BinaryRevision) => Promise<Buffer>
 
+export interface CheckpointBuilderOptions {
+  resolveBinary?: BinaryContentResolver
+  /** Tests can inject a deterministic LFS cleaner without requiring git-lfs on the runner. */
+  lfs?: GitLfsCleaner
+}
+
 /** The id Git gives a blob with these bytes, computed here instead of by a git process. */
 function blobOid(content: string, objectFormat: string): string {
   const bytes = Buffer.from(content, "utf8")
@@ -105,15 +121,21 @@ function normalizePrefix(prefix: string): string {
   return trimmed ? `${trimmed}/` : ""
 }
 
+function isGitAttributesPath(repoFilePath: string): boolean {
+  return repoFilePath === ".gitattributes" || repoFilePath.endsWith("/.gitattributes")
+}
+
 export class CheckpointBuilder {
   readonly gitService: GitService
   private readonly resolveBinary?: BinaryContentResolver
+  private readonly filterPolicy: CheckpointFilterPolicy
   // Blob id → whether the session would carry that content as text. Blobs never change.
   private readonly syncableBlobs = new Map<string, boolean>()
 
-  constructor(gitService: GitService, options: { resolveBinary?: BinaryContentResolver } = {}) {
+  constructor(gitService: GitService, options: CheckpointBuilderOptions = {}) {
     this.gitService = gitService
     this.resolveBinary = options.resolveBinary
+    this.filterPolicy = new CheckpointFilterPolicy(options.lfs ?? new GitLfs(gitService.process))
   }
 
   /**
@@ -195,13 +217,90 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
           unignoredEnvironmentFiles.map((repoFilePath) => repoFilePath.slice(prefix.length)),
         )
       }
-      const updates: string[] = []
-      for (const [repoFilePath, file] of snapshotFiles) {
-        if (keptOutOfGit.has(repoFilePath)) continue
+
+      // `.gitattributes` from this exact barrier must control the files in this
+      // exact checkpoint. Stage attribute-file changes into the private index first,
+      // before asking Git which filters apply to any sibling path. We also refuse to
+      // run a filter on an attribute file itself.
+      const attributePaths = [...snapshotFiles.keys()].filter(
+        (repoFilePath) => isGitAttributesPath(repoFilePath) && !keptOutOfGit.has(repoFilePath),
+      )
+      const attributeRemovals = removals.filter(isGitAttributesPath)
+      const contentRemovals = removals.filter((repoFilePath) => !isGitAttributesPath(repoFilePath))
+      const displayPath = (repoFilePath: string) => repoFilePath.slice(prefix.length)
+      const previousAttributeDrivers = await this.filterPolicy.drivers(git, attributePaths, indexEnv)
+      this.filterPolicy.assertNoFilters(previousAttributeDrivers, displayPath)
+
+      const attributeUpdates: string[] = []
+      for (const repoFilePath of attributePaths) {
+        const file = snapshotFiles.get(repoFilePath)!
         const parent = parentEntries.get(repoFilePath)
         if (file.kind === "text" && file.textContent !== undefined) {
           const mode = file.mode === 0o100755 ? "100755" : "100644"
           const oid = await this.textBlob(git, objectFormat, repoFilePath, file.textContent, parent)
+          if (parent?.oid !== oid || parent.mode !== mode) attributeUpdates.push(`${mode} ${oid}\t${repoFilePath}`)
+        } else if (file.kind === "symlink" && file.symlinkTarget !== undefined) {
+          let oid = blobOid(file.symlinkTarget, objectFormat)
+          if (parent?.oid !== oid) {
+            oid = (await git(["hash-object", "-w", "--stdin"], { stdin: file.symlinkTarget })).stdout.trim()
+          }
+          if (parent?.oid !== oid || parent.mode !== "120000") attributeUpdates.push(`120000 ${oid}\t${repoFilePath}`)
+        } else if (file.kind === "binary") {
+          if (!file.binaryRevision) {
+            if (!parent) throw new Error(`Checkpoint has no Git blob for binary ${file.path}: no binary revision is present at this barrier`)
+            continue
+          }
+          if (!this.resolveBinary) throw new Error(`Checkpoint cannot resolve bytes for binary ${file.path}`)
+          const bytes = await this.resolveBinary(file.binaryRevision)
+          if (bytes.length !== file.binaryRevision.size || createHash("sha256").update(bytes).digest("hex") !== file.contentHash) {
+            throw new Error(`Checkpoint binary ${file.path} does not match its barrier revision`)
+          }
+          const mode = file.mode === 0o100755 ? "100755" : "100644"
+          const oid = await this.binaryBlob(git, repoFilePath, bytes)
+          if (parent?.oid !== oid || parent.mode !== mode) attributeUpdates.push(`${mode} ${oid}\t${repoFilePath}`)
+        }
+      }
+      if (attributeRemovals.length > 0) {
+        await git(["update-index", "--force-remove", "-z", "--stdin"], {
+          env: indexEnv,
+          stdin: `${attributeRemovals.join("\0")}\0`,
+        })
+      }
+      if (attributeUpdates.length > 0) {
+        await git(["update-index", "-z", "--index-info"], {
+          env: indexEnv,
+          stdin: `${attributeUpdates.join("\0")}\0`,
+        })
+      }
+      const currentAttributeDrivers = await this.filterPolicy.drivers(git, attributePaths, indexEnv)
+      this.filterPolicy.assertNoFilters(currentAttributeDrivers, displayPath)
+
+      const filteredCandidates = [...snapshotFiles.entries()]
+        .filter(([repoFilePath, file]) => !isGitAttributesPath(repoFilePath) && !keptOutOfGit.has(repoFilePath) && file.kind !== "symlink")
+        .map(([repoFilePath]) => repoFilePath)
+      const filterDrivers = await this.filterPolicy.drivers(git, filteredCandidates, indexEnv)
+      this.filterPolicy.assertSupportedFilters(filterDrivers, displayPath)
+      const lfsAvailability: LfsAvailabilityState = { checked: false, available: false }
+
+      const updates: string[] = []
+      for (const [repoFilePath, file] of snapshotFiles) {
+        if (isGitAttributesPath(repoFilePath) || keptOutOfGit.has(repoFilePath)) continue
+        const parent = parentEntries.get(repoFilePath)
+        const filterDriver = filterDrivers.get(repoFilePath) ?? null
+        if (file.kind === "text" && file.textContent !== undefined) {
+          const mode = file.mode === 0o100755 ? "100755" : "100644"
+          const oid = filterDriver === "lfs"
+            ? await this.filterPolicy.lfsBlob({
+                git,
+                root,
+                objectFormat,
+                repoFilePath,
+                bytes: Buffer.from(file.textContent, "utf8"),
+                parentOid: parent?.oid,
+                indexEnv,
+                availability: lfsAvailability,
+              })
+            : await this.textBlob(git, objectFormat, repoFilePath, file.textContent, parent)
           if (parent?.oid !== oid || parent.mode !== mode) updates.push(`${mode} ${oid}\t${repoFilePath}`)
         } else if (file.kind === "symlink" && file.symlinkTarget !== undefined) {
           let oid = blobOid(file.symlinkTarget, objectFormat)
@@ -226,15 +325,26 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
             throw new Error(`Checkpoint binary ${file.path} does not match its barrier revision`)
           }
           const mode = file.mode === 0o100755 ? "100755" : "100644"
-          const oid = await this.binaryBlob(git, repoFilePath, bytes)
+          const oid = filterDriver === "lfs"
+            ? await this.filterPolicy.lfsBlob({
+                git,
+                root,
+                objectFormat,
+                repoFilePath,
+                bytes,
+                parentOid: parent?.oid,
+                indexEnv,
+                availability: lfsAvailability,
+              })
+            : await this.binaryBlob(git, repoFilePath, bytes)
           if (parent?.oid !== oid || parent.mode !== mode) updates.push(`${mode} ${oid}\t${repoFilePath}`)
         }
       }
 
-      if (removals.length > 0) {
+      if (contentRemovals.length > 0) {
         await git(["update-index", "--force-remove", "-z", "--stdin"], {
           env: indexEnv,
-          stdin: `${removals.join("\0")}\0`,
+          stdin: `${contentRemovals.join("\0")}\0`,
         })
       }
       if (updates.length > 0) {
@@ -310,11 +420,13 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
     // Most files match the parent; hashing here spares a git process for each.
     if (parent && parent.oid === blobOid(text, objectFormat)) return parent.oid
     // Clean filters and line-ending rules decide the stored bytes, as `git add` would.
+    // Callers have already proved that no arbitrary `filter` driver applies here.
     return (await git(["hash-object", "-w", "--stdin", `--path=${repoFilePath}`], { stdin: text })).stdout.trim()
   }
 
-  /** Writes verified binary bytes through Git's clean/filter rules for this path. */
+  /** Writes verified binary bytes through Git's non-filter attribute rules for this path. */
   private async binaryBlob(git: GitRunner, repoFilePath: string, bytes: Buffer): Promise<string> {
+    // Callers have already proved that no arbitrary `filter` driver applies here.
     return (await git(["hash-object", "-w", "--stdin", `--path=${repoFilePath}`], { stdin: bytes })).stdout.trim()
   }
 
