@@ -54,6 +54,17 @@ function snapshot(files: BarrierSnapshot["files"], hash = "a".repeat(64)): Barri
   }
 }
 
+function textSnapshot(fileId: string, filePath: string, content: string): BarrierSnapshot["files"][number] {
+  return {
+    fileId,
+    path: filePath,
+    kind: "text",
+    mode: 0o100644,
+    contentHash: createHash("sha256").update(content).digest("hex"),
+    textContent: content,
+  }
+}
+
 class FakeLfs implements GitLfsCleaner {
   availabilityChecks = 0
   cleanCalls: Array<{ cwd: string; filePath: string; bytes: Buffer }> = []
@@ -83,8 +94,9 @@ describe("AutoGit checkpoint filter policy", () => {
   it("refuses a changed custom-filter path without executing its clean command", async () => {
     const { root, git } = await initRepo()
     roots.push(root)
+    const attributes = "tracked.txt filter=demo\n"
     await run(git, root, ["config", "filter.demo.clean", "cat"])
-    await fs.writeFile(path.join(root, ".gitattributes"), "tracked.txt filter=demo\n")
+    await fs.writeFile(path.join(root, ".gitattributes"), attributes)
     await fs.writeFile(path.join(root, "tracked.txt"), "parent\n")
     const parentOid = await commitAll(git, root, "parent")
 
@@ -97,14 +109,10 @@ describe("AutoGit checkpoint filter policy", () => {
       sessionId: "czs_0123456789abcdef",
       parentOid,
       leaseGeneration: 3,
-      snapshot: snapshot([{
-        fileId: "file-tracked",
-        path: "tracked.txt",
-        kind: "text",
-        mode: 0o100644,
-        contentHash: createHash("sha256").update("changed\n").digest("hex"),
-        textContent: "changed\n",
-      }]),
+      snapshot: snapshot([
+        textSnapshot("attrs", ".gitattributes", attributes),
+        textSnapshot("file-tracked", "tracked.txt", "changed\n"),
+      ]),
     })).rejects.toBeInstanceOf(UnsupportedGitFilterError)
     await expect(fs.stat(path.join(root, "filter-ran"))).rejects.toMatchObject({ code: "ENOENT" })
   })
@@ -128,14 +136,7 @@ describe("AutoGit checkpoint filter policy", () => {
       parentOid,
       leaseGeneration: 4,
       snapshot: snapshot([
-        {
-          fileId: "attrs",
-          path: ".gitattributes",
-          kind: "text",
-          mode: 0o100644,
-          contentHash: createHash("sha256").update("asset.bin filter=lfs -text\n").digest("hex"),
-          textContent: "asset.bin filter=lfs -text\n",
-        },
+        textSnapshot("attrs", ".gitattributes", "asset.bin filter=lfs -text\n"),
         {
           fileId: "file-asset",
           path: "asset.bin",
@@ -175,14 +176,7 @@ describe("AutoGit checkpoint filter policy", () => {
       parentOid,
       leaseGeneration: 5,
       snapshot: snapshot([
-        {
-          fileId: "attrs",
-          path: ".gitattributes",
-          kind: "text",
-          mode: 0o100644,
-          contentHash: createHash("sha256").update("asset.bin filter=lfs -text\n").digest("hex"),
-          textContent: "asset.bin filter=lfs -text\n",
-        },
+        textSnapshot("attrs", ".gitattributes", "asset.bin filter=lfs -text\n"),
         {
           fileId: "file-pointer",
           path: "asset.bin",
@@ -216,14 +210,7 @@ describe("AutoGit checkpoint filter policy", () => {
       parentOid,
       leaseGeneration: 6,
       snapshot: snapshot([
-        {
-          fileId: "attrs",
-          path: ".gitattributes",
-          kind: "text",
-          mode: 0o100644,
-          contentHash: createHash("sha256").update("asset.bin filter=lfs -text\n").digest("hex"),
-          textContent: "asset.bin filter=lfs -text\n",
-        },
+        textSnapshot("attrs", ".gitattributes", "asset.bin filter=lfs -text\n"),
         {
           fileId: "file-asset",
           path: "asset.bin",
