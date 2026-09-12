@@ -254,8 +254,9 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
       }
     }
 
-    // Read stable bytes
-    const stable = await this.stableReader.read(absPath)
+    // The watcher needs stable hash/metadata only. The host reads actual payload bytes
+    // once if this proves to be a genuine local modification.
+    const stable = await this.stableReader.readMetadata(absPath)
     if (!stable.exists || !stable.contentHash) {
       // File deleted during atomic-save transition
       this.emit("event", {
