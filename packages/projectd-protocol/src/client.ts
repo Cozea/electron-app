@@ -17,6 +17,7 @@ import {
   type ProjectdCloseChoice,
   type ProjectdSessionStatus,
   type ProjectdSessionRecoveryEntry,
+  type ProjectdRecoveryPreviewResult,
   type ProjectdRecoveryExportResult,
   type ProjectdSessionTicket,
   type ProjectdTargetStatus,
@@ -390,6 +391,10 @@ export class ProjectdClient {
 
   async listSessionRecovery(): Promise<ProjectdSessionRecoveryEntry[]> {
     return this.request<ProjectdSessionRecoveryEntry[]>("sessions.recovery.list")
+  }
+
+  async previewSessionRecovery(publicSessionId: string, afterCursor?: string, limit?: number): Promise<ProjectdRecoveryPreviewResult> {
+    return this.request<ProjectdRecoveryPreviewResult>("sessions.recovery.preview", { publicSessionId, afterCursor, limit })
   }
 
   async exportSessionRecovery(publicSessionId: string, destinationParent: string, source: "local" | "cloud" = "local",
