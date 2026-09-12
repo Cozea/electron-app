@@ -6,6 +6,8 @@ import type {
   ProjectdSessionStatus,
   ProjectdSessionTicket,
   ProjectdTargetStatus,
+  ProjectdMergePreview,
+  ProjectdMergeResult,
 } from '@cozea/projectd-protocol'
 import type {
   ScheduledTaskDraft,
@@ -1555,6 +1557,8 @@ export interface WorkbenchSessionSnapshot {
 
 export type {
   ProjectdCheckpointResult,
+  ProjectdMergePreview,
+  ProjectdMergeResult,
   ProjectdSessionAttachParams,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
@@ -1659,6 +1663,16 @@ export interface ElectronAPI {
       dismissTarget: (
         publicSessionId: string,
       ) => Promise<{ success: true; target: ProjectdTargetStatus | null } | ProjectdCallFailure>
+      /** Previews merging the session's last save into its target branch (P22). */
+      previewMerge: (
+        publicSessionId: string,
+      ) => Promise<{ success: true; preview: ProjectdMergePreview } | ProjectdCallFailure>
+      /** Merges the reviewed save into the target branch, or says why not (P22). */
+      merge: (
+        publicSessionId: string,
+        strategy: 'merge' | 'squash',
+        checkpointOid: string,
+      ) => Promise<{ success: true; result: ProjectdMergeResult } | ProjectdCallFailure>
       onEvent: (listener: (event: ProjectdSessionEvent) => void) => () => void
     }
   }

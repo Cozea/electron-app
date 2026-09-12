@@ -63,6 +63,8 @@ export interface SessionWorkbenchControlsProps {
   onIgnoreEnvironmentFiles?: () => void
   onCheckTarget?: () => void
   onDismissTarget?: () => void
+  /** Opens the merge into the target branch (P22). */
+  onMerge?: () => void
   onJoin?: () => void
   onLeave?: () => void
   onPause?: () => void
@@ -86,6 +88,7 @@ export function SessionWorkbenchControls({
   onIgnoreEnvironmentFiles,
   onCheckTarget,
   onDismissTarget,
+  onMerge,
   onJoin,
   onLeave,
   onPause,
@@ -181,6 +184,11 @@ export function SessionWorkbenchControls({
                 <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onSaveNow}>
                   {spinnerFor("save")}
                   Save now
+                </Button>
+              ) : null}
+              {membership === "active" && canEdit && autoGit && onMerge ? (
+                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onMerge}>
+                  Merge…
                 </Button>
               ) : null}
               {canManage && paused && onResume ? (

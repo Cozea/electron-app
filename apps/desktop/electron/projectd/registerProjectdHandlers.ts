@@ -8,6 +8,7 @@
 import { ipcMain, type WebContents } from "electron"
 import {
   projectdSessionTopic,
+  type ProjectdMergeStrategy,
   type ProjectdSessionAttachParams,
   type ProjectdSessionTicket,
 } from "@cozea/projectd-protocol"
@@ -145,6 +146,26 @@ export function registerProjectdHandlers(): void {
       return toFailure(err)
     }
   })
+
+  ipcMain.handle("projectd:sessions:previewMerge", async (_event, publicSessionId: string) => {
+    try {
+      return { success: true, preview: await getSharedProjectdClient().previewSessionMerge(publicSessionId) }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
+  ipcMain.handle(
+    "projectd:sessions:merge",
+    async (_event, req: { publicSessionId: string; strategy: ProjectdMergeStrategy; checkpointOid: string }) => {
+      try {
+        const result = await getSharedProjectdClient().mergeSession(req.publicSessionId, req.strategy, req.checkpointOid)
+        return { success: true, result }
+      } catch (err) {
+        return toFailure(err)
+      }
+    },
+  )
 
   ipcMain.handle("projectd:health", async () => {
     const client = getSharedProjectdClient()

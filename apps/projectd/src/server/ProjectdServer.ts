@@ -135,6 +135,12 @@ function parseAttachParams(params: unknown) {
   }
 }
 
+/** The code an error carries, such as NOT_FOUND or NOT_SAVED, so clients can tell failures apart. */
+function errorCode(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code
+  return typeof code === "string" && code ? code : "INTERNAL_ERROR"
+}
+
 export class ProjectdServer {
   readonly socketPath: string
   readonly version: string
@@ -797,6 +803,19 @@ export class ProjectdServer {
       case "sessions.dismissTarget":
         this.reply(state, req.id, () => this.requireSessionHost(req.params).dismissTargetRecommendation())
         break
+      case "sessions.previewMerge":
+        this.reply(state, req.id, () => this.requireSessionHost(req.params).previewMerge())
+        break
+      case "sessions.merge":
+        this.reply(state, req.id, () => {
+          const params = (req.params ?? {}) as { strategy?: unknown; checkpointOid?: unknown }
+          if (typeof params.checkpointOid !== "string" || !/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(params.checkpointOid)) {
+            throw invalidParams("checkpointOid must be the commit of the save that was reviewed")
+          }
+          const strategy = params.strategy === "squash" ? "squash" : "merge"
+          return this.requireSessionHost(req.params).merge(strategy, params.checkpointOid)
+        })
+        break
       default: {
         this.sendError(state, req.id, {
           code: "METHOD_NOT_FOUND",
@@ -814,7 +833,7 @@ export class ProjectdServer {
         (result) => this.sendMessage(state, { type: "response", id, success: true, result }),
         (err: unknown) =>
           this.sendError(state, id, {
-            code: err instanceof ProjectdRequestError ? err.code : "INTERNAL_ERROR",
+            code: errorCode(err),
             message: err instanceof Error ? err.message : String(err),
           }),
       )

@@ -16,6 +16,9 @@ import {
   type ProjectdSessionStatus,
   type ProjectdSessionTicket,
   type ProjectdTargetStatus,
+  type ProjectdMergePreview,
+  type ProjectdMergeResult,
+  type ProjectdMergeStrategy,
   type ProjectdShutdownResult,
 } from "./index"
 
@@ -379,6 +382,20 @@ export class ProjectdClient {
   /** Hides the rebase recommendation for a while. */
   async dismissSessionTarget(publicSessionId: string): Promise<ProjectdTargetStatus | null> {
     return this.request<ProjectdTargetStatus | null>("sessions.dismissTarget", { publicSessionId })
+  }
+
+  /** Previews merging the session's last save into its target branch. */
+  async previewSessionMerge(publicSessionId: string): Promise<ProjectdMergePreview> {
+    return this.request<ProjectdMergePreview>("sessions.previewMerge", { publicSessionId }, 90_000)
+  }
+
+  /** Merges the reviewed save into the target branch, or says why not. */
+  async mergeSession(
+    publicSessionId: string,
+    strategy: ProjectdMergeStrategy,
+    checkpointOid: string,
+  ): Promise<ProjectdMergeResult> {
+    return this.request<ProjectdMergeResult>("sessions.merge", { publicSessionId, strategy, checkpointOid }, 120_000)
   }
 
   disconnect(): void {

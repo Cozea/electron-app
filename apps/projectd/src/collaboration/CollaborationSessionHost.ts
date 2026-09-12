@@ -21,6 +21,9 @@ import { setTimeout as delay } from "node:timers/promises"
 
 import type {
   ProjectdCheckpointResult,
+  ProjectdMergePreview,
+  ProjectdMergeResult,
+  ProjectdMergeStrategy,
   ProjectdSessionState,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
@@ -28,6 +31,7 @@ import type {
 } from "@cozea/projectd-protocol"
 
 import { AutoGitAgent, AutoGitError, type AutoGitTiming, type SessionFileChange } from "../autogit/AutoGitAgent"
+import { SessionMerger } from "../autogit/SessionMerger"
 import { TargetWatcher } from "../autogit/TargetWatcher"
 import { FSEventsClient, type FileEventSource } from "../filesystem/FSEventsClient"
 import { MaterializationIndex } from "../filesystem/MaterializationIndex"
@@ -164,6 +168,7 @@ export class CollaborationSessionHost {
   readonly watcher: WorkspaceFilesystemWatcher
   readonly target: TargetWatcher | null
 
+  private readonly merger: SessionMerger | null
   private readonly adapter: ExternalSnapshotAdapter
   private readonly textDiff = new BoundedDiff()
   private readonly materializer: FilesystemMaterializer
@@ -305,6 +310,15 @@ export class CollaborationSessionHost {
             onChange: () => this.emitStatusSoon(),
           })
         : null
+    this.merger =
+      this.branchName && targetBranch && targetBranch !== this.branchName && options.gitService
+        ? new SessionMerger({
+            workspaceRoot: this.workspaceRoot,
+            branchName: this.branchName,
+            targetBranch,
+            gitService: options.gitService,
+          })
+        : null
     this.watcher.on("event", (event: NormalizedFsEvent) => this.handleFileEvent(event))
     this.unsubscribeRemote = this.replica.onRemoteChange((fileIds) => {
       this.scheduleMaterialize(fileIds)
@@ -432,6 +446,27 @@ export class CollaborationSessionHost {
     const status = this.target?.dismiss() ?? null
     this.emitStatusSoon()
     return status
+  }
+
+  /** Previews merging the session's last save into its target branch (P22). */
+  previewMerge(): Promise<ProjectdMergePreview> {
+    return this.requireMerger().preview(this.mergeInput())
+  }
+
+  /** Merges the reviewed save into the target branch, or says why not (P22). */
+  merge(strategy: ProjectdMergeStrategy, reviewedCheckpointOid: string): Promise<ProjectdMergeResult> {
+    if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Viewers can't merge the session.")
+    return this.requireMerger().merge({ ...this.mergeInput(), strategy, reviewedCheckpointOid })
+  }
+
+  private mergeInput(): { checkpointOid: string | null; unsavedChanges: number } {
+    const autoGit = this.autoGit?.status() ?? null
+    return { checkpointOid: autoGit?.lastCheckpoint?.commitOid ?? null, unsavedChanges: autoGit?.unsavedChanges ?? 0 }
+  }
+
+  private requireMerger(): SessionMerger {
+    if (!this.merger) throw new SessionHostError("NO_TARGET", "This session has no branch to merge into.")
+    return this.merger
   }
 
   async stop(): Promise<void> {

@@ -25,6 +25,10 @@ export function getProjectdSocketPath(uid?: number): string {
   return `/tmp/cozea-projectd-${effectiveUid}.sock`
 }
 
+/**
+ * The protocol's own codes. Daemon components add theirs, such as NOT_SAVED from a
+ * merge or CONFLICT_MARKERS from AutoGit, so clients can tell failures apart.
+ */
 export type ProjectdErrorCode =
   | "INVALID_HANDSHAKE"
   | "UNSUPPORTED_VERSION"
@@ -36,6 +40,7 @@ export type ProjectdErrorCode =
   | "ALREADY_EXISTS"
   | "CANCELLED"
   | "SHUTTING_DOWN"
+  | (string & {})
 
 export interface ProjectdError {
   code: ProjectdErrorCode
@@ -238,6 +243,35 @@ export interface ProjectdTargetStatus {
   checking: boolean
   /** Why the last check failed, such as a remote that could not be reached. */
   error: string | null
+}
+
+export type ProjectdMergeStrategy = "merge" | "squash"
+
+/** Merging the session's last save into its target, before anything is pushed (Section 22.1). */
+export interface ProjectdMergePreview {
+  branch: string
+  targetBranch: string
+  /** The saved session commit the merge takes; never the live state. */
+  checkpointOid: string
+  targetOid: string
+  /** Commits in the save that the target doesn't have. */
+  ahead: number
+  /** Commits on the target that the session branch doesn't have. */
+  behind: number
+  clean: boolean
+  conflictingPaths: string[]
+  /** Session changes not saved to Git yet, which the merge leaves out. */
+  unsavedChanges: number
+  /** A page where a pull request can be opened, for known hosts. */
+  pullRequestUrl: string | null
+}
+
+export interface ProjectdMergeResult {
+  /** needs_pull_request: the remote refuses direct pushes; moved: the save or the target moved since review. */
+  outcome: "merged" | "needs_pull_request" | "conflicts" | "moved"
+  mergeCommitOid?: string
+  message: string
+  pullRequestUrl: string | null
 }
 
 export interface ProjectdSessionStatus {

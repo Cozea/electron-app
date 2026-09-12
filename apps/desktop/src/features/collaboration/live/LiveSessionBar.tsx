@@ -6,13 +6,18 @@
  * Phase: P23
  */
 
+import { useState } from "react"
+
+import { MergeSessionDialog } from "../ui/MergeSessionDialog"
 import { SessionBranchNotice, SessionWorkbenchControls } from "./SessionWorkbenchControls"
 import type { LiveSessionController } from "./useLiveSession"
 
 export function LiveSessionBar({ live }: { live: LiveSessionController }) {
+  const [merging, setMerging] = useState(false)
   if (live.session && live.sync) {
     return (
-      <SessionWorkbenchControls
+      <>
+        <SessionWorkbenchControls
         branchName={live.session.branchName}
         targetBranch={live.session.targetBranch}
         lifecycle={live.session.lifecycle}
@@ -28,12 +33,24 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         onIgnoreEnvironmentFiles={live.ignoreEnvironmentFiles}
         onCheckTarget={live.checkTarget}
         onDismissTarget={live.dismissTarget}
+        onMerge={() => setMerging(true)}
         onJoin={live.join}
         onLeave={live.leave}
         onPause={live.pause}
         onResume={live.resume}
         onEnd={live.end}
       />
+        <MergeSessionDialog
+          isOpen={merging}
+          onOpenChange={setMerging}
+          publicSessionId={live.session.publicSessionId}
+          branchName={live.session.branchName}
+          targetBranch={live.session.targetBranch}
+          canManage={live.canManage}
+          onPause={live.pause}
+          onEnd={live.end}
+        />
+      </>
     )
   }
 
