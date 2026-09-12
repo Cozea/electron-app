@@ -12,7 +12,7 @@ function fixtureFetch(options: { failSecondPutOnce?: boolean } = {}) {
   const objects = new Map<string, Buffer>()
   const puts = new Map<string, number>()
   let failed = false
-  const fetchFn = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     if (init?.method === "PUT") {
       puts.set(url, (puts.get(url) ?? 0) + 1)
@@ -30,8 +30,8 @@ function fixtureFetch(options: { failSecondPutOnce?: boolean } = {}) {
       return body ? new Response(body, { status: 200 }) : new Response(null, { status: 404 })
     }
     return new Response(null, { status: 405 })
-  }) as unknown as typeof fetch
-  return { fetchFn, objects, puts }
+  })
+  return { fetchFn: fetchMock as unknown as typeof fetch, fetchMock, objects, puts }
 }
 
 function store(fetchFn: typeof fetch) {
@@ -93,7 +93,7 @@ describe("streaming binary object upload", () => {
     const firstUrl = [...network.puts.keys()].find((url) => url.includes("/0/"))
     expect(firstUrl).toBeTruthy()
     expect(network.puts.get(firstUrl!)).toBe(2)
-    expect(network.fetchFn.mock.calls.some(([input, init]) => String(input) === firstUrl && init?.method === "GET")).toBe(true)
+    expect(network.fetchMock.mock.calls.some(([input, init]) => String(input) === firstUrl && init?.method === "GET")).toBe(true)
     expect(await objectStore.download(manifest)).toEqual(bytes)
   })
 
