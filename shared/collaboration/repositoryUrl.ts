@@ -4,9 +4,10 @@
  * Master Specification: Section 7.1, P15
  *
  * The URL is stored on the session record, shown to every invitee, and handed to
- * `git clone` on their Macs. So only network remotes are kept, anything that can carry
- * a credential is dropped, and local paths, `file:` and helper transports such as
- * `ext::` are refused, as is anything Git could read as an option.
+ * `git clone` on their Macs. Only network remotes are accepted; local paths, `file:`
+ * and helper transports such as `ext::` are refused, as is anything Git could read
+ * as an option. Credential-bearing remotes are preserved verbatim after validation so
+ * the product can warn explicitly instead of silently changing the configured remote.
  */
 
 const MAX_URL_LENGTH = 2048
@@ -39,16 +40,13 @@ export function normalizeSessionRepositoryUrl(raw: string | null | undefined): s
   if (!NETWORK_PROTOCOLS.has(url.protocol) || !url.hostname || url.hostname.startsWith("-")) {
     return null
   }
-  // Rebuilt from the parsed parts, because the Convex runtime does not implement URL's setters.
-  // An https username is often a token (https://<token>@github.com/…); an ssh one is the login.
-  const login = url.protocol === "ssh:" && url.username ? `${url.username}@` : ""
-  return `${url.protocol}//${login}${url.host}${url.pathname}`
+  return value
 }
 
 /**
  * True when a remote URL carries sign-in details, such as https://<token>@github.com/….
- * Sessions never share them (normalizeSessionRepositoryUrl drops them), and nothing
- * rewrites the person's remote; the Start dialog tells them instead.
+ * Nothing rewrites the person's remote; the Start dialog makes the exposure explicit
+ * before starting the session.
  */
 export function remoteCarriesCredentials(raw: string | null | undefined): boolean {
   const value = raw?.trim()

@@ -5,8 +5,7 @@
  * Phase: P21
  *
  * Nothing invokes the rebase automatically. A first explicit attempt stops when
- * Git reports conflicts; the user may then explicitly choose to carry conflict
- * markers into the live session for collaborative resolution.
+ * Git reports conflicts; explicit resolution stays in a retained isolated worktree.
  */
 
 import { useEffect, useState } from "react"
@@ -23,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Spinner } from "@/components/ui/spinner"
+import { RebaseRecoveryEditor } from "./RebaseRecoveryEditor"
 import { appToast } from "@/lib/appToast"
 
 function listPaths(paths: readonly string[]): string {
@@ -65,7 +65,7 @@ export function RebaseSessionBody({ targetBranch, result, error, rebasing }: Reb
       <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
         <p>{result.message}</p>
         {paths.length > 0 ? <p className="font-mono">{listPaths(paths)}</p> : null}
-        <p>Rebase anyway puts conflict markers into the live session so everyone can resolve them together.</p>
+        <p>Choose the retained variants below, then apply the resolved rebase when ready.</p>
       </div>
     )
   }
@@ -135,18 +135,14 @@ export function RebaseSessionDialog({
 
         <div className="py-2">
           <RebaseSessionBody targetBranch={targetBranch} result={result} error={error} rebasing={rebasing} />
+          {isOpen && !rebasing && <RebaseRecoveryEditor publicSessionId={publicSessionId} recoveryId={result?.recoveryId} onApplied={setResult} />}
         </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" disabled={rebasing} onClick={() => onOpenChange(false)}>
             {finished ? "Close" : "Cancel"}
           </Button>
-          {conflicts ? (
-            <Button type="button" disabled={rebasing} onClick={() => void rebase(true)}>
-              {rebasing ? <Spinner size="xs" className="mr-1.5" /> : null}
-              Rebase anyway
-            </Button>
-          ) : !finished ? (
+          {!conflicts && !finished ? (
             <Button type="button" disabled={rebasing} onClick={() => void rebase(false)}>
               {rebasing ? <Spinner size="xs" className="mr-1.5" /> : null}
               Rebase onto {targetBranch}

@@ -12,7 +12,7 @@ describe("P21 rebase dialog", () => {
     expect(markup).toContain("away from everyone&#x27;s working folders")
   })
 
-  it("shows the conflict paths and explains collaborative conflict resolution", () => {
+  it("shows the conflict paths and explains isolated conflict resolution", () => {
     const markup = renderToStaticMarkup(
       <RebaseSessionBody
         targetBranch="main"
@@ -26,6 +26,7 @@ describe("P21 rebase dialog", () => {
       />,
     )
     expect(markup).toContain("src/app.ts, README.md")
-    expect(markup).toContain("conflict markers into the live session")
+    expect(markup).toContain("retained variants below")
+    expect(markup).not.toContain("Rebase anyway")
   })
 })

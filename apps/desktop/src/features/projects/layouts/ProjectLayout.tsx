@@ -324,7 +324,7 @@ export function ProjectLayout({
     workspaceId: runtimeWorkspaceId,
     rootPath: activeProjectRootPath,
     principalId: principalId ? String(principalId) : null,
-    onBranchSwitched: refreshLaneState,
+    projectName: project?.name ?? null,
   });
   const collaborationEnabled =
     shouldEnableProjectRuntime &&

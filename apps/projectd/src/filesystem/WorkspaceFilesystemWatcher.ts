@@ -266,9 +266,12 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     }
 
     // Invariant C14 / Section 12.7: Hash-based echo classification
-    const isEcho = this.index.isEcho(this.sessionId, rel, stable.contentHash)
+    const indexed = this.index.getByPath(this.sessionId, rel)
+    const mode = (stable.mode ?? 0o100644) & 0o111 ? 0o100755 : 0o100644
+    const sameKind = stable.isSymlink === (indexed?.kind === "symlink")
+    const isEcho = sameKind && this.index.isEcho(this.sessionId, rel, stable.contentHash) && (stable.isSymlink || indexed?.mode === mode)
     if (isEcho) {
-      // Echo suppression: Disk content matches exact materialized hash. No event emitted!
+      // Suppress only matching content and mode; chmod is a real shared edit.
       return
     }
 

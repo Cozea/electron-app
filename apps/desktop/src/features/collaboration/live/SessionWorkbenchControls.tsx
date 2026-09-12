@@ -9,8 +9,6 @@
  * (P20), who is in it, and the actions this device may take.
  */
 
-import { useState } from "react"
-
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -65,6 +63,8 @@ export interface SessionWorkbenchControlsProps {
   onDismissTarget?: () => void
   /** Opens the explicit rebase onto the target branch (P21). */
   onRebase?: () => void
+  onBinaryConflicts?: () => void
+  onStructuralConflicts?: () => void
   /** Opens the merge into the target branch (P22). */
   onMerge?: () => void
   onJoin?: () => void
@@ -91,6 +91,8 @@ export function SessionWorkbenchControls({
   onCheckTarget,
   onDismissTarget,
   onRebase,
+  onBinaryConflicts,
+  onStructuralConflicts,
   onMerge,
   onJoin,
   onLeave,
@@ -98,7 +100,6 @@ export function SessionWorkbenchControls({
   onResume,
   onEnd,
 }: SessionWorkbenchControlsProps) {
-  const [confirmingEnd, setConfirmingEnd] = useState(false)
   const busy = busyAction !== null
   const inSession = members.filter((member) => member.status === "active")
   const paused = lifecycle === "PAUSED" || lifecycle === "PAUSING"
@@ -155,83 +156,61 @@ export function SessionWorkbenchControls({
             </div>
           ) : null}
 
-          {confirmingEnd ? (
-            <>
-              <span className="text-muted-foreground">End the session for everyone?</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                className={BAR_BUTTON}
-                disabled={busy}
-                onClick={() => {
-                  setConfirmingEnd(false)
-                  onEnd?.()
-                }}
-              >
-                End session
-              </Button>
-              <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} onClick={() => setConfirmingEnd(false)}>
-                Cancel
-              </Button>
-            </>
-          ) : (
-            <>
-              {canJoin && onJoin ? (
-                <Button type="button" size="sm" className={BAR_BUTTON} disabled={busy} onClick={onJoin}>
-                  {spinnerFor("join")}
-                  {membership === "left" ? "Rejoin" : "Join session"}
-                </Button>
-              ) : null}
-              {membership === "active" && autoGit?.canSave && onSaveNow ? (
-                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onSaveNow}>
-                  {spinnerFor("save")}
-                  Save now
-                </Button>
-              ) : null}
-              {membership === "active" && canEdit && autoGit && onRebase ? (
-                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onRebase}>
-                  Rebase…
-                </Button>
-              ) : null}
-              {membership === "active" && canEdit && autoGit && onMerge ? (
-                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onMerge}>
-                  Merge…
-                </Button>
-              ) : null}
-              {canManage && paused && onResume ? (
-                <Button type="button" size="sm" variant="outline" className={BAR_BUTTON} disabled={busy} onClick={onResume}>
-                  {spinnerFor("resume")}
-                  Resume
-                </Button>
-              ) : null}
-              {canManage && !paused && onPause ? (
-                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onPause}>
-                  {spinnerFor("pause")}
-                  Pause
-                </Button>
-              ) : null}
-              {membership === "active" && onLeave ? (
-                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onLeave}>
-                  {spinnerFor("leave")}
-                  Leave
-                </Button>
-              ) : null}
-              {canManage && onEnd ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className={cn(BAR_BUTTON, "text-destructive hover:text-destructive")}
-                  disabled={busy}
-                  onClick={() => setConfirmingEnd(true)}
-                >
-                  {spinnerFor("end")}
-                  End
-                </Button>
-              ) : null}
-            </>
-          )}
+          {canJoin && onJoin ? (
+            <Button type="button" size="sm" className={BAR_BUTTON} disabled={busy} onClick={onJoin}>
+              {spinnerFor("join")}
+              {membership === "left" ? "Rejoin" : "Join session"}
+            </Button>
+          ) : null}
+          {membership === "active" && autoGit?.canSave && onSaveNow ? (
+            <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onSaveNow}>
+              {spinnerFor("save")}
+              Save now
+            </Button>
+          ) : null}
+          {membership === "active" && onBinaryConflicts && <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onBinaryConflicts}>File versions</Button>}
+          {membership === "active" && onStructuralConflicts && <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onStructuralConflicts}>Path conflicts</Button>}
+          {membership === "active" && canEdit && autoGit && onRebase ? (
+            <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onRebase}>
+              Rebase…
+            </Button>
+          ) : null}
+          {membership === "active" && canEdit && autoGit && onMerge ? (
+            <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onMerge}>
+              Merge…
+            </Button>
+          ) : null}
+          {canManage && paused && onResume ? (
+            <Button type="button" size="sm" variant="outline" className={BAR_BUTTON} disabled={busy} onClick={onResume}>
+              {spinnerFor("resume")}
+              Resume
+            </Button>
+          ) : null}
+          {canManage && !paused && onPause ? (
+            <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onPause}>
+              {spinnerFor("pause")}
+              Pause
+            </Button>
+          ) : null}
+          {membership === "active" && onLeave ? (
+            <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onLeave}>
+              {spinnerFor("leave")}
+              Leave
+            </Button>
+          ) : null}
+          {canManage && onEnd ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className={cn(BAR_BUTTON, "text-destructive hover:text-destructive")}
+              disabled={busy}
+              onClick={onEnd}
+            >
+              {spinnerFor("end")}
+              End
+            </Button>
+          ) : null}
         </div>
       </div>
 

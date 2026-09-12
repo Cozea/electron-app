@@ -10,9 +10,9 @@
  * the session's branch.
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
-import type { ProjectdMergePreview, ProjectdMergeResult, ProjectdMergeStrategy } from "@cozea/projectd-protocol"
+import type { ProjectdMergePreview, ProjectdMergeResult, ProjectdMergeStrategy, ProjectdPullRequestResult } from "@cozea/projectd-protocol"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -190,8 +190,11 @@ export function MergeSessionDialog({
   const [strategy, setStrategy] = useState<ProjectdMergeStrategy>("merge")
   const [saveNote, setSaveNote] = useState<string | null>(null)
   const [merging, setMerging] = useState(false)
+  const [pullRequest, setPullRequest] = useState<ProjectdPullRequestResult | null>(null)
+  const pendingAction = useRef(false)
 
   const load = useCallback(async () => {
+    if (pendingAction.current) return
     setLoading(true)
     setError(null)
     try {
@@ -210,6 +213,7 @@ export function MergeSessionDialog({
     if (!isOpen) return
     setResult(null)
     setSaveNote(null)
+    setPullRequest(null)
     void load()
   }, [isOpen, load])
 
@@ -232,23 +236,44 @@ export function MergeSessionDialog({
   }
 
   const merge = async () => {
-    if (!preview) return
+    if (!preview || pendingAction.current) return
+    pendingAction.current = true
     setMerging(true)
     try {
-      const response = await sessions.merge(publicSessionId, strategy, preview.checkpointOid)
+      const response = await sessions.merge(publicSessionId, strategy, preview.checkpointOid, preview.targetOid)
       if (!response.success) throw new Error(response.error)
       setResult(response.result)
+      if (response.result.pullRequest) setPullRequest(response.result.pullRequest)
       if (response.result.outcome === "merged") {
         appToast.success({ title: `Merged into ${targetBranch}`, description: response.result.message })
       }
     } catch (mergeError) {
       setError(mergeError instanceof Error ? mergeError.message : String(mergeError))
     } finally {
+      pendingAction.current = false
       setMerging(false)
     }
   }
 
-  const pullRequestUrl = result?.pullRequestUrl ?? preview?.pullRequestUrl ?? null
+  const createPullRequest = async () => {
+    if (!preview?.canCreatePullRequest || preview.unsavedChanges > 0 || pendingAction.current) return
+    pendingAction.current = true
+    setMerging(true)
+    setError(null)
+    try {
+      const response = await sessions.createPullRequest(publicSessionId, preview.checkpointOid, preview.targetOid)
+      if (!response.success) throw new Error(response.error)
+      setPullRequest(response.result)
+    } catch (failure) {
+      setPreview(null)
+      setError(failure instanceof Error ? failure.message : String(failure))
+    } finally {
+      pendingAction.current = false
+      setMerging(false)
+    }
+  }
+
+  const pullRequestUrl = pullRequest?.url ?? result?.pullRequestUrl ?? preview?.pullRequestUrl ?? null
   const merged = result?.outcome === "merged"
   const canMerge = Boolean(preview && preview.clean && preview.ahead > 0 && !result && !loading && !merging)
   const close = () => onOpenChange(false)
@@ -327,6 +352,13 @@ export function MergeSessionDialog({
                   }}
                 >
                   Review again
+                </Button>
+              ) : null}
+              {pullRequest ? <p role="status">Pull request #{pullRequest.number} is open.</p> : null}
+              {preview?.canCreatePullRequest && !pullRequest ? (
+                <Button type="button" variant="outline" disabled={loading || merging || preview.unsavedChanges > 0 || preview.ahead === 0 || result?.outcome === "moved"}
+                  onClick={() => void createPullRequest()}>
+                  Create or find PR
                 </Button>
               ) : null}
               {pullRequestUrl ? (

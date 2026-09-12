@@ -141,8 +141,10 @@ export class WorkspaceScanner {
       } else {
         seenIndexedPaths.add(normPath)
 
-        // Fast check: size and mtime
-        if (existing.diskSize === item.size && existing.diskMtimeMs === item.mtimeMs) {
+        // chmod changes ctime, not necessarily size or mtime.
+        const modeChanged = !item.isSymlink && existing.mode !== (item.mode & 0o111 ? 0o100755 : 0o100644)
+        const kindChanged = item.isSymlink !== (existing.kind === "symlink")
+        if (!kindChanged && !modeChanged && existing.diskSize === item.size && existing.diskMtimeMs === item.mtimeMs) {
           unmodifiedCount += 1
           continue
         }
@@ -150,9 +152,10 @@ export class WorkspaceScanner {
         // Potential modification: verify stable hash
         const stable = await this.stableReader.read(item.absolutePath, { skipInitialDelay: true })
         if (stable.exists && stable.contentHash) {
-          if (stable.contentHash !== existing.diskHash) {
+          if (stable.isSymlink !== (existing.kind === "symlink") || stable.contentHash !== existing.diskHash || (!stable.isSymlink && existing.mode !== ((stable.mode ?? item.mode) & 0o111 ? 0o100755 : 0o100644))) {
             modified.push({
               ...item,
+              mode: stable.mode ?? item.mode,
               contentHash: stable.contentHash,
             })
           } else {

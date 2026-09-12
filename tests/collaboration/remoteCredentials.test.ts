@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest"
 import { normalizeSessionRepositoryUrl, remoteCarriesCredentials } from "@shared/collaboration/repositoryUrl"
 
 /**
- * A remote with a token in its URL is the person's to fix: Cozea warns and shares the
- * remote without the token, and never rewrites their Git config.
+ * A remote with a token in its URL is the person's to fix: Cozea warns before sharing
+ * the configured remote and never silently rewrites their Git config.
  */
 describe("remotes that carry sign-in details", () => {
   it("spots a token or password in the URL", () => {
@@ -21,9 +21,9 @@ describe("remotes that carry sign-in details", () => {
     expect(remoteCarriesCredentials("not a url")).toBe(false)
   })
 
-  it("shares the remote without them", () => {
+  it("preserves the configured remote so the warning is an explicit product decision", () => {
     expect(normalizeSessionRepositoryUrl("https://ghp_0123456789@github.com/team/app.git")).toBe(
-      "https://github.com/team/app.git",
+      "https://ghp_0123456789@github.com/team/app.git",
     )
   })
 })

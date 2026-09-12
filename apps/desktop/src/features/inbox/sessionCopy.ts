@@ -1,12 +1,7 @@
 /**
- * Gives an invitee a folder for the live session they just joined.
- *
- * Master Specification: Section 7.1, P15
- *
- * When this Mac already has a folder for the project, the session syncs there once the
- * folder is on the session branch. Otherwise the Git remote the session recorded is
- * cloned on the session branch into the projects folder and bound to the project as a
- * folder Cozea manages, so opening the project attaches it to the session.
+ * Provisions the invitee's dedicated local Session Workbench after membership
+ * is accepted. The user's ordinary project workspace is only a clone source;
+ * it is never checked out, reset, stashed, or reused as the session folder.
  */
 
 import {
@@ -15,26 +10,28 @@ import {
   normalizeSessionRepositoryUrl,
 } from "@shared/collaboration/repositoryUrl"
 import type {
-  CloneWorkspaceForProjectRequest,
-  CloneWorkspaceForProjectResult,
-  LocalWorkspaceRecord,
-} from "@shared/workspaceTypes"
+  EnsureDesktopSessionWorkbenchRequest,
+  EnsureDesktopSessionWorkbenchResponse,
+} from "@shared/electronApiTypes"
+import type { LocalWorkspaceRecord } from "@shared/workspaceTypes"
 
 export type InviteeCopyOutcome =
-  | { kind: "existing"; rootPath: string }
-  | { kind: "cloned"; rootPath: string; repository: string }
+  | { kind: "ready"; rootPath: string; workspaceId: string; repository: string | null }
   | { kind: "no_repository" }
   | { kind: "failed"; message: string }
 
-/** The part of `window.electronAPI.workspace` this needs. */
 export interface InviteeWorkspaceApi {
   getActiveForProject: (projectId: string) => Promise<LocalWorkspaceRecord | null>
-  cloneForProject: (req: CloneWorkspaceForProjectRequest) => Promise<CloneWorkspaceForProjectResult>
+}
+
+export interface InviteeSessionWorkbenchApi {
+  ensureSession: (request: EnsureDesktopSessionWorkbenchRequest) => Promise<EnsureDesktopSessionWorkbenchResponse>
 }
 
 export interface InviteeCopyRequest {
   projectId: string
   projectName: string
+  publicSessionId: string
   branchName: string
   repositoryUrl: string | null | undefined
 }
@@ -42,49 +39,64 @@ export interface InviteeCopyRequest {
 export async function ensureInviteeCopy(
   request: InviteeCopyRequest,
   workspaceApi: InviteeWorkspaceApi | undefined,
+  workbenchApi: InviteeSessionWorkbenchApi | undefined,
 ): Promise<InviteeCopyOutcome> {
-  if (!workspaceApi) {
-    return { kind: "failed", message: "This version of Cozea can't set up project folders." }
+  if (!workspaceApi || !workbenchApi) {
+    return { kind: "failed", message: "This version of Cozea can't prepare Session Workbenches." }
   }
-  const existing = await workspaceApi.getActiveForProject(request.projectId).catch(() => null)
-  if (existing) return { kind: "existing", rootPath: existing.projectRootPath }
-
-  const repositoryUrl = normalizeSessionRepositoryUrl(request.repositoryUrl)
-  if (!repositoryUrl) return { kind: "no_repository" }
-  const repository = describeSessionRepository(repositoryUrl)
   if (!isCloneableBranchName(request.branchName)) {
     return { kind: "failed", message: `Cozea won't check out a branch named "${request.branchName}".` }
   }
 
-  let result: CloneWorkspaceForProjectResult
+  const existing = await workspaceApi.getActiveForProject(request.projectId).catch(() => null)
+  const repositoryUrl = normalizeSessionRepositoryUrl(request.repositoryUrl)
+  if (!existing && !repositoryUrl) return { kind: "no_repository" }
+
+  const repository = repositoryUrl ? describeSessionRepository(repositoryUrl) : null
+  let result: EnsureDesktopSessionWorkbenchResponse
   try {
-    result = await workspaceApi.cloneForProject({
+    result = await workbenchApi.ensureSession({
       projectId: request.projectId,
-      slug: projectFolderSlug(request.projectName),
-      repoUrl: repositoryUrl,
-      branch: request.branchName,
+      publicSessionId: request.publicSessionId,
+      branchName: request.branchName,
+      baseBranch: request.branchName,
+      createBranch: false,
+      title: `${request.projectName} · ${request.branchName}`,
+      sourceRepoUrl: repositoryUrl,
+      sourceWorkspaceId: existing?.workspaceId ?? null,
+      includeDirtyChanges: false,
       setActive: true,
     })
   } catch (error) {
-    return { kind: "failed", message: describeCloneFailure(errorText(error), repository, request.branchName) }
+    return {
+      kind: "failed",
+      message: describeSetupFailure(errorText(error), repository, request.branchName),
+    }
   }
-  if (!result.success || !result.workspace) {
-    return { kind: "failed", message: describeCloneFailure(result.error ?? "", repository, request.branchName) }
+  if (!result.success) {
+    return {
+      kind: "failed",
+      message: describeSetupFailure(result.error, repository, request.branchName),
+    }
   }
-  return { kind: "cloned", rootPath: result.workspace.projectRootPath, repository }
+  return {
+    kind: "ready",
+    rootPath: result.rootPath,
+    workspaceId: result.workspace.workspaceId,
+    repository,
+  }
 }
 
-/** What the Inbox says after joining, for each way the folder was, or was not, set up. */
 export function describeInviteeCopy(copy: InviteeCopyOutcome, branchName: string): string {
   switch (copy.kind) {
-    case "existing":
-      return `You're in the live session on ${branchName}. Open the project on that branch to sync with it.`
-    case "cloned":
-      return `Cozea cloned ${copy.repository} on ${branchName} into ${copy.rootPath}. Open the project to start syncing.`
+    case "ready":
+      return copy.repository
+        ? `Your Session Workbench for ${branchName} is ready from ${copy.repository}.`
+        : `Your Session Workbench for ${branchName} is ready from your local project copy.`
     case "no_repository":
-      return `You're in the live session on ${branchName}. It hasn't recorded its Git remote, so link your own copy with Relink Local Folder.`
+      return `You're in the live session on ${branchName}, but this Mac has no project copy and the session has no Git remote to clone.`
     case "failed":
-      return `You're in the live session on ${branchName}, but no copy was set up. ${copy.message}`
+      return `You're in the live session on ${branchName}, but its Session Workbench was not prepared. ${copy.message}`
   }
 }
 
@@ -106,28 +118,20 @@ export function isCloneableBranchName(name: string): boolean {
   )
 }
 
-function projectFolderSlug(projectName: string): string {
-  const slug = projectName
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-  return slug || "project"
-}
-
-function describeCloneFailure(detail: string, repository: string, branchName: string): string {
+function describeSetupFailure(detail: string, repository: string | null, branchName: string): string {
   if (/authentication failed|could not read username|repository not found|permission denied|access denied|\b403\b/i.test(detail)) {
-    return `Git on this Mac can't read ${repository}. Get access to it, then link a copy with Relink Local Folder.`
+    return repository
+      ? `Git on this Mac can't read ${repository}. Update this Mac's Git credentials and retry.`
+      : "Git on this Mac could not read the local project copy."
   }
   if (/remote branch .* not found|couldn't find remote ref/i.test(detail)) {
-    return `${repository} has no branch ${branchName}.`
+    return `${repository ?? "The repository"} has no branch ${branchName}.`
   }
   const firstLine = detail
     .split("\n")
     .map((line) => line.trim())
     .find(Boolean)
-  return `Git couldn't clone ${repository}${firstLine ? `: ${firstLine}` : "."}`
+  return firstLine || "Git couldn't prepare the session repository."
 }
 
 function errorText(error: unknown): string {

@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import fs from 'node:fs'
-import { build as viteBuild, type Alias, type Plugin } from 'vite'
+import { build as viteBuild, loadEnv, type Alias, type Plugin } from 'vite'
 
 function readBooleanFlag(name: string, fallback: boolean): boolean {
   const raw = process.env[name]
@@ -47,9 +47,9 @@ function resolveAiProxyTarget(): string {
   }
 }
 
-function resolveDeviceGatewayOrigin(): string {
+function resolveDeviceGatewayOrigin(environment = process.env): string {
   const configured =
-    process.env.VITE_AUTH_SERVER_URL || process.env.VITE_COLLAB_BASE_URL || DEFAULT_COZEA_WORKER_ORIGIN
+    environment.VITE_AUTH_SERVER_URL || environment.VITE_COLLAB_BASE_URL || DEFAULT_COZEA_WORKER_ORIGIN
   try {
     const url = new URL(configured)
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && url.hostname === '127.0.0.1')) {
@@ -62,7 +62,6 @@ function resolveDeviceGatewayOrigin(): string {
 }
 
 const aiProxyTarget = resolveAiProxyTarget()
-const deviceGatewayOrigin = resolveDeviceGatewayOrigin()
 const reactCompilerEnabled = readBooleanFlag('VITE_FF_REACT_COMPILER', true)
 const rolldownBuildEnabled = readBooleanFlag('VITE_FF_ROLLDOWN_BUILD', true)
 const repoRoot = path.resolve(__dirname, '../..')
@@ -262,10 +261,11 @@ function rendererManualChunks(id: string): string | undefined {
   return undefined
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   main: {
     define: {
-      __COZEA_DEVICE_GATEWAY_ORIGIN__: JSON.stringify(deviceGatewayOrigin),
+      __COZEA_DEVICE_GATEWAY_ORIGIN__: JSON.stringify(resolveDeviceGatewayOrigin(loadEnv(mode, repoRoot, 'VITE_'))),
+      __COZEA_CONVEX_URL__: JSON.stringify(loadEnv(mode, repoRoot, 'VITE_').VITE_CONVEX_URL ?? ''),
     },
     resolve: {
       alias: [...mainBootAliases, ...sharedAliases],
@@ -406,4 +406,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

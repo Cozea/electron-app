@@ -4,6 +4,7 @@ import { handleHealth } from './routes/health'
 import { handleCollabCapabilities } from './routes/collabCapabilities'
 import { handleCollabSession } from './routes/collabSession'
 import { handleSessionRoomConnect, PUBLIC_SESSION_ID_PATTERN } from './routes/sessionRoom'
+import { handleSessionBinaryObject } from './routes/sessionBinary'
 import { preflightResponse, protocolError } from './lib/protocol'
 import { CollabRoom } from './durableObjects/CollabRoom'
 import { CollaborationSessionRoom } from './durableObjects/CollaborationSessionRoom'
@@ -172,6 +173,13 @@ export default {
             origin,
           )
         }
+      }
+
+      const sessionBinaryMatch = url.pathname.match(
+        /^\/collab\/sessions\/binary\/(czs_[a-f0-9]{16})\/(v1\/\d{1,9}\/[a-f0-9]{64}\/\d{1,8}\/[a-f0-9]{64})$/,
+      )
+      if (sessionBinaryMatch) {
+        return await handleSessionBinaryObject(request, env, sessionBinaryMatch[1], sessionBinaryMatch[2])
       }
 
       if (url.pathname === '/collab/sessions/ws') {

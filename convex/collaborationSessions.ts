@@ -11,7 +11,8 @@
 import { ConvexError, v } from "convex/values"
 
 import type { Doc, Id } from "./_generated/dataModel"
-import { query as publicQuery, type MutationCtx, type QueryCtx } from "./_generated/server"
+import { query as publicQuery, mutation as publicMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server"
+import { lifecycleFenceValidator } from "./lib/sessionLifecycle"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { requireAuthenticatedDevice, type DevicePrincipal } from "./lib/deviceAuth"
 import { isOrgMember } from "./lib/orgAccess"
@@ -288,6 +289,7 @@ export const getRoomAccessForServer = publicQuery({
     publicSessionId: v.string(),
     principalId: v.id("devicePrincipals"),
     serverSecret: v.string(),
+    recovery: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     requireGatewaySecret(args.serverSecret)
@@ -299,24 +301,55 @@ export const getRoomAccessForServer = publicQuery({
     if (!session) {
       return { allowed: false as const, reason: "Collaboration session not found" }
     }
-    if (session.lifecycle !== "ACTIVE") {
+    if (args.recovery ? !["PAUSED", "CLOSED"].includes(session.lifecycle) : session.lifecycle !== "ACTIVE") {
       return {
         allowed: false as const,
         reason: `The session is ${session.lifecycle.toLowerCase()}; resume or rejoin it first`,
       }
     }
     const member = await getMembership(ctx, session._id, args.principalId)
+    const device = await ctx.db.get(args.principalId)
+    if (!device || device.status !== "active") {
+      return { allowed: false as const, reason: "The device identity is no longer active" }
+    }
     if (!member || member.status !== "active") {
       return { allowed: false as const, reason: "Join the session before connecting to it" }
     }
     if (!(await canAccessProject(ctx, session.projectId, args.principalId))) {
       return { allowed: false as const, reason: "The device cannot access this project" }
     }
-    return { allowed: true as const, projectId: session.projectId, role: member.role }
+    return {
+      allowed: true as const,
+      projectId: session.projectId,
+      role: member.role,
+      keyVersion: activeSessionKeyVersion(session),
+      lifecycleRevision: session.lifecycleRevision ?? 0,
+    }
   },
 })
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
+
+/** Internal authorization boundary for repository credentials; no caller-selected repo. */
+export const repositoryCredentialScope = internalQuery({
+  args: { publicSessionId: v.string() },
+  returns: v.object({ projectId: v.id("projects"), repositoryUrl: v.string() }),
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await ctx.db.query("collaborationSessions").withIndex("by_public_session_id", (q) => q.eq("publicSessionId", args.publicSessionId)).unique()
+    if (!session || session.lifecycle !== "ACTIVE") throw new ConvexError("Session repository access is unavailable")
+    const member = await getMembership(ctx, session._id, caller._id)
+    if (member?.status !== "active" || member.role === "viewer" || !await canEditProject(ctx, session.projectId, caller._id)) {
+      throw new ConvexError("Session repository access is unavailable")
+    }
+    const project = await ctx.db.get(session.projectId)
+    const repositoryUrl = normalizeSessionRepositoryUrl(project?.repo?.url)
+    if (project?.repo?.provider !== "github" || !repositoryUrl || repositoryUrl !== normalizeSessionRepositoryUrl(session.repositoryUrl)) {
+      throw new ConvexError("Session repository binding must match the project")
+    }
+    return { projectId: session.projectId, repositoryUrl }
+  },
+})
 
 // The authenticated builder requires edit access to args.projectId before this runs.
 export const create = mutation({
@@ -391,6 +424,7 @@ export const create = mutation({
       updatedAt: now,
       pausedAt: undefined,
       closedAt: undefined,
+      activeKeyVersion: INITIAL_SESSION_KEY_VERSION,
       lastDurableSeq: 0,
       lastSnapshotSeq: 0,
       lastAutoGitCheckpointSeq: undefined,
@@ -637,7 +671,11 @@ export const leave = mutation({
 // creates it and wraps a copy for its own device; any device holding it wraps a
 // copy for each member who joins later. The server only ever stores wrapped copies.
 
-const SESSION_KEY_VERSION = 1
+const INITIAL_SESSION_KEY_VERSION = 1
+
+function activeSessionKeyVersion(session: Session): number {
+  return Math.max(INITIAL_SESSION_KEY_VERSION, Math.floor(session.activeKeyVersion ?? INITIAL_SESSION_KEY_VERSION))
+}
 
 async function requireActiveMember(
   ctx: QueryCtx | MutationCtx,
@@ -655,6 +693,7 @@ async function findSessionKeyCopy(
   ctx: QueryCtx | MutationCtx,
   sessionId: Id<"collaborationSessions">,
   identityKey: string,
+  keyVersion: number,
 ): Promise<Doc<"collaborationSessionKeys"> | null> {
   const copies = await ctx.db
     .query("collaborationSessionKeys")
@@ -664,7 +703,7 @@ async function findSessionKeyCopy(
     .collect()
   return (
     copies
-      .filter((copy) => copy.keyVersion === SESSION_KEY_VERSION && copy.revokedAt === undefined)
+      .filter((copy) => copy.keyVersion === keyVersion && copy.revokedAt === undefined)
       .sort((a, b) => b.createdAt - a.createdAt)[0] ?? null
   )
 }
@@ -672,10 +711,11 @@ async function findSessionKeyCopy(
 async function sessionKeyExists(
   ctx: QueryCtx | MutationCtx,
   sessionId: Id<"collaborationSessions">,
+  keyVersion: number,
 ): Promise<boolean> {
   const copy = await ctx.db
     .query("collaborationSessionKeys")
-    .withIndex("by_session_and_version", (q) => q.eq("sessionId", sessionId).eq("keyVersion", SESSION_KEY_VERSION))
+    .withIndex("by_session_and_version", (q) => q.eq("sessionId", sessionId).eq("keyVersion", keyVersion))
     .first()
   return copy !== null
 }
@@ -693,7 +733,8 @@ export const getSessionKeyForDevice = query({
     }
     await requireActiveMember(ctx, session._id, caller)
 
-    const copy = await findSessionKeyCopy(ctx, session._id, caller.identityKey)
+    const keyVersion = activeSessionKeyVersion(session)
+    const copy = await findSessionKeyCopy(ctx, session._id, caller.identityKey, keyVersion)
     if (copy) {
       return {
         status: "ready" as const,
@@ -704,10 +745,39 @@ export const getSessionKeyForDevice = query({
       }
     }
     return {
-      status: (await sessionKeyExists(ctx, session._id))
+      status: (await sessionKeyExists(ctx, session._id, keyVersion))
         ? ("missing_for_device" as const)
         : ("not_initialized" as const),
-      keyVersion: SESSION_KEY_VERSION,
+      keyVersion,
+    }
+  },
+})
+
+/** Every still-authorized wrapped key generation this active device may need for replay. */
+export const getSessionKeyringForDevice = query({
+  args: { sessionId: v.id("collaborationSessions") },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await ctx.db.get(args.sessionId)
+    if (!session) throw new ConvexError("Collaboration session not found")
+    await requireActiveMember(ctx, session._id, caller)
+    const activeKeyVersion = activeSessionKeyVersion(session)
+    const identityKey = normalizeDeviceIdentityKey(caller.identityKey)
+    const copies = await ctx.db
+      .query("collaborationSessionKeys")
+      .withIndex("by_session_and_recipient", (q) => q.eq("sessionId", session._id).eq("recipientIdentityKey", identityKey))
+      .collect()
+    return {
+      activeKeyVersion,
+      keys: copies
+        .filter((copy) => copy.revokedAt === undefined && copy.keyVersion <= activeKeyVersion)
+        .sort((a, b) => a.keyVersion - b.keyVersion)
+        .map((copy) => ({
+          keyVersion: copy.keyVersion,
+          wrappedKey: copy.wrappedKey,
+          wrapAlgorithm: copy.wrapAlgorithm,
+          senderPublicKeyJwk: copy.senderPublicKeyJwk,
+        })),
     }
   },
 })
@@ -729,14 +799,15 @@ export const initializeSessionKey = mutation({
     if (member.role === "viewer") {
       throw new ConvexError("Viewers cannot create the session key")
     }
-    if (await sessionKeyExists(ctx, session._id)) {
-      return { created: false, keyVersion: SESSION_KEY_VERSION }
+    const keyVersion = activeSessionKeyVersion(session)
+    if (await sessionKeyExists(ctx, session._id, keyVersion)) {
+      return { created: false, keyVersion }
     }
 
     const identityKey = normalizeDeviceIdentityKey(caller.identityKey)
     await ctx.db.insert("collaborationSessionKeys", {
       sessionId: session._id,
-      keyVersion: SESSION_KEY_VERSION,
+      keyVersion,
       recipientPrincipalId: caller._id,
       recipientIdentityKey: identityKey,
       senderIdentityKey: identityKey,
@@ -745,22 +816,30 @@ export const initializeSessionKey = mutation({
       wrappedKey: args.wrappedKey,
       createdAt: Date.now(),
     })
-    return { created: true, keyVersion: SESSION_KEY_VERSION }
+    return { created: true, keyVersion }
   },
 })
 
-/** Active members with no copy of the session key, for a device that holds one to wrap it for. */
+/** Existing active members may receive missing keys after closure for read-only recovery. */
 export const listMembersNeedingSessionKey = query({
   args: {
     sessionId: v.id("collaborationSessions"),
+    keyVersion: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const caller = await requireAuthenticatedDevice(ctx)
     const session = await ctx.db.get(args.sessionId)
-    if (!session || isClosedOrClosing(session)) return []
+    if (!session || session.lifecycle === "CLOSING") return []
+    if (!(await canAccessProject(ctx, session.projectId, caller._id))) return []
     const membership = await getMembership(ctx, session._id, caller._id)
     if (membership?.status !== "active") return []
-    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey))) return []
+    const activeVersion = activeSessionKeyVersion(session)
+    const keyVersion = args.keyVersion ?? activeVersion
+    if (!Number.isSafeInteger(keyVersion) || keyVersion < 1 || keyVersion > activeVersion) {
+      throw new ConvexError("Invalid session key generation")
+    }
+    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey, activeVersion))) return []
+    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey, keyVersion))) return []
 
     const members = await ctx.db
       .query("collaborationSessionMembers")
@@ -775,7 +854,8 @@ export const listMembersNeedingSessionKey = query({
     for (const member of members) {
       const principal = await ctx.db.get(member.principalId)
       if (!principal || principal.status !== "active") continue
-      if (await findSessionKeyCopy(ctx, session._id, principal.identityKey)) continue
+      if (!(await canAccessProject(ctx, session.projectId, principal._id))) continue
+      if (await findSessionKeyCopy(ctx, session._id, principal.identityKey, keyVersion)) continue
       recipients.push({
         principalId: principal._id,
         identityKey: principal.identityKey,
@@ -790,6 +870,7 @@ export const listMembersNeedingSessionKey = query({
 export const shareSessionKey = mutation({
   args: {
     sessionId: v.id("collaborationSessions"),
+    keyVersion: v.optional(v.number()),
     recipientPrincipalId: v.id("devicePrincipals"),
     wrapAlgorithm: v.string(),
     wrappedKey: v.string(),
@@ -797,11 +878,22 @@ export const shareSessionKey = mutation({
   handler: async (ctx, args) => {
     const caller = await requireAuthenticatedDevice(ctx)
     const session = await requireSession(ctx, args.sessionId)
-    if (isClosedOrClosing(session)) {
-      throw new ConvexError("This session is closed")
+    if (session.lifecycle === "CLOSING") {
+      throw new ConvexError("Wait for session closure before sharing recovery keys")
     }
     await requireActiveMember(ctx, session._id, caller)
-    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey))) {
+    if (!(await canAccessProject(ctx, session.projectId, caller._id))) {
+      throw new ConvexError("Project access is required to share session keys")
+    }
+    const activeVersion = activeSessionKeyVersion(session)
+    const keyVersion = args.keyVersion ?? activeVersion
+    if (!Number.isSafeInteger(keyVersion) || keyVersion < 1 || keyVersion > activeVersion) {
+      throw new ConvexError("Invalid session key generation")
+    }
+    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey, activeVersion))) {
+      throw new ConvexError("Only devices that hold the session key for the current generation can share history")
+    }
+    if (!(await findSessionKeyCopy(ctx, session._id, caller.identityKey, keyVersion))) {
       throw new ConvexError("Only devices that hold the session key can share it")
     }
     const recipientMembership = await getMembership(ctx, session._id, args.recipientPrincipalId)
@@ -812,13 +904,16 @@ export const shareSessionKey = mutation({
     if (!recipient || recipient.status !== "active") {
       throw new ConvexError("The recipient device is not active")
     }
-    if (await findSessionKeyCopy(ctx, session._id, recipient.identityKey)) {
+    if (!(await canAccessProject(ctx, session.projectId, recipient._id))) {
+      throw new ConvexError("The recipient no longer has project access")
+    }
+    if (await findSessionKeyCopy(ctx, session._id, recipient.identityKey, keyVersion)) {
       return { shared: false }
     }
 
     await ctx.db.insert("collaborationSessionKeys", {
       sessionId: session._id,
-      keyVersion: SESSION_KEY_VERSION,
+      keyVersion,
       recipientPrincipalId: recipient._id,
       recipientIdentityKey: normalizeDeviceIdentityKey(recipient.identityKey),
       senderIdentityKey: normalizeDeviceIdentityKey(caller.identityKey),
@@ -846,11 +941,19 @@ export const revokeMember = mutation({
 
     const now = Date.now()
     const member = await getMembership(ctx, session._id, args.memberPrincipalId)
+    let rotatedToKeyVersion = activeSessionKeyVersion(session)
     if (member && member.status !== "revoked") {
       await ctx.db.patch(member._id, { status: "revoked", leftAt: member.leftAt ?? now })
+      // A removed device may already hold every older plaintext key it was sent.
+      // Advance the content-key generation so all future traffic uses a key the
+      // removed device never receives. Surviving members retain their old wrapped
+      // copies solely to decrypt historical room replay after a restart.
+      rotatedToKeyVersion += 1
+      await ctx.db.patch(session._id, { activeKeyVersion: rotatedToKeyVersion, updatedAt: now })
     }
 
-    // The device keeps any key it already unwrapped; rotating the key is not built yet.
+    // Revoke every historical wrapped copy for the removed device. Other members'
+    // old copies remain readable for replay, but cannot encrypt current traffic.
     const keyCopies = await ctx.db
       .query("collaborationSessionKeys")
       .withIndex("by_session_and_version", (q) => q.eq("sessionId", session._id))
@@ -881,7 +984,62 @@ export const revokeMember = mutation({
       await ctx.db.patch(session._id, { lifecycle: "DORMANT", updatedAt: now })
     }
 
-    return { success: true }
+    return { success: true, keyVersion: rotatedToKeyVersion }
+  },
+})
+
+/** Only the trusted room may attest that admission is fenced at a durable snapshot. */
+export const finalizeLifecycleFromServer = publicMutation({
+  args: {
+    serverSecret: v.string(), publicSessionId: v.string(), principalId: v.id("devicePrincipals"),
+    expectedRevision: v.number(), fence: lifecycleFenceValidator,
+  },
+  returns: v.object({ committed: v.literal(true), revision: v.number(), superseded: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireGatewaySecret(args.serverSecret)
+    const session = await ctx.db.query("collaborationSessions")
+      .withIndex("by_public_session_id", (q) => q.eq("publicSessionId", args.publicSessionId)).first()
+    if (!session) throw new ConvexError("Collaboration session not found")
+    const caller = await ctx.db.get(args.principalId)
+    const member = await getMembership(ctx, session._id, args.principalId)
+    if (!caller || caller.status !== "active" || member?.status !== "active" || member.role !== "project_manager" ||
+      !(await canAccessProject(ctx, session.projectId, args.principalId))) {
+      throw new ConvexError("An active session manager with project access is required")
+    }
+    const { fence } = args
+    if (fence.requestedByPrincipalId !== args.principalId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(fence.fenceId) ||
+      !/^barrier_[0-9a-f]{32}$/.test(fence.barrierId) ||
+      ![args.expectedRevision, fence.sessionSeq, fence.createdAt].every((value) => Number.isSafeInteger(value) && value >= 0) ||
+      !Number.isSafeInteger(fence.keyVersion) || fence.keyVersion < 1 ||
+      (fence.gitSavedThroughSeq !== null && (!Number.isSafeInteger(fence.gitSavedThroughSeq) ||
+        fence.gitSavedThroughSeq < 0 || fence.gitSavedThroughSeq > fence.sessionSeq))) {
+      throw new ConvexError("Invalid lifecycle fence")
+    }
+    const revision = session.lifecycleRevision ?? 0
+    const receipt = session.lifecycleReceipt
+    if (receipt?.fence.fenceId === fence.fenceId) {
+      if (receipt.expectedRevision !== args.expectedRevision ||
+        Object.keys(fence).some((key) => fence[key as keyof typeof fence] !== receipt.fence[key as keyof typeof fence])) {
+        throw new ConvexError("Lifecycle receipt mismatch")
+      }
+      return { committed: true as const, revision, superseded: revision !== args.expectedRevision + 1 }
+    }
+    if (revision !== args.expectedRevision) throw new ConvexError("Lifecycle revision changed")
+    if (activeSessionKeyVersion(session) !== fence.keyVersion) throw new ConvexError("Session key changed")
+    if (fence.sessionSeq < Math.max(session.lastDurableSeq, session.lastSnapshotSeq)) {
+      throw new ConvexError("Lifecycle snapshot is behind retained state")
+    }
+    const lifecycle = walkLifecycle(session.lifecycle, fence.intent === "pause" ? ["PAUSING", "PAUSED"] : ["CLOSING", "CLOSED"])
+    const now = Date.now()
+    await ctx.db.patch(session._id, {
+      lifecycle, lifecycleRevision: revision + 1,
+      lifecycleReceipt: { fence, expectedRevision: args.expectedRevision, committedAt: now },
+      lastDurableSeq: fence.sessionSeq, lastSnapshotSeq: fence.sessionSeq,
+      lastAutoGitCheckpointSeq: fence.gitSavedThroughSeq ?? undefined,
+      lastAutoGitCommitOid: session.lastAutoGitCheckpointSeq === fence.gitSavedThroughSeq ? session.lastAutoGitCommitOid : undefined,
+      ...(fence.intent === "pause" ? { pausedAt: now } : { closedAt: now }), updatedAt: now,
+    })
+    return { committed: true as const, revision: revision + 1, superseded: false }
   },
 })
 
@@ -897,16 +1055,7 @@ export const pause = mutation({
       return { success: true }
     }
 
-    // PAUSING completes in the same mutation until projectd reports the final
-    // snapshot and checkpoint (Section 6.7).
-    const lifecycle = walkLifecycle(session.lifecycle, ["PAUSING", "PAUSED"])
-    const now = Date.now()
-    await ctx.db.patch(session._id, {
-      lifecycle,
-      pausedAt: now,
-      updatedAt: now,
-    })
-    return { success: true }
+    throw new ConvexError("Pause through the desktop daemon so the session is durably snapshotted first")
   },
 })
 
@@ -927,6 +1076,7 @@ export const resume = mutation({
     await ctx.db.patch(session._id, {
       lifecycle,
       pausedAt: undefined,
+      lifecycleRevision: (session.lifecycleRevision ?? 0) + 1,
       updatedAt: now,
     })
     return { success: true }
@@ -945,17 +1095,7 @@ export const close = mutation({
       return { success: true }
     }
 
-    const steps: SessionLifecycle[] = canTransitionSessionLifecycle(session.lifecycle, "CLOSED")
-      ? ["CLOSED"]
-      : ["CLOSING", "CLOSED"]
-    const lifecycle = walkLifecycle(session.lifecycle, steps)
-    const now = Date.now()
-    await ctx.db.patch(session._id, {
-      lifecycle,
-      closedAt: now,
-      updatedAt: now,
-    })
-    return { success: true }
+    throw new ConvexError("Close through the desktop daemon after reviewing the retained session state")
   },
 })
 

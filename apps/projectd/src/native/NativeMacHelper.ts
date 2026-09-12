@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
+import { createHash } from "node:crypto"
+import { getProjectdSocketPath } from "@cozea/projectd-protocol"
 
 /**
  * Runs the helper with optional stdin. Secrets travel on stdin because argv is
@@ -8,7 +10,7 @@ import path from "node:path"
  */
 function runHelperProcess(helperPath: string, args: string[], input?: string): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = execFile(helperPath, args, { maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
+    const child = execFile(helperPath, args, { maxBuffer: 16 * 1024 * 1024, timeout: 15_000 }, (error, stdout, stderr) => {
       if (!error) {
         resolve({ stdout, stderr })
         return
@@ -24,6 +26,9 @@ function runHelperProcess(helperPath: string, args: string[], input?: string): P
         // Not a helper reply
       }
       reject(error)
+    })
+    child.stdin?.on("error", () => {
+      // The execFile callback reports an early helper exit; don't emit EPIPE.
     })
     child.stdin?.end(input ?? "")
   })
@@ -91,18 +96,19 @@ export class NativeMacHelper {
         throw new Error(parsed.error ?? "Unknown native helper error")
       }
       return parsed.result
-    } catch (err: any) {
-      throw new Error(`Failed to parse helper output: ${err.message} (stdout: ${trimmed})`)
+    } catch {
+      // Keychain replies contain private keys; never include stdout in errors.
+      throw new Error("Invalid or unsuccessful native helper reply")
     }
   }
 
   async saveIdentity(jsonString: string): Promise<void> {
-    await this.runCommand(["keychain-save"], jsonString)
+    await this.runCommand(["keychain-save", this.identityAccount], jsonString)
   }
 
   async loadIdentity(): Promise<string | null> {
     try {
-      const res = await this.runCommand(["keychain-load"])
+      const res = await this.runCommand(["keychain-load", this.identityAccount])
       return res?.identity ?? null
     } catch (err: any) {
       if (err.message?.includes("not_found") || err.message?.includes("itemNotFound")) {
@@ -113,7 +119,11 @@ export class NativeMacHelper {
   }
 
   async deleteIdentity(): Promise<void> {
-    await this.runCommand(["keychain-delete"])
+    await this.runCommand(["keychain-delete", this.identityAccount])
+  }
+
+  private get identityAccount(): string {
+    return `device_${createHash("sha256").update(getProjectdSocketPath()).digest("hex")}`
   }
 
   async signChallenge(challenge: string, privateKeyD: string): Promise<string> {

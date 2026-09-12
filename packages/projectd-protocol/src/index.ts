@@ -14,6 +14,8 @@
  * - Graceful shutdown
  */
 
+import { StringDecoder } from "node:string_decoder"
+
 export const PROJECTD_PROTOCOL_VERSION = "1.0.0"
 export const PROJECTD_DEFAULT_DAEMON_VERSION = "0.2.3"
 
@@ -142,6 +144,54 @@ export interface ProjectdShutdownResult {
   shuttingDown: true
 }
 
+// ─── Local Session Workbenches (P13-P15) ─────────────────────────────────────
+
+export interface ProjectdEnsureSessionWorkbenchParams {
+  /** Main-pinned services used to hydrate before activation. */
+  background?: { gatewayUrl: string; convexUrl: string }
+  projectId: string
+  /** Public czs_… session ID. This is the stable device-local Session Workbench identity. */
+  publicSessionId: string
+  branchName: string
+  /** Branch/ref used as the starting point when creating a new collaboration branch. */
+  baseBranch?: string | null
+  createBranch?: boolean
+  title: string
+  /** Network remote when available. The daemon preserves credential-bearing HTTPS URLs verbatim. */
+  sourceRepoUrl?: string | null
+  /** Trusted local source folder, resolved by Electron main from a workspace ID. */
+  sourceRootPath?: string | null
+  /** Copy the source working tree bytes into the dedicated clone after Git setup. */
+  includeDirtyChanges?: boolean
+  /** Electron WorkspaceCatalog identity for the same managed folder. */
+  workspaceId?: string
+  /** Absolute managed session repo path chosen by Electron main. */
+  rootPath?: string
+  setActive?: boolean
+}
+
+export interface ProjectdSessionWorkbenchRecord {
+  workbenchId: string
+  projectId: string
+  workspaceId: string
+  workspaceRevision: number
+  kind: "collaboration"
+  branchName: string
+  collaborationSessionId: string
+  lifecycle: "creating" | "active" | "idle" | "closing" | "closed"
+  title: string
+  createdAt: number
+  updatedAt: number
+  lastActivatedAt: number | null
+  presentationStateRef: string
+}
+
+export interface ProjectdEnsureSessionWorkbenchResult {
+  workbench: ProjectdSessionWorkbenchRecord
+  rootPath: string
+  reused: boolean
+}
+
 // ─── Collaboration sessions (P10, P13) ─────────────────────────────────────────
 
 export type ProjectdSessionRole = "viewer" | "developer" | "project_manager"
@@ -153,7 +203,34 @@ export interface ProjectdSessionTicket {
   role?: ProjectdSessionRole
 }
 
+/** Device-local discovery metadata only; never returns credentials or key material. */
+export interface ProjectdSessionRecoveryEntry {
+  publicSessionId: string
+  projectId: string | null
+  workspaceId: string | null
+  branchName: string | null
+  source: "joined" | "left"
+  descriptorState: "readable" | "unreadable"
+  hasRetainedKey: boolean
+  pendingBatches: number
+  snapshotSequence: number | null
+  pendingBinaryVersions: number
+  requiresOnlineVerification: boolean
+}
+
+export interface ProjectdRecoveryExportResult {
+  directory: string
+  files: number
+  pendingBatches: number
+  missingBinaryContents: number
+  pendingOnly: boolean
+  projectOmissions: number
+  pendingBinaryVersions: number
+}
+
 export interface ProjectdSessionAttachParams {
+  /** Main-pinned authorities; permits OS-protected background resumption. */
+  background?: { gatewayUrl: string; convexUrl: string }
   publicSessionId: string
   workspaceId: string
   projectId: string
@@ -161,6 +238,10 @@ export interface ProjectdSessionAttachParams {
   rootPath: string
   /** The session's 32-byte room key, base64. Only this user's local socket carries it. */
   roomKeyBase64: string
+  /** Current E2EE content-key generation. */
+  roomKeyVersion?: number
+  /** Older E2EE keys retained by this still-authorized member for historical replay. */
+  previousRoomKeysBase64?: Record<string, string>
   ticket: ProjectdSessionTicket
   actor?: { principalId?: string; identityKey?: string }
   /**
@@ -248,20 +329,89 @@ export interface ProjectdTargetStatus {
 /** How an explicit rebase of the session onto its target went (Section 21). */
 export interface ProjectdRebaseResult {
   /**
-   * rebased: pushed over the last save; held: adopted, waiting for conflict markers to be
-   * resolved; conflicts: stopped with nothing changed; current: nothing to rebase;
+   * rebased: pushed over the last save; held: waiting for a save;
+   * conflicts: isolated resolution is required with live files unchanged; current: nothing to rebase;
    * requested: the Mac that saves was asked; no_leader: no Mac can push.
    */
   outcome: "rebased" | "held" | "conflicts" | "current" | "requested" | "no_leader"
   message: string
   commitOid?: string | null
   conflictingPaths?: string[]
+  /** Opaque device-local isolated rebase journal, retained across daemon restarts. */
+  recoveryId?: string
+}
+
+export type ProjectdRebaseChoice = { path: string } & (
+  { kind: "variant"; stage: 1 | 2 | 3 } | { kind: "content"; text: string; executable: boolean } | { kind: "delete" }
+)
+export type ProjectdRebaseRecoveryRequest = { action: "list" } | { action: "review" | "continue" | "apply" | "cancel"; recoveryId: string } |
+  { action: "resolve"; recoveryId: string; fingerprint: string; choices: ProjectdRebaseChoice[] }
+export interface ProjectdRebaseReview {
+  recoveryId: string
+  state: "conflicted" | "computed" | "resolving" | "adopting"
+  fingerprint: string | null
+  variants: Array<{ path: string; stage: 1 | 2 | 3; mode: string; oid: string; text: string | null }>
+}
+export interface ProjectdRebaseRecoveryResponse {
+  journals?: Array<{ id: string; state: string; createdAt: number }>
+  review?: ProjectdRebaseReview
+  result?: ProjectdRebaseResult
 }
 
 export type ProjectdMergeStrategy = "merge" | "squash"
 
+export type ProjectdStructuralConflictRequest = { action: "list"; afterFileId?: string } |
+  { action: "resolve"; fileId: string; fingerprint: string; choice: "rename" | "restore" | "delete"; path?: string }
+export interface ProjectdStructuralConflictReview {
+  fileId: string
+  path: string
+  deleted: boolean
+  kinds: Array<"path_collision" | "concurrent_rename" | "delete_modify">
+  alternatives: string[]
+  fingerprint: string
+  textPreview?: string
+}
+export interface ProjectdStructuralConflictResponse {
+  conflicts: ProjectdStructuralConflictReview[]
+  nextFileId: string | null
+}
+
+export type ProjectdBinaryConflictRequest = { action: "list"; afterFileId?: string } |
+  { action: "resolve" | "preview" | "export"; fileId: string; revisionId: string; fingerprint: string; destinationDirectory?: string }
+export interface ProjectdBinaryConflictReview {
+  fileId: string
+  path: string
+  fingerprint: string
+  variants: Array<{ revisionId: string; contentHash: string; size: number; createdAt: number }>
+}
+export interface ProjectdBinaryConflictResponse {
+  conflicts: ProjectdBinaryConflictReview[]
+  nextFileId: string | null
+  resolvedRevisionId?: string
+  exportedPath?: string
+  preview?: { revisionId: string; size: number; hex: string; truncated: boolean; imageDataUrl: string | null }
+}
+
+export interface ProjectdClosePreflight {
+  publicSessionId: string
+  reviewId: string
+  sessionSeq: number
+  gitSavedThroughSeq: number | null
+  gitLag: boolean
+  conflicts: { pathCollisions: number; concurrentRenames: number; deleteModify: number; binary: number }
+  merge: ProjectdMergePreview | null
+  mergeUnavailable: string | null
+}
+
+export interface ProjectdCloseChoice {
+  reviewId: string
+  allowUnpublishedGit: boolean
+  allowUnresolvedConflicts: boolean
+}
+
 /** Merging the session's last save into its target, before anything is pushed (Section 22.1). */
 export interface ProjectdMergePreview {
+  canCreatePullRequest?: boolean
   branch: string
   targetBranch: string
   /** The saved session commit the merge takes; never the live state. */
@@ -279,7 +429,15 @@ export interface ProjectdMergePreview {
   pullRequestUrl: string | null
 }
 
+export interface ProjectdPullRequestResult {
+  number: number
+  url: string
+  state: "open"
+  created: boolean
+}
+
 export interface ProjectdMergeResult {
+  pullRequest?: ProjectdPullRequestResult
   /** needs_pull_request: the remote refuses direct pushes; moved: the save or the target moved since review. */
   outcome: "merged" | "needs_pull_request" | "conflicts" | "moved"
   mergeCommitOid?: string
@@ -295,8 +453,9 @@ export interface ProjectdSessionStatus {
   role: ProjectdSessionRole
   lastAppliedSessionSeq: number
   pendingBatches: number
+  pendingBinaryVersions: number
   fileCount: number
-  /** Files kept on this machine: binaries, and text too large for one batch. */
+  /** Files excluded from synchronization by scope or unsupported content rules. */
   skippedPaths: string[]
   lastError: { code: string; message: string } | null
   updatedAt: number
@@ -321,9 +480,10 @@ export function encodeMessage(msg: ProjectdClientMessage | ProjectdServerMessage
 
 export class LineMessageDecoder {
   private buffer = ""
+  private readonly utf8 = new StringDecoder("utf8")
 
   push(chunk: string | Buffer): (ProjectdClientMessage | ProjectdServerMessage)[] {
-    this.buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8")
+    this.buffer += this.utf8.write(typeof chunk === "string" ? Buffer.from(chunk, "utf8") : chunk)
     const messages: (ProjectdClientMessage | ProjectdServerMessage)[] = []
 
     let newlineIndex: number
@@ -333,8 +493,9 @@ export class LineMessageDecoder {
       if (line.length > 0) {
         try {
           messages.push(JSON.parse(line))
-        } catch (err) {
-          console.error("[LineMessageDecoder] Malformed message:", line, err)
+        } catch {
+          // Requests can contain source text and credentials. Never log payloads.
+          console.error("[LineMessageDecoder] Malformed JSON message")
         }
       }
     }
@@ -344,4 +505,3 @@ export class LineMessageDecoder {
 }
 
 export * from "./client"
-

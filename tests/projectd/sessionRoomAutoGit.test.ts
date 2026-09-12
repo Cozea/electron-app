@@ -73,6 +73,56 @@ afterEach(() => {
 })
 
 describe("AutoGit lease in the session room", () => {
+  it("orders an adoption before buffered edits across eviction and releases an expired barrier", async () => {
+    const room = newRoom()
+    const key = randomBytes(32)
+    const a = createClient(room, "c_a", key)
+    const b = createClient(room, "c_b", key)
+    await a.client.connect()
+    await b.client.connect()
+    a.client.setAutoGitEligibility(true)
+    await waitFor(() => leaderOf(a.client) === "c_a", "integration owner leadership")
+    const generation = generationOf(a.client)
+    const checkpoint = await a.client.requestBarrier(generation)
+    await a.client.publishCheckpoint(generation, checkpointAt(checkpoint, "4"))
+    const adoptionId = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa"
+    await a.client.beginRebaseAdoption(generation, { id: adoptionId, from: "4".repeat(40), resultOid: "5".repeat(40) })
+    const barrier = await a.client.beginIntegration(generation, adoptionId)
+    expect(barrier.sessionSeq).toBe(0)
+    await expect(b.client.beginIntegration(generation, adoptionId)).rejects.toMatchObject({ code: "INTEGRATION_UNAVAILABLE" })
+    b.replica.createFile({ path: "held-one.md", kind: "text", content: "one", actor: { actorType: "user" } })
+    const first = b.client.submitLocalChanges()!
+    b.replica.createFile({ path: "held-two.md", kind: "text", content: "two", actor: { actorType: "user" } })
+    const second = b.client.submitLocalChanges()!
+    await waitFor(() => (room.storage.data.get("integration:active") as { count: number }).count === 2, "durable held edits")
+    expect(room.storage.data.get("currentSeq") ?? 0).toBe(0)
+    expect(a.replica.tree.listLiveEntries()).toHaveLength(0)
+    room.evict()
+    await expect(b.client.finishIntegration(generation, barrier.id)).rejects.toMatchObject({ code: "INTEGRATION_STALE" })
+    a.replica.createFile({ path: "adopted.md", kind: "text", content: "system result", actor: { actorType: "user" } })
+    const batch = a.replica.exportBatch()!
+    expect(await a.client.finishIntegration(generation, barrier.id, batch)).toBe(3)
+    await waitFor(() => a.replica.tree.listLiveEntries().length === 3 && b.replica.tree.listLiveEntries().length === 3, "adoption and held edits delivered")
+    expect(room.storage.data.get(`batch-id:${batch.batchId}`)).toBe(1)
+    expect(room.storage.data.get(`batch-id:${first}`)).toBe(2)
+    expect(room.storage.data.get(`batch-id:${second}`)).toBe(3)
+    expect(room.storage.data.has("integration:active")).toBe(false)
+    room.evict()
+    expect(await a.client.finishIntegration(generation, barrier.id, batch)).toBe(3)
+    expect(room.storage.data.get("currentSeq")).toBe(3)
+    const expiring = await a.client.beginIntegration(generation, adoptionId)
+    b.replica.createFile({ path: "after-expiry.md", kind: "text", content: "retained", actor: { actorType: "user" } })
+    const waiting = b.client.submitLocalChanges()!
+    await waitFor(() => (room.storage.data.get("integration:active") as { count: number }).count === 1, "held edit before expiry")
+    const retained = room.storage.data.get("integration:active") as Record<string, unknown>
+    room.storage.data.set("integration:active", { ...retained, expiresAt: Date.now() - 1 })
+    room.evict()
+    await room.storage.setAlarm(Date.now() + 5)
+    await waitFor(() => room.storage.data.get(`batch-id:${waiting}`) === 4, "expiry releases retained edit")
+    await expect(a.client.finishIntegration(generation, expiring.id, batch)).rejects.toMatchObject({ code: "INTEGRATION_STALE" })
+    expect(room.errors).toEqual([])
+  })
+
   it("lets one eligible writer lead, never a viewer, and hands over when the leader steps aside", async () => {
     const room = newRoom()
     const roomKey = randomBytes(32)

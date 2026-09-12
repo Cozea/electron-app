@@ -77,6 +77,20 @@ async function lifecycleOf(world: ReturnType<typeof createWorld>, sessionId: str
 }
 
 describe("collaborationSessions access control", () => {
+  it("authorizes repository credentials only for an active editor and matching canonical binding", async () => {
+    const world = createWorld()
+    const repositoryUrl = "https://github.com/team/app.git"
+    await world.db.patch(world.projectId, { repo: { provider: "github", url: repositoryUrl, defaultBranch: "main" } })
+    const { sessionId, publicSessionId } = await createSession(world, { repositoryUrl })
+    const read = (ctx: typeof world.owner.ctx) => runConvexHandler(sessions.repositoryCredentialScope, ctx, { publicSessionId })
+    expect(await read(world.owner.ctx)).toMatchObject({ projectId: world.projectId })
+    await expect(read(world.outsider.ctx)).rejects.toThrow()
+    await expect(read(world.anonymous)).rejects.toThrow()
+    await world.db.patch(sessionId, { repositoryUrl: "https://github.com/team/other.git" })
+    await expect(read(world.owner.ctx)).rejects.toThrow("binding")
+    await world.db.patch(sessionId, { repositoryUrl, lifecycle: "PAUSED" })
+    await expect(read(world.owner.ctx)).rejects.toThrow("unavailable")
+  })
   it("rejects unauthenticated callers and hides sessions from them", async () => {
     const world = createWorld()
     await expect(runConvexHandler(sessions.create, world.anonymous, createArgs(world.projectId))).rejects.toThrow(
@@ -223,11 +237,15 @@ describe("collaborationSessions access control", () => {
 
     await expect(runConvexHandler(sessions.pause, world.teammate.ctx, { sessionId })).rejects.toThrow(/managers/)
 
-    await runConvexHandler(sessions.pause, world.owner.ctx, { sessionId })
+    await expect(runConvexHandler(sessions.pause, world.owner.ctx, { sessionId })).rejects.toThrow(/desktop daemon/)
+    expect(await lifecycleOf(world, sessionId)).toBe("ACTIVE")
+    await world.db.patch(sessionId, { lifecycle: "PAUSED" })
     expect(await lifecycleOf(world, sessionId)).toBe("PAUSED")
     await runConvexHandler(sessions.resume, world.owner.ctx, { sessionId })
     expect(await lifecycleOf(world, sessionId)).toBe("ACTIVE")
-    await runConvexHandler(sessions.close, world.owner.ctx, { sessionId })
+    await expect(runConvexHandler(sessions.close, world.owner.ctx, { sessionId })).rejects.toThrow(/desktop daemon/)
+    expect(await lifecycleOf(world, sessionId)).toBe("ACTIVE")
+    await world.db.patch(sessionId, { lifecycle: "CLOSED" })
     expect(await lifecycleOf(world, sessionId)).toBe("CLOSED")
 
     await expect(runConvexHandler(sessions.resume, world.owner.ctx, { sessionId })).rejects.toThrow(
@@ -268,6 +286,75 @@ describe("collaborationSessions.getRoomAccessForServer", () => {
     return runConvexHandler(sessions.getRoomAccessForServer, world.anonymous, { publicSessionId, principalId, serverSecret })
   }
 
+  function finalization(publicSessionId: string, principalId: string) {
+    return { publicSessionId, principalId, serverSecret: GATEWAY_SECRET, expectedRevision: 0,
+      fence: { fenceId: "12345678-1234-4234-8234-123456789abc", intent: "pause", sessionSeq: 8,
+        barrierId: `barrier_${"a".repeat(32)}`, keyVersion: 1, requestedByPrincipalId: principalId,
+        createdAt: Date.now(), gitSavedThroughSeq: 5 } }
+  }
+
+  it("limits recovery admission to retained sessions with current device and membership access", async () => {
+    const world = createWorld()
+    const { sessionId, publicSessionId } = await createSession(world)
+    const recovery = (principalId = world.owner.id) => runConvexHandler(sessions.getRoomAccessForServer,
+      world.anonymous, { publicSessionId, principalId, serverSecret: GATEWAY_SECRET, recovery: true })
+    expect(await recovery()).toMatchObject({ allowed: false })
+    for (const lifecycle of ["PAUSED", "CLOSED"]) {
+      await world.db.patch(sessionId, { lifecycle })
+      expect(await recovery()).toMatchObject({ allowed: true, role: "project_manager" })
+      expect(await roomAccess(world, publicSessionId, world.owner.id)).toMatchObject({ allowed: false })
+      expect(await recovery(world.outsider.id)).toMatchObject({ allowed: false })
+    }
+    await world.db.patch(world.owner.id, { status: "revoked" })
+    expect(await recovery()).toMatchObject({ allowed: false })
+  })
+
+  it("retains a trusted lifecycle receipt and never re-pauses on a delayed retry after resume", async () => {
+    const world = createWorld()
+    const { sessionId, publicSessionId } = await createSession(world)
+    const args = finalization(publicSessionId, world.owner.id)
+    const commit = () => runConvexHandler(sessions.finalizeLifecycleFromServer, world.anonymous, args)
+    expect(await commit()).toEqual({ committed: true, revision: 1, superseded: false })
+    expect(await lifecycleOf(world, sessionId)).toBe("PAUSED")
+    expect(await world.db.get(sessionId)).toMatchObject({ lastDurableSeq: 8, lastSnapshotSeq: 8,
+      lastAutoGitCheckpointSeq: 5, lifecycleReceipt: { fence: args.fence } })
+    expect(await commit()).toEqual({ committed: true, revision: 1, superseded: false })
+    await expect(runConvexHandler(sessions.finalizeLifecycleFromServer, world.anonymous,
+      { ...args, fence: { ...args.fence, sessionSeq: 9 } })).rejects.toThrow(/receipt mismatch/)
+    await runConvexHandler(sessions.resume, world.owner.ctx, { sessionId })
+    expect(await commit()).toEqual({ committed: true, revision: 2, superseded: true })
+    expect(await lifecycleOf(world, sessionId)).toBe("ACTIVE")
+    const closeArgs = { ...args, expectedRevision: 2,
+      fence: { ...args.fence, intent: "close", fenceId: "22345678-1234-4234-8234-123456789abc" } }
+    expect(await runConvexHandler(sessions.finalizeLifecycleFromServer, world.anonymous, closeArgs))
+      .toEqual({ committed: true, revision: 3, superseded: false })
+    await expect(commit()).rejects.toThrow(/revision changed/)
+    expect(await lifecycleOf(world, sessionId)).toBe("CLOSED")
+  })
+
+  it("rejects forged, unauthorized, stale-key and regressing lifecycle proofs", async () => {
+    const world = createWorld()
+    const { sessionId, publicSessionId } = await createSession(world, { accessMode: "organization_available" })
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+    const args = finalization(publicSessionId, world.owner.id)
+    const submit = (value: Record<string, unknown>) => runConvexHandler(sessions.finalizeLifecycleFromServer, world.anonymous, value)
+    await expect(submit({ ...args, serverSecret: "wrong" })).rejects.toThrow(/Unauthorized/)
+    await expect(submit(finalization(publicSessionId, world.teammate.id))).rejects.toThrow(/active session manager/)
+    await expect(submit({ ...args, fence: { ...args.fence, requestedByPrincipalId: world.outsider.id } }))
+      .rejects.toThrow(/Invalid lifecycle fence/)
+    await expect(submit({ ...args, fence: { ...args.fence, sessionSeq: -1 } })).rejects.toThrow(/Invalid lifecycle fence/)
+    await world.db.patch(sessionId, { activeKeyVersion: 2 })
+    await expect(submit(args)).rejects.toThrow(/Session key changed/)
+    await world.db.patch(sessionId, { activeKeyVersion: 1, lastSnapshotSeq: 10 })
+    await expect(submit(args)).rejects.toThrow(/behind retained state/)
+    await world.db.patch(world.owner.id, { status: "revoked" })
+    await expect(submit(args)).rejects.toThrow(/active session manager/)
+    await world.db.patch(world.owner.id, { status: "active" })
+    await world.db.patch(world.projectId, { createdBy: world.outsider.id, organizationId: undefined })
+    await expect(submit(args)).rejects.toThrow(/active session manager/)
+    expect(await lifecycleOf(world, sessionId)).toBe("ACTIVE")
+  })
+
   it("refuses callers without the gateway secret", async () => {
     const world = createWorld()
     const { publicSessionId } = await createSession(world)
@@ -286,11 +373,19 @@ describe("collaborationSessions.getRoomAccessForServer", () => {
       allowed: true,
       projectId: world.projectId,
       role: "project_manager",
+      keyVersion: 1,
+      lifecycleRevision: 0,
     })
     expect(await roomAccess(world, publicSessionId, world.teammate.id)).toEqual({
       allowed: true,
       projectId: world.projectId,
       role: "developer",
+      keyVersion: 1,
+      lifecycleRevision: 0,
+    })
+    await world.db.patch(world.teammate.id, { status: "revoked" })
+    expect(await roomAccess(world, publicSessionId, world.teammate.id)).toEqual({
+      allowed: false, reason: "The device identity is no longer active",
     })
   })
 
@@ -311,7 +406,7 @@ describe("collaborationSessions.getRoomAccessForServer", () => {
     await runConvexHandler(sessions.revokeMember, world.owner.ctx, { sessionId, memberPrincipalId: world.teammate.id })
     expect(await roomAccess(world, publicSessionId, world.teammate.id)).toMatchObject({ allowed: false })
 
-    await runConvexHandler(sessions.pause, world.owner.ctx, { sessionId })
+    await world.db.patch(sessionId, { lifecycle: "PAUSED" })
     expect(await roomAccess(world, publicSessionId, world.owner.id)).toEqual({
       allowed: false,
       reason: expect.stringMatching(/paused/),
@@ -321,6 +416,39 @@ describe("collaborationSessions.getRoomAccessForServer", () => {
 
 describe("collaborationSessions session room keys", () => {
   const WRAP = "ECDH-P256+A256GCM"
+
+  it("shares missed keys after closure only with existing members who still have project access", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world, { accessMode: "organization_available" })
+    await runConvexHandler(sessions.initializeSessionKey, world.owner.ctx, { sessionId, wrapAlgorithm: WRAP, wrappedKey: "owner-key" })
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+    await world.db.patch(sessionId, { lifecycle: "CLOSED" })
+    const share = { sessionId, recipientPrincipalId: world.teammate.id, wrapAlgorithm: WRAP, wrappedKey: "recipient-key" }
+    const list = () => runConvexHandler(sessions.listMembersNeedingSessionKey, world.owner.ctx, { sessionId })
+    expect(await list()).toEqual([expect.objectContaining({ principalId: world.teammate.id })])
+    const orgMember = world.db.rows("organizationMembers").find((row) => row.principalId === world.teammate.id)!
+    await world.db.patch(orgMember._id, { principalId: world.outsider.id })
+    expect(await list()).toEqual([])
+    await expect(runConvexHandler(sessions.shareSessionKey, world.owner.ctx, share)).rejects.toThrow(/project access/)
+    world.db.seed("projectMembers", { projectId: world.projectId, principalId: world.teammate.id, role: "viewer", addedBy: world.owner.id, addedAt: Date.now() })
+    await world.db.patch(world.teammate.id, { status: "revoked" })
+    expect(await list()).toEqual([])
+    await expect(runConvexHandler(sessions.shareSessionKey, world.owner.ctx, share)).rejects.toThrow(/not active/)
+    await world.db.patch(world.teammate.id, { status: "active" })
+    expect(await runConvexHandler(sessions.shareSessionKey, world.owner.ctx, share)).toEqual({ shared: true })
+    expect(await runConvexHandler(sessions.shareSessionKey, world.owner.ctx, share)).toEqual({ shared: false })
+    expect(await keyFor(world.teammate, sessionId)).toMatchObject({ status: "ready", wrappedKey: "recipient-key" })
+    expect(await lifecycleOf(world, sessionId)).toBe("CLOSED")
+    await expect(runConvexHandler(sessions.join, world.outsider.ctx, { sessionId })).rejects.toThrow()
+    const recipientMember = world.db.rows("collaborationSessionMembers").find((row) => row.principalId === world.teammate.id)!
+    await world.db.patch(recipientMember._id, { status: "left" })
+    await expect(runConvexHandler(sessions.shareSessionKey, world.owner.ctx, share)).rejects.toThrow(/not an active member/)
+    await world.db.patch(recipientMember._id, { status: "active" })
+    await world.db.patch(sessionId, { lifecycle: "CLOSING" })
+    await expect(runConvexHandler(sessions.shareSessionKey, world.owner.ctx, share)).rejects.toThrow(/Wait for session closure/)
+    await world.db.patch(sessionId, { lifecycle: "CLOSED", activeKeyVersion: 2 })
+    await expect(runConvexHandler(sessions.shareSessionKey, world.owner.ctx, { ...share, keyVersion: 1 })).rejects.toThrow(/current generation/)
+  })
 
   function keyFor(device: { ctx: unknown }, sessionId: string) {
     return runConvexHandler(sessions.getSessionKeyForDevice, device.ctx, { sessionId })
@@ -391,6 +519,105 @@ describe("collaborationSessions session room keys", () => {
     await expect(keyFor(world.teammate, sessionId)).rejects.toThrow(/Join the session/)
   })
 
+  it("rotates to a fresh generation on removal while survivors retain old keys for replay", async () => {
+    const world = createWorld()
+    const organizationId = world.db.rows("organizations")[0]!._id
+    world.db.seed("organizationMembers", { organizationId, principalId: world.invitee.id, role: "member" })
+    const { sessionId } = await createSession(world, { accessMode: "organization_available" })
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+    await runConvexHandler(sessions.join, world.invitee.ctx, { sessionId })
+    await runConvexHandler(sessions.initializeSessionKey, world.owner.ctx, {
+      sessionId,
+      wrapAlgorithm: WRAP,
+      wrappedKey: "v1-owner",
+    })
+    await runConvexHandler(sessions.shareSessionKey, world.owner.ctx, {
+      sessionId,
+      recipientPrincipalId: world.teammate.id,
+      wrapAlgorithm: WRAP,
+      wrappedKey: "v1-teammate",
+    })
+    await runConvexHandler(sessions.shareSessionKey, world.owner.ctx, {
+      sessionId,
+      recipientPrincipalId: world.invitee.id,
+      wrapAlgorithm: WRAP,
+      wrappedKey: "v1-invitee",
+    })
+
+    expect(await runConvexHandler(sessions.revokeMember, world.owner.ctx, {
+      sessionId,
+      memberPrincipalId: world.invitee.id,
+    })).toEqual({ success: true, keyVersion: 2 })
+    expect((await world.db.get(sessionId))?.activeKeyVersion).toBe(2)
+    expect(await keyFor(world.owner, sessionId)).toEqual({ status: "not_initialized", keyVersion: 2 })
+
+    expect(await runConvexHandler(sessions.getSessionKeyringForDevice, world.owner.ctx, { sessionId })).toMatchObject({
+      activeKeyVersion: 2,
+      keys: [expect.objectContaining({ keyVersion: 1, wrappedKey: "v1-owner" })],
+    })
+    await expect(
+      runConvexHandler(sessions.getSessionKeyringForDevice, world.invitee.ctx, { sessionId }),
+    ).rejects.toThrow(/Join the session/)
+
+    expect(await runConvexHandler(sessions.initializeSessionKey, world.owner.ctx, {
+      sessionId,
+      wrapAlgorithm: WRAP,
+      wrappedKey: "v2-owner",
+    })).toEqual({ created: true, keyVersion: 2 })
+    await runConvexHandler(sessions.shareSessionKey, world.owner.ctx, {
+      sessionId,
+      recipientPrincipalId: world.teammate.id,
+      wrapAlgorithm: WRAP,
+      wrappedKey: "v2-teammate",
+    })
+    expect(await keyFor(world.teammate, sessionId)).toMatchObject({ status: "ready", keyVersion: 2, wrappedKey: "v2-teammate" })
+    expect(await runConvexHandler(sessions.getSessionKeyringForDevice, world.teammate.ctx, { sessionId })).toMatchObject({
+      activeKeyVersion: 2,
+      keys: [
+        expect.objectContaining({ keyVersion: 1, wrappedKey: "v1-teammate" }),
+        expect.objectContaining({ keyVersion: 2, wrappedKey: "v2-teammate" }),
+      ],
+    })
+  })
+
+  it("shares historical generations with a new active member without restoring revoked access", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world, { accessMode: "organization_available" })
+    await runConvexHandler(sessions.initializeSessionKey, world.owner.ctx, {
+      sessionId, wrapAlgorithm: WRAP, wrappedKey: "generation-one",
+    })
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+    await runConvexHandler(sessions.revokeMember, world.owner.ctx, {
+      sessionId, memberPrincipalId: world.teammate.id,
+    })
+    await runConvexHandler(sessions.initializeSessionKey, world.owner.ctx, {
+      sessionId, wrapAlgorithm: WRAP, wrappedKey: "generation-two",
+    })
+    world.db.seed("organizationMembers", {
+      organizationId: world.db.rows("organizations")[0]!._id, principalId: world.invitee.id, role: "member",
+    })
+    await runConvexHandler(sessions.join, world.invitee.ctx, { sessionId })
+    expect(await runConvexHandler(sessions.listMembersNeedingSessionKey, world.owner.ctx, {
+      sessionId, keyVersion: 1,
+    })).toEqual([expect.objectContaining({ principalId: world.invitee.id })])
+    for (const keyVersion of [1, 2]) {
+      await runConvexHandler(sessions.shareSessionKey, world.owner.ctx, {
+        sessionId, keyVersion, recipientPrincipalId: world.invitee.id,
+        wrapAlgorithm: WRAP, wrappedKey: `copy-${keyVersion}`,
+      })
+    }
+    expect(await runConvexHandler(sessions.getSessionKeyringForDevice, world.invitee.ctx, { sessionId })).toMatchObject({
+      activeKeyVersion: 2,
+      keys: [expect.objectContaining({ keyVersion: 1 }), expect.objectContaining({ keyVersion: 2 })],
+    })
+    await expect(runConvexHandler(sessions.shareSessionKey, world.owner.ctx, {
+      sessionId, keyVersion: 1, recipientPrincipalId: world.teammate.id, wrapAlgorithm: WRAP, wrappedKey: "revoked",
+    })).rejects.toThrow(/not an active member/)
+    await expect(runConvexHandler(sessions.shareSessionKey, world.owner.ctx, {
+      sessionId, keyVersion: 3, recipientPrincipalId: world.invitee.id, wrapAlgorithm: WRAP, wrappedKey: "future",
+    })).rejects.toThrow(/Invalid session key generation/)
+  })
+
   it("does not let a viewer create the key", async () => {
     const world = createWorld()
     const { sessionId } = await createSession(world)
@@ -445,10 +672,10 @@ describe("collaborationSessions members for the session bar", () => {
     expect(await membershipOf(world.teammate)).toBe("left")
   })
 
-  it("records the folder's remote without credentials and hands it to invitees", async () => {
+  it("records the validated configured remote and hands it to invitees", async () => {
     const world = createWorld()
     const { sessionId } = await createSession(world, { repositoryUrl: "https://ghp_token@github.com/acme/app.git" })
-    expect((await world.db.get(sessionId))?.repositoryUrl).toBe("https://github.com/acme/app.git")
+    expect((await world.db.get(sessionId))?.repositoryUrl).toBe("https://ghp_token@github.com/acme/app.git")
 
     const { invitationId } = await runConvexHandler<{ invitationId: string }>(sessions.inviteParticipant, world.owner.ctx, {
       sessionId,
@@ -459,10 +686,11 @@ describe("collaborationSessions members for the session bar", () => {
       world.invitee.ctx,
       {},
     )
-    expect(inbox[0]?.repositoryUrl).toBe("https://github.com/acme/app.git")
+    const storedRepositoryUrl = (await world.db.get(sessionId))?.repositoryUrl
+    expect(inbox[0]?.repositoryUrl).toBe(storedRepositoryUrl)
 
     const accepted = await runConvexHandler(sessions.resolveInvitation, world.invitee.ctx, { invitationId, accept: true })
-    expect(accepted).toEqual(expect.objectContaining({ accepted: true, repositoryUrl: "https://github.com/acme/app.git" }))
+    expect(accepted).toEqual(expect.objectContaining({ accepted: true, repositoryUrl: storedRepositoryUrl }))
   })
 
   it("drops a remote another Mac cannot safely clone", async () => {

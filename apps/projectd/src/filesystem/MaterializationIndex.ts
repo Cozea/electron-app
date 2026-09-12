@@ -217,6 +217,12 @@ export class MaterializationIndex {
     return forgetting
   }
 
+  matchesFolder(sessionId: string, workspaceId: string, rootPath: string): boolean {
+    const bound = this.db.db.prepare("SELECT workspace_id, root_path FROM session_folders WHERE session_id=?")
+      .get(sessionId) as { workspace_id: string; root_path: string } | undefined
+    return bound?.workspace_id === workspaceId && bound.root_path === rootPath
+  }
+
   private rowToEntry(row: any): MaterializedEntry {
     return {
       sessionId: String(row.session_id),

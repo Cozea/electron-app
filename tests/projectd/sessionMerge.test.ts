@@ -2,10 +2,12 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SessionMerger, pullRequestUrl } from "../../apps/projectd/src/autogit/SessionMerger"
 import { GitService } from "../../apps/projectd/src/git/GitService"
+import { GitHubSessionPullRequest } from "../../apps/projectd/src/autogit/GitHubSessionPullRequest"
+import { TargetWatcher } from "../../apps/projectd/src/autogit/TargetWatcher"
 
 /**
  * P22: merging a session takes its last save to Git, an immutable commit, into the
@@ -90,7 +92,7 @@ describe("merging a session into its target (P22)", () => {
   it("merges the reviewed save with a merge commit, as the person", async () => {
     const result = await merger().merge({
       checkpointOid: checkpoint,
-      reviewedCheckpointOid: checkpoint,
+      reviewedCheckpointOid: checkpoint, reviewedTargetOid: base,
       strategy: "merge",
       unsavedChanges: 0,
     })
@@ -101,11 +103,60 @@ describe("merging a session into its target (P22)", () => {
     expect(git(remote, "show", "main:notes.md")).toBe("one\ntwo\nthree")
   })
 
+  it("routes target checks and merges through scoped credentials", async () => {
+    const service = new GitService()
+    const execute = service.process.execute.bind(service.process)
+    git(folder, "remote", "set-url", "origin", "https://github.com/team/app.git")
+    const credentials = vi.fn(async () => "fixture-secret")
+    vi.spyOn(service.process, "execute").mockImplementation((args, options) => {
+      if (["fetch", "push"].includes(args[0]!)) {
+        expect(options.env?.COZEA_GIT_CREDENTIAL_SOCKET).toBeTruthy()
+        expect(JSON.stringify(options.env)).not.toContain("fixture-secret")
+        expect(args).toContain("https://github.com/team/app.git")
+        return execute(args.map((arg) => arg === "https://github.com/team/app.git" ? remote : arg), options)
+      }
+      return execute(args, options)
+    })
+    const watcher = new TargetWatcher({ workspaceRoot: folder, branchName: BRANCH, targetBranch: "main", gitService: service,
+      repositoryCredentials: credentials, onChange: () => {} })
+    await watcher.checkNow(true)
+    expect(credentials).toHaveBeenCalledWith({ owner: "team", repository: "app" })
+    const session = new SessionMerger({ workspaceRoot: folder, branchName: BRANCH, targetBranch: "main", gitService: service, repositoryCredentials: credentials })
+    const result = await session.merge({ checkpointOid: checkpoint, reviewedCheckpointOid: checkpoint, reviewedTargetOid: base, strategy: "merge", unsavedChanges: 0 })
+    expect(result.outcome).toBe("merged")
+    expect(git(remote, "rev-parse", "main")).toBe(result.mergeCommitOid)
+    expect(credentials).toHaveBeenCalledTimes(3)
+  })
+
+  it("refuses review and merge when an external push moves the published session branch", async () => {
+    const outside = path.join(dir, "outside-session")
+    git(dir, "clone", "-q", "-b", BRANCH, remote, outside)
+    fs.writeFileSync(path.join(outside, "external.txt"), "external session change")
+    git(outside, "add", "-A")
+    git(outside, "commit", "-qm", "outside session edit")
+    git(outside, "push", "-q", "origin", BRANCH)
+    const advanced = git(outside, "rev-parse", "HEAD")
+    await expect(merger().preview({ checkpointOid: checkpoint, unsavedChanges: 0 })).rejects.toMatchObject({ code: "REMOTE_SESSION_CHANGED" })
+    await expect(merger().merge({ checkpointOid: checkpoint, reviewedCheckpointOid: checkpoint, reviewedTargetOid: base,
+      strategy: "merge", unsavedChanges: 0 })).rejects.toMatchObject({ code: "REMOTE_SESSION_CHANGED" })
+    expect(git(remote, "rev-parse", "main")).toBe(base)
+    expect(git(folder, "rev-parse", "HEAD")).toBe(checkpoint)
+    expect(git(folder, "status", "--porcelain")).toBe("")
+    expect(await merger().preview({ checkpointOid: advanced, unsavedChanges: 0 })).toMatchObject({ checkpointOid: advanced, ahead: 2 })
+    // A rewritten/rewound remote is also a mismatch, even though the old commit exists locally.
+    git(remote, "update-ref", `refs/heads/${BRANCH}`, base)
+    await expect(merger().preview({ checkpointOid: advanced, unsavedChanges: 0 })).rejects.toMatchObject({ code: "REMOTE_SESSION_CHANGED" })
+  })
+
   it("squashes into one commit on top of the target", async () => {
     const outside = pushToMainFromOutside("zero\none\ntwo\n")
+    const stale = await merger().merge({ checkpointOid: checkpoint, reviewedCheckpointOid: checkpoint,
+      reviewedTargetOid: base, strategy: "squash", unsavedChanges: 0 })
+    expect(stale.outcome).toBe("moved")
+    expect(git(remote, "rev-parse", "main")).toBe(outside)
     const result = await merger().merge({
       checkpointOid: checkpoint,
-      reviewedCheckpointOid: checkpoint,
+      reviewedCheckpointOid: checkpoint, reviewedTargetOid: outside,
       strategy: "squash",
       unsavedChanges: 0,
     })
@@ -117,7 +168,7 @@ describe("merging a session into its target (P22)", () => {
   it("asks for another review when the save moved, and stops at conflicts", async () => {
     const moved = await merger().merge({
       checkpointOid: checkpoint,
-      reviewedCheckpointOid: "0".repeat(40),
+      reviewedCheckpointOid: "0".repeat(40), reviewedTargetOid: base,
       strategy: "merge",
       unsavedChanges: 0,
     })
@@ -133,7 +184,7 @@ describe("merging a session into its target (P22)", () => {
     expect(preview).toMatchObject({ clean: false, conflictingPaths: ["notes.md"], behind: 1 })
     const conflicted = await merger().merge({
       checkpointOid: latest,
-      reviewedCheckpointOid: latest,
+      reviewedCheckpointOid: latest, reviewedTargetOid: preview.targetOid,
       strategy: "merge",
       unsavedChanges: 0,
     })
@@ -149,12 +200,43 @@ describe("merging a session into its target (P22)", () => {
     )
     const result = await merger().merge({
       checkpointOid: checkpoint,
-      reviewedCheckpointOid: checkpoint,
+      reviewedCheckpointOid: checkpoint, reviewedTargetOid: base,
       strategy: "merge",
       unsavedChanges: 0,
     })
     expect(result).toMatchObject({ outcome: "needs_pull_request" })
     expect(result.message).toContain("Open a pull request instead")
+    expect(git(remote, "rev-parse", "main")).toBe(base)
+  })
+
+  it("calls the PR provider only for the exact reviewed and fully saved commits", async () => {
+    const provider = new GitHubSessionPullRequest({ getRepositoryToken: async () => { throw new Error("fixture must not authenticate") } })
+    const ensure = vi.spyOn(provider, "ensure").mockResolvedValue({ number: 1, url: "https://github.com/team/app/pull/1", state: "open", created: true })
+    const session = new SessionMerger({ workspaceRoot: folder, branchName: BRANCH, targetBranch: "main", gitService: new GitService(), pullRequests: provider })
+    const request = { checkpointOid: checkpoint, reviewedCheckpointOid: checkpoint, reviewedTargetOid: base, unsavedChanges: 0 }
+    await expect(session.createPullRequest({ ...request, unsavedChanges: 1 })).rejects.toMatchObject({ code: "REVIEW_CHANGED" })
+    await expect(session.createPullRequest({ ...request, reviewedTargetOid: "0".repeat(40) })).rejects.toMatchObject({ code: "REVIEW_CHANGED" })
+    expect(ensure).not.toHaveBeenCalled()
+    expect(await session.createPullRequest(request)).toMatchObject({ number: 1, created: true })
+    expect(ensure).toHaveBeenCalledWith({ remoteUrl: remote, branch: BRANCH, targetBranch: "main", checkpointOid: checkpoint, targetOid: base })
+    expect(git(remote, "rev-parse", "main")).toBe(base)
+  })
+
+  it("creates or finds a PR after a protected push and retains retry information on authorization failure", async () => {
+    fs.writeFileSync(path.join(remote, "hooks/pre-receive"), '#!/bin/sh\necho "GH013: Repository rule violations found" >&2\nexit 1\n', { mode: 0o755 })
+    const provider = new GitHubSessionPullRequest({ getRepositoryToken: async () => { throw new Error("fixture") } })
+    const ensure = vi.spyOn(provider, "ensure").mockResolvedValue({ number: 9, url: "https://github.com/team/app/pull/9", state: "open", created: false })
+    const session = new SessionMerger({ workspaceRoot: folder, branchName: BRANCH, targetBranch: "main", gitService: new GitService(), pullRequests: provider })
+    const request = { checkpointOid: checkpoint, reviewedCheckpointOid: checkpoint, reviewedTargetOid: base, strategy: "merge" as const, unsavedChanges: 0 }
+    expect(await session.merge(request)).toMatchObject({ outcome: "needs_pull_request", pullRequestUrl: "https://github.com/team/app/pull/9", pullRequest: { number: 9, created: false } })
+    expect(ensure).toHaveBeenCalledWith({ remoteUrl: remote, branch: BRANCH, targetBranch: "main", checkpointOid: checkpoint, targetOid: base })
+    expect(git(remote, "rev-parse", "main")).toBe(base)
+    expect(git(remote, "rev-parse", BRANCH)).toBe(checkpoint)
+    ensure.mockRejectedValue(new Error("credential secret"))
+    const failed = await session.merge(request)
+    expect(failed.outcome).toBe("needs_pull_request")
+    expect(failed.message).toContain("could not create or verify")
+    expect(JSON.stringify(failed)).not.toContain("credential secret")
     expect(git(remote, "rev-parse", "main")).toBe(base)
   })
 

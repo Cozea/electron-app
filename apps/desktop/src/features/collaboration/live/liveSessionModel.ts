@@ -59,11 +59,14 @@ function describeDaemonStatus(status: ProjectdSessionStatus | null): LiveSession
   const skipped = status.skippedPaths.length
   const skippedDetail =
     skipped > 0
-      ? `${countOf(skipped, "file stays", "files stay")} on this Mac: binary files and files over 512 KB don't sync yet.`
+      ? `${countOf(skipped, "file stays", "files stay")} outside synchronization on this Mac.`
       : null
 
+  const pendingBinaries = status.pendingBinaryVersions > 0
+    ? `${countOf(status.pendingBinaryVersions, "binary version is", "binary versions are")} retained on this Mac, waiting to upload.` : null
   switch (status.state) {
     case "live":
+      if (pendingBinaries) return { tone: "working", label: "Uploads pending", detail: pendingBinaries }
       return status.pendingBatches > 0
         ? { tone: "working", label: "Sending changes…", detail: skippedDetail }
         : { tone: "live", label: "Live", detail: skippedDetail }
@@ -71,7 +74,8 @@ function describeDaemonStatus(status: ProjectdSessionStatus | null): LiveSession
     case "syncing":
       return { tone: "working", label: "Syncing…", detail: null }
     case "reconnecting":
-      return { tone: "working", label: "Reconnecting…", detail: status.lastError?.message ?? null }
+      return { tone: "working", label: status.pendingBatches > 0 || pendingBinaries ? "Offline · local changes pending" : "Reconnecting…",
+        detail: pendingBinaries ?? status.lastError?.message ?? null }
     case "waiting_for_ticket":
       return { tone: "working", label: "Renewing access…", detail: null }
     case "paused":
@@ -137,7 +141,7 @@ export function describeLiveSessionSync(input: {
       return {
         tone: "working",
         label: "Waiting for access",
-        detail: "A member who is online shares the session key with this device. This retries on its own.",
+        detail: input.error ?? "A member who is online shares the session key with this device. This retries on its own.",
       }
     case "unavailable":
       return {

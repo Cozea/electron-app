@@ -72,10 +72,12 @@ interface R2ObjectBody {
 }
 
 interface R2Bucket {
+  head(key: string): Promise<{ size: number } | null>
   put(
     key: string,
     value: ReadableStream<Uint8Array> | ArrayBuffer | Uint8Array,
     options?: {
+      onlyIf?: Headers
       sha256?: ArrayBuffer | Uint8Array
       httpMetadata?: { contentType?: string }
       customMetadata?: Record<string, string>

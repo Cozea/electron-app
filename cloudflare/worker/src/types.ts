@@ -74,6 +74,10 @@ export interface SessionClaims {
   protocolVersion: string
   /** Set on session-room tokens; viewers may read the room but not write to it. */
   sessionRole?: 'viewer' | 'developer' | 'project_manager'
+  /** Explicit read-only authority for retained PAUSED/CLOSED session state. */
+  sessionAccess?: 'recovery' | 'paused_close'
+  /** Active E2EE content-key generation for this session. */
+  sessionKeyVersion?: number
   exp: number
   iat: number
 }
@@ -116,6 +120,7 @@ export interface Env {
   DEVICE_AUTH_PREVIOUS_KEY_ID?: string
   COLLAB_ROOM: DurableObjectNamespaceLike
   COLLAB_SESSION_ROOM: DurableObjectNamespaceLike
+  COLLAB_BINARY_OBJECTS: R2Bucket
   DEVAPP_RUNTIME_BUILD: DurableObjectNamespaceLike
   DEVAPP_SANDBOX: DurableObjectNamespace<import('./durableObjects/CozeaDevAppSandbox').CozeaDevAppSandbox>
   DEVAPP_BUILD_INPUTS: R2Bucket

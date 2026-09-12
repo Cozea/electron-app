@@ -20,7 +20,7 @@ export const TEST_ROOM_ENV = { COLLAB_JWT_SECRET: "session-room-test-secret-0123
 
 export type ServerMessage = { type: string; [key: string]: unknown }
 export type SessionRole = "viewer" | "developer" | "project_manager"
-type RoomEnv = typeof TEST_ROOM_ENV & { AUTOGIT_LEASE_MS?: string }
+type RoomEnv = typeof TEST_ROOM_ENV & { CONVEX_URL?: string; AI_GATEWAY_SECRET?: string; AUTOGIT_LEASE_MS?: string; COLLAB_BINARY_OBJECTS?: { head(key: string): Promise<{ size: number } | null> } }
 
 interface RoomInstance {
   acceptSocket(socket: FakeServerSocket, roomId: string): void
@@ -87,6 +87,24 @@ export class FakeStorage {
 
   async getAlarm(): Promise<number | null> {
     return this.alarm
+  }
+
+  async delete(key: string): Promise<boolean> {
+    return this.data.delete(key)
+  }
+
+  async transaction<T>(work: (storage: FakeStorage) => Promise<T>): Promise<T> {
+    const before = structuredClone(this.data)
+    const beforeAlarm = this.alarm
+    try {
+      return await work(this)
+    } catch (error) {
+      this.data.clear()
+      for (const [key, value] of before) this.data.set(key, value)
+      this.alarm = beforeAlarm
+      this.onAlarmChange?.(beforeAlarm)
+      throw error
+    }
   }
 
   async deleteAlarm(): Promise<void> {
@@ -158,9 +176,12 @@ export class RoomHost {
   private delivery: Promise<void> = Promise.resolve()
   private alarmTimer: NodeJS.Timeout | null = null
 
-  constructor(worker: SessionRoomWorker, options: { leaseMs?: number } = {}) {
+  constructor(worker: SessionRoomWorker, options: { leaseMs?: number; binaryObjects?: RoomEnv["COLLAB_BINARY_OBJECTS"];
+    controlPlane?: { convexUrl: string; serverSecret: string } } = {}) {
     this.worker = worker
-    this.env = options.leaseMs ? { ...TEST_ROOM_ENV, AUTOGIT_LEASE_MS: String(options.leaseMs) } : TEST_ROOM_ENV
+    this.env = { ...TEST_ROOM_ENV, AUTOGIT_LEASE_MS: options.leaseMs ? String(options.leaseMs) : undefined,
+      COLLAB_BINARY_OBJECTS: options.binaryObjects, CONVEX_URL: options.controlPlane?.convexUrl,
+      AI_GATEWAY_SECRET: options.controlPlane?.serverSecret }
     this.storage.onAlarmChange = (time) => this.scheduleAlarm(time)
     this.room = this.instantiate()
   }
@@ -182,13 +203,14 @@ export class RoomHost {
     return this.delivery
   }
 
-  connector(options: { roomId?: string; dropServerMessage?: (message: ServerMessage) => boolean } = {}): RoomConnector {
+  connector(options: { roomId?: string; dropServerMessage?: (message: ServerMessage) => boolean; onClientMessage?: (message: ServerMessage) => void } = {}): RoomConnector {
     return async (handlers) => {
       const socket = new FakeServerSocket(handlers, options.dropServerMessage ?? (() => false))
       this.room.acceptSocket(socket, options.roomId ?? TEST_ROOM_ID)
       const connection: RoomConnection = {
         send: (data) => {
           if (socket.closed) return
+          options.onClientMessage?.(JSON.parse(data) as ServerMessage)
           this.deliver((room) => room.webSocketMessage(socket, data))
         },
         close: () => {
@@ -239,7 +261,7 @@ export class RoomHost {
 export function sessionTokenFor(
   worker: SessionRoomWorker,
   principalId: string,
-  overrides: { roomId?: string; sessionRole?: SessionRole; secret?: string; ttlSeconds?: number } = {},
+  overrides: { roomId?: string; sessionRole?: SessionRole; secret?: string; ttlSeconds?: number; sessionAccess?: 'recovery' | 'paused_close' } = {},
 ): () => Promise<string> {
   return () =>
     worker.signSessionToken(
@@ -252,6 +274,7 @@ export function sessionTokenFor(
         clientType: "electron",
         protocolVersion: SESSION_ROOM_PROTOCOL_VERSION,
         sessionRole: overrides.sessionRole ?? "developer",
+        ...(overrides.sessionAccess ? { sessionAccess: overrides.sessionAccess } : {}),
       },
       overrides.ttlSeconds,
     )

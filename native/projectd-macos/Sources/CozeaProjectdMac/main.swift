@@ -31,6 +31,8 @@ func readStandardInput() -> String {
 func runCLI() {
     let args = CommandLine.arguments.dropFirst()
     let command = args.first ?? "help"
+    // The opaque account isolates desktop profiles; no credential is put in argv.
+    let account = args.count >= 2 ? Array(args)[1] : nil
 
     switch command {
     case "keychain-save":
@@ -40,7 +42,7 @@ func runCLI() {
             exit(1)
         }
         do {
-            try KeychainService.shared.saveIdentity(jsonString: json)
+            try KeychainService.shared.saveIdentity(jsonString: json, account: account)
             printJSON(HelperResponse(id: "1", success: true, result: ["status": "saved"], error: nil))
         } catch {
             printJSON(HelperResponse<[String: String]>(id: "1", success: false, result: nil, error: error.localizedDescription))
@@ -49,7 +51,7 @@ func runCLI() {
 
     case "keychain-load":
         do {
-            if let identity = try KeychainService.shared.loadIdentity() {
+            if let identity = try KeychainService.shared.loadIdentity(account: account) {
                 printJSON(HelperResponse(id: "1", success: true, result: ["identity": identity], error: nil))
             } else {
                 printJSON(HelperResponse<[String: String?]>(id: "1", success: true, result: ["identity": nil], error: nil))
@@ -61,7 +63,7 @@ func runCLI() {
 
     case "keychain-delete":
         do {
-            try KeychainService.shared.deleteIdentity()
+            try KeychainService.shared.deleteIdentity(account: account)
             printJSON(HelperResponse(id: "1", success: true, result: ["status": "deleted"], error: nil))
         } catch {
             printJSON(HelperResponse<[String: String]>(id: "1", success: false, result: nil, error: error.localizedDescription))

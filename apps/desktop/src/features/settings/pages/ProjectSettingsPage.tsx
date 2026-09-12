@@ -6,6 +6,7 @@ import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCollabSession, invalidateCollabSession } from '@/features/collaboration/hooks/useCollabSession'
+import { SessionRecoveryPanel } from '@/features/settings/ui/SessionRecoveryPanel'
 import { useTranslation } from '@/lib/i18n'
 import { featureFlags } from '@/lib/featureFlags'
 import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
@@ -875,6 +876,8 @@ export function ProjectSettingsPage({
                     </SettingsGroup>
                   </section>
                 ) : null}
+
+                <SessionRecoveryPanel key={String(project._id)} projectId={String(project._id)} />
 
                 <section>
                   <SettingsSectionTitle>{t('settings.section.collabSecurity')}</SettingsSectionTitle>

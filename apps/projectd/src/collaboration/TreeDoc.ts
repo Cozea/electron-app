@@ -10,6 +10,7 @@
 import * as Y from "yjs"
 
 import { normalizeProjectPath } from "./projectPath"
+import { ConflictEngine } from "./ConflictEngine"
 
 export type EntryKind = "text" | "binary" | "symlink"
 
@@ -57,11 +58,14 @@ export interface StructuralOp {
   newKind?: EntryKind
   newSymlinkTarget?: string
   baseStructuralOpId?: string | null
+  /** Explicit alternatives superseded by a reviewed structural resolution. */
+  resolvedStructuralOpIds?: string[]
   /**
    * On delete ops: the text doc state vector (clientId -> clock) the deleting replica
    * had seen, so a text edit it had not seen reads as a delete/modify conflict (10.18).
    */
   textStateVector?: Record<string, number>
+  binaryRevisionIds?: string[]
   actor: ChangeActor
   createdAt: number
 }
@@ -164,14 +168,23 @@ export class TreeDoc {
     return record
   }
 
-  renameEntry(fileId: string, newPath: string, actor: ChangeActor): ProjectEntryRecord {
+  resolveRenames(fileId: string, newPath: string, reviewedOpIds: string[], actor: ChangeActor): ProjectEntryRecord {
+    const conflict = ConflictEngine.detectConcurrentRenames(this.listStructuralOps()).find((item) => item.fileId === fileId)
+    const ids = conflict?.ops.map((op) => op.opId) ?? []
+    if (!ids.length || reviewedOpIds.length !== ids.length || new Set(reviewedOpIds).size !== ids.length || reviewedOpIds.some((id) => !ids.includes(id))) {
+      throw new Error("The rename conflict changed. Review its current paths before resolving.")
+    }
+    return this.renameEntry(fileId, newPath, actor, reviewedOpIds)
+  }
+
+  renameEntry(fileId: string, newPath: string, actor: ChangeActor, resolvedOpIds?: string[]): ProjectEntryRecord {
     const existing = this.getEntry(fileId)
     if (!existing) {
       throw new Error(`Cannot rename non-existent entry '${fileId}'`)
     }
 
     const normPath = this.normalizePath(newPath)
-    if (existing.path === normPath) {
+    if (existing.path === normPath && !resolvedOpIds?.length) {
       return existing
     }
 
@@ -183,6 +196,7 @@ export class TreeDoc {
       sessionId: this.sessionId,
       fileId,
       kind: "rename",
+      resolvedStructuralOpIds: resolvedOpIds ? [...resolvedOpIds].sort() : undefined,
       fromPath: existing.path,
       toPath: normPath,
       baseStructuralOpId: existing.lastStructuralOpId,
@@ -208,13 +222,15 @@ export class TreeDoc {
     fileId: string,
     actor: ChangeActor,
     textStateVector?: Record<string, number>,
+    binaryRevisionIds?: string[],
+    confirmDeleted = false,
   ): ProjectEntryRecord {
     const existing = this.getEntry(fileId)
     if (!existing) {
       throw new Error(`Cannot delete non-existent entry '${fileId}'`)
     }
 
-    if (existing.deleted) {
+    if (existing.deleted && !confirmDeleted) {
       return existing
     }
 
@@ -229,6 +245,7 @@ export class TreeDoc {
       fromPath: existing.path,
       baseStructuralOpId: existing.lastStructuralOpId,
       textStateVector,
+      binaryRevisionIds,
       actor,
       createdAt: now,
     }

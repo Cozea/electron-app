@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import {
   SessionReplica,
@@ -154,6 +154,32 @@ describe("P07 CRDT tree + per-text-file docs in projectd", () => {
     expect(conflictsA.concurrentRenames).toHaveLength(1)
     expect(conflictsB.concurrentRenames).toHaveLength(1)
     expect(conflictsA.concurrentRenames[0].fileId).toBe(file.fileId)
+    const reviewed = conflictsA.concurrentRenames[0].ops.map((op) => op.opId)
+    const late = new SessionReplica("session_1", "client_late")
+    late.restoreSnapshot(replicaA.captureSnapshot())
+    expect(() => replicaA.tree.resolveRenames(file.fileId, "selected.txt", ["stale"], actorA)).toThrow("changed")
+    // Choosing the current effective path must still append resolution evidence.
+    replicaA.tree.resolveRenames(file.fileId, replicaA.tree.getEntry(file.fileId)!.path, reviewed, actorA)
+    expect(replicaA.detectConflicts().concurrentRenames).toHaveLength(0)
+    replicaB.tree.resolveRenames(file.fileId, "other-choice.txt", reviewed, actorB)
+    const resolutionA = replicaA.exportBatch()!
+    const resolutionB = replicaB.exportBatch()!
+    replicaA.applyBatch(resolutionB)
+    replicaB.applyBatch(resolutionA)
+    expect(replicaA.detectConflicts().concurrentRenames).toHaveLength(1)
+    expect(replicaA.detectConflicts().concurrentRenames).toEqual(replicaB.detectConflicts().concurrentRenames)
+    replicaA.tree.resolveRenames(file.fileId, "resolved.txt", replicaA.detectConflicts().concurrentRenames[0].ops.map((op) => op.opId), actorA)
+    replicaB.applyBatch(replicaA.exportBatch()!)
+    expect(replicaB.detectConflicts().concurrentRenames).toHaveLength(0)
+    late.renameFile(file.fileId, "late.txt", actorB)
+    const lateBatch = late.exportBatch()!
+    replicaA.applyBatch(lateBatch)
+    replicaB.applyBatch(lateBatch)
+    expect(replicaA.detectConflicts().concurrentRenames[0].ops.map((op) => op.toPath).sort()).toEqual(["late.txt", "resolved.txt"])
+    const restored = new SessionReplica("session_1", "restored")
+    restored.restoreSnapshot(replicaA.captureSnapshot())
+    expect(restored.detectConflicts().concurrentRenames).toEqual(replicaA.detectConflicts().concurrentRenames)
+    expect(restored.textDocs.getTextContent(file.fileId)).toBe("content")
   })
 
   it("detects delete vs concurrent edit (delete-modify conflict)", () => {
@@ -187,6 +213,42 @@ describe("P07 CRDT tree + per-text-file docs in projectd", () => {
     expect(confA.deleteModifyConflicts).toHaveLength(1)
     expect(confB.deleteModifyConflicts).toHaveLength(1)
     expect(confA.deleteModifyConflicts[0].fileId).toBe(file.fileId)
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1)
+    try { replicaA.deleteFile(file.fileId, actorA, true) } finally { clock.mockRestore() }
+    replicaB.applyBatch(replicaA.exportBatch()!)
+    expect(replicaB.detectConflicts().deleteModifyConflicts).toHaveLength(0)
+    expect(replicaB.tree.getEntry(file.fileId)?.deleted).toBe(true)
+    expect(replicaB.textDocs.getTextContent(file.fileId)).toContain("debug")
+    replicaA.textDocs.getOrCreate(file.fileId).text.insert(0, "late")
+    replicaB.applyBatch(replicaA.exportBatch()!)
+    expect(replicaB.detectConflicts().deleteModifyConflicts).toHaveLength(1)
+  })
+
+  it("retains binary edits unseen by deletion and clears only explicitly reviewed edits", () => {
+    const a = new SessionReplica("binary_delete", "a")
+    const b = new SessionReplica("binary_delete", "b")
+    const file = a.createFile({ path: "image.bin", kind: "binary", actor: actorA })
+    const base = { revisionId: "base", fileId: file.fileId, baseRevisionId: null, contentHash: "base-hash",
+      encryptedManifestRef: "base-manifest", size: 10, actor: actorA, createdAt: 100 }
+    a.addBinaryRevision(base)
+    b.applyBatch(a.exportBatch()!)
+    a.deleteFile(file.fileId, actorA)
+    b.addBinaryRevision({ ...base, revisionId: "edit", baseRevisionId: "base", contentHash: "edited" })
+    const deletion = a.exportBatch()!
+    a.applyBatch(b.exportBatch()!)
+    b.applyBatch(deletion)
+    expect(a.detectConflicts().deleteModifyConflicts).toHaveLength(1)
+    expect(b.detectConflicts().deleteModifyConflicts).toHaveLength(1)
+    a.deleteFile(file.fileId, actorA, true)
+    b.applyBatch(a.exportBatch()!)
+    expect(b.detectConflicts().deleteModifyConflicts).toHaveLength(0)
+    expect(b.binaryStore.getRevisions(file.fileId)).toHaveLength(2)
+    b.addBinaryRevision({ ...base, revisionId: "late", baseRevisionId: "base", contentHash: "late-edit" })
+    a.applyBatch(b.exportBatch()!)
+    expect(a.detectConflicts().deleteModifyConflicts).toHaveLength(1)
+    const restored = new SessionReplica("binary_delete", "restored")
+    restored.restoreSnapshot(a.captureSnapshot())
+    expect(restored.detectConflicts().deleteModifyConflicts).toEqual(a.detectConflicts().deleteModifyConflicts)
   })
 
   it("detects path collisions without silent overwrite (Invariant C18)", () => {

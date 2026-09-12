@@ -7,6 +7,9 @@ import { GitService } from "../../apps/projectd/src/git/GitService"
 import { RebaseCoordinator } from "../../apps/projectd/src/autogit/RebaseCoordinator"
 import { SessionReplica } from "../../apps/projectd/src/collaboration/SessionReplica"
 import type { ChangeActor } from "../../apps/projectd/src/collaboration/TreeDoc"
+import { useTestGitIdentity } from "../helpers/gitIdentity"
+
+useTestGitIdentity()
 
 describe("P21 Explicit isolated Rebase from main", () => {
   const actor: ChangeActor = { actorType: "user", principalId: "u_p21" }

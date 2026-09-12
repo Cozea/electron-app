@@ -1,14 +1,16 @@
 import { execFileSync } from "node:child_process"
-import { randomBytes } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import { EventEmitter } from "node:events"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { afterEach, beforeAll, describe, expect, it } from "vitest"
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 
 import { ProjectdClient, projectdSessionTopic, type ProjectdSessionStatus } from "@cozea/projectd-protocol"
 
 import { CollaborationSessionHost } from "../../apps/projectd/src/collaboration/CollaborationSessionHost"
+import { BinaryContentCache, type BinaryManifest } from "../../apps/projectd/src/collaboration/BinaryContentCache"
+import type { BinaryObjectClient } from "../../apps/projectd/src/collaboration/BinaryObjectStore"
 import type { RoomConnector } from "../../apps/projectd/src/collaboration/SessionRoomClient"
 import type { FileEventSource, NativeFSEventItem } from "../../apps/projectd/src/filesystem/FSEventsClient"
 import { GitService } from "../../apps/projectd/src/git/GitService"
@@ -65,9 +67,39 @@ interface Peer {
   host: CollaborationSessionHost
   root: string
   events: ManualFileEvents
-  write(relativePath: string, content: string): Promise<void>
+  write(relativePath: string, content: string | Buffer): Promise<void>
   remove(relativePath: string): Promise<void>
   read(relativePath: string): Promise<string | null>
+  readBytes(relativePath: string): Promise<Buffer | null>
+}
+
+class MemoryBinaryObjects implements BinaryObjectClient {
+  private readonly contents = new Map<string, Buffer>()
+  private readonly manifests = new BinaryContentCache({ cacheDir: path.join(os.tmpdir(), "unused-binary-manifest-cache") })
+
+  async upload(bytes: Buffer | Uint8Array): Promise<BinaryManifest> {
+    const content = Buffer.from(bytes)
+    const manifest = this.manifests.createManifest(content, "memory:")
+    this.contents.set(manifest.contentHash, content)
+    return manifest
+  }
+
+  async download(manifest: BinaryManifest): Promise<Buffer> {
+    const content = this.contents.get(manifest.contentHash)
+    if (!content) throw new Error(`Missing test binary ${manifest.contentHash}`)
+    return Buffer.from(content)
+  }
+}
+
+const roomBinaryObjects = new WeakMap<RoomHost, MemoryBinaryObjects>()
+
+function binaryObjectsFor(room: RoomHost): MemoryBinaryObjects {
+  let objects = roomBinaryObjects.get(room)
+  if (!objects) {
+    objects = new MemoryBinaryObjects()
+    roomBinaryObjects.set(room, objects)
+  }
+  return objects
 }
 
 async function tempFolder(name: string): Promise<string> {
@@ -126,6 +158,7 @@ async function createPeer(
     onTicketNeeded?: () => void
     gitService?: GitService
     shareEnvironmentFiles?: boolean
+    binaryObjectStore?: BinaryObjectClient
   } = {},
 ): Promise<Peer> {
   const root = options.root ?? (await tempFolder(name))
@@ -145,6 +178,7 @@ async function createPeer(
     actor: { actorType: "user", principalId: `principal_${name}` },
     gitService: options.gitService,
     shareEnvironmentFiles: options.shareEnvironmentFiles,
+    binaryObjectStore: options.binaryObjectStore ?? binaryObjectsFor(room),
     connectorFactory: () => options.connector ?? room.connector(),
     fileEventSource: events,
     submitDelayMs: 5,
@@ -166,6 +200,7 @@ async function createPeer(
       events.report(root, relativePath)
     },
     read: (relativePath) => readFile(root, relativePath),
+    readBytes: (relativePath) => fs.readFile(path.join(root, relativePath)).catch(() => null),
   }
 }
 
@@ -175,7 +210,7 @@ async function startLive(peer: Peer, label: string): Promise<void> {
 }
 
 /** A creator that seeded the room from `files`, and a joiner syncing into an empty folder. */
-async function startPair(room: RoomHost, roomKey: Buffer, files: Record<string, string>) {
+async function startPair(room: RoomHost, roomKey: Buffer, files: Record<string, string | Buffer>) {
   const creatorRoot = await tempFolder("creator")
   await writeFiles(creatorRoot, files)
   const creator = await createPeer(room, "creator", roomKey, { root: creatorRoot })
@@ -194,6 +229,72 @@ afterEach(async () => {
 })
 
 describe("projectd session host", () => {
+  it("prepares Leave with encrypted pending recovery offline and refuses a failed journal write", async () => {
+    const room = new RoomHost(worker)
+    const key = randomBytes(32)
+    const root = await tempFolder("leave-preparation")
+    await writeFiles(root, { "notes.md": "before" })
+    let offline = false
+    const peer = await createPeer(room, "leaving", key, { root,
+      connector: (handlers) => {
+        if (offline) return Promise.reject(new Error("offline"))
+        return room.connector()(handlers)
+      },
+    })
+    await startLive(peer, "the leaving peer")
+    await waitFor(() => peer.host.status().pendingBatches === 0, "the seed acknowledgement")
+    offline = true
+    peer.host.roomClient.disconnect()
+    await fs.writeFile(path.join(root, "notes.md"), "retained offline edit")
+    const prepared = await peer.host.prepareLeave()
+    expect(prepared.pendingBatches).toBeGreaterThan(0)
+    expect(peer.host.queue.getPendingBatches(TEST_PUBLIC_SESSION_ID)).toHaveLength(prepared.pendingBatches)
+    await fs.writeFile(path.join(root, "notes.md"), "cannot journal this yet")
+    const failure = vi.spyOn(peer.host.queue, "enqueue").mockImplementation(() => { throw new Error("disk full") })
+    try {
+      await expect(peer.host.prepareLeave()).rejects.toThrow("disk full")
+      expect(peer.host.replica.hasUnexportedChanges()).toBe(true)
+    } finally {
+      failure.mockRestore()
+    }
+  })
+
+  it("restores text, binary history and replay position while the room is unreachable", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const db = new ProjectdDatabase(":memory:")
+    const root = await tempFolder("snapshot-recovery")
+    await writeFiles(root, { "private-name.txt": "private snapshot contents", "asset.bin": Buffer.from([0, 4, 2]) })
+    const original = await createPeer(room, "snapshot", roomKey, { root, db })
+    await startLive(original, "the snapshot owner")
+    await waitFor(() => original.host.status().pendingBatches === 0, "the seed to reach the room")
+    await original.host.stop()
+    const cursor = original.host.transport.lastAppliedSessionSeq
+    expect(cursor).toBeGreaterThan(0)
+    const stored = db.db.prepare("SELECT envelope FROM local_replica_snapshots").get() as { envelope: string }
+    expect(stored.envelope).not.toContain("private")
+    const restored = await createPeer(room, "snapshot", roomKey, {
+      root, db, connector: async () => { throw new Error("offline") },
+    })
+    await restored.host.start(true)
+    expect(restored.host.workspaceReady).toBe(true)
+    expect(restored.host.transport.lastAppliedSessionSeq).toBe(cursor)
+    const entries = restored.host.replica.tree.listLiveEntries()
+    const text = entries.find((entry) => entry.path === "private-name.txt")!
+    const binary = entries.find((entry) => entry.path === "asset.bin")!
+    expect(restored.host.replica.textDocs.getTextContent(text.fileId)).toBe("private snapshot contents")
+    expect(restored.host.replica.binaryStore.getHeadRevision(binary.fileId)?.manifest).toBeDefined()
+    expect(restored.host.state).not.toBe("live")
+    await restored.host.stop()
+    db.db.prepare("UPDATE local_replica_snapshots SET session_seq=session_seq+1").run()
+    const damaged = db.db.prepare("SELECT envelope FROM local_replica_snapshots").get()
+    const failed = await createPeer(room, "snapshot", roomKey, { root, db })
+    await failed.host.start()
+    expect(failed.host.state).toBe("failed")
+    await failed.host.stop()
+    expect(db.db.prepare("SELECT envelope FROM local_replica_snapshots").get()).toEqual(damaged)
+  })
+
   it("seeds an empty room from the first folder and fills an empty folder that joins", async () => {
     const room = new RoomHost(worker)
     const roomKey = randomBytes(32)
@@ -213,11 +314,202 @@ describe("projectd session host", () => {
 
     expect(await joiner.read("README.md")).toBe("# Demo\n")
     expect(await joiner.read("src/app.ts")).toBe("export const answer = 42\n")
-    expect(await joiner.read("assets/logo.png")).toBeNull()
+    expect(await joiner.readBytes("assets/logo.png")).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]))
     expect(await joiner.read(".git/HEAD")).toBeNull()
-    expect(creator.host.status()).toMatchObject({ fileCount: 2, skippedPaths: ["assets/logo.png"] })
+    expect(creator.host.status()).toMatchObject({ fileCount: 3, skippedPaths: [] })
     // A slow disk can split the seed across batches, so compare with what the room stored.
-    expect(joiner.host.status()).toMatchObject({ fileCount: 2, lastAppliedSessionSeq: room.storage.batchCount() })
+    expect(joiner.host.status()).toMatchObject({ fileCount: 3, lastAppliedSessionSeq: room.storage.batchCount() })
+  })
+
+  it("retains failed binary uploads as encrypted versions before recording disk progress", async () => {
+    const room = new RoomHost(worker, { binaryObjects: { head: async () => null } })
+    const roomKey = randomBytes(32)
+    const db = new ProjectdDatabase(":memory:")
+    const peer = await createPeer(room, "failed-binary", roomKey, { db,
+      binaryObjectStore: { upload: async () => { throw new Error("offline upload") }, download: async () => { throw new Error("offline") } },
+    })
+    await startLive(peer, "the initially empty peer")
+    const first = Buffer.from([0, 12, 31])
+    await peer.write("asset.bin", first)
+    await waitFor(() => peer.host.pendingBinaryStore.list().length === 1, "first binary staging")
+    await peer.host.flush()
+    const second = Buffer.from([0, 17, 35])
+    await peer.write("asset.bin", second)
+    await waitFor(() => peer.host.pendingBinaryStore.list().length === 2, "second binary staging")
+    await peer.host.flush()
+    const versions = peer.host.pendingBinaryStore.list()
+    expect(peer.host.pendingBinaryStore.readBytes(versions[0]).equals(first)).toBe(true)
+    expect(peer.host.pendingBinaryStore.readBytes(versions[1]).equals(second)).toBe(true)
+    expect(peer.host.replica.tree.listLiveEntries()).toHaveLength(0)
+    expect(room.storage.batchCount()).toBe(0)
+    await expect(peer.host.publishDurableSnapshot()).rejects.toThrow(/binary versions must finish uploading/)
+    await peer.host.stop()
+    expect(peer.host.pendingBinaryStore.list()).toHaveLength(2)
+    const recovered = await createPeer(room, "failed-binary", roomKey, { db, root: peer.root })
+    await startLive(recovered, "the restarted binary peer")
+    await waitFor(() => recovered.host.pendingBinaryStore.list().length === 0, "retained binary replay")
+    const revisions = recovered.host.replica.tree.listAllEntries().flatMap((entry) => recovered.host.replica.binaryStore.getRevisions(entry.fileId))
+    expect(new Set(revisions.map((revision) => revision.revisionId))).toEqual(new Set(versions.map((version) => version.revisionId)))
+    for (const revision of revisions) {
+      expect(revision.baseRevisionId).toBeNull()
+      expect((await recovered.host.binaryObjects.download(revision.manifest!)).equals(
+        revision.revisionId === versions[0].revisionId ? first : second)).toBe(true)
+    }
+    await recovered.host.stop()
+  })
+
+  it("exports a cached version above 64 MiB without whole-file reads", async () => {
+    const room = new RoomHost(worker)
+    const peer = await createPeer(room, "large-export", randomBytes(32))
+    await startLive(peer, "large export peer")
+    const entry = peer.host.replica.createFile({ path: "large.bin", kind: "binary", actor: { actorType: "user" } })
+    const chunk = Buffer.alloc(4 * 1024 * 1024, 7)
+    const hash = createHash("sha256")
+    for (let i = 0; i < 17; i++) hash.update(chunk)
+    const contentHash = hash.digest("hex")
+    const cachedPath = peer.host.binaryCache.getCachePath(contentHash)
+    await fs.mkdir(path.dirname(cachedPath), { recursive: true })
+    const file = await fs.open(cachedPath, "w")
+    try { for (let i = 0; i < 17; i++) await file.writeFile(chunk) } finally { await file.close() }
+    const base = { fileId: entry.fileId, baseRevisionId: null, actor: { actorType: "user" as const }, createdAt: 1, encryptedManifestRef: "fixture" }
+    peer.host.replica.addBinaryRevision({ ...base, revisionId: "large", contentHash, size: chunk.length * 17 })
+    peer.host.replica.addBinaryRevision({ ...base, revisionId: "other", contentHash: "other", size: 1 })
+    await peer.host.flush()
+    const review = (await peer.host.manageBinaryConflicts({ action: "list" })).conflicts[0]!
+    const wholeRead = vi.spyOn(peer.host.binaryCache, "get").mockRejectedValue(new Error("whole-file read forbidden"))
+    try {
+      const exported = await peer.host.manageBinaryConflicts({ action: "export", fileId: entry.fileId, revisionId: "large", fingerprint: review.fingerprint, destinationDirectory: await tempFolder("large-export-output") })
+      expect((await fs.stat(exported.exportedPath!)).size).toBe(chunk.length * 17)
+      const output = await fs.open(exported.exportedPath!, "r")
+      const actual = createHash("sha256")
+      try { for (;;) { const { bytesRead } = await output.read(chunk); if (!bytesRead) break; actual.update(chunk.subarray(0, bytesRead)) } } finally { await output.close() }
+      expect(actual.digest("hex")).toBe(contentHash)
+      expect(wholeRead).not.toHaveBeenCalled()
+      const corrupt = await fs.open(cachedPath, "r+")
+      try { await corrupt.write(Buffer.from([8]), 0, 1, 0) } finally { await corrupt.close() }
+      const failedDestination = await tempFolder("failed-large-export")
+      await expect(peer.host.manageBinaryConflicts({ action: "export", fileId: entry.fileId, revisionId: "large", fingerprint: review.fingerprint, destinationDirectory: failedDestination })).rejects.toThrow("does not support streaming export")
+      expect(await fs.readdir(failedDestination)).toEqual([])
+      expect(wholeRead).not.toHaveBeenCalled()
+    } finally { wholeRead.mockRestore() }
+  })
+
+  it("replays a retained binary against its captured base after another peer advances the file", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const { creator, joiner } = await startPair(room, roomKey, { "asset.bin": Buffer.from([0, 1]) })
+    const entry = creator.host.replica.tree.listLiveEntries().find((file) => file.path === "asset.bin")!
+    const original = creator.host.replica.binaryStore.getHeadRevision(entry.fileId)!
+    const retained = creator.host.pendingBinaryStore.stage({ path: "asset.bin", fileId: entry.fileId,
+      baseRevisionId: original.revisionId, mode: entry.mode }, Buffer.from([0, 2]))
+    await joiner.write("asset.bin", Buffer.from([0, 3]))
+    await waitFor(() => creator.host.replica.binaryStore.getHeadRevision(entry.fileId)?.revisionId !== original.revisionId, "remote revision")
+    room.sockets[0].close()
+    await waitFor(() => creator.host.pendingBinaryStore.list().length === 0, "retained binary replay after reconnect")
+    const revisions = creator.host.replica.binaryStore.getRevisions(entry.fileId)
+    expect(revisions.find((revision) => revision.revisionId === retained.revisionId)?.baseRevisionId).toBe(original.revisionId)
+    expect(creator.host.replica.binaryStore.detectConcurrentRevisions(entry.fileId)?.conflictingRevisions).toHaveLength(2)
+    await waitFor(() => joiner.host.replica.binaryStore.getRevisions(entry.fileId).some((revision) => revision.revisionId === retained.revisionId), "peer to receive retained revision")
+    expect(joiner.host.replica.binaryStore.detectConcurrentRevisions(entry.fileId)?.conflictingRevisions).toHaveLength(2)
+    const review = (await creator.host.manageBinaryConflicts({ action: "list" })).conflicts[0]!
+    expect(review.variants).toHaveLength(2)
+    expect(review.path).toBe("asset.bin")
+    const viewer = await createPeer(room, "viewer", roomKey, { role: "viewer" })
+    await expect(viewer.host.createPullRequest("a".repeat(40), "b".repeat(40))).rejects.toMatchObject({ code: "FORBIDDEN" })
+    await startLive(viewer, "conflict viewer")
+    expect((await viewer.host.manageBinaryConflicts({ action: "list" })).conflicts).toHaveLength(1)
+    const preview = await viewer.host.manageBinaryConflicts({ action: "preview", fileId: entry.fileId, revisionId: retained.revisionId, fingerprint: review.fingerprint })
+    expect(preview.preview).toEqual({ revisionId: retained.revisionId, size: 2, hex: "00 02", truncated: false, imageDataUrl: null })
+    expect(viewer.host.replica.binaryStore.getRevisions(entry.fileId)).toHaveLength(3)
+    const exportDirectory = await tempFolder("binary-export")
+    await fs.writeFile(path.join(exportDirectory, "asset.bin"), "existing local file")
+    const exportRequest = { action: "export", fileId: entry.fileId, revisionId: retained.revisionId, fingerprint: review.fingerprint, destinationDirectory: exportDirectory }
+    await expect(viewer.host.manageBinaryConflicts({ ...exportRequest, destinationDirectory: viewer.root })).rejects.toMatchObject({ code: "INVALID_EXPORT_FOLDER" })
+    const exported = await viewer.host.manageBinaryConflicts(exportRequest)
+    const another = await viewer.host.manageBinaryConflicts(exportRequest)
+    expect(exported.exportedPath).not.toBe(another.exportedPath)
+    expect(await fs.readFile(exported.exportedPath!)).toEqual(Buffer.from([0, 2]))
+    expect(await fs.readFile(path.join(exportDirectory, "asset.bin"), "utf8")).toBe("existing local file")
+    expect((await fs.stat(exported.exportedPath!)).mode & 0o777).toBe(0o600)
+    expect(viewer.host.replica.binaryStore.getRevisions(entry.fileId)).toHaveLength(3)
+    await expect(viewer.host.manageBinaryConflicts({ action: "resolve", fileId: entry.fileId, revisionId: retained.revisionId, fingerprint: review.fingerprint })).rejects.toMatchObject({ code: "FORBIDDEN" })
+    await expect(creator.host.manageBinaryConflicts({ action: "resolve", fileId: entry.fileId, revisionId: retained.revisionId, fingerprint: "0".repeat(64) })).rejects.toMatchObject({ code: "CONFLICT_CHANGED" })
+    const before = await creator.readBytes("asset.bin")
+    const cacheRead = vi.spyOn(creator.host.binaryCache, "get").mockResolvedValueOnce(null)
+    const download = vi.spyOn(creator.host.binaryObjects, "download").mockRejectedValueOnce(new Error("object unavailable"))
+    try {
+      await expect(creator.host.manageBinaryConflicts({ action: "resolve", fileId: entry.fileId, revisionId: retained.revisionId, fingerprint: review.fingerprint })).rejects.toThrow("object unavailable")
+    } finally { cacheRead.mockRestore(); download.mockRestore() }
+    expect(creator.host.replica.binaryStore.detectConcurrentRevisions(entry.fileId)).not.toBeNull()
+    const enqueue = vi.spyOn(creator.host.queue, "enqueue").mockImplementationOnce(() => { throw new Error("journal unavailable") })
+    try {
+      await expect(creator.host.manageBinaryConflicts({ action: "resolve", fileId: entry.fileId, revisionId: retained.revisionId, fingerprint: review.fingerprint })).rejects.toThrow("journal unavailable")
+    } finally { enqueue.mockRestore() }
+    expect(await creator.readBytes("asset.bin")).toEqual(before)
+    expect(creator.host.replica.binaryStore.detectConcurrentRevisions(entry.fileId)).not.toBeNull()
+    const resolved = await creator.host.manageBinaryConflicts({ action: "resolve", fileId: entry.fileId, revisionId: retained.revisionId, fingerprint: review.fingerprint })
+    expect(resolved.resolvedRevisionId).toBeTruthy()
+    for (const peer of [creator, joiner]) {
+      await waitFor(async () => (await peer.readBytes("asset.bin"))?.equals(Buffer.from([0, 2])) === true, "resolved binary bytes on both peers")
+      expect(peer.host.replica.binaryStore.detectConcurrentRevisions(entry.fileId)).toBeNull()
+      expect(peer.host.replica.binaryStore.getRevisions(entry.fileId)).toHaveLength(4)
+    }
+  })
+
+  it("does not recapture staged disk bytes against a newer remote base on cold restart", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const db = new ProjectdDatabase(":memory:")
+    const root = await tempFolder("cold-binary")
+    await writeFiles(root, { "asset.bin": Buffer.from([0, 1]) })
+    const original = await createPeer(room, "cold-binary", roomKey, { root, db })
+    await startLive(original, "original binary owner")
+    await waitFor(() => original.host.status().pendingBatches === 0, "seed acknowledgement")
+    const peer = await createPeer(room, "remote-binary", roomKey)
+    await startLive(peer, "remote binary peer")
+    const entry = original.host.replica.tree.listLiveEntries().find((file) => file.path === "asset.bin")!
+    const base = original.host.replica.binaryStore.getHeadRevision(entry.fileId)!
+    await original.host.stop()
+    const local = Buffer.from([0, 2])
+    await fs.writeFile(path.join(root, "asset.bin"), local)
+    const retained = original.host.pendingBinaryStore.stage({ path: "asset.bin", fileId: entry.fileId,
+      baseRevisionId: base.revisionId, mode: entry.mode }, local)
+    await peer.write("asset.bin", Buffer.from([0, 3]))
+    await waitFor(() => peer.host.replica.binaryStore.getHeadRevision(entry.fileId)?.revisionId !== base.revisionId, "remote update")
+    await waitFor(() => peer.host.status().pendingBatches === 0, "remote update acknowledgement")
+    const restored = await createPeer(room, "cold-binary", roomKey, { root, db })
+    await startLive(restored, "restored binary owner")
+    const revisions = restored.host.replica.binaryStore.getRevisions(entry.fileId)
+    expect(revisions).toHaveLength(3)
+    expect(revisions.find((revision) => revision.revisionId === retained.revisionId)?.baseRevisionId).toBe(base.revisionId)
+    expect(restored.host.replica.binaryStore.detectConcurrentRevisions(entry.fileId)?.conflictingRevisions).toHaveLength(2)
+    expect(restored.host.pendingBinaryStore.count()).toBe(0)
+    expect((await restored.readBytes("asset.bin"))?.equals(local)).toBe(true)
+  })
+
+  it("carries binary replacements through object storage without room payload bytes", async () => {
+    const room = new RoomHost(worker)
+    const initial = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02, 0x03])
+    const next = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), randomBytes(1024 * 1024 + 37)])
+    const { creator, joiner } = await startPair(room, randomBytes(32), { "assets/logo.png": initial })
+
+    expect(await joiner.readBytes("assets/logo.png")).toEqual(initial)
+    await creator.write("assets/logo.png", next)
+    await waitFor(
+      async () => (await joiner.readBytes("assets/logo.png"))?.equals(next) === true,
+      "the binary replacement to reach the joiner",
+    )
+
+    const revision = creator.host.replica.binaryStore.getHeadRevision(
+      creator.host.replica.tree.listLiveEntries().find((entry) => entry.path === "assets/logo.png")!.fileId,
+    )
+    expect(revision?.manifest?.size).toBe(next.length)
+    expect(revision?.manifest?.chunks.length).toBe(1)
+    const latestRoomBatch = [...room.storage.data.entries()]
+      .filter(([key]) => key.startsWith("batch:"))
+      .map(([, value]) => value as { encryptedPayload?: string })
+      .at(-1)
+    expect(latestRoomBatch?.encryptedPayload?.length ?? 0).toBeLessThan(100_000)
   })
 
   it("carries saves both ways and merges concurrent edits to one file", async () => {
@@ -251,6 +543,51 @@ describe("projectd session host", () => {
     expect(joiner.host.status().fileCount).toBe(1)
   })
 
+  it("resolves a path collision without overwriting the surviving file", async () => {
+    const room = new RoomHost(worker)
+    const { creator, joiner } = await startPair(room, randomBytes(32), { "shared.txt": "first" })
+    const second = joiner.host.replica.createFile({ path: "shared.txt", kind: "text", content: "second", actor: { actorType: "user", principalId: "principal_joiner" } })
+    await joiner.host.flush()
+    await waitFor(() => creator.host.replica.detectConflicts().pathCollisions.length === 1, "shared path collision")
+    const review = (await creator.host.manageStructuralConflicts({ action: "list" })).conflicts.find((item) => item.fileId === second.fileId)!
+    expect(review.kinds).toContain("path_collision")
+    expect(review.textPreview).toBe("second")
+    await fs.writeFile(path.join(creator.root, "occupied.txt"), "local work")
+    await expect(creator.host.manageStructuralConflicts({ action: "resolve", fileId: second.fileId, fingerprint: review.fingerprint, choice: "rename", path: "occupied.txt" })).rejects.toMatchObject({ code: "PATH_OCCUPIED" })
+    await expect(creator.host.manageStructuralConflicts({ action: "resolve", fileId: second.fileId, fingerprint: "stale", choice: "rename", path: "second.txt" })).rejects.toMatchObject({ code: "CONFLICT_CHANGED" })
+    const enqueue = vi.spyOn(creator.host.queue, "enqueue").mockImplementationOnce(() => { throw new Error("journal failed") })
+    try {
+      await expect(creator.host.manageStructuralConflicts({ action: "resolve", fileId: second.fileId, fingerprint: review.fingerprint, choice: "rename", path: "second.txt" })).rejects.toThrow("journal failed")
+    } finally { enqueue.mockRestore() }
+    expect(creator.host.replica.tree.getEntry(second.fileId)?.path).toBe("shared.txt")
+    await creator.host.manageStructuralConflicts({ action: "resolve", fileId: second.fileId, fingerprint: review.fingerprint, choice: "rename", path: "second.txt" })
+    for (const peer of [creator, joiner]) {
+      await waitFor(async () => await peer.read("second.txt") === "second", "resolved destination bytes")
+      expect(await peer.read("shared.txt")).toBe("first")
+      expect(peer.host.replica.detectConflicts().pathCollisions).toHaveLength(0)
+    }
+    expect(await creator.read("occupied.txt")).toBe("local work")
+  })
+
+  it("restores reviewed delete-versus-edit content to an empty path", async () => {
+    const room = new RoomHost(worker)
+    const { creator, joiner } = await startPair(room, randomBytes(32), { "notes.txt": "base" })
+    const entry = creator.host.replica.tree.listLiveEntries().find((item) => item.path === "notes.txt")!
+    creator.host.replica.deleteFile(entry.fileId, { actorType: "user" })
+    joiner.host.replica.updateTextContent(entry.fileId, "concurrent edit")
+    await creator.host.flush()
+    await joiner.host.flush()
+    await waitFor(() => creator.host.replica.detectConflicts().deleteModifyConflicts.length === 1, "delete versus edit")
+    const review = (await creator.host.manageStructuralConflicts({ action: "list" })).conflicts[0]!
+    expect(review.kinds).toContain("delete_modify")
+    await creator.host.manageStructuralConflicts({ action: "resolve", fileId: entry.fileId, fingerprint: review.fingerprint, choice: "restore", path: "restored.txt" })
+    for (const peer of [creator, joiner]) {
+      await waitFor(async () => await peer.read("restored.txt") === "concurrent edit", "restored edited contents")
+      expect(peer.host.replica.tree.getEntry(entry.fileId)).toMatchObject({ path: "restored.txt", deleted: false })
+      expect(peer.host.replica.detectConflicts().deleteModifyConflicts).toHaveLength(0)
+    }
+  })
+
   it("carries a rename as a rename, and keeps the file's identity", async () => {
     const room = new RoomHost(worker)
     const { creator, joiner } = await startPair(room, randomBytes(32), { "docs/draft.md": "# Draft\n" })
@@ -270,6 +607,26 @@ describe("projectd session host", () => {
     expect(idOf(joiner, "docs/final.md")).toBe(fileId)
     expect(idOf(creator, "docs/final.md")).toBe(fileId)
     expect(room.storage.batchCount()).toBe(batches + 1)
+  })
+
+  it("preserves a dangling symlink identity across a local rename beside identical text", async () => {
+    const room = new RoomHost(worker)
+    const key = randomBytes(32)
+    const root = await tempFolder("symlink-rename")
+    await writeFiles(root, { "same.txt": "missing-target" })
+    await fs.symlink("missing-target", path.join(root, "old-link"))
+    const creator = await createPeer(room, "creator", key, { root })
+    await startLive(creator, "symlink creator")
+    const joiner = await createPeer(room, "joiner", key)
+    await startLive(joiner, "symlink joiner")
+    const id = creator.host.replica.tree.listLiveEntries().find((entry) => entry.path === "old-link")!.fileId
+    await fs.unlink(path.join(root, "same.txt"))
+    await fs.rename(path.join(root, "old-link"), path.join(root, "new-link"))
+    creator.events.report(root, "same.txt", "old-link", "new-link")
+    await waitFor(async () => await fs.readlink(path.join(joiner.root, "new-link")).catch(() => null) === "missing-target", "renamed dangling link")
+    expect(joiner.host.replica.tree.listLiveEntries().find((entry) => entry.path === "new-link")?.fileId).toBe(id)
+    await waitFor(async () => await fs.lstat(path.join(joiner.root, "old-link")).catch(() => null) === null, "old link removed")
+    await waitFor(() => !joiner.host.replica.tree.listLiveEntries().some((entry) => entry.path === "same.txt"), "same-byte regular file deleted separately")
   })
 
   it("finds a folder moved while the daemon was down, and moves each file", async () => {
@@ -299,6 +656,53 @@ describe("projectd session host", () => {
     const moved = new Map(joiner.host.replica.tree.listLiveEntries().map((entry) => [entry.path, entry.fileId]))
     expect(moved.get("new/a.md")).toBe(ids.get("old/a.md"))
     expect(moved.get("new/b.md")).toBe(ids.get("old/b.md"))
+  })
+
+  it("drains an in-flight binary and queued text into the durable outbox before stopping", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const objects = new MemoryBinaryObjects()
+    let releaseUpload!: () => void
+    let uploadStarted = false
+    const uploadGate = new Promise<void>((resolve) => { releaseUpload = resolve })
+    const root = await tempFolder("draining")
+    await writeFiles(root, { "notes.md": "before\n" })
+    let dropAcks = false
+    const peer = await createPeer(room, "draining", roomKey, {
+      root,
+      connector: (handlers) => room.connector({
+        dropServerMessage: (message) => dropAcks && message.type === "batch_ack",
+      })(handlers),
+      binaryObjectStore: {
+        upload: async (bytes) => {
+          uploadStarted = true
+          await uploadGate
+          return objects.upload(bytes)
+        },
+        download: (manifest) => objects.download(manifest),
+      },
+    })
+    await startLive(peer, "the draining peer")
+    await waitFor(() => peer.host.status().pendingBatches === 0, "the seed acknowledgement")
+    dropAcks = true
+    await fs.writeFile(path.join(root, "asset.bin"), Buffer.from([0, 1, 2, 3]))
+    await peer.host.rescan()
+    await waitFor(() => uploadStarted, "the binary upload to start")
+    try {
+      await fs.writeFile(path.join(root, "notes.md"), "queued edit\n")
+      await peer.host.rescan()
+      const stopping = peer.host.stop()
+      expect(peer.host.stop()).toBe(stopping)
+      releaseUpload()
+      await stopping
+      const note = peer.host.replica.tree.listLiveEntries().find((entry) => entry.path === "notes.md")!
+      expect(peer.host.replica.textDocs.getTextContent(note.fileId)).toBe("queued edit\n")
+      expect(peer.host.replica.tree.listLiveEntries().some((entry) => entry.path === "asset.bin")).toBe(true)
+      expect(peer.host.queue.getPendingBatches(TEST_PUBLIC_SESSION_ID).length).toBeGreaterThan(0)
+      expect(peer.host.state).toBe("stopped")
+    } finally {
+      releaseUpload()
+    }
   })
 
   it("merges edits made while the daemon was down and resends what the room never acknowledged", async () => {
@@ -523,6 +927,10 @@ describe("projectd sessions over the local socket", () => {
     expect(attached).toMatchObject({ publicSessionId: TEST_PUBLIC_SESSION_ID, rootPath: root })
     await waitFor(() => statuses.some((status) => status.state === "live"), "a live status event")
     expect(await client.listSessions()).toEqual([expect.objectContaining({ state: "live", fileCount: 1 })])
+    expect(await client.manageBinaryConflicts(TEST_PUBLIC_SESSION_ID, { action: "list" })).toEqual({ conflicts: [], nextFileId: null })
+    expect(await client.manageStructuralConflicts(TEST_PUBLIC_SESSION_ID, { action: "list" })).toEqual({ conflicts: [], nextFileId: null })
+    await expect(client.createSessionPullRequest(TEST_PUBLIC_SESSION_ID, "invalid", "b".repeat(40))).rejects.toThrow("checkpointOid")
+    await expect(client.createSessionPullRequest(TEST_PUBLIC_SESSION_ID, "a".repeat(40), "invalid")).rejects.toThrow("targetOid")
 
     const otherRoot = await tempFolder("other")
     await expect(client.attachSession({ ...attach, rootPath: otherRoot })).rejects.toThrow(/already syncs/)
@@ -530,7 +938,13 @@ describe("projectd sessions over the local socket", () => {
       client.attachSession({ ...attach, publicSessionId: "czs_fedcba9876543210", roomKeyBase64: "c2hvcnQ=" }),
     ).rejects.toThrow(/32-byte room key/)
 
+    await fs.writeFile(path.join(root, "README.md"), "saved immediately before leaving\n")
+    expect(await client.prepareSessionLeave(TEST_PUBLIC_SESSION_ID)).toEqual({ pendingBatches: 0, pendingBinaryVersions: 0 })
+    const reader = await createPeer(room, "after-leave", roomKey)
+    await startLive(reader, "the reader after leave preparation")
+    expect(await reader.read("README.md")).toBe("saved immediately before leaving\n")
     expect(await client.detachSession(TEST_PUBLIC_SESSION_ID)).toEqual({ detached: true })
     expect(await client.listSessions()).toEqual([])
+    expect(await client.prepareSessionLeave(TEST_PUBLIC_SESSION_ID)).toEqual({ pendingBatches: 0, pendingBinaryVersions: 0 })
   })
 })

@@ -53,7 +53,13 @@ export function SessionInvitationCard({
   onAccepted,
 }: {
   item: SessionInvitationItem
-  onAccepted?: (result: { projectId: string; sessionId: string; branchName: string; repositoryUrl: string | null }) => void
+  onAccepted?: (result: {
+    projectId: string
+    sessionId: string
+    publicSessionId: string
+    branchName: string
+    repositoryUrl: string | null
+  }) => void
 }) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState<"accept" | "decline" | null>(null)
@@ -78,6 +84,7 @@ export function SessionInvitationCard({
         onAccepted?.({
           projectId: String(res.projectId),
           sessionId: String(res.sessionId),
+          publicSessionId: item.publicSessionId,
           branchName,
           repositoryUrl: res.repositoryUrl ?? item.repositoryUrl,
         })

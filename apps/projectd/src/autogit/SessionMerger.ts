@@ -14,10 +14,13 @@
  */
 
 import type { ProjectdMergePreview, ProjectdMergeResult, ProjectdMergeStrategy } from "@cozea/projectd-protocol"
+import { createHash } from "node:crypto"
 
 import type { GitExecuteOptions } from "../git/GitProcess"
 import type { GitService } from "../git/GitService"
 import { fallbackIdentityEnv } from "../git/identity"
+import type { GitHubSessionPullRequest } from "./GitHubSessionPullRequest"
+import { executeScopedNetworkGit, type RepositoryCredentialProvider } from "../git/ScopedNetworkGit"
 
 const REMOTE_TIMEOUT_MS = 60_000
 // Cozea's identity for a merge commit, only when the person's Git has none.
@@ -34,10 +37,12 @@ export class MergeError extends Error {
 }
 
 export interface SessionMergerOptions {
+  repositoryCredentials?: RepositoryCredentialProvider
   workspaceRoot: string
   branchName: string
   targetBranch: string
   gitService: GitService
+  pullRequests?: GitHubSessionPullRequest
 }
 
 interface Repository {
@@ -117,6 +122,18 @@ export class SessionMerger {
     this.options = options
   }
 
+  async createPullRequest(input: { checkpointOid: string | null; reviewedCheckpointOid: string; reviewedTargetOid: string; unsavedChanges: number }) {
+    if (!this.options.pullRequests) throw new MergeError("PR_UNAVAILABLE", "Background repository authorization is not configured.")
+    const preview = await this.preview(input)
+    if (preview.checkpointOid !== input.reviewedCheckpointOid || preview.targetOid !== input.reviewedTargetOid || input.unsavedChanges !== 0) {
+      throw new MergeError("REVIEW_CHANGED", "Save and review the current session before creating a pull request.")
+    }
+    const repo = await this.repository()
+    if (!repo.remoteUrl) throw new MergeError("PR_UNAVAILABLE", "This repository has no remote URL.")
+    return this.options.pullRequests.ensure({ remoteUrl: repo.remoteUrl, branch: preview.branch,
+      targetBranch: preview.targetBranch, checkpointOid: preview.checkpointOid, targetOid: preview.targetOid })
+  }
+
   /** Merges the session's last save with the target, in Git's object store only (Section 22.1). */
   async preview(input: { checkpointOid: string | null; unsavedChanges: number }): Promise<ProjectdMergePreview> {
     const { branchName, targetBranch } = this.options
@@ -126,6 +143,10 @@ export class SessionMerger {
     const repo = await this.repository()
     await this.fetch(repo)
     const checkpointOid = input.checkpointOid
+    const publishedOid = await this.options.gitService.getCommitOid(repo.root, repo.targetRef.replace(/\/target$/, "/session"))
+    if (publishedOid !== checkpointOid) {
+      throw new MergeError("REMOTE_SESSION_CHANGED", "The remote session branch differs from the saved checkpoint. Reconcile and save the session before reviewing a merge or pull request.")
+    }
     const hasCheckpoint = await this.git(repo.root, ["cat-file", "-e", `${checkpointOid}^{commit}`])
     if (!hasCheckpoint.success) {
       throw new MergeError(
@@ -150,6 +171,7 @@ export class SessionMerger {
       conflictingPaths: merged.conflicts,
       unsavedChanges: input.unsavedChanges,
       pullRequestUrl: repo.remoteUrl ? pullRequestUrl(repo.remoteUrl, branchName, targetBranch) : null,
+      canCreatePullRequest: Boolean(this.options.pullRequests),
     }
   }
 
@@ -157,17 +179,18 @@ export class SessionMerger {
   async merge(input: {
     checkpointOid: string | null
     reviewedCheckpointOid: string
+    reviewedTargetOid: string
     strategy: ProjectdMergeStrategy
     unsavedChanges: number
   }): Promise<ProjectdMergeResult> {
     const { branchName, targetBranch } = this.options
     const preview = await this.preview(input)
     const base = { pullRequestUrl: preview.pullRequestUrl }
-    if (preview.checkpointOid !== input.reviewedCheckpointOid) {
+    if (preview.checkpointOid !== input.reviewedCheckpointOid || preview.targetOid !== input.reviewedTargetOid) {
       return {
         ...base,
         outcome: "moved",
-        message: "The session was saved to Git again since you reviewed the merge. Review it again.",
+        message: "The session save or target branch changed since you reviewed the merge. Review it again.",
       }
     }
     if (preview.ahead === 0) {
@@ -204,7 +227,7 @@ export class SessionMerger {
     }
     const mergeCommitOid = commit.stdout.trim()
 
-    const pushed = await this.git(repo.root, ["push", "--porcelain", repo.remote, `${mergeCommitOid}:refs/heads/${targetBranch}`], {
+    const pushed = await this.networkGit(repo, ["push", "--porcelain", repo.remote, `${mergeCommitOid}:refs/heads/${targetBranch}`], {
       timeoutMs: REMOTE_TIMEOUT_MS,
     })
     if (pushed.success) {
@@ -216,7 +239,17 @@ export class SessionMerger {
       }
     }
     const output = `${pushed.stderr}\n${pushed.stdout}`
-    if (/GH006|protected branch|hook declined|not allowed to push|pushes to this branch are not allowed/i.test(output)) {
+    if (/GH006|GH013|protected branch|hook declined|not allowed to push|pushes to this branch are not allowed/i.test(output)) {
+      if (this.options.pullRequests && repo.remoteUrl && input.unsavedChanges === 0) {
+        try {
+          const pullRequest = await this.createPullRequest({ ...input, reviewedTargetOid: preview.targetOid })
+          return { outcome: "needs_pull_request", pullRequest, pullRequestUrl: pullRequest.url,
+            message: `${targetBranch} requires a pull request. PR #${pullRequest.number} is open for the reviewed session checkpoint.` }
+        } catch {
+          return { ...base, outcome: "needs_pull_request",
+            message: `${targetBranch} requires a pull request, but Cozea could not create or verify it. Review again and retry Create or find PR, or open the repository's PR page.` }
+        }
+      }
       return {
         ...base,
         outcome: "needs_pull_request",
@@ -245,20 +278,22 @@ export class SessionMerger {
       root,
       remote,
       remoteUrl: url.success ? url.stdout.trim() : null,
-      targetRef: `refs/remotes/${remote}/${targetBranch}`,
+      targetRef: `refs/cozea/merge-preview/${createHash("sha256").update(`${remote}\0${branchName}\0${targetBranch}`).digest("hex")}/target`,
     }
   }
 
   private async fetch(repo: Repository): Promise<void> {
     const { branchName, targetBranch } = this.options
-    const fetched = await this.git(
-      repo.root,
+    const fetched = await this.networkGit(
+      repo,
       [
         "fetch",
         "--no-tags",
+        "--no-write-fetch-head",
+        "--refmap=",
         repo.remote,
         `+refs/heads/${targetBranch}:${repo.targetRef}`,
-        `+refs/heads/${branchName}:refs/remotes/${repo.remote}/${branchName}`,
+        `+refs/heads/${branchName}:${repo.targetRef.replace(/\/target$/, "/session")}`,
       ],
       { timeoutMs: REMOTE_TIMEOUT_MS },
     )
@@ -288,5 +323,11 @@ export class SessionMerger {
 
   private git(cwd: string, args: string[], options: Omit<GitExecuteOptions, "cwd"> = {}) {
     return this.options.gitService.process.execute(args, { cwd, allowNonZeroExit: true, ...options })
+  }
+
+  private networkGit(repo: Repository, args: string[], options: Omit<GitExecuteOptions, "cwd"> = {}) {
+    return this.options.repositoryCredentials
+      ? executeScopedNetworkGit(this.options.gitService.process, args, repo.remote, { cwd: repo.root, allowNonZeroExit: true, ...options }, this.options.repositoryCredentials)
+      : this.git(repo.root, args, options)
   }
 }

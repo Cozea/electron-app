@@ -19,6 +19,7 @@ function daemonStatus(overrides: Partial<ProjectdSessionStatus> = {}): ProjectdS
     role: "developer",
     lastAppliedSessionSeq: 3,
     pendingBatches: 0,
+    pendingBinaryVersions: 0,
     fileCount: 2,
     skippedPaths: [],
     lastError: null,
@@ -59,10 +60,21 @@ describe("how the session bar describes syncing", () => {
     })
     expect(
       describeLiveSessionSync({ ...ATTACHED, status: daemonStatus({ skippedPaths: ["a.png", "b.zip"] }) }).detail,
-    ).toMatch(/^2 files stay on this Mac/)
+    ).toMatch(/^2 files stay outside synchronization/)
+  })
+
+  it("shows locally retained binary uploads even when there are no outbound batches", () => {
+    expect(describeLiveSessionSync({ ...ATTACHED, status: daemonStatus({ pendingBinaryVersions: 2 }) })).toMatchObject({
+      tone: "working", label: "Uploads pending", detail: "2 binary versions are retained on this Mac, waiting to upload.",
+    })
+    expect(describeLiveSessionSync({ ...ATTACHED, status: daemonStatus({ state: "reconnecting", pendingBinaryVersions: 1 }) })).toMatchObject({
+      label: "Offline · local changes pending", detail: "1 binary version is retained on this Mac, waiting to upload.",
+    })
   })
 
   it("explains why a folder stopped syncing", () => {
+    expect(describeLiveSessionSync({ ...ATTACHED, phase: "waiting_for_key", error: "Retry to retrieve the current key." }).detail)
+      .toBe("Retry to retrieve the current key.")
     const conflict = "1 file in /Users/tester/demo differs from the session and holds changes Git does not have."
     expect(
       describeLiveSessionSync({

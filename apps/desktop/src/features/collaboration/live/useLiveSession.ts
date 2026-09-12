@@ -10,13 +10,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useMutation } from "convex/react"
+import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/projectd-protocol"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
-import { checkoutGitBranchCompat } from "@/features/workbench/branch-control/workbenchBranchCompat"
+import { useViewTransitionNavigate } from "@/lib/navigation"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
 import { findBranchSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
@@ -74,7 +77,10 @@ export interface LiveSessionController {
   pause: () => void
   resume: () => void
   end: () => void
-  switchToBranch: (branch: string) => void
+  closeReview: ProjectdClosePreflight | null
+  cancelClose: () => void
+  confirmClose: (choice: ProjectdCloseChoice) => void
+  openSessionWorkbench: (branch: string) => void
 }
 
 const NO_MEMBERS: LiveSessionMember[] = []
@@ -122,12 +128,13 @@ export function useLiveSession(input: {
   sessions: readonly LiveSessionRecord[] | undefined
   activeBranch: string
   projectId: string | null
+  projectName?: string | null
   workspaceId: string | null
   rootPath: string | null
   principalId: string | null
-  onBranchSwitched?: () => Promise<void> | void
 }): LiveSessionController {
-  const { enabled, daemonEnabled, sessions, activeBranch, workspaceId, onBranchSwitched } = input
+  const navigate = useViewTransitionNavigate()
+  const { enabled, daemonEnabled, sessions, activeBranch, workspaceId } = input
   const session = enabled ? findBranchSession(sessions, activeBranch) : null
   const sessionId = session?._id ?? null
 
@@ -141,8 +148,10 @@ export function useLiveSession(input: {
   const canManage = membership === "active" && members.some((member) => member.isSelf && member.role === "project_manager")
   const canEdit = membership === "active" && members.some((member) => member.isSelf && member.role !== "viewer")
 
+  const sessionWorkspaceId = session ? `ws_collab_${session.publicSessionId}` : null
+  const isSessionWorkspace = Boolean(sessionWorkspaceId && workspaceId === sessionWorkspaceId)
   const daemon = useDaemonCollaborationSession({
-    enabled: daemonEnabled && membership === "active",
+    enabled: daemonEnabled && membership === "active" && isSessionWorkspace,
     session,
     projectId: input.projectId,
     workspaceId,
@@ -171,9 +180,8 @@ export function useLiveSession(input: {
 
   const joinSession = useMutation(api.collaborationSessions.join)
   const leaveSession = useMutation(api.collaborationSessions.leave)
-  const pauseSession = useMutation(api.collaborationSessions.pause)
   const resumeSession = useMutation(api.collaborationSessions.resume)
-  const closeSession = useMutation(api.collaborationSessions.close)
+  const [closeReview, setCloseReview] = useState<ProjectdClosePreflight | null>(null)
   const [busyAction, setBusyAction] = useState<LiveSessionAction | null>(null)
 
   const run = useCallback((action: LiveSessionAction, failure: string, work: () => Promise<unknown>) => {
@@ -185,12 +193,56 @@ export function useLiveSession(input: {
       .finally(() => setBusyAction(null))
   }, [])
 
+  const ensureAndOpenSessionWorkbench = useCallback(
+    async (target: LiveSessionRecord) => {
+      if (!input.projectId) throw new Error("Open this project first.")
+      const ensured = await window.electronAPI.projectd.workbenches.ensureSession({
+        projectId: input.projectId,
+        publicSessionId: target.publicSessionId,
+        branchName: target.branchName,
+        baseBranch: target.branchName,
+        createBranch: false,
+        title: `${input.projectName ?? "Project"} · ${target.branchName}`,
+        sourceRepoUrl: target.repositoryUrl ?? null,
+        sourceWorkspaceId: workspaceId,
+        includeDirtyChanges: false,
+        setActive: true,
+      })
+      if (!ensured.success) throw new Error(ensured.error)
+      navigate(buildProjectPath(input.projectId, "workbench"), {
+        state: buildProjectRouteNavigationState({
+          projectId: input.projectId,
+          projectName: input.projectName ?? null,
+          preferredWorkspaceId: ensured.workspace.workspaceId,
+        }),
+      })
+    },
+    [input.projectId, input.projectName, navigate, workspaceId],
+  )
+
   const onSession = (
     action: LiveSessionAction,
     failure: string,
     mutate: (args: { sessionId: Id<"collaborationSessions"> }) => Promise<unknown>,
   ) => () => {
-    if (sessionId) run(action, failure, () => mutate({ sessionId }))
+    if (sessionId) run(action, failure, async () => {
+      let retainedBatches = 0
+      let retainedBinaryVersions = 0
+      if (action === "leave" && session) {
+        const prepared = await window.electronAPI.projectd.sessions.prepareLeave(session.publicSessionId)
+        if (!prepared.success) throw new Error(prepared.error)
+        retainedBatches = prepared.pendingBatches
+        retainedBinaryVersions = prepared.pendingBinaryVersions
+      }
+      await mutate({ sessionId })
+      if ((action === "leave" || action === "end") && session) {
+        const result = await window.electronAPI.projectd.sessions.detach(session.publicSessionId)
+        if (!result.success) throw new Error(result.error)
+      }
+      if (retainedBatches > 0 || retainedBinaryVersions > 0) {
+        appToast.info({ title: "Left collaboration", description: "Some edits were not confirmed by the session. Their recovery data remains on this Mac." })
+      }
+    })
   }
 
   const otherSessions = enabled
@@ -242,17 +294,49 @@ export function useLiveSession(input: {
     dismissTarget: () => {
       if (session) void window.electronAPI.projectd.sessions.dismissTarget(session.publicSessionId)
     },
-    join: onSession("join", "Could not join the session", joinSession),
+    join: () => {
+      if (!sessionId || !session) return
+      run("join", "Could not join the session", async () => {
+        await joinSession({ sessionId })
+        await ensureAndOpenSessionWorkbench(session)
+      })
+    },
     leave: onSession("leave", "Could not leave the session", leaveSession),
-    pause: onSession("pause", "Could not pause the session", pauseSession),
+    pause: () => {
+      if (session) run("pause", "Could not pause the session", async () => {
+        const result = await window.electronAPI.projectd.sessions.pause(session.publicSessionId)
+        if (!result.success) throw new Error(result.error)
+        if (result.gitLag) appToast.info({ title: "Collaboration paused", description: "Your session is retained in encrypted cloud storage. Git has not saved all of its changes yet." })
+      })
+    },
     resume: onSession("resume", "Could not resume the session", resumeSession),
-    end: onSession("end", "Could not end the session", closeSession),
-    switchToBranch: (branch) =>
-      run("switch", `Could not switch to ${branch}`, async () => {
-        if (!workspaceId) throw new Error("Open this project's folder first.")
-        const result = await checkoutGitBranchCompat(workspaceId, branch)
-        if (!result.success) throw new Error(result.error ?? `Git could not check out ${branch}.`)
-        await onBranchSwitched?.()
+    closeReview: closeReview?.publicSessionId === session?.publicSessionId ? closeReview : null,
+    cancelClose: () => setCloseReview(null),
+    confirmClose: (choice) => {
+      if (session) run("end", "Could not close the session", async () => {
+        const result = await window.electronAPI.projectd.sessions.close(session.publicSessionId, choice)
+        if (!result.success) {
+          if (result.code === "REVIEW_CHANGED" || result.code === "REVIEW_REQUIRED" || result.code === "SNAPSHOT_BEHIND" ||
+            result.code === "CLOSE_REVIEW_CHANGED") setCloseReview(null)
+          throw new Error(result.error)
+        }
+        setCloseReview(null)
+        const detached = await window.electronAPI.projectd.sessions.detach(session.publicSessionId)
+        if (!detached.success) throw new Error(detached.error)
+      })
+    },
+    end: () => {
+      if (session) run("end", "Could not review session closure", async () => {
+        const result = await window.electronAPI.projectd.sessions.prepareClose(session.publicSessionId)
+        if (!result.success) throw new Error(result.error)
+        setCloseReview(result.review)
+      })
+    },
+    openSessionWorkbench: (branch) =>
+      run("switch", `Could not open ${branch}`, async () => {
+        const target = (sessions ?? []).find((candidate) => candidate.branchName === branch)
+        if (!target) throw new Error(`The live session on ${branch} is no longer available.`)
+        await ensureAndOpenSessionWorkbench(target)
       }),
   }
 }

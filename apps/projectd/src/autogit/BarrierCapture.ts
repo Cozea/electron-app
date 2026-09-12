@@ -8,7 +8,8 @@
 
 import { createHash } from "node:crypto"
 
-import type { SessionReplica } from "../collaboration/SessionReplica"
+import type { BinaryRevision } from "../collaboration/BinaryStore"
+import type { SessionReplica, ReplicaSnapshot } from "../collaboration/SessionReplica"
 
 export interface BarrierDescriptor {
   readonly barrierId: string
@@ -26,9 +27,11 @@ export interface FileSnapshotState {
   readonly symlinkTarget?: string
   readonly snapshotUpdate?: Uint8Array
   readonly stateVector?: Uint8Array
+  readonly binaryRevision?: BinaryRevision
 }
 
 export interface BarrierSnapshot {
+  readonly replicaSnapshot?: ReplicaSnapshot
   readonly barrierId: string
   readonly sessionSeq: number
   readonly serverTime: number
@@ -63,6 +66,7 @@ export class BarrierCapture {
       let symlinkTarget: string | undefined
       let snapshotUpdate: Uint8Array | undefined
       let stateVector: Uint8Array | undefined
+      let binaryRevision: BinaryRevision | undefined
 
       if (entry.kind === "text") {
         textContent = replica.textDocs.getTextContent(entry.fileId)
@@ -74,6 +78,7 @@ export class BarrierCapture {
         contentHash = createHash("sha256").update(symlinkTarget).digest("hex")
       } else if (entry.kind === "binary") {
         const headRev = replica.binaryStore.getHeadRevision(entry.fileId)
+        binaryRevision = headRev ?? undefined
         contentHash = headRev?.contentHash ?? "empty_binary"
       }
 
@@ -87,6 +92,7 @@ export class BarrierCapture {
         symlinkTarget,
         snapshotUpdate,
         stateVector,
+        binaryRevision,
       })
 
       hashDigest.update(`${entry.path}:${entry.mode}:${contentHash}\n`)

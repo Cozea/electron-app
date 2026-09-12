@@ -17,6 +17,7 @@
  * outside the session, the leader stops saving and every member is told why.
  */
 
+import { createHash } from "node:crypto"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -27,9 +28,12 @@ import type {
   ProjectdCheckpointResult,
   ProjectdCheckpointSummary,
   ProjectdRebaseResult,
+  ProjectdRebaseRecoveryRequest,
+  ProjectdRebaseRecoveryResponse,
 } from "@cozea/projectd-protocol"
 
 import type { SessionReplica } from "../collaboration/SessionReplica"
+import type { BinaryRevision } from "../collaboration/BinaryStore"
 import {
   RoomRequestError,
   type RoomAutoGitState,
@@ -42,11 +46,14 @@ import type { SessionTransport } from "../collaboration/SessionTransport"
 import { TextDocRegistry } from "../collaboration/TextDocRegistry"
 import { ScopePolicy } from "../filesystem/ScopePolicy"
 import type { GitExecuteOptions } from "../git/GitProcess"
+import { executeScopedNetworkGit, type RepositoryCredentialProvider } from "../git/ScopedNetworkGit"
 import type { GitService } from "../git/GitService"
 import { fallbackIdentityEnv } from "../git/identity"
 import { BarrierCapture, type BarrierSnapshot } from "./BarrierCapture"
 import { CheckpointBuilder, UnignoredEnvironmentFilesError, type CheckpointCommitResult } from "./CheckpointBuilder"
 import { GitBaselineAdopter } from "./GitBaselineAdopter"
+import { RebaseJournal } from "./RebaseJournal"
+import { IsolatedRebaseResolution } from "./IsolatedRebaseResolution"
 
 export interface AutoGitTiming {
   /** How often the leader renews its lease; the room's lease lasts 20 seconds (Section 14.5). */
@@ -80,14 +87,14 @@ export const DEFAULT_AUTOGIT_TIMING: AutoGitTiming = {
 
 const ADOPTION_RETRY_MS = 30_000
 // Failures every leader would hit alike; checkpoints stop until someone acts (Section 15.9).
-const BLOCKING_CODES = new Set(["REMOTE_CHANGED", "REMOTE_DIVERGED", "REMOTE_BRANCH_MISSING", "PROTECTED_BRANCH"])
+const BLOCKING_CODES = new Set(["REMOTE_CHANGED", "REMOTE_DIVERGED", "REMOTE_BRANCH_MISSING", "PROTECTED_BRANCH", "REBASE_RECOVERY_REQUIRED"])
 // Holds the session itself can lift; saving is tried again with the next change.
 const HELD_CODES = new Set(["ENV_NOT_IGNORED", "CONFLICT_MARKERS"])
 // Tries at applying a merge of outside commits while files keep changing under it.
 const MERGE_ATTEMPTS = 3
 // Git's conflict markers. The ======= separator alone also underlines Markdown headings.
 const CONFLICT_MARKER = /^(?:<{7}|>{7})(?: |$)/m
-const REGULAR_OR_ABSENT_MODES = new Set(["000000", "100644", "100755"])
+const REGULAR_OR_ABSENT_MODES = new Set(["000000", "100644", "100755", "120000"])
 
 export class AutoGitError extends Error {
   readonly code: string
@@ -103,6 +110,12 @@ export class AutoGitError extends Error {
 export interface SessionFileChange {
   path: string
   /** The session's text when the merge read it; null when the session had no such file. */
+  renameTo?: string
+  destinationFingerprint?: string
+  expectedFingerprint?: string
+  modeOnly?: boolean
+  symlinkTarget?: string
+  binary?: { bytes: Buffer | null; fingerprint: string }
   expected: string | null
   /** The merged text; null deletes the file. */
   text: string | null
@@ -110,14 +123,25 @@ export interface SessionFileChange {
   mode?: number
 }
 
+export function sessionFileFingerprint(replica: SessionReplica, filePath: string): string {
+  const entry = replica.tree.listLiveEntries().find((candidate) => candidate.path === filePath)
+  if (!entry) return "absent"
+  return JSON.stringify([entry.fileId, entry.kind, entry.mode, entry.lastStructuralOpId,
+    entry.kind === "text" ? createHash("sha256").update(replica.textDocs.getTextContent(entry.fileId)).digest("hex") :
+      entry.kind === "symlink" ? entry.symlinkTarget : replica.binaryStore.getRevisions(entry.fileId).map((revision) => revision.revisionId).sort()])
+}
+
 interface ExternalFile {
+  renameTo?: string
   sessionPath: string
+  baseMode: number
   baseOid: string
   headOid: string
   mode: number
 }
 
 export interface AutoGitAgentOptions {
+  repositoryCredentials?: RepositoryCredentialProvider
   publicSessionId: string
   branchName: string
   workspaceRoot: string
@@ -132,11 +156,16 @@ export interface AutoGitAgentOptions {
   runExclusive: <T>(work: () => Promise<T>) => Promise<T>
   /** Sends unsent local edits and resolves once the room has acknowledged every one. */
   flushLocalChanges: () => Promise<void>
+  persistReplicaSnapshot?: (generation: number, snapshot: BarrierSnapshot) => Promise<void>
   /**
    * Applies files merged from commits pushed outside the session, unless one no longer
    * reads as `expected`; returns the paths that changed meanwhile. Runs inside runExclusive.
    */
-  applySessionChanges: (changes: SessionFileChange[]) => Promise<string[]>
+  applySessionChanges: (changes: SessionFileChange[], integration?: { adoptionId: string; generation: number }) => Promise<string[]>
+  recoverIntegration?: (adoptionId: string, generation: number) => Promise<boolean>
+  completeIntegration?: (adoptionId: string) => void
+  /** Resolves verified bytes for binary revisions captured at a barrier. */
+  resolveBinaryContent?: (revision: BinaryRevision) => Promise<Buffer>
   /** The branch the session's work merges into, which an explicit rebase builds on (Section 21). */
   targetBranch?: string | null
   onChange: () => void
@@ -246,13 +275,13 @@ export class AutoGitAgent {
   // Files that merge left with conflict markers; saving waits until they are resolved.
   private conflictPaths = new Set<string>()
   // A rebase adopted into the session, waiting to be pushed over the save it replaces.
-  private rebase: { from: string; parentOid: string; baseTreeOid: string | null } | null = null
+  private rebase: { from: string; parentOid: string; baseTreeOid: string | null; recoveryId?: string } | null = null
   private rebaseRun: Promise<ProjectdRebaseResult> | null = null
 
   constructor(options: AutoGitAgentOptions) {
     this.options = options
     this.timing = { ...DEFAULT_AUTOGIT_TIMING, ...options.timing }
-    this.builder = new CheckpointBuilder(options.gitService)
+    this.builder = new CheckpointBuilder(options.gitService, { resolveBinary: options.resolveBinaryContent })
     this.adopter = new GitBaselineAdopter(options.gitService)
   }
 
@@ -296,7 +325,7 @@ export class AutoGitAgent {
   handleCheckpointRequested(): void {
     if (!this.leading) return
     this.retryAt = 0
-    void this.runCheckpoint()
+    void this.checkpointNow().catch((error: unknown) => this.handleFailure(error))
   }
 
   /** A member asked the leader to rebase the session onto its target (Section 21.1). */
@@ -317,6 +346,120 @@ export class AutoGitAgent {
     return routed
       ? { outcome: "requested", message: "The Mac that saves this session is rebasing it now." }
       : { outcome: "no_leader", message: "No member's Mac can push this session's branch right now." }
+  }
+
+  private async isolatedResolver(recoveryId: string): Promise<IsolatedRebaseResolution> {
+    await this.start()
+    this.requireRepo()
+    const common = (await this.git(["rev-parse", "--path-format=absolute", "--git-common-dir"])).stdout.trim()
+    return new IsolatedRebaseResolution(await RebaseJournal.open(common, this.options.publicSessionId, recoveryId), this.options.gitService)
+  }
+
+  async manageRebaseRecovery(input: unknown): Promise<ProjectdRebaseRecoveryResponse> {
+    const request = input as ProjectdRebaseRecoveryRequest
+    if (!request || !["list", "review", "resolve", "continue", "apply", "cancel"].includes(request.action)) throw new Error("Invalid rebase recovery action")
+    if (request.action !== "list" && (typeof request.recoveryId !== "string" || !/^[a-f0-9-]{36}$/.test(request.recoveryId))) throw new Error("Invalid recovery ID")
+    if (request.action === "resolve") {
+      if (typeof request.fingerprint !== "string" || !/^[a-f0-9]{64}$/.test(request.fingerprint) || !Array.isArray(request.choices) || request.choices.length > 1024) throw new Error("Invalid resolution review")
+      for (const choice of request.choices) {
+        if (!choice || typeof choice.path !== "string" || choice.path.length > 4096 ||
+          !["content", "variant", "delete"].includes(choice.kind) ||
+          (choice.kind === "variant" && ![1, 2, 3].includes(choice.stage)) ||
+          (choice.kind === "content" && (typeof choice.text !== "string" || Buffer.byteLength(choice.text) > 8 * 1024 * 1024 || typeof choice.executable !== "boolean"))) throw new Error("Invalid conflict choice")
+      }
+    }
+    if (this.inFlight || this.rebaseRun) throw new AutoGitError("REBASE_BUSY", "Wait for the current Git operation before resolving.")
+    let applied: RebaseJournal | null = null
+    const work = (async (): Promise<ProjectdRebaseRecoveryResponse> => {
+      await this.start()
+      if (request.action === "list") {
+        const common = (await this.git(["rev-parse", "--path-format=absolute", "--git-common-dir"])).stdout.trim()
+        return { journals: (await RebaseJournal.list(common, this.options.publicSessionId)).map(({ id, state, createdAt }) => ({ id, state, createdAt })) }
+      }
+      const resolver = await this.isolatedResolver(request.recoveryId)
+      if (request.action === "review") return { review: await resolver.preview() }
+      if (!this.leading || !this.lease || !this.options.canWrite()) throw new AutoGitError("NOT_LEADER", "The current session leader must resolve this rebase.")
+      this.lease = await this.options.room.renewLease(this.lease.generation)
+      if (request.action === "cancel") {
+        if (["adopting", "adopted"].includes(resolver.journal.record.state)) throw new Error("This rebase has begun adoption. Retry Apply before discarding recovery state.")
+        const removed = await this.git(["worktree", "remove", "--force", resolver.journal.worktree], { allowNonZeroExit: true })
+        if (!removed.success && await fs.stat(resolver.journal.worktree).then(() => true, () => false)) throw new Error("Could not discard the isolated worktree; its recovery record has been kept")
+        await resolver.journal.finish("canceled")
+        return {}
+      }
+      // A published checkpoint can outlive the reply or the local journal write.
+      // Verify both authorities before treating this as completed; never re-integrate it.
+      const recoveredIntegration = request.action === "apply" && await this.options.recoverIntegration?.(resolver.journal.record.id, this.lease.generation)
+      const retained = resolver.journal.record
+      if (request.action === "apply" && ["adopting", "adopted"].includes(retained.state)) {
+        const receipt = await this.options.room.getRebaseReceipt(retained.id)
+        if (receipt && receipt.adoption.from === retained.from && receipt.adoption.resultOid === retained.resultOid &&
+          receipt.checkpoint.rebaseAdoptionId === retained.id && receipt.checkpoint.rebasedFrom === retained.from &&
+          (!retained.pendingCheckpoint || receipt.checkpoint.commitOid === retained.pendingCheckpoint.commitOid)) {
+          await resolver.journal.finish("applied")
+          this.options.completeIntegration?.(retained.id)
+          if (this.rebase?.recoveryId === retained.id) this.rebase = null
+          this.blocked = null
+          this.lastError = null
+          return { result: { outcome: "rebased", commitOid: receipt.checkpoint.commitOid, message: "Recovered the completed rebase receipt." } }
+        }
+      }
+      let recoveredPublication = false
+      let published = this.options.room.autoGitState?.checkpoint
+      const pendingCheckpoint = retained.pendingCheckpoint
+      if (request.action === "apply" && retained.state === "adopted" && retained.resultOid && pendingCheckpoint &&
+        this.options.room.autoGitState?.rebaseAdoption?.id === retained.id && await this.lsRemote() === pendingCheckpoint.commitOid) {
+        await this.fetchBranch()
+        if (!await this.isAncestor(retained.resultOid, pendingCheckpoint.commitOid)) throw new AutoGitError("REMOTE_CHANGED", "The pushed checkpoint does not contain this rebase result.")
+        published = await this.options.room.publishCheckpoint(this.lease.generation, pendingCheckpoint)
+        this.acceptCheckpoint(published)
+        recoveredPublication = true
+      }
+      if (request.action === "apply" && ["adopting", "adopted"].includes(retained.state) &&
+        retained.resultOid && published?.rebaseAdoptionId === retained.id && published.rebasedFrom === retained.from &&
+        (recoveredPublication || !this.options.room.autoGitState?.rebaseAdoption) && await this.lsRemote() === published.commitOid) {
+        await this.fetchBranch()
+        if (!await this.isAncestor(retained.resultOid, published.commitOid)) throw new AutoGitError("REMOTE_CHANGED", "The published checkpoint does not contain this rebase result.")
+        await resolver.journal.finish("applied")
+        this.options.completeIntegration?.(retained.id)
+        this.acceptCheckpoint(published)
+        this.rebase = null
+        this.blocked = null
+        this.lastError = null
+        return { result: { outcome: "rebased", commitOid: published.commitOid, message: "Recovered the already saved rebase." } }
+      }
+      if (await this.lsRemote() !== resolver.journal.record.from) throw new AutoGitError("REMOTE_CHANGED", "The session branch changed. Review a new rebase before resolving.")
+      const target = this.options.targetBranch
+      if (!target || await this.fetchTarget(target) !== resolver.journal.record.onto) throw new AutoGitError("TARGET_CHANGED", "The target branch changed. Review a new rebase before resolving.")
+      if (request.action === "apply") {
+        const record = resolver.journal.record
+        if (!["computed", "adopting", "adopted"].includes(record.state) || !record.resultOid) throw new Error("Resolve the isolated rebase before applying it")
+        await resolver.journal.beginAdoption()
+        await this.options.room.beginRebaseAdoption(this.lease.generation, { id: record.id, from: record.from, resultOid: record.resultOid })
+        if (!recoveredIntegration) await this.integrateExternalCommits(record.from, record.resultOid, true, { adoptionId: record.id, generation: this.lease.generation })
+        await resolver.journal.markAdopted()
+        this.rebase = { from: record.from, parentOid: record.resultOid, baseTreeOid: null, recoveryId: record.id }
+        applied = resolver.journal
+        return {}
+      }
+      if (request.action === "resolve") await resolver.resolve(request.fingerprint, request.choices.map((choice) =>
+        choice.kind === "content" ? { path: choice.path, kind: "content", content: Buffer.from(choice.text), executable: choice.executable } : choice))
+      else await resolver.continue()
+      return { review: await resolver.preview() }
+    })()
+    this.inFlight = work.then(() => undefined, () => undefined)
+    let response: ProjectdRebaseRecoveryResponse
+    try { response = await work } finally { this.inFlight = null }
+    if (applied) {
+      await this.runCheckpoint()
+      if (this.lastError) throw new AutoGitError(this.lastError.code, this.lastError.message)
+      if (this.rebase) throw new AutoGitError("REBASE_PENDING", "The resolved rebase is waiting to be saved. Retained state has been kept.")
+      await (applied as RebaseJournal).finish("applied")
+      this.blocked = null
+      this.lastError = null
+      return { result: { outcome: "rebased", commitOid: this.checkpoint?.commitOid, message: "Applied and saved the resolved rebase." } }
+    }
+    return response
   }
 
   /** The session moved: a peer's batch arrived or the room took one of this device's. */
@@ -340,6 +483,9 @@ export class AutoGitAgent {
       throw new AutoGitError("AUTOGIT_OFF", "This session's folder is not a Git repository, so there is no branch to save to.")
     }
     if (this.leading) {
+      // An explicit request must capture a new barrier, even if a prior save is
+      // already pushing a snapshot captured before the request arrived.
+      await this.inFlight
       this.blocked = null
       this.retryAt = 0
       await this.runCheckpoint()
@@ -348,6 +494,21 @@ export class AutoGitAgent {
     }
     const routed = await this.options.room.requestCheckpoint()
     return { outcome: routed ? "requested" : "no_leader", lastCheckpoint: this.summary() }
+  }
+
+  /** Waits for a room-confirmed barrier captured after this request, on any leader. */
+  async freshCheckpoint(): Promise<ProjectdCheckpointSummary> {
+    await this.start()
+    const request = await this.options.room.requestFreshCheckpoint()
+    if (!request.routed) throw new AutoGitError("NO_LEADER", "No connected device can save this session to Git.")
+    const deadline = Date.now() + 60_000
+    while (!this.stopped && Date.now() < deadline) {
+      const checkpoint = this.checkpoint
+      if (checkpoint && (checkpoint.confirmedAt ?? 0) > request.serverTime) return this.summary()!
+      if (this.lastError) throw new AutoGitError(this.lastError.code, this.lastError.message)
+      await new Promise((resolve) => setTimeout(resolve, 25))
+    }
+    throw new AutoGitError("CHECKPOINT_PENDING", "Waiting for the device saving this session. Try the merge preview again once it is connected.")
   }
 
   status(): ProjectdAutoGitStatus | null {
@@ -547,10 +708,18 @@ export class AutoGitAgent {
     const lease = this.lease
     if (!this.leading || !lease || !this.repo) return
     try {
+      const roomAdoption = this.options.room.autoGitState?.rebaseAdoption
+      if (roomAdoption && roomAdoption.id !== this.rebase?.recoveryId) throw new AutoGitError("REBASE_RECOVERY_REQUIRED", "A room-wide rebase adoption is pending. Its originating device must resume Apply before saving.")
+      // On restart, an interrupted adoption must not be saved on the old parent.
+      const common = (await this.git(["rev-parse", "--path-format=absolute", "--git-common-dir"])).stdout.trim()
+      const interrupted = (await RebaseJournal.list(common, this.options.publicSessionId)).find((record) =>
+        ["adopting", "adopted"].includes(record.state) && record.id !== this.rebase?.recoveryId)
+      if (interrupted) throw new AutoGitError("REBASE_RECOVERY_REQUIRED", "A rebase adoption was interrupted. Open the retained rebase and retry Apply before saving.")
       // Commits pushed from outside the session are merged in first, so the barrier holds them.
       const parent = await this.resolveParent(lease.generation)
       this.requireConflictsResolved()
       const snapshot = await this.captureAtBarrier(lease.generation)
+      if (snapshot.replicaSnapshot) await this.options.persistReplicaSnapshot?.(lease.generation, snapshot)
       await this.saveSnapshot(lease.generation, snapshot, parent)
       this.lastError = null
       this.retryAt = 0
@@ -585,9 +754,13 @@ export class AutoGitAgent {
         } else if (this.options.replica.hasUnexportedChanges()) {
           captured.behind = "this device has edits it has not sent yet"
         } else {
-          captured.snapshot = BarrierCapture.captureSnapshot(barrier, this.options.replica)
+          captured.snapshot = {
+            ...BarrierCapture.captureSnapshot(barrier, this.options.replica),
+            replicaSnapshot: this.options.persistReplicaSnapshot && this.options.room.supportsSnapshots
+              ? this.options.replica.captureSnapshot() : undefined,
+          }
         }
-      })
+      }, this.rebase?.recoveryId)
       if (!captured.snapshot) {
         throw new AutoGitError("NOT_AT_BARRIER", `Waiting to catch up with the session: ${captured.behind ?? "no barrier"}.`)
       }
@@ -627,21 +800,22 @@ export class AutoGitAgent {
       if (rebase && parentOid) {
         // The rebased commits hold the session exactly: they replace the last save.
         this.lease = await this.options.room.renewLease(generation)
-        await this.push(parentOid, rebase.from)
         const grandparent = await this.git(["rev-parse", "--verify", "--quiet", `${parentOid}^`], {
           allowNonZeroExit: true,
         })
-        this.acceptCheckpoint(
-          await this.options.room.publishCheckpoint(generation, {
-            commitOid: parentOid,
-            parentOid: grandparent.success ? grandparent.stdout.trim() || null : null,
-            treeOid: built.treeOid,
-            sessionSeq: snapshot.sessionSeq,
-            barrierId: snapshot.barrierId,
-            logicalTreeHash: snapshot.logicalTreeHash,
-            rebasedFrom: rebase.from,
-          }),
-        )
+        const checkpoint = {
+          commitOid: parentOid,
+          parentOid: grandparent.success ? grandparent.stdout.trim() || null : null,
+          treeOid: built.treeOid,
+          sessionSeq: snapshot.sessionSeq,
+          barrierId: snapshot.barrierId,
+          logicalTreeHash: snapshot.logicalTreeHash,
+          rebasedFrom: rebase.from,
+          ...(rebase.recoveryId ? { rebaseAdoptionId: rebase.recoveryId } : {}),
+        }
+        if (rebase.recoveryId) await (await this.isolatedResolver(rebase.recoveryId)).journal.retainCheckpoint(checkpoint)
+        await this.push(parentOid, rebase.from)
+        this.acceptCheckpoint(await this.options.room.publishCheckpoint(generation, checkpoint))
         await this.finishRebase(rebase)
         return
       }
@@ -658,23 +832,27 @@ export class AutoGitAgent {
     // Fencing (Section 14.6): the room must still name this device before anything leaves it.
     this.lease = await this.options.room.renewLease(generation)
     // After an explicit rebase the push replaces the last save, and only that save (Section 21.9).
+    const checkpoint = {
+      commitOid: built.commitOid,
+      parentOid: built.parentOid,
+      treeOid: built.treeOid,
+      sessionSeq: snapshot.sessionSeq,
+      barrierId: snapshot.barrierId,
+      logicalTreeHash: snapshot.logicalTreeHash,
+      ...(rebase ? { rebasedFrom: rebase.from, ...(rebase.recoveryId ? { rebaseAdoptionId: rebase.recoveryId } : {}) } : {}),
+    }
+    if (rebase?.recoveryId) await (await this.isolatedResolver(rebase.recoveryId)).journal.retainCheckpoint(checkpoint)
     await this.push(built.commitOid, rebase?.from)
-    this.acceptCheckpoint(
-      await this.options.room.publishCheckpoint(generation, {
-        commitOid: built.commitOid,
-        parentOid: built.parentOid,
-        treeOid: built.treeOid,
-        sessionSeq: snapshot.sessionSeq,
-        barrierId: snapshot.barrierId,
-        logicalTreeHash: snapshot.logicalTreeHash,
-        ...(rebase ? { rebasedFrom: rebase.from } : {}),
-      }),
-    )
+    this.acceptCheckpoint(await this.options.room.publishCheckpoint(generation, checkpoint))
     if (rebase) await this.finishRebase(rebase)
   }
 
   /** The rebase is on the remote; the save it replaced stays reachable here for recovery (Section 21.9). */
-  private async finishRebase(rebase: { from: string }): Promise<void> {
+  private async finishRebase(rebase: { from: string; recoveryId?: string }): Promise<void> {
+    if (rebase.recoveryId) {
+      await (await this.isolatedResolver(rebase.recoveryId)).journal.finish("applied")
+      this.options.completeIntegration?.(rebase.recoveryId)
+    }
     this.rebase = null
     await this.git(["update-ref", `refs/cozea/rebased/${rebase.from}`, rebase.from], { allowNonZeroExit: true })
   }
@@ -824,11 +1002,7 @@ export class AutoGitAgent {
       )
       return
     }
-    // A room from before this message never answers; members then keep counting, and saving is unaffected.
-    void this.options.room
-      .markSavedThrough(generation, snapshot.barrierId)
-      .then((checkpoint) => this.acceptCheckpoint(checkpoint))
-      .catch(() => undefined)
+    this.acceptCheckpoint(await this.options.room.markSavedThrough(generation, snapshot.barrierId))
   }
 
   /**
@@ -838,10 +1012,10 @@ export class AutoGitAgent {
    * conflict markers, and saving waits until they are resolved. The result reaches
    * every member through the session, never through a pull.
    */
-  private async integrateExternalCommits(base: string, head: string): Promise<void> {
+  private async integrateExternalCommits(base: string, head: string, rejectConflicts = false, integration?: { adoptionId: string; generation: number }): Promise<void> {
     const repo = this.requireRepo()
     const diff = await this.git(
-      ["diff", "--raw", "-z", "--no-renames", "--no-abbrev", base, head, "--", repo.prefix || "."],
+      ["diff", "--raw", "-z", "--find-renames", "--no-abbrev", base, head, "--", repo.prefix || "."],
       { allowNonZeroExit: true },
     )
     if (!diff.success) throw new AutoGitError("GIT_FAILED", firstLine(diff.stderr) || "git diff failed")
@@ -849,29 +1023,43 @@ export class AutoGitAgent {
     const scope = new ScopePolicy(this.options.workspaceRoot)
     const files: ExternalFile[] = []
     const fields = diff.stdout.split("\0")
-    for (let index = 0; index + 1 < fields.length; index += 2) {
-      const [oldMode = "", newMode = "", baseOid = "", headOid = ""] = (fields[index] ?? "").replace(/^:/, "").split(" ")
-      const repoFilePath = fields[index + 1] ?? ""
-      if (!repoFilePath.startsWith(repo.prefix)) continue
-      const sessionPath = repoFilePath.slice(repo.prefix.length)
-      // Symlinks and submodules don't sync, and neither do the editor files each machine keeps.
+    const inScope = (filePath: string) => filePath.startsWith(repo.prefix) && !scope.isAlwaysIgnored(filePath.slice(repo.prefix.length))
+    for (let index = 0; index + 1 < fields.length;) {
+      const [oldMode = "", newMode = "", baseOid = "", headOid = "", status = ""] = (fields[index++] ?? "").replace(/^:/, "").split(" ")
+      const oldPath = fields[index++] ?? ""
+      const newPath = status.startsWith("R") ? fields[index++] ?? "" : oldPath
       if (!REGULAR_OR_ABSENT_MODES.has(oldMode) || !REGULAR_OR_ABSENT_MODES.has(newMode)) continue
-      if (scope.isAlwaysIgnored(sessionPath)) continue
-      files.push({ sessionPath, baseOid, headOid, mode: newMode === "100755" ? 0o100755 : 0o100644 })
+      const basis = { baseMode: parseInt(oldMode, 8), mode: parseInt(newMode, 8) }
+      if (oldPath !== newPath) {
+        if (inScope(oldPath) && inScope(newPath)) files.push({ ...basis, sessionPath: oldPath.slice(repo.prefix.length), renameTo: newPath.slice(repo.prefix.length), baseOid, headOid })
+        else {
+          if (inScope(oldPath)) files.push({ ...basis, sessionPath: oldPath.slice(repo.prefix.length), baseOid, headOid: "0".repeat(headOid.length) })
+          if (inScope(newPath)) files.push({ ...basis, sessionPath: newPath.slice(repo.prefix.length), baseOid: "0".repeat(baseOid.length), headOid })
+        }
+      } else if (inScope(oldPath)) files.push({ ...basis, sessionPath: oldPath.slice(repo.prefix.length), baseOid, headOid })
     }
 
     for (let attempt = 0; attempt < MERGE_ATTEMPTS; attempt += 1) {
       const changes: SessionFileChange[] = []
       const conflicted: string[] = []
       for (const file of files) {
+        const source = this.options.replica.tree.listLiveEntries().find((entry) => entry.path === file.sessionPath)
+        if (file.renameTo && (!source || this.options.replica.tree.listLiveEntries().some((entry) => entry.path === file.renameTo))) {
+          throw new AutoGitError("REBASE_LIVE_CONFLICT", `The rename from ${file.sessionPath} to ${file.renameTo} overlaps a live path change. Resolve the retained paths before adoption.`)
+        }
         const merged = await this.mergeExternalFile(file)
-        if (!merged) continue
-        changes.push(merged.change)
-        if (merged.conflicted) conflicted.push(file.sessionPath)
+        if (file.renameTo && source) {
+          if (this.options.replica.tree.listLiveEntries().find((entry) => entry.path === file.sessionPath)?.fileId !== source.fileId) throw new AutoGitError("REBASE_LIVE_CONFLICT", "The rename source changed identity during merge preparation.")
+          const change: SessionFileChange = merged?.change ?? { path: file.sessionPath, expected: null, text: null, modeOnly: true,
+            expectedFingerprint: sessionFileFingerprint(this.options.replica, file.sessionPath), mode: file.baseMode === file.mode ? source.mode : file.mode }
+          changes.push({ ...change, renameTo: file.renameTo, destinationFingerprint: sessionFileFingerprint(this.options.replica, file.renameTo) })
+        } else if (merged) changes.push(merged.change)
+        if (merged?.conflicted) conflicted.push(file.sessionPath)
       }
+      if (rejectConflicts && conflicted.length > 0) throw new AutoGitError("REBASE_LIVE_CONFLICT", "New live edits conflict with the resolved rebase. Live files have been kept; review a new rebase.")
       if (changes.length === 0) return
       // Applied only if no file changed while the merge ran; otherwise it merges again.
-      const changedMeanwhile = await this.options.runExclusive(() => this.options.applySessionChanges(changes))
+      const changedMeanwhile = await this.options.runExclusive(() => this.options.applySessionChanges(changes, integration))
       if (changedMeanwhile.length === 0) {
         for (const conflictedPath of conflicted) this.conflictPaths.add(conflictedPath)
         return
@@ -885,28 +1073,87 @@ export class AutoGitAgent {
 
   /** How one file changed outside the session merges with the session's version; null when nothing changes. */
   private async mergeExternalFile(file: ExternalFile): Promise<{ change: SessionFileChange; conflicted: boolean } | null> {
+    const live = this.options.replica.tree.listLiveEntries().find((candidate) => candidate.path === file.sessionPath)
+    if (file.baseMode === 0o120000 || file.mode === 0o120000 || live?.kind === "symlink") return this.mergeExternalSymlink(file)
     const [base, theirs] = await Promise.all([this.readBlobText(file.baseOid), this.readBlobText(file.headOid)])
-    // Binary or too large on either side: the session doesn't carry it, and checkpoints keep Git's copy.
-    if (base === undefined || theirs === undefined) return null
+    // Preserve non-text content through the encrypted binary revision path.
+    if (base === undefined || theirs === undefined) return this.mergeExternalBinary(file)
     const entry = this.options.replica.tree.listLiveEntries().find((candidate) => candidate.path === file.sessionPath)
-    if (entry && entry.kind !== "text") return null
+    if (entry && entry.kind !== "text") return this.mergeExternalBinary(file)
     const ours = entry ? this.options.replica.textDocs.getTextContent(entry.fileId) : null
+    const expectedFingerprint = sessionFileFingerprint(this.options.replica, file.sessionPath)
+    const mode = entry && file.baseMode === file.mode ? entry.mode : file.mode
     const take = (text: string | null) => ({
-      change: { path: file.sessionPath, expected: ours, text, mode: file.mode },
+      change: { path: file.sessionPath, expected: ours, expectedFingerprint, text, mode },
       conflicted: false,
     })
 
-    if (ours === theirs) return null
+    if (ours === theirs) return entry && entry.mode !== mode ? take(ours) : null
+    if ((theirs === null && (ours !== base || entry?.mode !== file.baseMode)) || (ours === null && base !== null)) {
+      throw new AutoGitError("REBASE_LIVE_CONFLICT", `Deletion and live changes overlap in ${file.sessionPath}. Retained versions need explicit resolution.`)
+    }
     // Deleted outside: the session's copy goes too, unless the session changed it since.
     if (theirs === null) return ours === base ? take(null) : null
     // Added outside, or changed outside after the session deleted it: the outside version is kept.
     if (ours === null || ours === base) return take(theirs)
-    if (base === theirs) return null
+    if (base === theirs) return entry && entry.mode !== mode ? take(ours) : null
     const merged = await this.mergeText(ours, base ?? "", theirs)
     return {
-      change: { path: file.sessionPath, expected: ours, text: merged.text, mode: file.mode },
+      change: { path: file.sessionPath, expected: ours, expectedFingerprint, text: merged.text, mode },
       conflicted: merged.conflicts > 0,
     }
+  }
+
+  private async mergeExternalSymlink(file: ExternalFile): Promise<{ change: SessionFileChange; conflicted: boolean } | null> {
+    const read = async (oid: string): Promise<Buffer | null> => {
+      if (/^0+$/.test(oid)) return null
+      const size = await this.git(["cat-file", "-s", oid])
+      if (Number(size.stdout.trim()) > 64 * 1024 * 1024) throw new AutoGitError("BINARY_TOO_LARGE", "Git type-change integration currently supports files up to 64 MiB.")
+      return (await this.git(["cat-file", "blob", oid])).stdoutBuffer
+    }
+    const [base, theirs] = await Promise.all([read(file.baseOid), read(file.headOid)])
+    const replica = this.options.replica
+    const entry = replica.tree.listLiveEntries().find((candidate) => candidate.path === file.sessionPath)
+    const fingerprint = sessionFileFingerprint(replica, file.sessionPath)
+    const hash = (bytes: Buffer | null) => bytes === null ? null : createHash("sha256").update(bytes).digest("hex")
+    const ours = !entry ? null : entry.kind === "symlink" ? hash(Buffer.from(entry.symlinkTarget ?? "")) : entry.kind === "text"
+      ? hash(Buffer.from(replica.textDocs.getTextContent(entry.fileId))) : replica.binaryStore.getHeadRevision(entry.fileId)?.contentHash
+    const matches = (bytes: Buffer | null, mode: number) => ours === hash(bytes) && (bytes === null ? !entry : entry?.mode === mode)
+    if (matches(theirs, file.mode) || (hash(base) === hash(theirs) && file.baseMode === file.mode)) return null
+    if (!matches(base, file.baseMode) || (entry?.kind === "binary" && replica.binaryStore.detectConcurrentRevisions(entry.fileId))) {
+      throw new AutoGitError("REBASE_LIVE_CONFLICT", `Git and live changes overlap in the type or symlink target of ${file.sessionPath}. Retained versions need explicit resolution.`)
+    }
+    const change: SessionFileChange = { path: file.sessionPath, expected: null, expectedFingerprint: fingerprint, text: null, mode: file.mode }
+    if (theirs !== null) {
+      if (file.mode === 0o120000) change.symlinkTarget = theirs.toString("utf8")
+      else if (theirs.length <= this.options.maxTextFileBytes && TextDocRegistry.classifyContent(theirs) === "text") change.text = theirs.toString("utf8")
+      else change.binary = { bytes: theirs, fingerprint }
+    }
+    return { change, conflicted: false }
+  }
+
+  private async mergeExternalBinary(file: ExternalFile): Promise<{ change: SessionFileChange; conflicted: boolean } | null> {
+    const read = async (oid: string): Promise<Buffer | null> => {
+      if (/^0+$/.test(oid)) return null
+      const size = await this.git(["cat-file", "-s", oid])
+      if (Number(size.stdout.trim()) > 64 * 1024 * 1024) throw new AutoGitError("BINARY_TOO_LARGE", "Git binary integration currently supports files up to 64 MiB.")
+      return (await this.git(["cat-file", "blob", oid])).stdoutBuffer
+    }
+    const [base, theirs] = await Promise.all([read(file.baseOid), read(file.headOid)])
+    const replica = this.options.replica
+    const entry = replica.tree.listLiveEntries().find((candidate) => candidate.path === file.sessionPath)
+    const fingerprint = sessionFileFingerprint(replica, file.sessionPath)
+    const hash = (bytes: Buffer | null) => bytes === null ? null : createHash("sha256").update(bytes).digest("hex")
+    const ours = !entry ? null : entry.kind === "text" ? hash(Buffer.from(replica.textDocs.getTextContent(entry.fileId))) :
+      replica.binaryStore.getHeadRevision(entry.fileId)?.contentHash
+    if (entry?.kind === "binary" && replica.binaryStore.detectConcurrentRevisions(entry.fileId)) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Resolve binary conflicts in ${file.sessionPath} before integrating Git changes.`)
+    const mode = entry && file.baseMode === file.mode ? entry.mode : file.mode
+    if (ours === hash(theirs) || hash(base) === hash(theirs)) return entry && entry.mode !== mode ? {
+      change: { path: file.sessionPath, expected: null, text: null, expectedFingerprint: fingerprint, modeOnly: true, mode }, conflicted: false,
+    } : null
+    if (theirs === null && entry && entry.mode !== file.baseMode) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Deletion overlaps a file-mode change in ${file.sessionPath}.`)
+    if (ours !== hash(base)) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Git and live edits both changed ${file.sessionPath}. Both versions have been retained; resolve this binary change before adoption.`)
+    return { change: { path: file.sessionPath, expected: null, text: null, mode, binary: { bytes: theirs, fingerprint } }, conflicted: false }
   }
 
   /** A blob's text: null for no blob, undefined when the session wouldn't carry it as text. */
@@ -1054,7 +1301,7 @@ export class AutoGitAgent {
   }
 
   /** Returns a result when the rebase stops here; null once the result waits in the session for the next save. */
-  private async computeRebase(target: string, from: string, allowConflicts: boolean): Promise<ProjectdRebaseResult | null> {
+  private async computeRebase(target: string, from: string, _allowConflicts: boolean): Promise<ProjectdRebaseResult | null> {
     const repo = this.requireRepo()
     this.setNotice(`Rebasing the session onto ${target}…`, "REBASING")
     const onto = await this.fetchTarget(target)
@@ -1067,35 +1314,35 @@ export class AutoGitAgent {
     if (rebased.kind === "clean") {
       // B/R/L (Section 21.7): what the rebase changed goes into the live session, merged
       // with edits made since the save.
-      await this.integrateExternalCommits(from, rebased.commitOid)
-      this.rebase = { from, parentOid: rebased.commitOid, baseTreeOid: null }
+      const resolver = await this.isolatedResolver(rebased.recoveryId)
+      await resolver.journal.beginAdoption()
+      if (!this.lease) throw new AutoGitError("NOT_LEADER", "Rebase leadership changed before adoption")
+      await this.options.room.beginRebaseAdoption(this.lease.generation, { id: rebased.recoveryId, from, resultOid: rebased.commitOid })
+      await this.integrateExternalCommits(from, rebased.commitOid, true, { adoptionId: rebased.recoveryId, generation: this.lease.generation })
+      await resolver.journal.markAdopted()
+      this.rebase = { from, parentOid: rebased.commitOid, baseTreeOid: null, recoveryId: rebased.recoveryId }
       return null
     }
     const conflictingPaths = rebased.paths.map((conflicted) => this.sessionPath(conflicted))
-    if (!allowConflicts) {
-      return {
-        outcome: "conflicts",
-        conflictingPaths,
-        message: `${formatPaths(conflictingPaths)} changed on both sides, so nothing was rebased. Rebase anyway to resolve them in the session, or resolve them in a pull request.`,
-      }
+    return {
+      outcome: "conflicts", conflictingPaths, recoveryId: rebased.recoveryId,
+      message: `${formatPaths(conflictingPaths)} changed on both sides. Review and resolve the retained isolated rebase. Live files have not been changed.`,
     }
-    // Rebasing anyway: the session's changes become one commit on top of the target, and
-    // the files both sides changed carry conflict markers everyone can resolve live.
-    const merged = await this.mergeTreeWithMarkers(onto, from)
-    await this.integrateExternalCommits(from, merged.tree)
-    for (const conflicted of merged.conflicts) this.conflictPaths.add(this.sessionPath(conflicted))
-    this.rebase = { from, parentOid: onto, baseTreeOid: merged.tree }
-    return null
   }
 
   /** Real Git rebase semantics, in a worktree of its own, away from everyone's folders (Section 21.4). */
   private async rebaseInWorktree(
     from: string,
     onto: string,
-  ): Promise<{ kind: "clean"; commitOid: string } | { kind: "conflicts"; paths: string[] }> {
+  ): Promise<{ kind: "clean"; commitOid: string; recoveryId: string } | { kind: "conflicts"; paths: string[]; recoveryId: string }> {
     const repo = this.requireRepo()
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-rebase-"))
-    const worktree = path.join(dir, "worktree")
+    const common = (await this.git(["rev-parse", "--path-format=absolute", "--git-common-dir"])).stdout.trim()
+    const basis = this.checkpoint
+    if (!basis || basis.commitOid !== from) throw new AutoGitError("REBASE_BASIS_CHANGED", "The checkpoint changed before rebase computation. Review the rebase again.")
+    const journal = await RebaseJournal.create(common, this.options.publicSessionId, from, onto, basis.sessionSeq)
+    const dir = journal.directory
+    const worktree = journal.worktree
+    let computed = false
     try {
       const added = await this.git(["worktree", "add", "--detach", worktree, from], { allowNonZeroExit: true })
       if (!added.success) throw new AutoGitError("GIT_FAILED", firstLine(added.stderr) || "git worktree add failed")
@@ -1122,28 +1369,24 @@ export class AutoGitAgent {
         "--no-update-refs",
         onto,
       ])
-      if (result.success) return { kind: "clean", commitOid: (await inWorktree(["rev-parse", "HEAD"])).stdout.trim() }
+      if (result.success) {
+        const commitOid = (await inWorktree(["rev-parse", "HEAD"])).stdout.trim()
+        // Keep the result reachable even if the daemon dies before CRDT adoption.
+        await this.git(["update-ref", `refs/cozea/rebase-results/${journal.record.id}`, commitOid])
+        await journal.computed(commitOid)
+        computed = true
+        return { kind: "clean", commitOid, recoveryId: journal.record.id }
+      }
       const conflicted = await inWorktree(["diff", "--name-only", "--diff-filter=U", "-z"])
-      await inWorktree(["rebase", "--abort"])
       const paths = conflicted.stdout.split("\0").filter(Boolean)
       if (paths.length === 0) throw new AutoGitError("GIT_FAILED", firstLine(result.stderr) || "git rebase failed")
-      return { kind: "conflicts", paths }
+      await journal.captureConflicts((await inWorktree(["ls-files", "--unmerged", "-z"])).stdout)
+      return { kind: "conflicts", paths, recoveryId: journal.record.id }
     } finally {
-      await this.git(["worktree", "remove", "--force", worktree], { allowNonZeroExit: true })
-      await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+      // Conflicts and interrupted computation retain Git's sequencer and index,
+      // including binary, delete/modify and later commits still to replay.
+      if (computed) await this.git(["worktree", "remove", "--force", worktree], { allowNonZeroExit: true })
     }
-  }
-
-  /** The target merged with the save in Git's object store, conflict markers and all. */
-  private async mergeTreeWithMarkers(onto: string, from: string): Promise<{ tree: string; conflicts: string[] }> {
-    const result = await this.git(["merge-tree", "--write-tree", "--name-only", "-z", "--no-messages", onto, from], {
-      allowNonZeroExit: true,
-    })
-    if (result.exitCode !== 0 && result.exitCode !== 1) {
-      throw new AutoGitError("GIT_FAILED", firstLine(result.stderr) || "git merge-tree failed")
-    }
-    const [tree = "", ...paths] = result.stdout.split("\0")
-    return { tree: tree.trim(), conflicts: [...new Set(paths.filter(Boolean))] }
   }
 
   private async fetchTarget(target: string): Promise<string | null> {
@@ -1201,7 +1444,8 @@ export class AutoGitAgent {
     const current = this.checkpoint
     if (current?.commitOid === checkpoint.commitOid) {
       // The same commit, now known to hold the session through a later barrier.
-      if ((checkpoint.savedThroughSeq ?? 0) <= (current.savedThroughSeq ?? 0)) return
+      if ((checkpoint.savedThroughSeq ?? 0) <= (current.savedThroughSeq ?? 0) &&
+          (checkpoint.confirmedAt ?? 0) <= (current.confirmedAt ?? 0)) return
     } else if (current && checkpoint.sessionSeq < current.sessionSeq) {
       return
     } else {
@@ -1264,6 +1508,10 @@ export class AutoGitAgent {
   // ─── Git ─────────────────────────────────────────────────────────────────────
 
   private git(args: string[], options: Omit<GitExecuteOptions, "cwd"> = {}) {
+    if (this.options.repositoryCredentials && ["fetch", "push", "ls-remote"].includes(args[0] ?? "")) {
+      return executeScopedNetworkGit(this.options.gitService.process, args, this.requireRepo().remote,
+        { cwd: this.requireRepo().root, ...options }, this.options.repositoryCredentials)
+    }
     return this.options.gitService.process.execute(args, { cwd: this.requireRepo().root, ...options })
   }
 

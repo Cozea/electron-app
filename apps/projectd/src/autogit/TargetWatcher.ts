@@ -14,6 +14,7 @@ import type { ProjectdTargetStatus } from "@cozea/projectd-protocol"
 
 import type { GitService } from "../git/GitService"
 import { TargetBranchTracker } from "./TargetBranchTracker"
+import { executeScopedNetworkGit, type RepositoryCredentialProvider } from "../git/ScopedNetworkGit"
 
 export const DEFAULT_TARGET_CHECK_INTERVAL_MS = 15 * 60_000
 const FIRST_CHECK_DELAY_MS = 5_000
@@ -21,6 +22,7 @@ const FETCH_TIMEOUT_MS = 60_000
 const MAX_OVERLAPPING_PATHS = 10
 
 export interface TargetWatcherOptions {
+  repositoryCredentials?: RepositoryCredentialProvider
   workspaceRoot: string
   branchName: string
   targetBranch: string
@@ -122,7 +124,10 @@ export class TargetWatcher {
       const configured = (await git(["config", "--get", `branch.${branchName}.remote`], root)).stdout.trim()
       const remote = configured && configured !== "." ? configured : "origin"
       const targetRef = `refs/remotes/${remote}/${targetBranch}`
-      const fetched = await git(
+      const networkGit = (args: string[], cwd: string, timeoutMs: number) => this.options.repositoryCredentials
+        ? executeScopedNetworkGit(gitService.process, args, remote, { cwd, allowNonZeroExit: true, timeoutMs }, this.options.repositoryCredentials)
+        : git(args, cwd, timeoutMs)
+      const fetched = await networkGit(
         ["fetch", "--no-tags", remote, `+refs/heads/${targetBranch}:${targetRef}`],
         root,
         FETCH_TIMEOUT_MS,

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process"
+import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -183,6 +184,45 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
 
     // Working directory remained completely untouched!
     expect(fs.existsSync(path.join(testRepoDir, "bin"))).toBe(false)
+  })
+
+  it("writes a new binary revision into the immutable checkpoint tree", async () => {
+    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3, 4, 5])
+    const contentHash = createHash("sha256").update(bytes).digest("hex")
+    const replica = new SessionReplica(sessionId, "leader_binary")
+    const entry = replica.createFile({ path: "assets/logo.png", kind: "binary", actor })
+    replica.addBinaryRevision({
+      revisionId: "rev_logo",
+      fileId: entry.fileId,
+      baseRevisionId: null,
+      contentHash,
+      manifest: {
+        contentHash,
+        size: bytes.length,
+        chunkSize: 4 * 1024 * 1024,
+        chunks: [{ index: 0, hash: contentHash, size: bytes.length, encryptedRef: `memory:${contentHash}` }],
+      },
+      encryptedManifestRef: `inline:v1:${contentHash}`,
+      size: bytes.length,
+      actor,
+      createdAt: 1,
+    })
+    const snapshot = BarrierCapture.captureSnapshot(
+      { barrierId: "barrier_binary_test", sessionSeq: 9, serverTime: 1726000060000 },
+      replica,
+    )
+    const builder = new CheckpointBuilder(gitService, { resolveBinary: async () => bytes })
+    const result = await builder.buildCheckpointCommit({
+      repoPath: testRepoDir,
+      sessionId,
+      parentOid: null,
+      leaseGeneration: 1,
+      snapshot,
+    })
+
+    const shown = await gitService.process.execute(["show", `${result.commitOid}:assets/logo.png`], { cwd: testRepoDir })
+    expect(shown.stdoutBuffer).toEqual(bytes)
+    expect(fs.existsSync(path.join(testRepoDir, "assets/logo.png"))).toBe(false)
   })
 
   const listTree = async (treeish: string, cwd = testRepoDir) =>

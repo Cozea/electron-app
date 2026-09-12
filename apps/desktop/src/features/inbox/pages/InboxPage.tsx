@@ -9,6 +9,7 @@ import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { appToast } from "@/lib/appToast"
 import { SessionInvitationCard, type SessionInvitationItem } from "@/features/inbox/components/SessionInvitationCard"
 import { describeInviteeCopy, ensureInviteeCopy, type InviteeCopyOutcome } from "@/features/inbox/sessionCopy"
@@ -52,6 +53,7 @@ function formatRole(role: string): string {
 interface AcceptedInvitation {
   projectId: string
   projectName: string
+  workspaceId?: string | null
   /** What happens next, when there is more to say than "Invitation accepted". */
   detail: string | null
   /** True while Cozea is still setting up a copy of the project on this Mac. */
@@ -63,16 +65,14 @@ const NO_SESSION_INVITATIONS: SessionInvitationItem[] = []
 /** A clone can take a while, so its result is also announced for anyone who left the Inbox. */
 function announceInviteeCopy(copy: InviteeCopyOutcome, projectName: string): void {
   switch (copy.kind) {
-    case "cloned":
-      appToast.success({ title: `${projectName} is ready`, description: `Cozea cloned ${copy.repository}. Open the project to start syncing.` })
+    case "ready":
+      appToast.success({ title: `${projectName} is ready`, description: "Your Session Workbench is ready to open." })
       return
     case "no_repository":
       appToast.info({ title: `Link your copy of ${projectName}`, description: "The session hasn't recorded its Git remote." })
       return
     case "failed":
       appToast.error({ title: `No copy of ${projectName} was set up`, description: copy.message })
-      return
-    case "existing":
       return
   }
 }
@@ -141,7 +141,12 @@ export function InboxPage() {
   )
 
   const handleSessionAccepted = useCallback(
-    (item: SessionInvitationItem, accepted: { projectId: string; branchName: string; repositoryUrl: string | null }) => {
+    (item: SessionInvitationItem, accepted: {
+      projectId: string
+      publicSessionId: string
+      branchName: string
+      repositoryUrl: string | null
+    }) => {
       const key = `session:${String(item.invitationId)}`
       const base = { projectId: accepted.projectId, projectName: item.projectName }
       rememberAccepted(key, {
@@ -153,17 +158,22 @@ export function InboxPage() {
         {
           projectId: accepted.projectId,
           projectName: item.projectName,
+          publicSessionId: accepted.publicSessionId,
           branchName: accepted.branchName,
           repositoryUrl: accepted.repositoryUrl,
         },
         window.electronAPI.workspace,
+        window.electronAPI.projectd.workbenches,
       )
         .catch((error: unknown): InviteeCopyOutcome => ({ kind: "failed", message: cleanConvexError(error, "Setup failed.") }))
         .then((copy) => {
-          // The project's folder lookup is cached and may still say "no folder" from before
-          // the clone, in which case opening the project would not find the new copy.
-          if (copy.kind === "cloned") invalidateProjectWorkspaceResolution(accepted.projectId)
-          rememberAccepted(key, { ...base, detail: describeInviteeCopy(copy, accepted.branchName), settingUp: false })
+          if (copy.kind === "ready") invalidateProjectWorkspaceResolution(accepted.projectId)
+          rememberAccepted(key, {
+            ...base,
+            workspaceId: copy.kind === "ready" ? copy.workspaceId : null,
+            detail: describeInviteeCopy(copy, accepted.branchName),
+            settingUp: false,
+          })
           announceInviteeCopy(copy, item.projectName)
         })
     },
@@ -171,8 +181,10 @@ export function InboxPage() {
   )
 
   const handleOpenProject = useCallback(
-    (projectId: string) => {
-      navigate(buildProjectPath(projectId, "workbench"))
+    (projectId: string, workspaceId?: string | null) => {
+      navigate(buildProjectPath(projectId, "workbench"), {
+        state: buildProjectRouteNavigationState({ projectId, preferredWorkspaceId: workspaceId ?? null }),
+      })
     },
     [navigate],
   )
@@ -267,7 +279,7 @@ export function InboxPage() {
                         size="sm"
                         className="gap-1.5"
                         disabled={info.settingUp}
-                        onClick={() => handleOpenProject(info.projectId)}
+                        onClick={() => handleOpenProject(info.projectId, info.workspaceId)}
                       >
                         <span>{t("inbox.openProject")}</span>
                         <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5" />

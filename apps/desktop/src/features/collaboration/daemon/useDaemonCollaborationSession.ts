@@ -4,7 +4,7 @@
  * device got it.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useConvex, type ConvexReactClient } from "convex/react"
 
 import type { ProjectdSessionStatus, ProjectdSessionTicket } from "@cozea/projectd-protocol"
@@ -73,14 +73,17 @@ function createDaemonSessionDeps(convex: ConvexReactClient): DaemonSessionDeps {
   return {
     getSessionKey: (sessionId) =>
       convex.query(api.collaborationSessions.getSessionKeyForDevice, { sessionId: sessionIdOf(sessionId) }),
+    getSessionKeyring: (sessionId) =>
+      convex.query(api.collaborationSessions.getSessionKeyringForDevice, { sessionId: sessionIdOf(sessionId) }),
     initializeSessionKey: (input) =>
       convex.mutation(api.collaborationSessions.initializeSessionKey, {
         ...input,
         sessionId: sessionIdOf(input.sessionId),
       }),
-    listMembersNeedingKey: async (sessionId) => {
+    listMembersNeedingKey: async (sessionId, keyVersion) => {
       const recipients = await convex.query(api.collaborationSessions.listMembersNeedingSessionKey, {
         sessionId: sessionIdOf(sessionId),
+        keyVersion,
       })
       return recipients.map((recipient) => ({ ...recipient, principalId: String(recipient.principalId) }))
     },
@@ -109,9 +112,17 @@ export function useDaemonCollaborationSession(input: {
 }): DaemonCollaborationState {
   const convex = useConvex()
   const [state, setState] = useState<DaemonCollaborationState>(OFF)
-  const roomKeyRef = useRef<string | null>(null)
 
   const { enabled, session, projectId, workspaceId, rootPath, principalId } = input
+
+  // Navigation only changes subscriptions. Explicit Leave removes durable intent;
+  // the daemon independently rechecks membership and lifecycle in the background.
+  const keyState = useSafeConvexQuery(
+    api.collaborationSessions.getSessionKeyForDevice,
+    enabled && session?.lifecycle === "ACTIVE"
+      ? { sessionId: session._id }
+      : "skip",
+  )
   const target: DaemonSessionTarget | null =
     enabled && session?.lifecycle === "ACTIVE" && projectId && workspaceId && rootPath
       ? {
@@ -125,6 +136,7 @@ export function useDaemonCollaborationSession(input: {
           shareEnvironmentFiles: session.shareEnvironmentFiles === true,
           targetBranch: session.targetBranch ?? null,
           sessionStartedAt: session.createdAt ?? null,
+          keyVersionHint: keyState.data?.keyVersion ?? null,
         }
       : null
   // A string, so a new but equal target object does not reconnect.
@@ -168,14 +180,22 @@ export function useDaemonCollaborationSession(input: {
       try {
         const connected = await connectDaemonSession(deps, connectTarget, (status) => {
           if (!cancelled) setState({ phase: "attached", status, error: status.lastError?.message ?? null })
+        }, (error) => {
+          if (cancelled) return
+          setState((current) => {
+            if ((!error.code || error.code === "INTERNAL_ERROR") && current.phase === "attached" && current.status) {
+              return { ...current, error: error.message }
+            }
+            return { phase: error.code === "SESSION_KEY_MISSING" || error.code === "SESSION_KEY_CHANGED" ? "waiting_for_key" : "unavailable",
+              status: null, error: error.message }
+          })
         })
         if (cancelled) {
-          void connected.disconnect()
+          connected.stopListening()
           return
         }
         connection = connected
         failures = 0
-        roomKeyRef.current = connected.roomKeyBase64
         setState((current) => (current.phase === "attached" ? current : { phase: "attached", status: null, error: null }))
         checkTimer = setInterval(() => void checkAttachment(), ATTACHED_CHECK_MS)
       } catch (error) {
@@ -197,8 +217,7 @@ export function useDaemonCollaborationSession(input: {
       cancelled = true
       if (retryTimer) clearTimeout(retryTimer)
       stopChecking()
-      roomKeyRef.current = null
-      if (connection) void connection.disconnect()
+      connection?.stopListening()
     }
   }, [convex, targetKey])
 
@@ -210,9 +229,8 @@ export function useDaemonCollaborationSession(input: {
   const needingKeyCount = membersNeedingKey.data?.length ?? 0
 
   useEffect(() => {
-    const roomKeyBase64 = roomKeyRef.current
-    if (!sharingSessionId || !roomKeyBase64 || needingKeyCount === 0) return
-    shareSessionKeyWithMembers(createDaemonSessionDeps(convex), sharingSessionId, roomKeyBase64).catch(
+    if (!sharingSessionId || needingKeyCount === 0) return
+    shareSessionKeyWithMembers(createDaemonSessionDeps(convex), sharingSessionId).catch(
       (error: unknown) => {
         console.warn("[DaemonSession] Could not share the session key", error)
       },

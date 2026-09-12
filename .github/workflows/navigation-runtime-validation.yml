@@ -72,6 +72,11 @@ jobs:
             tail -60 "$logfile"
           done
           exit "$status"
+      - name: Build projectd artifacts used by integration tests
+        if: always() && steps.dependencies.outcome == 'success'
+        run: |
+          bun run build:projectd > build/navigation-validation/projectd-build.log 2>&1 || { tail -100 build/navigation-validation/projectd-build.log; exit 1; }
+          tail -20 build/navigation-validation/projectd-build.log
       - name: Full unit suite
         if: always() && steps.dependencies.outcome == 'success'
         run: |

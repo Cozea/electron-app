@@ -66,8 +66,8 @@ export class ConflictEngine {
 
   /**
    * Section 10.7: Concurrent rename detection.
-   * Detects if two operations for the same fileId share the same baseStructuralOpId
-   * but specify different destination paths.
+   * Retains competing rename branches, including descendants of the original
+   * siblings, until a later rename explicitly supersedes the reviewed alternatives.
    */
   static detectConcurrentRenames(structuralOps: StructuralOp[]): ConcurrentRenameConflict[] {
     const byFile = new Map<string, StructuralOp[]>()
@@ -80,29 +80,28 @@ export class ConflictEngine {
     }
 
     const conflicts: ConcurrentRenameConflict[] = []
+    const byId = new Map(structuralOps.map((op) => [op.opId, op]))
     for (const [fileId, ops] of byFile.entries()) {
       if (ops.length < 2) continue
-
-      // Group by baseStructuralOpId
-      const byBase = new Map<string, StructuralOp[]>()
+      const superseded = new Set<string>()
+      const visited = new Set<string>()
       for (const op of ops) {
-        const baseKey = op.baseStructuralOpId ?? "root"
-        const group = byBase.get(baseKey) ?? []
-        group.push(op)
-        byBase.set(baseKey, group)
-      }
-
-      for (const [baseKey, group] of byBase.entries()) {
-        // If multiple ops share the same base and have different toPaths
-        const destinations = new Set(group.map((o) => o.toPath))
-        if (destinations.size > 1) {
-          conflicts.push({
-            kind: "concurrent_rename",
-            fileId,
-            baseStructuralOpId: baseKey === "root" ? null : baseKey,
-            ops: group,
-          })
+        const pending = [...(op.resolvedStructuralOpIds ?? []), ...(op.baseStructuralOpId ? [op.baseStructuralOpId] : [])]
+        while (pending.length) {
+          const id = pending.pop()!
+          if (id === op.opId || visited.has(id)) continue
+          visited.add(id)
+          const parent = byId.get(id)
+          if (!parent || parent.fileId !== fileId) continue
+          superseded.add(id)
+          if (parent.baseStructuralOpId) pending.push(parent.baseStructuralOpId)
+          pending.push(...(parent.resolvedStructuralOpIds ?? []))
         }
+      }
+      const frontier = ops.filter((op) => !superseded.has(op.opId)).sort((a, b) => a.opId.localeCompare(b.opId))
+      if (new Set(frontier.map((op) => op.toPath)).size > 1) {
+        const bases = new Set(frontier.map((op) => op.baseStructuralOpId ?? null))
+        conflicts.push({ kind: "concurrent_rename", fileId, baseStructuralOpId: bases.size === 1 ? frontier[0]!.baseStructuralOpId ?? null : null, ops: frontier })
       }
     }
 
@@ -118,13 +117,22 @@ export class ConflictEngine {
     hasConcurrentEdit: (fileId: string, deleteOp: StructuralOp) => boolean,
   ): DeleteModifyConflict[] {
     const conflicts: DeleteModifyConflict[] = []
+    const byId = new Map(structuralOps.map((op) => [op.opId, op]))
     const deletedEntries = entries.filter((e) => e.deleted)
 
     for (const entry of deletedEntries) {
-      // Find latest delete op for this fileId
-      const deleteOp = structuralOps
-        .filter((op) => op.fileId === entry.fileId && op.kind === "delete")
-        .sort((a, b) => b.createdAt - a.createdAt)[0]
+      // The effective entry's ancestry is authoritative; wall clocks cannot select
+      // an older delete after a collaborator explicitly confirms the current edits.
+      let deleteOp: StructuralOp | undefined
+      let current = entry.lastStructuralOpId
+      const visited = new Set<string>()
+      while (current && !visited.has(current)) {
+        visited.add(current)
+        const op = byId.get(current)
+        if (!op || op.fileId !== entry.fileId) break
+        if (op.kind === "delete") { deleteOp = op; break }
+        current = op.baseStructuralOpId ?? null
+      }
 
       if (deleteOp && hasConcurrentEdit(entry.fileId, deleteOp)) {
         conflicts.push({

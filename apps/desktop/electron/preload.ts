@@ -4,6 +4,7 @@ import type {
   AppSettings,
   ElectronAPI,
   ElectronWindowContext,
+  EnsureDesktopSessionWorkbenchRequest,
   GpuAccelerationDiagnostics,
   ProjectdSessionAttachParams,
   ProjectdSessionEvent,
@@ -311,9 +312,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   projectd: {
     health: () => ipcRenderer.invoke('projectd:health'),
+    workbenches: {
+      ensureSession: (request: EnsureDesktopSessionWorkbenchRequest) =>
+        ipcRenderer.invoke('projectd:workbenches:ensureSession', request),
+      list: (projectId: string) => ipcRenderer.invoke('projectd:workbenches:list', projectId),
+      activate: (projectId: string, workbenchId: string) =>
+        ipcRenderer.invoke('projectd:workbenches:activate', { projectId, workbenchId }),
+    },
     sessions: {
+      listRecovery: () => ipcRenderer.invoke('projectd:sessions:recovery:list'),
+      exportRecovery: (publicSessionId: string, source?: 'local' | 'cloud', projectId?: string) => ipcRenderer.invoke('projectd:sessions:recovery:export', publicSessionId, source, projectId),
+      shareRecoveryKeys: (publicSessionId: string, projectId: string) => ipcRenderer.invoke('projectd:sessions:recovery:shareKeys', publicSessionId, projectId),
       attach: (params: ProjectdSessionAttachParams) => ipcRenderer.invoke('projectd:sessions:attach', params),
       detach: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:detach', publicSessionId),
+      prepareLeave: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:prepareLeave', publicSessionId),
+      pause: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:pause', publicSessionId),
+      prepareClose: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:prepareClose', publicSessionId),
+      close: (publicSessionId: string, choice: import('@cozea/projectd-protocol').ProjectdCloseChoice) => ipcRenderer.invoke('projectd:sessions:close', publicSessionId, choice),
       status: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:status', publicSessionId),
       updateTicket: (publicSessionId: string, ticket: ProjectdSessionTicket) =>
         ipcRenderer.invoke('projectd:sessions:updateTicket', { publicSessionId, ticket }),
@@ -322,11 +337,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('projectd:sessions:ignoreEnvironmentFiles', publicSessionId),
       checkTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:checkTarget', publicSessionId),
       dismissTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:dismissTarget', publicSessionId),
+      rebaseRecovery: (publicSessionId: string, request: import('@cozea/projectd-protocol').ProjectdRebaseRecoveryRequest) =>
+        ipcRenderer.invoke('projectd:sessions:rebaseRecovery', publicSessionId, request),
+      binaryConflicts: (publicSessionId: string, request: import('@cozea/projectd-protocol').ProjectdBinaryConflictRequest) =>
+        ipcRenderer.invoke('projectd:sessions:binaryConflicts', publicSessionId, request),
+      exportBinaryVersion: (publicSessionId: string, request: { fileId: string; revisionId: string; fingerprint: string }) =>
+        ipcRenderer.invoke('projectd:sessions:exportBinaryVersion', publicSessionId, request),
+      structuralConflicts: (publicSessionId: string, request: import('@cozea/projectd-protocol').ProjectdStructuralConflictRequest) =>
+        ipcRenderer.invoke('projectd:sessions:structuralConflicts', publicSessionId, request),
       rebase: (publicSessionId: string, allowConflicts: boolean) =>
         ipcRenderer.invoke('projectd:sessions:rebase', { publicSessionId, allowConflicts }),
       previewMerge: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:previewMerge', publicSessionId),
-      merge: (publicSessionId: string, strategy: 'merge' | 'squash', checkpointOid: string) =>
-        ipcRenderer.invoke('projectd:sessions:merge', { publicSessionId, strategy, checkpointOid }),
+      merge: (publicSessionId: string, strategy: 'merge' | 'squash', checkpointOid: string, targetOid: string) =>
+        ipcRenderer.invoke('projectd:sessions:merge', { publicSessionId, strategy, checkpointOid, targetOid }),
+      createPullRequest: (publicSessionId: string, checkpointOid: string, targetOid: string) =>
+        ipcRenderer.invoke('projectd:sessions:createPullRequest', { publicSessionId, checkpointOid, targetOid }),
       onEvent: (listener: (event: ProjectdSessionEvent) => void) => {
         const handler = (_event: unknown, payload: ProjectdSessionEvent) => listener(payload)
         ipcRenderer.on('projectd:sessions:event', handler)

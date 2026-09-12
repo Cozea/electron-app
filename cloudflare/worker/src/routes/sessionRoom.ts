@@ -9,8 +9,8 @@ export const PUBLIC_SESSION_ID_PATTERN = /^czs_[a-f0-9]{16}$/
 
 /**
  * Issues a short-lived token for one collaboration session room (Section 13.1).
- * The device must be an active member of an ACTIVE session; the token carries its
- * session role so the room can keep viewers read-only.
+ * Active members receive live admission for ACTIVE sessions, or explicit
+ * read-only recovery admission for PAUSED/CLOSED sessions.
  */
 export async function handleSessionRoomConnect(request: Request, env: Env): Promise<Response> {
   const authorization = request.headers.get('authorization')
@@ -19,14 +19,18 @@ export async function handleSessionRoomConnect(request: Request, env: Env): Prom
   }
   const auth = await verifyDeviceAccessToken(env, authorization.slice('Bearer '.length).trim())
 
-  const body = (await parseJsonRequest(request)) as { publicSessionId?: unknown; clientType?: unknown }
+  const body = (await parseJsonRequest(request)) as { publicSessionId?: unknown; clientType?: unknown; recovery?: unknown; closePaused?: unknown }
   const publicSessionId = typeof body.publicSessionId === 'string' ? body.publicSessionId : ''
   if (!PUBLIC_SESSION_ID_PATTERN.test(publicSessionId)) {
     throw new Error('A collaboration session ID is required')
   }
   const clientType = body.clientType === 'web' ? 'web' : 'electron'
 
-  const access = await authorizeSessionRoomInConvex(env, auth, publicSessionId)
+  const closePaused = body.closePaused === true
+  const recovery = body.recovery === true || closePaused
+  const access = await authorizeSessionRoomInConvex(env, auth, publicSessionId, recovery)
+  if (closePaused && access.role !== 'project_manager') throw new Error('Only a session manager can close a paused session')
+  const sessionAccess = closePaused ? 'paused_close' as const : 'recovery' as const
   const roomId = `session:${publicSessionId}`
   const token = await signSessionToken(env, {
     sub: access.identityKey,
@@ -36,6 +40,8 @@ export async function handleSessionRoomConnect(request: Request, env: Env): Prom
     clientType,
     protocolVersion: SESSION_ROOM_PROTOCOL_VERSION,
     sessionRole: access.role,
+    sessionKeyVersion: access.keyVersion,
+    ...(recovery ? { sessionAccess } : {}),
   })
 
   const wsUrl = new URL(request.url)
@@ -49,5 +55,7 @@ export async function handleSessionRoomConnect(request: Request, env: Env): Prom
     token,
     protocolVersion: SESSION_ROOM_PROTOCOL_VERSION,
     role: access.role,
+    keyVersion: access.keyVersion,
+    ...(recovery ? { sessionAccess } : {}),
   })
 }

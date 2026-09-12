@@ -99,6 +99,30 @@ export class BinaryContentCache {
     }
   }
 
+  /** Writes provisional chunks; false means the sink must be discarded or reset. */
+  async copyTo(contentHash: string, expectedSize: number, write: (chunk: Buffer) => Promise<void>): Promise<boolean> {
+    const handle = await fs.open(this.getCachePath(contentHash), "r").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null
+      throw error
+    })
+    if (!handle) return false
+    try {
+      if ((await handle.stat()).size !== expectedSize) return false
+      const hash = createHash("sha256")
+      let total = 0
+      while (total < expectedSize) {
+        const buffer = Buffer.allocUnsafe(Math.min(CHUNK_SIZE_BYTES, expectedSize - total))
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, total)
+        if (!bytesRead) return false
+        const chunk = buffer.subarray(0, bytesRead)
+        hash.update(chunk)
+        await write(chunk)
+        total += bytesRead
+      }
+      return hash.digest("hex") === contentHash
+    } finally { await handle.close() }
+  }
+
   /**
    * Section 11.4: Splits large binary into 4 MiB chunks and builds manifest.
    */

@@ -2,6 +2,8 @@ import type { Session } from './types'
 import type {
   ProjectdHealthResult,
   ProjectdCheckpointResult,
+  ProjectdClosePreflight,
+  ProjectdCloseChoice,
   ProjectdSessionAttachParams,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
@@ -9,6 +11,7 @@ import type {
   ProjectdMergePreview,
   ProjectdMergeResult,
   ProjectdRebaseResult,
+  ProjectdEnsureSessionWorkbenchResult,
 } from '@cozea/projectd-protocol'
 import type {
   ScheduledTaskDraft,
@@ -1561,6 +1564,7 @@ export type {
   ProjectdMergePreview,
   ProjectdMergeResult,
   ProjectdRebaseResult,
+  ProjectdEnsureSessionWorkbenchResult,
   ProjectdSessionAttachParams,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
@@ -1579,6 +1583,23 @@ export interface ProjectdCallFailure {
   error: string
   code?: string
 }
+
+export interface EnsureDesktopSessionWorkbenchRequest {
+  projectId: string
+  publicSessionId: string
+  branchName: string
+  baseBranch?: string | null
+  createBranch?: boolean
+  title: string
+  sourceRepoUrl?: string | null
+  sourceWorkspaceId?: string | null
+  includeDirtyChanges?: boolean
+  setActive?: boolean
+}
+
+export type EnsureDesktopSessionWorkbenchResponse =
+  | ({ success: true; workspace: LocalWorkspaceDTO } & ProjectdEnsureSessionWorkbenchResult)
+  | ProjectdCallFailure
 
 export interface ElectronAPI {
   platform: NodeJS.Platform
@@ -1637,11 +1658,41 @@ export interface ElectronAPI {
   /** The cozea-projectd daemon. Calls fail with a ProjectdCallFailure when it is not running. */
   projectd: {
     health: () => Promise<{ success: true; health: ProjectdHealthResult } | ProjectdCallFailure>
+    workbenches: {
+      ensureSession: (
+        request: EnsureDesktopSessionWorkbenchRequest,
+      ) => Promise<EnsureDesktopSessionWorkbenchResponse>
+      list: (projectId: string) => Promise<
+        | { success: true; workbenches: ProjectdEnsureSessionWorkbenchResult["workbench"][] }
+        | ProjectdCallFailure
+      >
+      activate: (
+        projectId: string,
+        workbenchId: string,
+      ) => Promise<
+        | {
+            success: true
+            result: {
+              activated: ProjectdEnsureSessionWorkbenchResult["workbench"]
+              idled: ProjectdEnsureSessionWorkbenchResult["workbench"] | null
+            }
+          }
+        | ProjectdCallFailure
+      >
+    }
     sessions: {
+      listRecovery: () => Promise<{ success: true; entries: import("@cozea/projectd-protocol").ProjectdSessionRecoveryEntry[] } | ProjectdCallFailure>
+      shareRecoveryKeys: (publicSessionId: string, projectId: string) => Promise<{ success: true; shared: number } | { success: false; error: string; code?: string }>
+      exportRecovery: (publicSessionId: string, source?: "local" | "cloud", projectId?: string) => Promise<
+        { success: true; canceled: true } | { success: true; canceled: false; result: import("@cozea/projectd-protocol").ProjectdRecoveryExportResult } | ProjectdCallFailure>
       attach: (
         params: ProjectdSessionAttachParams,
       ) => Promise<{ success: true; status: ProjectdSessionStatus } | ProjectdCallFailure>
       detach: (publicSessionId: string) => Promise<{ success: true; detached: boolean } | ProjectdCallFailure>
+      prepareLeave: (publicSessionId: string) => Promise<{ success: true; pendingBatches: number; pendingBinaryVersions: number } | ProjectdCallFailure>
+      pause: (publicSessionId: string) => Promise<{ success: true; gitLag: boolean } | ProjectdCallFailure>
+      prepareClose: (publicSessionId: string) => Promise<{ success: true; review: ProjectdClosePreflight } | ProjectdCallFailure>
+      close: (publicSessionId: string, choice: ProjectdCloseChoice) => Promise<{ success: true; gitLag: boolean } | ProjectdCallFailure>
       status: (
         publicSessionId: string,
       ) => Promise<{ success: true; status: ProjectdSessionStatus | null } | ProjectdCallFailure>
@@ -1666,6 +1717,18 @@ export interface ElectronAPI {
         publicSessionId: string,
       ) => Promise<{ success: true; target: ProjectdTargetStatus | null } | ProjectdCallFailure>
       /** Rebases the session onto its target on the Mac that saves it, or asks that Mac to (P21). */
+      rebaseRecovery: (publicSessionId: string, request: import("@cozea/projectd-protocol").ProjectdRebaseRecoveryRequest) => Promise<
+        { success: true; response: import("@cozea/projectd-protocol").ProjectdRebaseRecoveryResponse } | { success: false; error: string; code?: string }
+      >
+      binaryConflicts: (publicSessionId: string, request: import("@cozea/projectd-protocol").ProjectdBinaryConflictRequest) => Promise<
+        { success: true; response: import("@cozea/projectd-protocol").ProjectdBinaryConflictResponse } | ProjectdCallFailure
+      >
+      exportBinaryVersion: (publicSessionId: string, request: { fileId: string; revisionId: string; fingerprint: string }) => Promise<
+        { success: true; canceled: boolean; response?: import("@cozea/projectd-protocol").ProjectdBinaryConflictResponse } | ProjectdCallFailure
+      >
+      structuralConflicts: (publicSessionId: string, request: import("@cozea/projectd-protocol").ProjectdStructuralConflictRequest) => Promise<
+        { success: true; response: import("@cozea/projectd-protocol").ProjectdStructuralConflictResponse } | ProjectdCallFailure
+      >
       rebase: (
         publicSessionId: string,
         allowConflicts: boolean,
@@ -1675,10 +1738,13 @@ export interface ElectronAPI {
         publicSessionId: string,
       ) => Promise<{ success: true; preview: ProjectdMergePreview } | ProjectdCallFailure>
       /** Merges the reviewed save into the target branch, or says why not (P22). */
+      createPullRequest: (publicSessionId: string, checkpointOid: string, targetOid: string) =>
+        Promise<{ success: true; result: import('@cozea/projectd-protocol').ProjectdPullRequestResult } | ProjectdCallFailure>
       merge: (
         publicSessionId: string,
         strategy: 'merge' | 'squash',
         checkpointOid: string,
+        targetOid: string,
       ) => Promise<{ success: true; result: ProjectdMergeResult } | ProjectdCallFailure>
       onEvent: (listener: (event: ProjectdSessionEvent) => void) => () => void
     }

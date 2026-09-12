@@ -31,6 +31,7 @@ function statusFor(state: ProjectdSessionStatus["state"]): ProjectdSessionStatus
     role: "developer",
     lastAppliedSessionSeq: 0,
     pendingBatches: 0,
+    pendingBinaryVersions: 0,
     fileCount: 0,
     skippedPaths: [],
     lastError: null,
@@ -42,6 +43,10 @@ function createDeps(keyStates: SessionKeyState[]) {
   const listeners = new Set<(event: ProjectdSessionEvent) => void>()
   const deps = {
     getSessionKey: vi.fn(async () => keyStates.shift() ?? { status: "missing_for_device" as const, keyVersion: 1 }),
+    getSessionKeyring: vi.fn(async () => ({
+      activeKeyVersion: 1,
+      keys: [{ keyVersion: 1, wrappedKey: "w", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" }],
+    })),
     initializeSessionKey: vi.fn(async () => ({ created: true })),
     listMembersNeedingKey: vi.fn(async () => [
       { principalId: "principal_a", identityKey: "czd_a", encryptionPublicKeyJwk: '{"kty":"EC","x":"a"}' },
@@ -109,12 +114,13 @@ describe("shareSessionKeyWithMembers", () => {
   it("wraps the key for each member's own public key", async () => {
     const { deps } = createDeps([])
 
-    expect(await shareSessionKeyWithMembers(deps, "session_1", "room-key")).toBe(2)
+    expect(await shareSessionKeyWithMembers(deps, "session_1")).toBe(2)
     expect(deps.shareSessionKey).toHaveBeenCalledWith({
       sessionId: "session_1",
+      keyVersion: 1,
       recipientPrincipalId: "principal_b",
       wrapAlgorithm: "ECDH-P256+A256GCM",
-      wrappedKey: 'wrapped(room-key for {"kty":"EC","x":"b"})',
+      wrappedKey: 'wrapped(shared-room-key for {"kty":"EC","x":"b"})',
     })
   })
 })
@@ -133,6 +139,8 @@ describe("connectDaemonSession", () => {
       projectId: TARGET.projectId,
       rootPath: TARGET.rootPath,
       roomKeyBase64: "shared-room-key",
+      roomKeyVersion: 1,
+      previousRoomKeysBase64: {},
       ticket: TICKET,
       actor: { principalId: "principal_me" },
     })
@@ -146,6 +154,52 @@ describe("connectDaemonSession", () => {
     await connection.disconnect()
     expect(deps.daemon.detach).toHaveBeenCalledWith(TARGET.publicSessionId)
     expect(listeners.size).toBe(0)
+  })
+
+  it("forwards scoped background failures and rejected ticket updates without dropping recovery codes", async () => {
+    const { deps, emit } = createDeps([
+      { status: "ready", keyVersion: 1, wrappedKey: "w", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },
+    ])
+    const failures = vi.fn()
+    const connection = await connectDaemonSession(deps, TARGET, undefined, failures)
+    emit({ publicSessionId: "czs_ffffffffffffffff", event: "background_error", payload: { code: "SESSION_KEY_MISSING", message: "wrong session" } })
+    expect(failures).not.toHaveBeenCalled()
+    emit({ publicSessionId: TARGET.publicSessionId, event: "background_error", payload: {
+      code: "SESSION_KEY_MISSING", message: "Ask an authorized member to share the current key.",
+    } })
+    expect(failures).toHaveBeenLastCalledWith(expect.objectContaining({ code: "SESSION_KEY_MISSING", message: expect.stringContaining("current key") }))
+    deps.daemon.updateTicket.mockResolvedValueOnce({ success: false, code: "DEVICE_AUTH_REJECTED", error: "Verify device access" } as never)
+    emit({ publicSessionId: TARGET.publicSessionId, event: "ticket_needed", payload: {} })
+    await vi.waitFor(() => expect(failures).toHaveBeenLastCalledWith(expect.objectContaining({ code: "DEVICE_AUTH_REJECTED" })))
+    connection.stopListening()
+    emit({ publicSessionId: TARGET.publicSessionId, event: "background_error", payload: { code: "KEYCHAIN_UNAVAILABLE", message: "Unlock" } })
+    expect(failures).toHaveBeenCalledTimes(2)
+  })
+
+  it("passes older authorized keys to projectd so a rotated session can replay historical batches", async () => {
+    const { deps } = createDeps([
+      { status: "ready", keyVersion: 2, wrappedKey: "w2", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },
+      { status: "ready", keyVersion: 2, wrappedKey: "w2", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },
+    ])
+    deps.getSessionKeyring.mockResolvedValueOnce({
+      activeKeyVersion: 2,
+      keys: [
+        { keyVersion: 1, wrappedKey: "w1", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },
+        { keyVersion: 2, wrappedKey: "w2", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },
+      ],
+    })
+    deps.unwrapRoomKey
+      .mockResolvedValueOnce({ roomKeyBase64: "current-key" })
+      .mockResolvedValueOnce({ roomKeyBase64: "old-key" })
+
+    await connectDaemonSession(deps, TARGET)
+    expect(deps.daemon.attach).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomKeyBase64: "current-key",
+        roomKeyVersion: 2,
+        previousRoomKeysBase64: { "1": "old-key" },
+      }),
+    )
   })
 
   it("names the session branch, so the daemon pauses the folder off it and saves to it", async () => {

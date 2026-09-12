@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server"
 import { v } from "convex/values"
+import { lifecycleFenceValidator } from "./lib/sessionLifecycle"
 
 const devAppCapabilityValidator = v.union(
   v.literal("project.read"),
@@ -905,10 +906,19 @@ export default defineSchema({
     updatedAt: v.number(),
     pausedAt: v.optional(v.number()),
     closedAt: v.optional(v.number()),
+    /** Current E2EE content-key generation. Older rows default to 1 during rollout. */
+    activeKeyVersion: v.optional(v.number()),
     lastDurableSeq: v.number(),
     lastSnapshotSeq: v.number(),
     lastAutoGitCheckpointSeq: v.optional(v.number()),
     lastAutoGitCommitOid: v.optional(v.string()),
+    /** Monotonic control-plane revision fences delayed room finalization retries. */
+    lifecycleRevision: v.optional(v.number()),
+    lifecycleReceipt: v.optional(v.object({
+      fence: lifecycleFenceValidator,
+      expectedRevision: v.number(),
+      committedAt: v.number(),
+    })),
   })
     .index("by_project", ["projectId"])
     .index("by_public_session_id", ["publicSessionId"])

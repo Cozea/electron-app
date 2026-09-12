@@ -12,8 +12,10 @@
  * leader lease, barriers, checkpoint records, and members' requests to save now.
  */
 
-import type { CollaborationBatch } from "./SessionReplica"
+import type { CollaborationBatch, ReplicaSnapshot } from "./SessionReplica"
 import type { SessionTransport } from "./SessionTransport"
+import type { CloudSnapshotRecord } from "@shared/collaboration/cloudSnapshot"
+import type { SessionLifecycleFence, SessionLifecycleState } from "@shared/collaboration/lifecycleFence"
 
 /** Must match SESSION_ROOM_PROTOCOL_VERSION in cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts. */
 export const SESSION_ROOM_PROTOCOL_VERSION = "session-room/1"
@@ -55,6 +57,7 @@ export interface RoomLease {
 
 /** The last checkpoint pushed to the session branch (Section 15.10). */
 export interface RoomCheckpoint {
+  confirmedAt?: number
   commitOid: string
   parentOid: string | null
   treeOid: string
@@ -68,14 +71,24 @@ export interface RoomCheckpoint {
   savedThroughSeq?: number
   /** An explicit rebase rewrote the branch, replacing this commit; carried until the next rebase. */
   rebasedFrom?: string
+  rebaseAdoptionId?: string
 }
 
 export type RoomCheckpointInput = Pick<
   RoomCheckpoint,
-  "commitOid" | "parentOid" | "treeOid" | "sessionSeq" | "barrierId" | "logicalTreeHash" | "rebasedFrom"
+  "commitOid" | "parentOid" | "treeOid" | "sessionSeq" | "barrierId" | "logicalTreeHash" | "rebasedFrom" | "rebaseAdoptionId"
 >
 
+export interface RoomRebaseAdoption {
+  id: string
+  from: string
+  resultOid: string
+  principalId: string
+  startedSeq: number
+}
+
 export interface RoomAutoGitState {
+  rebaseAdoption?: RoomRebaseAdoption | null
   lease: RoomLease | null
   checkpoint: RoomCheckpoint | null
   serverTime: number
@@ -99,21 +112,35 @@ interface WireBatch {
   encryptedPayload: string
 }
 
+export interface RoomRebaseReceipt {
+  adoption: RoomRebaseAdoption
+  checkpoint: RoomCheckpoint
+}
+
+export interface RoomIntegrationBarrier { id: string; sessionSeq: number; expiresAt: number }
+
 type RequestReply =
+  | { type: "integration_started"; requestId?: string; barrier: RoomIntegrationBarrier }
+  | { type: "integration_finished"; requestId?: string; sessionSeq: number }
+  | { type: "rebase_receipt_ack"; requestId?: string; receipt: RoomRebaseReceipt | null }
+  | { type: "rebase_adoption_ack"; requestId?: string; adoption: RoomRebaseAdoption }
+  | ({ type: "lifecycle_ack"; requestId?: string } & SessionLifecycleState)
+  | { type: "snapshot_ack"; requestId?: string; snapshot: CloudSnapshotRecord | null }
   | { type: "barrier_ack"; requestId?: string; barrier: RoomBarrier }
   | { type: "lease_ack"; requestId?: string; lease: RoomLease }
   | { type: "checkpoint_ack"; requestId?: string; checkpoint: RoomCheckpoint }
   | { type: "checkpoint_clean_ack"; requestId?: string; checkpoint: RoomCheckpoint }
-  | { type: "checkpoint_request_ack"; requestId?: string; routed: boolean }
+  | { type: "checkpoint_request_ack"; requestId?: string; routed: boolean; serverTime?: number }
   | { type: "rebase_request_ack"; requestId?: string; routed: boolean }
 
 type ServerMessage =
   | RequestReply
-  | { type: "ready"; headSeq: number }
+  | { type: "ready"; headSeq: number; snapshots?: boolean }
+  | { type: "snapshot_required"; replayFloor: number }
   | { type: "sync_delta"; toSeq: number; headSeq: number; batches: WireBatch[] }
   | { type: "batch_ack"; batchId: string; sessionSeq: number; duplicate: boolean }
   | { type: "session_batch"; batch: WireBatch }
-  | { type: "autogit_state"; lease: RoomLease | null; checkpoint: RoomCheckpoint | null; serverTime: number }
+  | { type: "autogit_state"; lease: RoomLease | null; checkpoint: RoomCheckpoint | null; rebaseAdoption?: RoomRebaseAdoption | null; serverTime: number }
   | { type: "checkpoint_requested"; requestedByPrincipalId: string | null }
   | { type: "rebase_requested"; requestedByPrincipalId: string | null; allowConflicts?: boolean }
   | { type: "error"; code: string; message: string; recoverable?: boolean; requestId?: string }
@@ -135,6 +162,7 @@ interface PendingRequest {
 }
 
 export interface SessionRoomClientOptions {
+  loadSnapshot?: (record: CloudSnapshotRecord) => Promise<ReplicaSnapshot>
   transport: SessionTransport
   connect: RoomConnector
   getToken: () => Promise<string>
@@ -154,6 +182,12 @@ export interface SessionRoomClientOptions {
 }
 
 export class SessionRoomClient {
+  public supportsSnapshots = false
+  private readonly loadSnapshot?: (record: CloudSnapshotRecord) => Promise<ReplicaSnapshot>
+  private restoringSnapshot = false
+  private snapshotBufferedBatches: WireBatch[] = []
+  private snapshotBufferedChars = 0
+  private requiredSnapshotSeq = 0
   readonly transport: SessionTransport
   private readonly connector: RoomConnector
   private readonly getToken: () => Promise<string>
@@ -184,6 +218,7 @@ export class SessionRoomClient {
     this.onAcknowledged = options.onAcknowledged
     this.onStateChange = options.onStateChange
     this.onAutoGitState = options.onAutoGitState
+    this.loadSnapshot = options.loadSnapshot
     this.onCheckpointRequested = options.onCheckpointRequested
     this.onRebaseRequested = options.onRebaseRequested
     this.liveTimeoutMs = options.liveTimeoutMs ?? DEFAULT_LIVE_TIMEOUT_MS
@@ -277,16 +312,81 @@ export class SessionRoomClient {
    * runs as the answer arrives, before any later batch is applied, so it sees this
    * replica exactly at the barrier.
    */
-  async requestBarrier(generation: number, onBarrier?: (barrier: RoomBarrier) => void): Promise<RoomBarrier> {
+  async requestBarrier(generation: number, onBarrier?: (barrier: RoomBarrier) => void, rebaseAdoptionId?: string): Promise<RoomBarrier> {
     const reply = await this.request(
       "barrier_ack",
-      { type: "barrier_request", generation },
+      { type: "barrier_request", generation, ...(rebaseAdoptionId ? { rebaseAdoptionId } : {}) },
       onBarrier ? (answer) => onBarrier(answer.barrier) : undefined,
     )
     return reply.barrier
   }
 
+  /** A durable replica snapshot does not require a Git credential or leader lease. */
+  async requestSnapshotBarrier(onBarrier: (barrier: RoomBarrier) => void): Promise<RoomBarrier> {
+    return (await this.request("barrier_ack", { type: "snapshot_barrier_request" },
+      (answer) => onBarrier(answer.barrier))).barrier
+  }
+
   /** Records a pushed checkpoint in the room, which tells every member (Section 15.10). */
+  async publishSnapshot(generation: number, snapshot: CloudSnapshotRecord): Promise<CloudSnapshotRecord> {
+    const result = (await this.request("snapshot_ack", { type: "snapshot_publish", generation, snapshot })).snapshot
+    if (!result) throw new Error("Room did not retain the snapshot")
+    return result
+  }
+
+  async getSnapshot(): Promise<CloudSnapshotRecord | null> {
+    return (await this.request("snapshot_ack", { type: "snapshot_get" })).snapshot
+  }
+
+  async getLifecycleFence(): Promise<SessionLifecycleFence | null> {
+    return (await this.getLifecycleState()).fence
+  }
+
+  async getLifecycleState(): Promise<SessionLifecycleState> {
+    const { fence, pausedClose } = await this.request("lifecycle_ack", { type: "lifecycle_get" })
+    return { fence, ...(pausedClose ? { pausedClose } : {}) }
+  }
+
+  async prepareLifecycleFence(intent: "pause" | "close", barrierId: string,
+    allowUnpublishedGit = false): Promise<SessionLifecycleFence> {
+    const { fence } = await this.request("lifecycle_ack", {
+      type: "lifecycle_prepare", intent, barrierId, allowUnpublishedGit,
+    })
+    if (!fence) throw new Error("Room did not retain the lifecycle fence")
+    return fence
+  }
+
+  async cancelLifecycleFence(fenceId: string): Promise<void> {
+    await this.request("lifecycle_ack", { type: "lifecycle_cancel", fenceId })
+  }
+
+  async commitLifecycleFence(fenceId: string): Promise<void> {
+    await this.request("lifecycle_ack", { type: "lifecycle_commit", fenceId })
+  }
+
+  /** Requires a dedicated paused_close ticket; ordinary recovery remains read-only. */
+  async closePausedSession(pauseFenceId: string, barrierId: string, allowUnpublishedGit: boolean): Promise<void> {
+    await this.request("lifecycle_ack", { type: "paused_close", pauseFenceId, barrierId, allowUnpublishedGit })
+  }
+
+  /** Records a pushed checkpoint in the room, which tells every member (Section 15.10). */
+  async beginIntegration(generation: number, adoptionId: string): Promise<RoomIntegrationBarrier> {
+    return (await this.request("integration_started", { type: "integration_begin", generation, adoptionId })).barrier
+  }
+
+  async finishIntegration(generation: number, id: string, batch?: CollaborationBatch): Promise<number> {
+    return (await this.request("integration_finished", { type: "integration_finish", generation, id,
+      ...(batch ? { batchId: batch.batchId, encryptedPayload: this.transport.encryptBatch(batch) } : {}) })).sessionSeq
+  }
+
+  async getRebaseReceipt(id: string): Promise<RoomRebaseReceipt | null> {
+    return (await this.request("rebase_receipt_ack", { type: "rebase_receipt_get", id })).receipt
+  }
+
+  async beginRebaseAdoption(generation: number, basis: { id: string; from: string; resultOid: string }): Promise<RoomRebaseAdoption> {
+    return (await this.request("rebase_adoption_ack", { type: "rebase_adoption_begin", generation, ...basis })).adoption
+  }
+
   async publishCheckpoint(generation: number, checkpoint: RoomCheckpointInput): Promise<RoomCheckpoint> {
     return (await this.request("checkpoint_ack", { type: "checkpoint_publish", generation, checkpoint })).checkpoint
   }
@@ -304,6 +404,12 @@ export class SessionRoomClient {
     return (await this.request("checkpoint_request_ack", { type: "checkpoint_request" })).routed
   }
 
+  async requestFreshCheckpoint(): Promise<{ routed: boolean; serverTime: number }> {
+    const reply = await this.request("checkpoint_request_ack", { type: "checkpoint_request" })
+    if (!Number.isFinite(reply.serverTime)) throw new Error("The session room needs an update before merge review")
+    return { routed: reply.routed, serverTime: reply.serverTime! }
+  }
+
   /** Asks the leader to rebase the session onto its target. False when no device leads. */
   async requestRebase(allowConflicts: boolean): Promise<boolean> {
     return (await this.request("rebase_request_ack", { type: "rebase_request", allowConflicts })).routed
@@ -315,7 +421,7 @@ export class SessionRoomClient {
     onReply?: (reply: ReplyOf<K>) => void,
   ): Promise<ReplyOf<K>> {
     const connection = this.connection
-    if (!connection || this.clientState !== "live") {
+    if (!connection || (this.clientState !== "live" && !(message.type === "snapshot_get" && this.clientState === "syncing"))) {
       return Promise.reject(new RoomRequestError("NOT_CONNECTED", "The session room is not connected"))
     }
     this.requestCounter += 1
@@ -425,9 +531,30 @@ export class SessionRoomClient {
     }
 
     switch (message.type) {
+      case "snapshot_required":
+        if (!Number.isSafeInteger(message.replayFloor) || message.replayFloor < 0) {
+          this.disconnect()
+          return
+        }
+        this.requiredSnapshotSeq = Math.max(this.requiredSnapshotSeq, message.replayFloor)
+        if (this.loadSnapshot && this.connection && !this.restoringSnapshot) {
+          this.setState("syncing")
+          this.restoringSnapshot = true
+          void this.bootstrapSnapshot(this.connection)
+        } else if (!this.loadSnapshot) {
+          this.lastError = { code: "SNAPSHOT_REQUIRED", message: "Update this client to restore compacted session history" }
+          this.disconnect()
+        }
+        return
       case "ready":
+        this.supportsSnapshots = message.snapshots === true
         this.setState("syncing")
-        this.requestSync(this.transport.lastAppliedSessionSeq)
+        if (this.supportsSnapshots && this.loadSnapshot && this.connection) {
+          this.restoringSnapshot = true
+          void this.bootstrapSnapshot(this.connection)
+        } else {
+          this.requestSync(this.transport.lastAppliedSessionSeq)
+        }
         return
       case "sync_delta":
         for (const batch of message.batches) this.applyWireBatch(batch)
@@ -444,9 +571,25 @@ export class SessionRoomClient {
         }
         return
       case "session_batch":
+        if (this.restoringSnapshot) {
+          this.snapshotBufferedChars += message.batch.encryptedPayload.length
+          if (this.snapshotBufferedChars > 32 * 1024 * 1024) {
+            this.lastError = { code: "SNAPSHOT_BACKLOG", message: "Snapshot download fell behind; reconnect to retry" }
+            this.disconnect()
+            return
+          }
+          this.snapshotBufferedBatches.push(message.batch)
+          return
+        }
         this.applyWireBatch(message.batch)
         return
+      case "integration_started":
+      case "integration_finished":
+      case "rebase_receipt_ack":
+      case "rebase_adoption_ack":
       case "barrier_ack":
+      case "lifecycle_ack":
+      case "snapshot_ack":
       case "lease_ack":
       case "checkpoint_ack":
       case "checkpoint_clean_ack":
@@ -458,6 +601,7 @@ export class SessionRoomClient {
         this.lastAutoGitState = {
           lease: message.lease ?? null,
           checkpoint: message.checkpoint ?? null,
+          rebaseAdoption: message.rebaseAdoption ?? null,
           serverTime: message.serverTime,
         }
         this.onAutoGitState?.(this.lastAutoGitState)
@@ -490,6 +634,30 @@ export class SessionRoomClient {
     for (const waiter of this.liveWaiters.splice(0)) waiter.resolve()
   }
 
+  private async bootstrapSnapshot(connection: RoomConnection): Promise<void> {
+    try {
+      const record = await this.getSnapshot()
+      if (record && record.sessionSeq > this.transport.lastAppliedSessionSeq) {
+        const snapshot = await this.loadSnapshot!(record)
+        if (this.connection !== connection) return
+        this.transport.restoreCloudSnapshot(snapshot, record.sessionSeq)
+      }
+      if (this.connection !== connection) return
+      if (this.transport.lastAppliedSessionSeq < this.requiredSnapshotSeq) {
+        throw new Error("The room replay floor has no usable recovery snapshot")
+      }
+      this.restoringSnapshot = false
+      for (const batch of this.snapshotBufferedBatches) this.applyWireBatch(batch)
+      this.snapshotBufferedBatches = []
+      this.snapshotBufferedChars = 0
+      this.requestSync(this.transport.lastAppliedSessionSeq)
+    } catch (error) {
+      if (this.connection !== connection) return
+      this.lastError = { code: "SNAPSHOT_REJECTED", message: error instanceof Error ? error.message : "Snapshot recovery failed" }
+      this.disconnect()
+    }
+  }
+
   private applyWireBatch(batch: WireBatch): void {
     try {
       this.transport.receiveEncryptedBatch(batch.sessionSeq, batch.encryptedPayload)
@@ -515,6 +683,9 @@ export class SessionRoomClient {
   private handleClose(connection: RoomConnection | null): void {
     if (!connection || connection !== this.connection) return
     this.connection = null
+    this.restoringSnapshot = false
+    this.snapshotBufferedBatches = []
+    this.snapshotBufferedChars = 0
     this.setState("disconnected")
     this.failWaiters(new Error("The session room connection closed"))
   }

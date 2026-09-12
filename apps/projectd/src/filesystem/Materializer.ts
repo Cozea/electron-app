@@ -18,11 +18,13 @@ import fs from "node:fs/promises"
 import path from "node:path"
 
 import type { BaselineStore } from "../collaboration/BaselineStore"
+import type { BinaryRevision } from "../collaboration/BinaryStore"
 import { InvalidProjectPathError } from "../collaboration/projectPath"
 import type { MaterializationIndex, MaterializedEntry } from "./MaterializationIndex"
 import type { SessionReplica } from "../collaboration/SessionReplica"
 import type { ProjectEntryRecord } from "../collaboration/TreeDoc"
 import { resolveWorkspaceFilePath } from "./workspacePath"
+import { ConflictEngine } from "../collaboration/ConflictEngine"
 
 export interface MaterializerOptions {
   workspaceRoot: string
@@ -30,6 +32,8 @@ export interface MaterializerOptions {
   replica: SessionReplica
   index: MaterializationIndex
   baselineStore: BaselineStore
+  /** Resolves a verified binary revision from the local cache or encrypted object store. */
+  resolveBinary?: (revision: BinaryRevision) => Promise<Buffer>
   normalDelayMs?: number
   maxDelayMs?: number
 }
@@ -46,11 +50,14 @@ export class FilesystemMaterializer {
   readonly replica: SessionReplica
   readonly index: MaterializationIndex
   readonly baselineStore: BaselineStore
+  private readonly resolveBinary?: (revision: BinaryRevision) => Promise<Buffer>
 
   readonly normalDelayMs: number
   readonly maxDelayMs: number
 
   private pendingQueue = new Map<string, PendingMaterialization>()
+  private scheduledWork: Promise<void> = Promise.resolve()
+  private scheduledError: unknown = null
   public lastLatencyMs = 0
 
   constructor(options: MaterializerOptions) {
@@ -59,6 +66,7 @@ export class FilesystemMaterializer {
     this.replica = options.replica
     this.index = options.index
     this.baselineStore = options.baselineStore
+    this.resolveBinary = options.resolveBinary
     this.normalDelayMs = options.normalDelayMs ?? 25
     this.maxDelayMs = options.maxDelayMs ?? 100
   }
@@ -77,7 +85,7 @@ export class FilesystemMaterializer {
       // If elapsed reaches maxDelayMs, materialize immediately without waiting
       if (elapsed >= this.maxDelayMs) {
         this.pendingQueue.delete(fileId)
-        void this.materializeFile(fileId, now)
+        this.queueMaterialization(fileId, existing.firstQueuedAt)
         return
       }
 
@@ -87,14 +95,14 @@ export class FilesystemMaterializer {
 
       existing.timer = setTimeout(() => {
         this.pendingQueue.delete(fileId)
-        void this.materializeFile(fileId, existing.firstQueuedAt)
+        this.queueMaterialization(fileId, existing.firstQueuedAt)
       }, nextDelay)
       return
     }
 
     const timer = setTimeout(() => {
       this.pendingQueue.delete(fileId)
-      void this.materializeFile(fileId, now)
+      this.queueMaterialization(fileId, now)
     }, this.normalDelayMs)
 
     this.pendingQueue.set(fileId, {
@@ -114,9 +122,21 @@ export class FilesystemMaterializer {
       if (pending) {
         clearTimeout(pending.timer)
         this.pendingQueue.delete(fileId)
-        await this.materializeFile(fileId, pending.firstQueuedAt)
+        this.queueMaterialization(fileId, pending.firstQueuedAt)
       }
     }
+    await this.scheduledWork
+    if (this.scheduledError) throw this.scheduledError
+  }
+
+  private queueMaterialization(fileId: string, queuedAt: number): void {
+    this.scheduledWork = this.scheduledWork
+      .then(() => this.materializeFile(fileId, queuedAt))
+      .catch((error: unknown) => {
+        // Timer callbacks have no awaiting caller. Retain the failure for flush
+        // rather than producing an unhandled rejection during shutdown.
+        this.scheduledError ??= error
+      })
   }
 
   dispose(): void {
@@ -143,6 +163,11 @@ export class FilesystemMaterializer {
 
     const previous = this.index.getByFileId(this.sessionId, fileId)
 
+    if (conflicts.deleteModifyConflicts.some((conflict) => conflict.fileId === fileId)) {
+      console.warn(`[Materializer] Keeping ${entry.path}: deletion overlaps edits awaiting resolution`)
+      return
+    }
+
     // Handle deleted entry
     if (entry.deleted) {
       await this.handleDeletion(entry, previous)
@@ -159,6 +184,8 @@ export class FilesystemMaterializer {
     } else if (entry.kind === "text") {
       await this.handleTextMaterialization(entry, absPath)
       wrote = true
+    } else if (entry.kind === "binary") {
+      wrote = await this.handleBinaryMaterialization(entry, absPath)
     }
     if (!wrote) return
 
@@ -210,6 +237,7 @@ export class FilesystemMaterializer {
     // Atomic write: write to temporary file in same folder, then rename
     const tempPath = `${absPath}.tmp.${entry.fileId}.${crypto.randomUUID().slice(0, 8)}`
     await fs.writeFile(tempPath, content, { encoding: "utf8", mode: entry.mode })
+    await fs.chmod(tempPath, entry.mode & 0o777)
     await fs.rename(tempPath, absPath)
 
     const stat = await fs.lstat(absPath)
@@ -244,13 +272,15 @@ export class FilesystemMaterializer {
     const dir = path.dirname(absPath)
     await fs.mkdir(dir, { recursive: true })
 
+    // Create the replacement first: a failed symlink syscall must leave the old
+    // entry intact. Rename replaces the link itself, never its target.
+    const tempPath = `${absPath}.tmp.${entry.fileId}.${crypto.randomUUID().slice(0, 8)}`
     try {
-      await fs.unlink(absPath)
-    } catch {
-      // Ignore if doesn't exist
+      await fs.symlink(entry.symlinkTarget, tempPath)
+      await fs.rename(tempPath, absPath)
+    } finally {
+      await fs.rm(tempPath, { force: true })
     }
-
-    await fs.symlink(entry.symlinkTarget, absPath)
     const stat = await fs.lstat(absPath)
     const targetHash = sha256(entry.symlinkTarget)
 
@@ -261,7 +291,60 @@ export class FilesystemMaterializer {
       kind: "symlink",
       mode: entry.mode,
       diskHash: targetHash,
-      diskSize: entry.symlinkTarget.length,
+      diskSize: stat.size,
+      diskMtimeMs: stat.mtimeMs,
+      state: "materialized",
+    })
+    return true
+  }
+
+  private async handleBinaryMaterialization(entry: ProjectEntryRecord, absPath: string): Promise<boolean> {
+    const conflict = this.replica.binaryStore.detectConcurrentRevisions(entry.fileId)
+    if (conflict) {
+      console.warn(`[Materializer] Suppressing materialization of ${entry.path}: binary conflict active`)
+      return false
+    }
+    const revision = this.replica.binaryStore.getHeadRevision(entry.fileId)
+    if (!revision) return false
+    if (!this.resolveBinary) {
+      throw new Error(`Cannot materialize binary ${entry.path}: no binary resolver is configured`)
+    }
+
+    const content = await this.resolveBinary(revision)
+    const contentHash = sha256(content)
+    if (contentHash !== revision.contentHash || content.length !== revision.size) {
+      throw new Error(`Cannot materialize binary ${entry.path}: resolved bytes do not match revision metadata`)
+    }
+
+    const dir = path.dirname(absPath)
+    await fs.mkdir(dir, { recursive: true })
+
+    const previous = this.index.getByFileId(this.sessionId, entry.fileId)
+    const existing = await fs.lstat(absPath).catch(() => null)
+    if (existing?.isFile()) {
+      const diskExisting = await fs.readFile(absPath)
+      const diskHash = sha256(diskExisting)
+      if (previous && diskHash !== previous.diskHash && diskHash !== contentHash) {
+        const backupPath = `${absPath}.conflict.${Date.now()}`
+        await fs.writeFile(backupPath, diskExisting)
+        console.warn(`[Materializer] Preserved divergent local binary at ${backupPath}`)
+      }
+    }
+
+    const tempPath = `${absPath}.tmp.${entry.fileId}.${crypto.randomUUID().slice(0, 8)}`
+    await fs.writeFile(tempPath, content, { mode: entry.mode })
+    await fs.chmod(tempPath, entry.mode & 0o777)
+    await fs.rename(tempPath, absPath)
+    const stat = await fs.lstat(absPath)
+
+    this.index.recordMaterialization({
+      sessionId: this.sessionId,
+      fileId: entry.fileId,
+      relativePath: entry.path,
+      kind: "binary",
+      mode: entry.mode,
+      diskHash: contentHash,
+      diskSize: stat.size,
       diskMtimeMs: stat.mtimeMs,
       state: "materialized",
     })
@@ -270,6 +353,11 @@ export class FilesystemMaterializer {
 
   private async handleDeletion(entry: ProjectEntryRecord, previous: MaterializedEntry | null): Promise<void> {
     const relativePath = previous?.relativePath ?? entry.path
+    if (this.replica.tree.listLiveEntries().some((other) => other.fileId !== entry.fileId && ConflictEngine.normalizeForVolumeComparison(other.path) === ConflictEngine.normalizeForVolumeComparison(relativePath))) {
+      this.index.remove(this.sessionId, entry.fileId)
+      this.baselineStore.deleteBaseline(entry.fileId)
+      return
+    }
     const absPath = await this.resolvePath(entry.fileId, relativePath)
 
     if (absPath) {
@@ -291,6 +379,7 @@ export class FilesystemMaterializer {
   }
 
   private async removeStaleMaterialization(previous: MaterializedEntry, currentAbsPath: string): Promise<void> {
+    if (this.replica.tree.listLiveEntries().some((other) => other.fileId !== previous.fileId && ConflictEngine.normalizeForVolumeComparison(other.path) === ConflictEngine.normalizeForVolumeComparison(previous.relativePath))) return
     const staleAbsPath = await this.resolvePath(previous.fileId, previous.relativePath)
     if (!staleAbsPath) return
 
@@ -316,9 +405,12 @@ function sha256(data: string | Buffer): string {
 
 async function hashDiskEntry(absPath: string, kind: string): Promise<string | null> {
   try {
+    const stat = await fs.lstat(absPath)
     if (kind === "symlink") {
+      if (!stat.isSymbolicLink()) return null
       return sha256(await fs.readlink(absPath))
     }
+    if (!stat.isFile()) return null
     return sha256(await fs.readFile(absPath))
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null

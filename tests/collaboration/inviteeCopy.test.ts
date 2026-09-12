@@ -1,123 +1,195 @@
 import { describe, expect, it, vi } from "vitest"
 
+import type { LocalWorkspaceRecord } from "@shared/workspaceTypes"
 import type {
-  CloneWorkspaceForProjectRequest,
-  CloneWorkspaceForProjectResult,
-  LocalWorkspaceDTO,
-  LocalWorkspaceRecord,
-} from "@shared/workspaceTypes"
+  EnsureDesktopSessionWorkbenchRequest,
+  EnsureDesktopSessionWorkbenchResponse,
+} from "@shared/electronApiTypes"
 import {
   describeInviteeCopy,
   ensureInviteeCopy,
   isCloneableBranchName,
+  type InviteeSessionWorkbenchApi,
   type InviteeWorkspaceApi,
 } from "../../apps/desktop/src/features/inbox/sessionCopy"
-
-/**
- * An invitee who accepts a live session without a copy of the project gets the
- * session's recorded remote cloned on the session branch. The workspace catalog is
- * simulated; nothing here runs Git.
- */
 
 const REQUEST = {
   projectId: "proj_1",
   projectName: "Moliere App",
+  publicSessionId: "czs_0123456789abcdef",
   branchName: "mml-rebuild",
   repositoryUrl: "https://github.com/acme/app.git",
 }
-const CLONED_ROOT = "/Users/me/Developer/Cozea/moliere-app"
+const SESSION_ROOT = "/Users/me/Library/Application Support/Cozea/Collaboration/proj_1/czs_0123456789abcdef/repo"
+const SESSION_WORKSPACE_ID = "ws_collab_czs_0123456789abcdef"
 
-function fakeWorkspaceApi(
-  options: { active?: Partial<LocalWorkspaceRecord> | null; clone?: CloneWorkspaceForProjectResult | Error; activeFails?: boolean } = {},
-) {
-  const getActiveForProject = vi.fn(async (_projectId: string) => {
+function readyResponse(): EnsureDesktopSessionWorkbenchResponse {
+  return {
+    success: true,
+    rootPath: SESSION_ROOT,
+    reused: false,
+    workbench: {
+      workbenchId: "wb_1",
+      projectId: REQUEST.projectId,
+      workspaceId: SESSION_WORKSPACE_ID,
+      workspaceRevision: 1,
+      kind: "collaboration",
+      branchName: REQUEST.branchName,
+      collaborationSessionId: REQUEST.publicSessionId,
+      lifecycle: "active",
+      title: "Moliere App · mml-rebuild",
+      createdAt: 1,
+      updatedAt: 1,
+      lastActivatedAt: 1,
+      presentationStateRef: "presentation:wb_1",
+    },
+    workspace: {
+      workspaceId: SESSION_WORKSPACE_ID,
+      projectId: REQUEST.projectId,
+      label: null,
+      displayPath: SESSION_ROOT,
+      rootPath: SESSION_ROOT,
+      projectRootRelativePath: ".",
+      projectRootPath: SESSION_ROOT,
+      gitRootPath: SESSION_ROOT,
+      gitOriginUrl: REQUEST.repositoryUrl,
+      gitRepoIdentity: null,
+      verificationStatus: "verified",
+      verificationReason: null,
+      verifiedAt: 1,
+      source: "clone",
+      storageOwnership: "managed",
+      managedRootId: "root_1",
+      markerPolicy: "required",
+      isActive: true,
+      workspaceRevision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      lastOpenedAt: 1,
+    },
+  }
+}
+
+function fakeApis(options: {
+  active?: Partial<LocalWorkspaceRecord> | null
+  activeFails?: boolean
+  ensure?: EnsureDesktopSessionWorkbenchResponse | Error
+} = {}) {
+  const getActiveForProject = vi.fn(async () => {
     if (options.activeFails) throw new Error("catalog unavailable")
     return (options.active ?? null) as LocalWorkspaceRecord | null
   })
-  const cloneForProject = vi.fn(async (_req: CloneWorkspaceForProjectRequest): Promise<CloneWorkspaceForProjectResult> => {
-    if (options.clone instanceof Error) throw options.clone
-    return options.clone ?? { success: true, workspace: { projectRootPath: CLONED_ROOT } as LocalWorkspaceDTO }
+  const ensureSession = vi.fn(async (_request: EnsureDesktopSessionWorkbenchRequest) => {
+    if (options.ensure instanceof Error) throw options.ensure
+    return options.ensure ?? readyResponse()
   })
-  const api: InviteeWorkspaceApi = { getActiveForProject, cloneForProject }
-  return { api, getActiveForProject, cloneForProject }
+  const workspaceApi: InviteeWorkspaceApi = { getActiveForProject }
+  const workbenchApi: InviteeSessionWorkbenchApi = { ensureSession }
+  return { workspaceApi, workbenchApi, getActiveForProject, ensureSession }
 }
 
-describe("setting up an invitee's copy", () => {
-  it("uses the folder this Mac already has for the project", async () => {
-    const workspace = fakeWorkspaceApi({ active: { projectRootPath: "/Users/me/src/app" } })
+describe("setting up an invitee's Session Workbench", () => {
+  it("uses an existing project folder only as a clone source", async () => {
+    const apis = fakeApis({ active: { workspaceId: "ordinary_ws", projectRootPath: "/Users/me/src/app" } })
 
-    expect(await ensureInviteeCopy(REQUEST, workspace.api)).toEqual({ kind: "existing", rootPath: "/Users/me/src/app" })
-    expect(workspace.cloneForProject).not.toHaveBeenCalled()
+    const outcome = await ensureInviteeCopy(REQUEST, apis.workspaceApi, apis.workbenchApi)
+
+    expect(outcome).toEqual({
+      kind: "ready",
+      rootPath: SESSION_ROOT,
+      workspaceId: SESSION_WORKSPACE_ID,
+      repository: "github.com/acme/app",
+    })
+    expect(apis.ensureSession).toHaveBeenCalledWith(expect.objectContaining({
+      sourceWorkspaceId: "ordinary_ws",
+      includeDirtyChanges: false,
+      setActive: true,
+    }))
   })
 
-  it("clones the session's remote on the session branch into a managed folder", async () => {
-    const workspace = fakeWorkspaceApi()
+  it("asks main/projectd for a dedicated clone on the session branch", async () => {
+    const apis = fakeApis()
 
-    const outcome = await ensureInviteeCopy(REQUEST, workspace.api)
+    await ensureInviteeCopy(REQUEST, apis.workspaceApi, apis.workbenchApi)
 
-    expect(outcome).toEqual({ kind: "cloned", rootPath: CLONED_ROOT, repository: "github.com/acme/app" })
-    expect(workspace.cloneForProject).toHaveBeenCalledWith({
-      projectId: "proj_1",
-      slug: "moliere-app",
-      repoUrl: "https://github.com/acme/app.git",
-      branch: "mml-rebuild",
+    expect(apis.ensureSession).toHaveBeenCalledWith({
+      projectId: REQUEST.projectId,
+      publicSessionId: REQUEST.publicSessionId,
+      branchName: REQUEST.branchName,
+      baseBranch: REQUEST.branchName,
+      createBranch: false,
+      title: "Moliere App · mml-rebuild",
+      sourceRepoUrl: REQUEST.repositoryUrl,
+      sourceWorkspaceId: null,
+      includeDirtyChanges: false,
       setActive: true,
     })
   })
 
-  it("treats an unreadable catalog as no folder yet", async () => {
-    const workspace = fakeWorkspaceApi({ activeFails: true })
+  it("preserves credential-bearing HTTPS remotes for Git after the user accepted the invite", async () => {
+    const apis = fakeApis()
+    const repositoryUrl = "https://ghp_token@github.com/acme/app.git"
 
-    expect((await ensureInviteeCopy(REQUEST, workspace.api)).kind).toBe("cloned")
+    await ensureInviteeCopy({ ...REQUEST, repositoryUrl }, apis.workspaceApi, apis.workbenchApi)
+
+    expect(apis.ensureSession.mock.calls[0]?.[0].sourceRepoUrl).toBe(repositoryUrl)
   })
 
-  it("never hands Git a credential or an unsafe remote from the session record", async () => {
-    const withToken = fakeWorkspaceApi()
-    await ensureInviteeCopy({ ...REQUEST, repositoryUrl: "https://ghp_token@github.com/acme/app.git" }, withToken.api)
-    expect(withToken.cloneForProject.mock.calls[0]?.[0].repoUrl).toBe("https://github.com/acme/app.git")
+  it("uses the remote even when the ordinary workspace catalog is temporarily unreadable", async () => {
+    const apis = fakeApis({ activeFails: true })
+    expect((await ensureInviteeCopy(REQUEST, apis.workspaceApi, apis.workbenchApi)).kind).toBe("ready")
+  })
 
+  it("reports no source when this Mac has no project copy and the session has no safe remote", async () => {
     for (const repositoryUrl of [null, "file:///etc", "--upload-pack=touch /tmp/x", "ext::sh"]) {
-      const workspace = fakeWorkspaceApi()
-      expect(await ensureInviteeCopy({ ...REQUEST, repositoryUrl }, workspace.api)).toEqual({ kind: "no_repository" })
-      expect(workspace.cloneForProject).not.toHaveBeenCalled()
+      const apis = fakeApis()
+      expect(await ensureInviteeCopy({ ...REQUEST, repositoryUrl }, apis.workspaceApi, apis.workbenchApi)).toEqual({
+        kind: "no_repository",
+      })
+      expect(apis.ensureSession).not.toHaveBeenCalled()
     }
   })
 
   it("refuses branch names Git could read as options or revisions", async () => {
     for (const branchName of ["--upload-pack=x", "a..b", "main~1", "HEAD@{1}", "with space", "ends.lock", ""]) {
-      const workspace = fakeWorkspaceApi()
-      const outcome = await ensureInviteeCopy({ ...REQUEST, branchName }, workspace.api)
+      const apis = fakeApis()
+      const outcome = await ensureInviteeCopy({ ...REQUEST, branchName }, apis.workspaceApi, apis.workbenchApi)
       expect(outcome.kind, branchName).toBe("failed")
-      expect(workspace.cloneForProject).not.toHaveBeenCalled()
+      expect(apis.ensureSession).not.toHaveBeenCalled()
     }
     expect(isCloneableBranchName("feature/live-session_2")).toBe(true)
   })
 
-  it("explains clone failures in terms of access and branches", async () => {
-    const denied = fakeWorkspaceApi({ clone: { success: false, error: "git clone failed: remote: Repository not found." } })
-    expect(await ensureInviteeCopy(REQUEST, denied.api)).toEqual({
+  it("explains Git access and missing-branch failures", async () => {
+    const denied = fakeApis({
+      ensure: { success: false, error: "git clone failed: remote: Repository not found." },
+    })
+    expect(await ensureInviteeCopy(REQUEST, denied.workspaceApi, denied.workbenchApi)).toEqual({
       kind: "failed",
-      message:
-        "Git on this Mac can't read github.com/acme/app. Get access to it, then link a copy with Relink Local Folder.",
+      message: "Git on this Mac can't read github.com/acme/app. Update this Mac's Git credentials and retry.",
     })
 
-    const noBranch = fakeWorkspaceApi({
-      clone: new Error("git clone failed: warning: Remote branch mml-rebuild not found in upstream origin"),
+    const noBranch = fakeApis({
+      ensure: new Error("git clone failed: warning: Remote branch mml-rebuild not found in upstream origin"),
     })
-    expect(await ensureInviteeCopy(REQUEST, noBranch.api)).toEqual({
+    expect(await ensureInviteeCopy(REQUEST, noBranch.workspaceApi, noBranch.workbenchApi)).toEqual({
       kind: "failed",
       message: "github.com/acme/app has no branch mml-rebuild.",
     })
   })
 
-  it("reports when this build cannot set up folders", async () => {
-    expect((await ensureInviteeCopy(REQUEST, undefined)).kind).toBe("failed")
+  it("reports when this build cannot prepare Session Workbenches", async () => {
+    const apis = fakeApis()
+    expect((await ensureInviteeCopy(REQUEST, apis.workspaceApi, undefined)).kind).toBe("failed")
   })
 
-  it("tells the invitee what happened", () => {
-    expect(describeInviteeCopy({ kind: "cloned", rootPath: CLONED_ROOT, repository: "github.com/acme/app" }, "mml-rebuild")).toBe(
-      `Cozea cloned github.com/acme/app on mml-rebuild into ${CLONED_ROOT}. Open the project to start syncing.`,
-    )
-    expect(describeInviteeCopy({ kind: "no_repository" }, "mml-rebuild")).toContain("Relink Local Folder")
+  it("describes the resulting dedicated workbench", () => {
+    expect(
+      describeInviteeCopy(
+        { kind: "ready", rootPath: SESSION_ROOT, workspaceId: SESSION_WORKSPACE_ID, repository: "github.com/acme/app" },
+        REQUEST.branchName,
+      ),
+    ).toContain("Session Workbench")
+    expect(describeInviteeCopy({ kind: "no_repository" }, REQUEST.branchName)).toContain("no Git remote")
   })
 })

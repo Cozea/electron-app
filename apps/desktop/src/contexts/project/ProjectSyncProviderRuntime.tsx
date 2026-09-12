@@ -8,7 +8,7 @@ import {
 
 import type { Id } from "../../../../../convex/_generated/dataModel"
 import { YjsProjectProvider } from "@/contexts/YjsProjectContext"
-import { useYjsProject } from "@/contexts/YjsProjectContextValue"
+import { useYjsProject, YjsProjectContextBridgeProvider, EMPTY_YJS_PROJECT_CONTEXT_VALUE } from "@/contexts/YjsProjectContextValue"
 import { useAgentFileSync } from "@/hooks/useAgentFileSync"
 import { useBinaryFileSync } from "@/hooks/useBinaryFileSync"
 import { useCollabSession } from "@/features/collaboration/hooks/useCollabSession"
@@ -27,6 +27,25 @@ interface ProjectSyncProviderRuntimeProps extends ProjectSyncProviderProps {
   renderDeleteConflictDialog?: boolean
 }
 
+function useWorkspaceFileEvents(workspaceId: string | null, enabled: boolean): void {
+  useEffect(() => {
+    if (!workspaceId || !enabled) return
+
+    let cancelled = false
+
+    void window.electronAPI.project.watchStart({ workspaceId }).then((res) => {
+      if (!res?.success && !cancelled) {
+        console.warn("[ProjectWatcher] Failed to start watcher:", res?.error)
+      }
+    })
+
+    return () => {
+      cancelled = true
+      void window.electronAPI.project.watchStop({ workspaceId })
+    }
+  }, [workspaceId, enabled])
+}
+
 function AgentFileSyncBridge({
   projectId,
   principalId,
@@ -42,22 +61,7 @@ function AgentFileSyncBridge({
 }) {
   const { yjsDoc } = useYjsProject()
 
-  useEffect(() => {
-    if (!workspaceId || !yjsDoc) return
-
-    let cancelled = false
-
-    void window.electronAPI.project.watchStart({ workspaceId }).then((res) => {
-      if (!res?.success && !cancelled) {
-        console.warn("[ProjectWatcher] Failed to start watcher:", res?.error)
-      }
-    })
-
-    return () => {
-      cancelled = true
-      void window.electronAPI.project.watchStop({ workspaceId })
-    }
-  }, [workspaceId, yjsDoc])
+  useWorkspaceFileEvents(workspaceId, Boolean(yjsDoc))
 
   useAgentFileSync(yjsDoc, workspaceId, projectId, principalId)
   useBinaryFileSync(projectId, workspaceId, principalId)
@@ -97,7 +101,9 @@ export function ProjectSyncProviderRuntime({
   }, [initialLastSyncAt])
 
   const canSync = Boolean(projectId && principalId && workspaceId)
-  const sharedCollaborationEnabled = canSync && collaborationEnabled
+  const daemonWorkspace = /^ws_collab_czs_[a-f0-9]{16}$/.test(workspaceId ?? "")
+  useWorkspaceFileEvents(workspaceId, daemonWorkspace)
+  const sharedCollaborationEnabled = canSync && collaborationEnabled && !daemonWorkspace
   const collaborationMode: "shared" | "local" = sharedCollaborationEnabled ? "shared" : "local"
 
   const {
@@ -252,6 +258,11 @@ export function ProjectSyncProviderRuntime({
 
   return (
     <ProjectSyncContext.Provider value={syncContextValue}>
+      {daemonWorkspace ? (
+        <YjsProjectContextBridgeProvider value={EMPTY_YJS_PROJECT_CONTEXT_VALUE}>
+          {children}
+        </YjsProjectContextBridgeProvider>
+      ) : (
       <YjsProjectProvider
         projectId={resolvedProjectId}
         principalId={resolvedPrincipalId}
@@ -273,6 +284,7 @@ export function ProjectSyncProviderRuntime({
           {children}
         </AgentFileSyncBridge>
       </YjsProjectProvider>
+      )}
     </ProjectSyncContext.Provider>
   )
 }

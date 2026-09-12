@@ -10,12 +10,17 @@ import { useState } from "react"
 
 import { MergeSessionDialog } from "../ui/MergeSessionDialog"
 import { RebaseSessionDialog } from "../ui/RebaseSessionDialog"
+import { CloseSessionDialog } from "../ui/CloseSessionDialog"
+import { BinaryConflictDialog } from "../ui/BinaryConflictDialog"
+import { StructuralConflictDialog } from "../ui/StructuralConflictDialog"
 import { SessionBranchNotice, SessionWorkbenchControls } from "./SessionWorkbenchControls"
 import type { LiveSessionController } from "./useLiveSession"
 
 export function LiveSessionBar({ live }: { live: LiveSessionController }) {
   const [merging, setMerging] = useState(false)
   const [rebasing, setRebasing] = useState(false)
+  const [reviewingFiles, setReviewingFiles] = useState(false)
+  const [reviewingPaths, setReviewingPaths] = useState(false)
   if (live.session && live.sync) {
     return (
       <>
@@ -36,6 +41,8 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         onCheckTarget={live.checkTarget}
         onDismissTarget={live.dismissTarget}
         onRebase={() => setRebasing(true)}
+        onBinaryConflicts={() => setReviewingFiles(true)}
+        onStructuralConflicts={() => setReviewingPaths(true)}
         onMerge={() => setMerging(true)}
         onJoin={live.join}
         onLeave={live.leave}
@@ -43,6 +50,10 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         onResume={live.resume}
         onEnd={live.end}
       />
+        {reviewingFiles && <BinaryConflictDialog key={live.session.publicSessionId} publicSessionId={live.session.publicSessionId}
+          canEdit={live.canEdit} onClose={() => setReviewingFiles(false)} />}
+        {reviewingPaths && <StructuralConflictDialog key={live.session.publicSessionId} publicSessionId={live.session.publicSessionId}
+          canEdit={live.canEdit} onClose={() => setReviewingPaths(false)} />}
         <RebaseSessionDialog
           isOpen={rebasing}
           onOpenChange={setRebasing}
@@ -50,6 +61,8 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
           branchName={live.session.branchName}
           targetBranch={live.session.targetBranch}
         />
+        {live.closeReview && <CloseSessionDialog key={live.closeReview.reviewId} review={live.closeReview}
+          busy={live.busyAction === "end"} onCancel={live.cancelClose} onConfirm={live.confirmClose} />}
         <MergeSessionDialog
           isOpen={merging}
           onOpenChange={setMerging}
@@ -58,7 +71,7 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
           targetBranch={live.session.targetBranch}
           canManage={live.canManage}
           onPause={live.pause}
-          onEnd={live.end}
+          onEnd={() => { setMerging(false); live.end() }}
         />
       </>
     )
@@ -70,7 +83,7 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
     <SessionBranchNotice
       branchName={other.branchName}
       busy={live.busyAction === "switch"}
-      onSwitch={() => live.switchToBranch(other.branchName)}
+      onSwitch={() => live.openSessionWorkbench(other.branchName)}
     />
   )
 }

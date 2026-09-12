@@ -29,6 +29,7 @@ import { TextDocRegistry } from "../collaboration/TextDocRegistry"
 import { ScopePolicy } from "../filesystem/ScopePolicy"
 import { isSharedEnvironmentFile } from "../filesystem/environmentFiles"
 import type { GitService } from "../git/GitService"
+import type { BinaryRevision } from "../collaboration/BinaryStore"
 import type { BarrierSnapshot } from "./BarrierCapture"
 
 const DEFAULT_MAX_TEXT_FILE_BYTES = 512 * 1024
@@ -85,8 +86,10 @@ interface IndexEntry {
 
 type GitRunner = (
   args: string[],
-  options?: { env?: Record<string, string>; stdin?: string; allowNonZeroExit?: boolean; maxBuffer?: number },
+  options?: { env?: Record<string, string>; stdin?: string | Buffer; allowNonZeroExit?: boolean; maxBuffer?: number },
 ) => ReturnType<GitService["process"]["execute"]>
+
+export type BinaryContentResolver = (revision: BinaryRevision) => Promise<Buffer>
 
 /** The id Git gives a blob with these bytes, computed here instead of by a git process. */
 function blobOid(content: string, objectFormat: string): string {
@@ -104,11 +107,13 @@ function normalizePrefix(prefix: string): string {
 
 export class CheckpointBuilder {
   readonly gitService: GitService
+  private readonly resolveBinary?: BinaryContentResolver
   // Blob id → whether the session would carry that content as text. Blobs never change.
   private readonly syncableBlobs = new Map<string, boolean>()
 
-  constructor(gitService: GitService) {
+  constructor(gitService: GitService, options: { resolveBinary?: BinaryContentResolver } = {}) {
     this.gitService = gitService
+    this.resolveBinary = options.resolveBinary
   }
 
   /**
@@ -204,11 +209,25 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
             oid = (await git(["hash-object", "-w", "--stdin"], { stdin: file.symlinkTarget })).stdout.trim()
           }
           if (parent?.oid !== oid || parent.mode !== "120000") updates.push(`120000 ${oid}\t${repoFilePath}`)
-        } else if (file.kind === "binary" && !parent) {
-          throw new Error(
-            `Checkpoint has no Git blob for binary ${file.path}: ` +
-              "binary bytes are not part of the barrier snapshot and the parent commit has nothing at that path",
-          )
+        } else if (file.kind === "binary") {
+          if (!file.binaryRevision) {
+            if (!parent) {
+              throw new Error(
+                `Checkpoint has no Git blob for binary ${file.path}: no binary revision is present at this barrier`,
+              )
+            }
+            continue
+          }
+          if (!this.resolveBinary) {
+            throw new Error(`Checkpoint cannot resolve bytes for binary ${file.path}`)
+          }
+          const bytes = await this.resolveBinary(file.binaryRevision)
+          if (bytes.length !== file.binaryRevision.size || createHash("sha256").update(bytes).digest("hex") !== file.contentHash) {
+            throw new Error(`Checkpoint binary ${file.path} does not match its barrier revision`)
+          }
+          const mode = file.mode === 0o100755 ? "100755" : "100644"
+          const oid = await this.binaryBlob(git, repoFilePath, bytes)
+          if (parent?.oid !== oid || parent.mode !== mode) updates.push(`${mode} ${oid}\t${repoFilePath}`)
         }
       }
 
@@ -292,6 +311,11 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
     if (parent && parent.oid === blobOid(text, objectFormat)) return parent.oid
     // Clean filters and line-ending rules decide the stored bytes, as `git add` would.
     return (await git(["hash-object", "-w", "--stdin", `--path=${repoFilePath}`], { stdin: text })).stdout.trim()
+  }
+
+  /** Writes verified binary bytes through Git's clean/filter rules for this path. */
+  private async binaryBlob(git: GitRunner, repoFilePath: string, bytes: Buffer): Promise<string> {
+    return (await git(["hash-object", "-w", "--stdin", `--path=${repoFilePath}`], { stdin: bytes })).stdout.trim()
   }
 
   /**

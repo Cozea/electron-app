@@ -4,20 +4,20 @@ import { describeSessionRepository, normalizeSessionRepositoryUrl } from "../../
 
 /**
  * The remote a session records is cloned by every invitee's Mac, so it must be a
- * network remote with no credentials and nothing Git could read as an option.
+ * validated network remote and nothing Git could read as an option.
  */
 
 describe("session repository URLs", () => {
-  it("keeps network remotes and drops anything that can carry a credential", () => {
+  it("keeps validated network remotes exactly, including sign-in details the UI warns about", () => {
     expect(normalizeSessionRepositoryUrl("https://github.com/acme/app.git")).toBe("https://github.com/acme/app.git")
     expect(normalizeSessionRepositoryUrl("https://ghp_secret@github.com/acme/app.git")).toBe(
-      "https://github.com/acme/app.git",
+      "https://ghp_secret@github.com/acme/app.git",
     )
     expect(normalizeSessionRepositoryUrl("https://user:pass@github.com/acme/app.git?x=1#y")).toBe(
-      "https://github.com/acme/app.git",
+      "https://user:pass@github.com/acme/app.git?x=1#y",
     )
     expect(normalizeSessionRepositoryUrl("ssh://git:pw@github.com/acme/app.git")).toBe(
-      "ssh://git@github.com/acme/app.git",
+      "ssh://git:pw@github.com/acme/app.git",
     )
     expect(normalizeSessionRepositoryUrl("git@github.com:acme/app.git")).toBe("git@github.com:acme/app.git")
     expect(normalizeSessionRepositoryUrl("  https://github.com/acme/app  ")).toBe("https://github.com/acme/app")
@@ -59,10 +59,10 @@ describe("session repository URLs", () => {
         })
       }
       expect(normalizeSessionRepositoryUrl("https://user:pass@github.com/acme/app.git?x=1#y")).toBe(
-        "https://github.com/acme/app.git",
+        "https://user:pass@github.com/acme/app.git?x=1#y",
       )
       expect(normalizeSessionRepositoryUrl("ssh://git:pw@github.com/acme/app.git")).toBe(
-        "ssh://git@github.com/acme/app.git",
+        "ssh://git:pw@github.com/acme/app.git",
       )
     } finally {
       for (const [part, descriptor] of originals) Object.defineProperty(URL.prototype, part, descriptor)

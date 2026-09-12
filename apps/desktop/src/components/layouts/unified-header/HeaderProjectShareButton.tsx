@@ -374,6 +374,7 @@ export function HeaderProjectShareButton({
       projectId={projectId}
       projectName={projectName || "this project"}
       currentBranch={syncContext?.activeBranch ?? null}
+      sourceWorkspaceId={syncContext?.workspaceId ?? null}
       targetBranch={syncContext?.sharedBranch ?? "main"}
       hasGitRepo={Boolean(syncContext?.gitCwd)}
       uncommittedFileCount={dirtySnapshot?.changedFiles ?? 0}

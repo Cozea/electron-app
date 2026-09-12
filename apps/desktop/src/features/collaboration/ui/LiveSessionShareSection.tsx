@@ -17,10 +17,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/contexts/AuthContext"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
-import { checkoutGitBranchCompat } from "@/features/workbench/branch-control/workbenchBranchCompat"
 import { cleanConvexError } from "@/lib/convexError"
+import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { findBranchSession } from "../collaborationGate"
 
@@ -50,6 +52,7 @@ export function LiveSessionShareSection({
   onStartSession: () => void
 }) {
   const { principalId } = useAuth()
+  const navigate = useViewTransitionNavigate()
   const sync = useOptionalProjectSyncContext()
   const route = useOptionalProjectRouteContext()
   const activeBranch = sync?.activeBranch ?? null
@@ -114,13 +117,29 @@ export function LiveSessionShareSection({
     })
   }
 
-  const switchTo = (branch: string) => {
-    if (!workspaceId) return
-    void run(`switch:${branch}`, async () => {
-      const result = await checkoutGitBranchCompat(workspaceId, branch)
-      if (!result.success) throw new Error(result.error ?? `Git could not check out ${branch}.`)
-      await route?.refreshLaneState?.()
-      return `Switched to ${branch}.`
+  const openSessionWorkbench = (candidate: NonNullable<typeof sessions>[number]) => {
+    void run(`switch:${candidate.branchName}`, async () => {
+      const result = await window.electronAPI.projectd.workbenches.ensureSession({
+        projectId: String(projectId),
+        publicSessionId: candidate.publicSessionId,
+        branchName: candidate.branchName,
+        baseBranch: candidate.branchName,
+        createBranch: false,
+        title: `${route?.projectName ?? "Project"} · ${candidate.branchName}`,
+        sourceRepoUrl: candidate.repositoryUrl ?? null,
+        sourceWorkspaceId: workspaceId,
+        includeDirtyChanges: false,
+        setActive: true,
+      })
+      if (!result.success) throw new Error(result.error)
+      navigate(buildProjectPath(String(projectId), "workbench"), {
+        state: buildProjectRouteNavigationState({
+          projectId: String(projectId),
+          projectName: route?.projectName ?? null,
+          preferredWorkspaceId: result.workspace.workspaceId,
+        }),
+      })
+      return `Opened the Session Workbench for ${candidate.branchName}.`
     })
   }
 
@@ -229,11 +248,11 @@ export function LiveSessionShareSection({
                 size="sm"
                 variant="ghost"
                 className="h-7 px-2 text-[11px]"
-                disabled={busy !== null || !workspaceId}
-                onClick={() => switchTo(candidate.branchName)}
+                disabled={busy !== null}
+                onClick={() => openSessionWorkbench(candidate)}
               >
                 {busy === `switch:${candidate.branchName}` ? <Spinner size="xs" className="mr-1" /> : null}
-                Switch to branch
+                Open workbench
               </Button>
             </div>
           ))}
