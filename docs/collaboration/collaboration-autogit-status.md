@@ -23,7 +23,7 @@ The `Status:` line of each phase below has been corrected. The phase logs are ke
 
 Entry points: renderer `main.tsx`, Electron `main.ts` and `preload.ts`, projectd `main.ts`, and the worker's `index.ts`.
 
-At a glance: complete P00–P01 · partial P02–P05, P10, P12, P14–P19, P23 · library only P06–P09, P11, P13, P20–P22 · tests only P24 · stub P25 · not done P26 · blocked P27.
+At a glance: complete P00–P01 · partial P02–P10, P12, P14–P19, P23 · library only P11, P13, P20–P22 · tests only P24 · stub P25 · not done P26 · blocked P27.
 
 ### Remediation on `fix/collab-audit-remediation`
 
@@ -138,6 +138,134 @@ Still open:
 - Binary edits still stay on each Mac. A checkpoint keeps the binary as Git last had it.
 - A folder that comes back to the branch holding changes Git does not have is refused, as on a first join. The app retries the attach every 15 seconds until the folder is fixed.
 - The Swift helper is still not packaged. That needs a universal build.
+
+### Helper packaged — 2026-09-12
+
+First step of the finishing order agreed after step 4: package the helper, run what is built for real, then P20, then P26 and the remaining gaps.
+
+- **The app ships the macOS helper (P03).** `scripts/prepare-projectd-helper.mjs`, run by `predist` as `prepare:projectd-helper`, builds `cozea-projectd-mac-helper` for arm64 and x86_64 and stages it in `build/projectd-helper/`.
+  - It asks SwiftPM where the build landed, because Xcode releases put multi-architecture builds in different folders, and it fails if either slice is missing.
+  - It skips outside macOS, so the Windows build no longer calls `xcrun`.
+- **Where it lands.** `apps/desktop/electron-builder.config.cjs` copies it to `Contents/Resources/projectd/`, next to `projectd.mjs`, where `ProjectdLauncher` already looked for it. Both per-architecture builds carry the same universal file, so the universal merge keeps it unchanged, and release signing signs it with the rest of the bundle.
+- **What changes.** With the helper present, sessions take FSEvents instead of rescanning the folder every 2 seconds (P06).
+- **Test.** `tests/projectd/projectdHelperPackaging.test.ts` checks that the builder ships the helper at the path the launcher gives the daemon.
+
+Also corrected: the `Status:` lines of P02 and P06–P09, which predated steps 1 and 4.
+
+Verified on 2026-09-12 with an unpacked, unsigned arm64 build from the real builder config, written outside `dist/`:
+- `Contents/Resources/projectd/cozea-projectd-mac-helper` is present, universal (x86_64 and arm64), and identical to the staged file.
+- The bundled helper answered `volume-probe` and reported FSEvents for a new file, both natively and under Rosetta.
+- `planProjectdLaunch` for that app passes the bundled helper's path to the daemon.
+- The bundled daemon ran on the app's Electron binary in Node mode with that environment, reported healthy, and shut down cleanly.
+- `tests/projectd` and `tests/substrate`: 58 files, 421 tests passed and 2 skipped. The tests typecheck, and oxlint is clean on the changed files.
+
+Not verified: a signed, notarized universal build. Release signing should treat the helper like every other binary in the bundle, but no signed build has run since this change.
+
+### Invitee copies and shared env files — 2026-09-12
+
+Second step of the finishing order: a real run. There is no second Apple silicon Mac, so the run uses two copies of Cozea on one Mac: the installed app, and a development build with its own profile and daemon. Preparing it turned up two things worth building first.
+
+- **Tooling for the run.**
+  - `bun run dev:own-daemon` (`scripts/dev-with-own-daemon.mjs`) starts a development build with its own profile, daemon socket and daemon state under `~/Library/Application Support/Cozea-<name>`.
+  - Packaged and development builds otherwise share one Electron profile, named after `package.json`, and a second copy quits at once because the first holds the single-instance lock. `apps/desktop/electron/profileOverride.ts`, imported first by `main.ts`, applies `COZEA_USER_DATA_DIR`.
+  - `projectctl sessions` lists a daemon's sessions with their last checkpoint, and `sessions save <id>` saves one now.
+- **Invitees get a copy automatically (P15, part of P13).** An invitee no longer has to clone the repository by hand.
+  - A session records its repository: the folder's Git remote with credentials stripped (`shared/collaboration/repositoryUrl.ts`). Only https, ssh, git and scp-style remotes are kept. Local paths and anything that could read as a `git` option are dropped, because invitees run `git clone` on it.
+  - The Start dialog shows what invitees will clone. `recordRepository` fills the field in for sessions started before it existed, the first time an editing member attaches.
+  - Accepting in the Inbox runs `ensureInviteeCopy` (`apps/desktop/src/features/inbox/sessionCopy.ts`). If this Mac has no folder for the project, it clones the session branch into the projects folder and makes that the project's active workspace. The Inbox shows progress, and says why a clone failed when there is no access or the branch is missing.
+  - The copy is still the project's own folder on the session branch, not the dedicated Session Workbench P13 describes.
+- **Env files are shared live (changes C40).** A project that keeps its env files out of Git still needs them on every member's Mac, and a live sync was chosen over a copy on join.
+  - What counts: `.env`, `.env.*` and `.dev.vars` in any folder, except templates such as `.env.example`, which belong in Git (`apps/projectd/src/filesystem/environmentFiles.ts`).
+  - A session shares them when its `shareEnvironmentFiles` setting is on. The Start dialog turns it on by default, and the invitation says so. `ScopePolicy` then admits them, and they travel through the room end-to-end encrypted like any other text file.
+  - They never reach Git. `CheckpointBuilder` never adds a new env file, or any other new path Git ignores, to a checkpoint. If `git check-ignore` fails, the checkpoint fails instead of guessing.
+  - A joiner whose own env file differs is still let in. The session's version wins, and theirs is kept as `<file>.conflict.<time>`, which never syncs.
+- **Found in the first real run.** The installed app attached a session that step 3 had started on a real project. AutoGit's first checkpoint committed and pushed 98 files that had never been committed to the session branch. A checkpoint saves what the session holds, so this is the designed behavior, but nothing warned that attaching would publish uncommitted work. Nothing secret went out, and the session was ended.
+- **Found starting the first session after the deploy.** `collaborationSessions:create` failed on production for any folder with a remote. `normalizeSessionRepositoryUrl` stripped credentials by setting `url.username`, and the Convex runtime does not implement URL's setters. Node and Chromium do, so no test caught it. It now rebuilds the URL from its parts, and `tests/collaboration/sessionRepositoryUrl.test.ts` runs it with the setters disabled.
+
+Verified on 2026-09-12, after this work:
+- Full vitest: 408 files passed and 1 skipped; 3018 tests passed and 5 skipped.
+- New tests:
+  - `tests/collaboration/sessionRepositoryUrl.test.ts`, `tests/collaboration/inviteeCopy.test.ts` and `tests/projectd/environmentFiles.test.ts`.
+  - `tests/collaboration/collaborationSessionsAccess.test.ts` covers the repository and env settings and `recordRepository`.
+  - `tests/projectd/autoGitCheckpoint.test.ts` checks that a checkpoint leaves out env files and anything else Git ignores.
+  - `tests/projectd/autoGitSession.test.ts` runs two Macs against a bare remote. A gitignored `.env` reaches the joiner, an edit travels back, and the pushed checkpoint holds only `.gitignore` and `src/app.ts`.
+- Typecheck: app, electron, tests, projectd and Convex.
+- oxlint.
+- An unpacked, unsigned arm64 build from the real builder config, written outside `dist/`, carries the universal helper and the new renderer and daemon code.
+
+Deployed on 2026-09-12 from the uncommitted working tree:
+- Convex prod: 194 → 195 functions. `collaborationSessions:recordRepository` is the only addition, and `create` takes the repository and env settings. No function was removed and no index was deleted. The worker did not change.
+- A second deploy the same day carried the URL fix above. The function set did not change.
+
+Run on 2026-09-12, with two copies on one Mac: the installed rebuild on `~/dev/cozea-collab-test-a`, and a development build with its own profile and daemon.
+- The installed copy started a session on `live-test` from a folder whose only change was an untracked `.env`, and invited the dev copy by device ID. The invitation reached the dev copy's Inbox and said the session shares env files.
+- Accepting joined the session, but the automatic copy failed (below). The dev copy was linked to an existing clone, `~/dev/cozea-collab-test-b`, instead.
+- The `.env` reached the second folder byte for byte, and an edit to it there came back to the first. Neither was committed.
+- A change to `notes.md` reached the second folder, and AutoGit pushed checkpoint `3ebc57f` to `live-test` about 10 seconds later. It holds `README.md`, `notes.md` and `src/greeting.ts`, and no `.env`, although the repository has no `.gitignore`. Both members' branches moved to it, and both session bars cleared their unsaved changes.
+
+Found in the run:
+- **Invitee copies can't clone a private repository.** Electron's `runGitCommand` (`apps/desktop/electron/gitRuntime.ts`) gives Git its own `HOME` and config directories and sets `GIT_CONFIG_NOSYSTEM`, so the person's credential helper (here `gh auth git-credential`) is never used. `ensureInviteeCopy` then says "This Mac's Git account can't read" the repository, which is wrong: the Mac's own Git can. projectd runs Git in the person's own environment, which is why AutoGit's push worked. Fixed the same day: see "Git uses the person's own setup" below.
+- The Start dialog's "Your uncommitted changes to 1 file are included" counted the `.env`, which never goes to Git.
+- Until a folder is linked, the invitee's project page names the project by its ID.
+
+Still open:
+- On 2026-09-12 the user asked that keeping secrets out of Git warn rather than filter: rely on `.gitignore` instead of leaving env files out of commits by name, and warn when a remote carries credentials instead of stripping them.
+- Viewers receive env files too, and removing a member does not take back what they already have.
+- A checkpoint that would change only env files saves nothing to Git, so no checkpoint is recorded. Until the next real checkpoint, other members' session bars keep showing unsaved changes.
+- Nothing warns before a first checkpoint publishes a folder's uncommitted work.
+
+### Git uses the person's own setup — 2026-09-12
+
+The two-copy run showed that an invitee's automatic copy couldn't clone a private repository. The user asked for the app's Git, GitHub integration included, to use the Git already set up on the Mac.
+
+- **Git runs as it does in the person's terminal.** `apps/desktop/electron/gitRuntime.ts` no longer gives Git its own `HOME`, XDG folders and config, and no longer sets `GIT_CONFIG_NOSYSTEM` or `GIT_ATTR_NOSYSTEM`. Credential helpers, SSH keys, identity and signing all apply, as they already did in projectd's `GitProcess`. `GIT_TERMINAL_PROMPT=0` stays, so a command that needs credentials Git doesn't have fails instead of waiting for input.
+- **The integration token no longer reaches Git.** `buildGitAuthorizationHeader` and `gitSyncService`'s `http.extraheader` are gone. So are the auth fields on the eight workspace-sync IPC calls (preload, handlers and `shared/electronApiTypes.ts`), in `gitRemoteSync`, and in `collabPush`; nothing in the renderer sent them. `resolveRepositoryAccessToken` stays for the GitHub and GitLab API calls.
+- **Repositories keep their own identity.** `gitSyncService` used to write `Cozea Sync <sync@cozea.local>` into a repository's config on every commit path, existing repositories included. It now reads `user.name` and `user.email`. Only when Git has none does it pass Cozea's identity to its own commands, through environment variables.
+- **Cozea's scratch merge repository** sets its own identity and turns off signing and hooks. A person's `commit.gpgsign` or global hooks can't make the merge preview prompt or fail.
+- **Invitee copy message.** A clone failure now reads "Git on this Mac can't read …", which is now accurate.
+
+Verified on 2026-09-12:
+- A clone of the private test repository through `runGitCommand` succeeded, using the Mac's `gh` credential helper.
+- New tests:
+  - `tests/git/gitRuntimeUsesPersonsGit.test.ts` checks that the person's config and credential helper apply. It also checks that the scratch repository still commits under a config that signs with a failing program and has a failing global pre-commit hook. That config makes a plain `git commit` fail.
+  - `tests/git/gitSyncCommitIdentity.test.ts` checks that commits use the person's identity, fall back through the environment, and never write `user.*` config.
+- Full vitest: 410 files passed and 1 skipped; 3023 tests passed and 5 skipped.
+- Typecheck: app, electron and tests.
+- oxlint.
+
+Verified later the same day in the app: with the dev copy restarted on this runtime, a new invitation accepted in its Inbox cloned `live-test` of the private repository into `~/Developer/Cozea/cozea-collab-test-a`, through the Mac's `gh` credential helper. The installed copy runs the previous runtime until it is rebuilt.
+
+Found while testing: `parseMergeTreeConflicts` counts Git's informational "Auto-merging <file>" line as a conflict, so `mergeTreeWithGit` reports clean two-sided merges as not clean. This predates the change.
+
+### A member's second folder — 2026-09-12
+
+After the Git change, the dev copy was restarted and invited again, to see the automatic copy work in the app. It did (see above), and it showed three more problems.
+
+- **The project page didn't see the new copy.** After the clone, the project said no folder was linked until the person left the page and came back. The renderer caches each project's folder lookup for five minutes (`workspaceResources.ts`), and the cached answer predated the clone. When the Inbox clones a copy, `InboxPage` now clears that project's cached lookup with `invalidateProjectWorkspaceResolution`.
+- **Attaching the new copy deleted the leader's `.env`.**
+  - The dev copy had synced this session before, in `~/dev/cozea-collab-test-b`. projectd keeps a per-session record of what it last wrote to disk, the materialization index, and that record did not say which folder it described.
+  - When the session attached on the fresh clone, the first sync read the clone against `test-b`'s record. The clone had everything Git has, but not the untracked `.env`, so the `.env` looked deleted while the daemon was down. The deletion went to the session as sequence 4, and the leader's daemon removed its `.env`. Git had no copy.
+  - The value survived in `test-b`. Copying it back into the leader's folder sent it through the session again as sequence 5, and it reached the clone byte for byte.
+  - Fix: projectd records which folder each session's index describes, in a new `session_folders` table. At the start of the first sync, `MaterializationIndex.bindFolder` compares it with the folder being attached. If the folder differs, or none is recorded, projectd forgets the index. The folder then joins as a new member does: files that match are adopted, files it lacks are written, and nothing is taken as deleted. The same folder keeps its index, so edits and deletions made there while the daemon was down still go out.
+- **The session bar froze after a daemon restart.** The dev daemon was restarted to load the fix. Afterwards the dev copy's session bar stayed on "Syncing…" although the session was live. `ProjectdClient` reconnects when it next sends a request, but it never sent its subscriptions to the new daemon, and the main process's event forwarding for each session assumed they were still there. The client now sends every subscription again after it connects. The daemon holds subscriptions per connection, so this also covers a plain reconnect.
+
+Verified on 2026-09-12:
+- New tests:
+  - `tests/projectd/collaborationSessionHost.test.ts`: a member that synced one folder attaches a fresh clone without the `.env`. The clone gets it, the creator keeps it, and nothing is sent. With `bindFolder` stubbed back to the old behavior, this test fails as the run did. A second test checks that a file deleted in the same folder while the daemon was down still reaches the other member.
+  - `tests/projectd/projectdLifecycle.test.ts`: a client subscribed before a daemon restart receives the new daemon's events. With the resubscription removed, it receives none.
+- Full vitest: 410 files passed and 1 skipped; 3026 tests passed and 5 skipped.
+- Typecheck: app, electron, tests and projectd.
+- oxlint.
+- In the run: the dev daemon was restarted on the fix. It logged that the clone "joins session … afresh: it last synced another folder", recorded the clone in `session_folders`, and came back live with 4 files synced. The session stayed at sequence 5, so nothing was sent, and both folders kept the `.env`.
+
+Not verified:
+- The session bar after a daemon restart, in the app. The running dev copy loaded the old client when it started, and shows "Syncing…" until it restarts.
+- The installed copy has neither fix until it is rebuilt.
+
+Still open:
+- The first sync after this update treats every attached folder as new, once. It refuses a folder that was edited while the daemon was down, if the edited files differ from what Git holds. That folder must commit or stash its changes, where before they would have been merged.
+
+Decided: a member who deletes an env file removes it from every member's Mac, although Git has no copy to bring back. The user confirmed this is intended: live sync carries deletions.
 
 ---
 
@@ -306,7 +434,7 @@ Exit-gate evidence:
 
 ## P02 — Standalone projectd and local client protocol
 
-Status: partial — projectd serves the workspace and Workbench registries, read-only Git calls, and since 2026-09-11 live collaboration sessions (`sessions.*` methods backed by `CollaborationSessionHost`). Since the step 3 work the app starts it (P03). No AutoGit module runs in it.
+Status: partial — projectd serves the workspace and Workbench registries, read-only Git calls, and since 2026-09-11 live collaboration sessions (`sessions.*` methods backed by `CollaborationSessionHost`). Since the step 3 work the app starts it (P03), and since step 4 each session host runs the AutoGit agent (P16–P18).
 
 Baseline:
 - base commit: `2fd158ef` (P01 complete commit)
@@ -398,7 +526,7 @@ Exit-gate evidence:
 
 ## P03 — macOS helper, LaunchAgent, Keychain identity
 
-Status: partial — the helper, LaunchAgent and Keychain identity work. Since 2026-09-11 the identity JSON and private key reach the helper on stdin, not argv, and the app registers the daemon as a LaunchAgent itself (`apps/desktop/electron/projectd/ProjectdLauncher.ts`). The helper is not packaged with the app yet, and `BackgroundDeviceIdentity` calls `/auth/device/token`, which the worker does not serve.
+Status: partial — the helper, LaunchAgent and Keychain identity work. Since 2026-09-11 the identity JSON and private key reach the helper on stdin, not argv, and the app registers the daemon as a LaunchAgent itself (`apps/desktop/electron/projectd/ProjectdLauncher.ts`). Since 2026-09-12 the app ships the helper as a universal binary next to `projectd.mjs` (`scripts/prepare-projectd-helper.mjs`), and the launcher passes its path to the daemon. `BackgroundDeviceIdentity` has no caller, because the daemon gets its session tickets from the app; it also calls `/auth/device/token`, which the worker does not serve.
 
 Baseline:
 - base commit: `fd93b855` (P02 complete commit)
@@ -656,7 +784,7 @@ Exit-gate evidence:
 
 ## P06 — Native FSEvents + scanner/materialization index
 
-Status: library only — the FSEvents client and scanner are unit-tested, but no entry point imports them.
+Status: partial — since 2026-09-11 every daemon-hosted session watches its folder through `WorkspaceFilesystemWatcher`, which runs the scope policy, stable reads, the materialization index and the scanner. It takes FSEvents from the helper, which the packaged app ships since 2026-09-12 (P03); without the helper the host rescans the folder every 2 seconds. The session host skips symlinks, so they are not shared.
 
 Baseline:
 - base commit: `e9194488` (P05 complete commit)
@@ -748,7 +876,7 @@ Exit-gate evidence:
 
 ## P07 — CRDT tree + per-text-file docs in projectd
 
-Status: library only — no entry point imports the CRDT replica. Fixed 2026-09-11: project paths are validated (no `..`, `.git`, absolute or NUL paths), and delete/modify conflicts compare against the text the deleter had seen.
+Status: partial — since 2026-09-11 each session host keeps the session in the CRDT tree and per-file text docs. The host never restores a saved replica, so the replica is rebuilt from the room each time the daemon starts. `ConflictEngine` lowercases paths in its collision check, so on a case-sensitive volume two files whose names differ only in case are reported as one path. Fixed 2026-09-11: project paths are validated (no `..`, `.git`, absolute or NUL paths), and delete/modify conflicts compare against the text the deleter had seen.
 
 Baseline:
 - base commit: `53b0932c` (P06 complete commit)
@@ -834,7 +962,7 @@ Exit-gate evidence:
 
 ## P08 — Snapshot-anchored filesystem -> CRDT adapter
 
-Status: library only — no entry point imports it. Fixed 2026-09-11: the snapshot mismatch warning no longer logs file contents.
+Status: partial — since 2026-09-11 the session host brings folder edits into the session through it. A local rename reaches the session as a delete and a create. Fixed 2026-09-11: the snapshot mismatch warning no longer logs file contents.
 
 Baseline:
 - base commit: `3f662864` (P07 complete commit)
@@ -914,7 +1042,7 @@ Exit-gate evidence:
 
 ## P09 — CRDT -> filesystem materializer
 
-Status: library only — no entry point imports it. Fixed 2026-09-11: writes stay inside the workspace (symlinked parents are refused), the baseline is captured atomically, and files changed on disk are kept on delete and rename.
+Status: partial — since 2026-09-11 the session host writes peer edits to the folder through it. Conflict backups (`<file>.conflict.<time>`) are written next to the file, inside the project folder. Fixed 2026-09-11: writes stay inside the workspace (symlinked parents are refused), the baseline is captured atomically, and files changed on disk are kept on delete and rename.
 
 Baseline:
 - base commit: `eef1a57b` (P08 complete commit)
