@@ -301,6 +301,12 @@ Decided: a member who deletes an env file removes it from every member's Mac, al
 - Ran `bunx convex deploy` against production (`knowing-finch-546`). Result: TypeScript + schema validation pass, no indexes deleted, functions deployed. Local tree exports 188 function definitions outside `_generated` (dashboard counted 195 at the last deploy; counting methods differ, no function was added or removed since).
 - Worker `cozea-collab` is still on the step-4 build — P20–P22 room changes (`checkpoint_clean`, coded leader notices) are NOT deployed. That deploy is still pending and needs Docker unless the sandbox is unchanged (`--containers-rollout=none`).
 
+### Worker redeploy — 2026-09-12 (from `10f9c7b1` tree)
+
+- Ran `bunx wrangler deploy --containers-rollout=none` from `cloudflare/worker` (Docker unavailable on this host, so no sandbox rebuild; the stack changes only worker TS, no new DO class, and the `v4` migration already applied — deploy needed no migration).
+- Result: version `37102137-9d64-49f0-9d44-37667e011819` on `cozea-collab`. Checked afterwards: `/health` 200, `/collab/capabilities` 200, `POST /collab/sessions/connect` 403 without device auth — same as prior deploys.
+- Both backends are now current with the branch: Convex (URL fix) + worker (room lease, `checkpoint_clean`, coded notices).
+
 ---
 
 ## P00 — Rebaseline, preserve product truth, and create the ledger
