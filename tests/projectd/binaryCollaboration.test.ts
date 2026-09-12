@@ -73,7 +73,7 @@ describe("P11 binary live collaboration", () => {
     expect(retrieved?.toString("utf8")).toBe("image PNG binary data simulation 12345")
   })
 
-  it("encrypts binary chunks outside the room and reconstructs them after a client restart", async () => {
+  it("encrypts binary objects outside the room and reconstructs them after a client restart", async () => {
     const roomKey = randomBytes(32)
     const stored = new Map<string, Buffer>()
     const fetchFn: typeof fetch = async (input, init) => {
@@ -96,12 +96,14 @@ describe("P11 binary live collaboration", () => {
       fetchFn,
     }
     const writer = new SessionBinaryObjectStore(options)
-    const bytes = randomBytes(CHUNK_SIZE_BYTES + 8193)
+    // Chunk-size behavior is covered independently above and in binaryObjectStreaming;
+    // this regression focuses on encryption, restart reconstruction and integrity.
+    const bytes = randomBytes(128 * 1024 + 17)
     const manifest = await writer.upload(bytes)
 
-    expect(manifest.chunks).toHaveLength(2)
-    expect(stored.size).toBe(2)
-    expect([...stored.values()][0]?.equals(bytes.subarray(0, CHUNK_SIZE_BYTES))).toBe(false)
+    expect(manifest.chunks).toHaveLength(1)
+    expect(stored.size).toBe(1)
+    expect([...stored.values()][0]?.equals(bytes)).toBe(false)
 
     // A fresh client with no local cache can fetch, authenticate and verify the same objects.
     const reader = new SessionBinaryObjectStore(options)
