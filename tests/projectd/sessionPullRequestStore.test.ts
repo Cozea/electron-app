@@ -3,7 +3,10 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { SessionPullRequestStore } from "../../apps/projectd/src/autogit/SessionPullRequestStore"
+import {
+  SessionPullRequestStore,
+  type SessionPullRequestRecord,
+} from "../../apps/projectd/src/autogit/SessionPullRequestStore"
 import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 
 const sessionId = "czs_0123456789abcdef"
@@ -11,7 +14,7 @@ const repository = "team/app"
 const branch = "feat/live"
 const targetBranch = "main"
 
-function record(overrides: Partial<Parameters<SessionPullRequestStore["save"]>[0]> = {}) {
+function record(overrides: Partial<SessionPullRequestRecord> = {}): SessionPullRequestRecord {
   return {
     publicSessionId: sessionId,
     repository,
@@ -19,7 +22,7 @@ function record(overrides: Partial<Parameters<SessionPullRequestStore["save"]>[0
     targetBranch,
     number: 12,
     url: "https://github.com/team/app/pull/12",
-    state: "open" as const,
+    state: "open",
     headOid: "a".repeat(40),
     targetOid: "b".repeat(40),
     checkedAt: 1_760_000_000_000,
