@@ -4,7 +4,7 @@ import { GitHubSessionPullRequest } from "./autogit/GitHubSessionPullRequest"
 import { SessionPullRequestStore } from "./autogit/SessionPullRequestStore"
 import { getBackgroundRepositoryCapabilities, getBackgroundRepositoryToken } from "./collaboration/BackgroundRepositoryAuth"
 import { BackgroundSessionStore, type BackgroundSessionDescriptor } from "./collaboration/BackgroundSessionStore"
-import { BackgroundDeviceIdentityManager, type BackgroundDeviceIdentity } from "./identity/BackgroundDeviceIdentity"
+import { BackgroundDeviceIdentityManager, type StoredDeviceIdentity } from "./identity/BackgroundDeviceIdentity"
 import { ProjectdServer } from "./server/ProjectdServer"
 import { ProjectdDatabase } from "./storage/Database"
 
@@ -16,7 +16,7 @@ async function main(): Promise<void> {
   const pullRequestStore = new SessionPullRequestStore(database)
 
   const activeSession = async (projectId: string, publicSessionId: string): Promise<{
-    identity: BackgroundDeviceIdentity
+    identity: StoredDeviceIdentity
     descriptor: BackgroundSessionDescriptor
   }> => {
     const identity = await backgroundIdentity.loadExistingIdentity()
@@ -28,7 +28,7 @@ async function main(): Promise<void> {
 
   const authorizationUnchanged = async (
     publicSessionId: string,
-    identity: BackgroundDeviceIdentity,
+    identity: StoredDeviceIdentity,
   ): Promise<boolean> => {
     const after = await backgroundIdentity.loadExistingIdentity()
     return after.identityKey === identity.identityKey &&
