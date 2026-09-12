@@ -60,6 +60,11 @@ export interface CheckpointBuildParams {
   pathPrefix?: string
   /** The largest text file the session syncs. */
   maxTextFileBytes?: number
+  /**
+   * Builds on this tree instead of the parent's: a rebase that squashes the session
+   * onto its target builds on the merged tree, with the target as parent.
+   */
+  baseTreeOid?: string | null
 }
 
 /** A checkpoint would add env files Git doesn't ignore. Paths are relative to the session's folder. */
@@ -148,9 +153,10 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
       // The parent tree, staged in the temporary index.
       const parentEntries = new Map<string, IndexEntry>()
       let parentTreeOid: string | null = null
-      if (parentOid) {
-        parentTreeOid = (await git(["rev-parse", "--verify", `${parentOid}^{tree}`])).stdout.trim()
-        await git(["read-tree", parentOid], { env: indexEnv })
+      const baseTree = params.baseTreeOid ?? parentOid
+      if (baseTree) {
+        parentTreeOid = (await git(["rev-parse", "--verify", `${baseTree}^{tree}`])).stdout.trim()
+        await git(["read-tree", parentTreeOid], { env: indexEnv })
         const listed = await git(["ls-files", "--stage", "-z"], { env: indexEnv })
         for (const record of listed.stdout.split("\0")) {
           const tab = record.indexOf("\t")

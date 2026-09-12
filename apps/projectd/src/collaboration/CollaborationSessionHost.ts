@@ -24,6 +24,7 @@ import type {
   ProjectdMergePreview,
   ProjectdMergeResult,
   ProjectdMergeStrategy,
+  ProjectdRebaseResult,
   ProjectdSessionState,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
@@ -258,6 +259,7 @@ export class CollaborationSessionHost {
       onStateChange: (state) => this.handleConnectionState(state),
       onAutoGitState: (state) => this.autoGit?.handleRoomState(state),
       onCheckpointRequested: () => this.autoGit?.handleCheckpointRequested(),
+      onRebaseRequested: (allowConflicts) => this.autoGit?.handleRebaseRequested(allowConflicts),
     })
     this.index = new MaterializationIndex(options.db)
     this.baselines = new BaselineStore({ db: options.db, sessionId: this.publicSessionId })
@@ -293,6 +295,7 @@ export class CollaborationSessionHost {
             runExclusive: (work) => this.exclusive(work),
             flushLocalChanges: () => this.flushAndAwaitAcks(),
             applySessionChanges: (changes) => this.applySessionChanges(changes),
+            targetBranch: options.targetBranch?.trim() || null,
             onChange: () => this.emitStatusSoon(),
             timing: options.autoGitTiming,
           })
@@ -457,6 +460,13 @@ export class CollaborationSessionHost {
   merge(strategy: ProjectdMergeStrategy, reviewedCheckpointOid: string): Promise<ProjectdMergeResult> {
     if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Viewers can't merge the session.")
     return this.requireMerger().merge({ ...this.mergeInput(), strategy, reviewedCheckpointOid })
+  }
+
+  /** Rebases the session onto its target on the Mac that saves it (P21); only ever when someone asked. */
+  rebase(allowConflicts: boolean): Promise<ProjectdRebaseResult> {
+    if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Viewers can't rebase the session.")
+    if (!this.autoGit) throw new SessionHostError("AUTOGIT_OFF", "This session isn't saved to a Git branch.")
+    return this.autoGit.requestRebase(allowConflicts)
   }
 
   private mergeInput(): { checkpointOid: string | null; unsavedChanges: number } {

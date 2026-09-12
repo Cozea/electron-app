@@ -159,6 +159,36 @@ describe("P23 session bar", () => {
     expect(markup).toContain(">Dismiss<")
   })
 
+  it("offers explicit rebase and merge controls only to active members who can edit a saved session", () => {
+    const props = {
+      branchName: "feature/live",
+      targetBranch: "main",
+      lifecycle: "ACTIVE",
+      sync: LIVE,
+      autoGit: {
+        tone: "live" as const,
+        label: "Saved to Git",
+        detail: null,
+        title: null,
+        canSave: true,
+        fix: null,
+      },
+      members: MEMBERS,
+      membership: "active" as const,
+      canManage: false,
+      onRebase: noop,
+      onMerge: noop,
+      ...HANDLERS,
+    }
+    const editor = renderToStaticMarkup(<SessionWorkbenchControls {...props} canEdit />)
+    expect(editor).toContain("Rebase…")
+    expect(editor).toContain("Merge…")
+
+    const viewer = renderToStaticMarkup(<SessionWorkbenchControls {...props} canEdit={false} />)
+    expect(viewer).not.toContain("Rebase…")
+    expect(viewer).not.toContain("Merge…")
+  })
+
   it("points a member at their session on another branch", () => {
     const markup = renderToStaticMarkup(<SessionBranchNotice branchName="feature/live" onSwitch={noop} />)
     expect(markup).toContain("feature/live")

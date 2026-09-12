@@ -83,11 +83,17 @@ export interface StoredCheckpoint {
   publishedByPrincipalId: string
   /** The branch still holds the session at this later sequence: a barrier found nothing new for Git. */
   savedThroughSeq?: number
+  /**
+   * An explicit rebase rewrote the branch, replacing this commit. Later checkpoints
+   * carry it until the next rebase, so a member whose Git still has the old history
+   * can follow the new one.
+   */
+  rebasedFrom?: string
 }
 
 type CheckpointInput = Pick<
   StoredCheckpoint,
-  'commitOid' | 'parentOid' | 'treeOid' | 'sessionSeq' | 'barrierId' | 'logicalTreeHash'
+  'commitOid' | 'parentOid' | 'treeOid' | 'sessionSeq' | 'barrierId' | 'logicalTreeHash' | 'rebasedFrom'
 >
 
 const NO_LEASE: StoredLease = { generation: 0, leaderClientId: null, leaderPrincipalId: null, expiresAt: 0, renewedAt: 0 }
@@ -114,6 +120,7 @@ type ClientMessage =
   | { type: 'checkpoint_publish'; requestId: unknown; generation: unknown; checkpoint: unknown }
   | { type: 'checkpoint_clean'; requestId: unknown; generation: unknown; barrierId: unknown }
   | { type: 'checkpoint_request'; requestId: unknown }
+  | { type: 'rebase_request'; requestId: unknown; allowConflicts: unknown }
 
 function batchKey(sessionSeq: number): string {
   return `${BATCH_KEY_PREFIX}${String(sessionSeq).padStart(16, '0')}`
@@ -155,7 +162,17 @@ function parseCheckpoint(value: unknown): CheckpointInput | null {
   if (typeof sessionSeq !== 'number' || !Number.isSafeInteger(sessionSeq) || sessionSeq < 0) return null
   if (typeof barrierId !== 'string' || !BARRIER_ID_PATTERN.test(barrierId)) return null
   if (typeof logicalTreeHash !== 'string' || !TREE_HASH_PATTERN.test(logicalTreeHash)) return null
-  return { commitOid, parentOid, treeOid, sessionSeq, barrierId, logicalTreeHash }
+  const rebasedFrom = input.rebasedFrom ?? null
+  if (rebasedFrom !== null && (typeof rebasedFrom !== 'string' || !OID_PATTERN.test(rebasedFrom))) return null
+  return {
+    commitOid,
+    parentOid,
+    treeOid,
+    sessionSeq,
+    barrierId,
+    logicalTreeHash,
+    ...(rebasedFrom ? { rebasedFrom } : {}),
+  }
 }
 
 export class CollaborationSessionRoom implements DurableObject {
@@ -265,6 +282,9 @@ export class CollaborationSessionRoom implements DurableObject {
         return
       case 'checkpoint_request':
         await this.handleCheckpointRequest(socket, attachment, readRequestId(parsed.requestId))
+        return
+      case 'rebase_request':
+        await this.handleRebaseRequest(socket, attachment, readRequestId(parsed.requestId), parsed.allowConflicts)
         return
       default:
         this.sendError(socket, 'BAD_REQUEST', 'Unknown message type')
@@ -617,8 +637,11 @@ export class CollaborationSessionRoom implements DurableObject {
       this.sendError(socket, 'STALE_CHECKPOINT', `The room already has a checkpoint at ${previous.sessionSeq}`, requestId)
       return
     }
+    // A rebase's mark stays on the checkpoints after it, until the next rebase.
+    const rebasedFrom = input.rebasedFrom ?? previous?.rebasedFrom
     const checkpoint: StoredCheckpoint = {
       ...input,
+      ...(rebasedFrom ? { rebasedFrom } : {}),
       leaseGeneration: lease.generation,
       publishedAt: now,
       publishedByPrincipalId: attachment.principalId ?? 'unknown',
@@ -689,6 +712,37 @@ export class CollaborationSessionRoom implements DurableObject {
       }
     }
     this.send(socket, { type: 'checkpoint_request_ack', requestId, routed })
+  }
+
+  /**
+   * A member's explicit "rebase from the target" (Section 21.1): the room passes it to
+   * the leader, the one device that pushes the session branch.
+   */
+  private async handleRebaseRequest(
+    socket: WebSocket,
+    attachment: SocketAttachment,
+    requestId: string | undefined,
+    allowConflicts: unknown,
+  ): Promise<void> {
+    if (!attachment.canWrite) {
+      this.sendError(socket, 'FORBIDDEN', 'Viewers cannot rebase the session', requestId)
+      return
+    }
+    const lease = await this.readLease()
+    let routed = false
+    if (lease.leaderClientId !== null && lease.expiresAt > Date.now()) {
+      for (const candidate of this.state.getWebSockets()) {
+        const target = candidate.deserializeAttachment() as SocketAttachment | null
+        if (!target?.authenticated || target.clientId !== lease.leaderClientId) continue
+        this.send(candidate, {
+          type: 'rebase_requested',
+          requestedByPrincipalId: attachment.principalId ?? null,
+          allowConflicts: allowConflicts === true,
+        })
+        routed = true
+      }
+    }
+    this.send(socket, { type: 'rebase_request_ack', requestId, routed })
   }
 
   private async autoGitState() {

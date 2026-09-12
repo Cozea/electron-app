@@ -8,6 +8,7 @@ import type {
   ProjectdTargetStatus,
   ProjectdMergePreview,
   ProjectdMergeResult,
+  ProjectdRebaseResult,
 } from '@cozea/projectd-protocol'
 import type {
   ScheduledTaskDraft,
@@ -1559,6 +1560,7 @@ export type {
   ProjectdCheckpointResult,
   ProjectdMergePreview,
   ProjectdMergeResult,
+  ProjectdRebaseResult,
   ProjectdSessionAttachParams,
   ProjectdSessionStatus,
   ProjectdSessionTicket,
@@ -1663,6 +1665,11 @@ export interface ElectronAPI {
       dismissTarget: (
         publicSessionId: string,
       ) => Promise<{ success: true; target: ProjectdTargetStatus | null } | ProjectdCallFailure>
+      /** Rebases the session onto its target on the Mac that saves it, or asks that Mac to (P21). */
+      rebase: (
+        publicSessionId: string,
+        allowConflicts: boolean,
+      ) => Promise<{ success: true; result: ProjectdRebaseResult } | ProjectdCallFailure>
       /** Previews merging the session's last save into its target branch (P22). */
       previewMerge: (
         publicSessionId: string,

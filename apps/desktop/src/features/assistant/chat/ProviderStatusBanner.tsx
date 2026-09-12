@@ -28,7 +28,9 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const provider = (status.provider ?? status.driver) as keyof typeof PROVIDER_DISPLAY_NAMES;
   const providerLabel = PROVIDER_DISPLAY_NAMES[provider] ?? status.displayName ?? status.driver;
   const defaultMessage = updateAvailable
-    ? `${providerLabel} ${status.versionAdvisory?.currentVersion ?? status.version ?? ""} is behind ${status.versionAdvisory?.latestVersion ?? "the latest release"}. Update it to load the newest models.`
+    ? status.versionAdvisory?.latestVersion
+      ? `${status.versionAdvisory.latestVersion} available.`
+      : "Latest release available."
     : status.status === "error"
       ? `${providerLabel} provider is unavailable.`
       : `${providerLabel} provider has limited availability.`;

@@ -803,6 +803,11 @@ export class ProjectdServer {
       case "sessions.dismissTarget":
         this.reply(state, req.id, () => this.requireSessionHost(req.params).dismissTargetRecommendation())
         break
+      case "sessions.rebase":
+        this.reply(state, req.id, () =>
+          this.requireSessionHost(req.params).rebase((req.params as { allowConflicts?: unknown })?.allowConflicts === true),
+        )
+        break
       case "sessions.previewMerge":
         this.reply(state, req.id, () => this.requireSessionHost(req.params).previewMerge())
         break

@@ -19,6 +19,7 @@ import {
   type ProjectdMergePreview,
   type ProjectdMergeResult,
   type ProjectdMergeStrategy,
+  type ProjectdRebaseResult,
   type ProjectdShutdownResult,
 } from "./index"
 
@@ -382,6 +383,11 @@ export class ProjectdClient {
   /** Hides the rebase recommendation for a while. */
   async dismissSessionTarget(publicSessionId: string): Promise<ProjectdTargetStatus | null> {
     return this.request<ProjectdTargetStatus | null>("sessions.dismissTarget", { publicSessionId })
+  }
+
+  /** Rebases the session onto its target on the Mac that saves it, or asks that Mac to. */
+  async rebaseSession(publicSessionId: string, allowConflicts: boolean): Promise<ProjectdRebaseResult> {
+    return this.request<ProjectdRebaseResult>("sessions.rebase", { publicSessionId, allowConflicts }, 300_000)
   }
 
   /** Previews merging the session's last save into its target branch. */

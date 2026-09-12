@@ -245,6 +245,19 @@ export interface ProjectdTargetStatus {
   error: string | null
 }
 
+/** How an explicit rebase of the session onto its target went (Section 21). */
+export interface ProjectdRebaseResult {
+  /**
+   * rebased: pushed over the last save; held: adopted, waiting for conflict markers to be
+   * resolved; conflicts: stopped with nothing changed; current: nothing to rebase;
+   * requested: the Mac that saves was asked; no_leader: no Mac can push.
+   */
+  outcome: "rebased" | "held" | "conflicts" | "current" | "requested" | "no_leader"
+  message: string
+  commitOid?: string | null
+  conflictingPaths?: string[]
+}
+
 export type ProjectdMergeStrategy = "merge" | "squash"
 
 /** Merging the session's last save into its target, before anything is pushed (Section 22.1). */

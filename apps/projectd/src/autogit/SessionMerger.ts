@@ -17,6 +17,7 @@ import type { ProjectdMergePreview, ProjectdMergeResult, ProjectdMergeStrategy }
 
 import type { GitExecuteOptions } from "../git/GitProcess"
 import type { GitService } from "../git/GitService"
+import { fallbackIdentityEnv } from "../git/identity"
 
 const REMOTE_TIMEOUT_MS = 60_000
 // Cozea's identity for a merge commit, only when the person's Git has none.
@@ -196,7 +197,7 @@ export class SessionMerger {
     const commit = await this.git(
       repo.root,
       ["commit-tree", tree, ...parents.flatMap((parent) => ["-p", parent]), "-m", message],
-      { env: await this.identityEnv(repo.root) },
+      { env: await fallbackIdentityEnv(this.options.gitService.process, repo.root, FALLBACK_IDENTITY) },
     )
     if (!commit.success) {
       throw new MergeError("COMMIT_FAILED", firstLine(commit.stderr) || "Git couldn't create the merge commit.")
@@ -283,24 +284,6 @@ export class SessionMerger {
     const [tree = "", ...paths] = result.stdout.split("\0")
     const clean = result.exitCode === 0
     return { clean, tree: clean ? tree.trim() : null, conflicts: clean ? [] : [...new Set(paths.filter(Boolean))] }
-  }
-
-  /** The person's Git identity, or Cozea's through the environment when Git has none; never written to config. */
-  private async identityEnv(root: string): Promise<Record<string, string>> {
-    const [name, email] = await Promise.all([
-      this.git(root, ["config", "--get", "user.name"]),
-      this.git(root, ["config", "--get", "user.email"]),
-    ])
-    const env: Record<string, string> = {}
-    if (!name.stdout.trim()) {
-      env.GIT_AUTHOR_NAME = FALLBACK_IDENTITY.name
-      env.GIT_COMMITTER_NAME = FALLBACK_IDENTITY.name
-    }
-    if (!email.stdout.trim()) {
-      env.GIT_AUTHOR_EMAIL = FALLBACK_IDENTITY.email
-      env.GIT_COMMITTER_EMAIL = FALLBACK_IDENTITY.email
-    }
-    return env
   }
 
   private git(cwd: string, args: string[], options: Omit<GitExecuteOptions, "cwd"> = {}) {

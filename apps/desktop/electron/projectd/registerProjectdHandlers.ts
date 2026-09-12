@@ -147,6 +147,18 @@ export function registerProjectdHandlers(): void {
     }
   })
 
+  ipcMain.handle(
+    "projectd:sessions:rebase",
+    async (_event, req: { publicSessionId: string; allowConflicts: boolean }) => {
+      try {
+        const result = await getSharedProjectdClient().rebaseSession(req.publicSessionId, req.allowConflicts === true)
+        return { success: true, result }
+      } catch (err) {
+        return toFailure(err)
+      }
+    },
+  )
+
   ipcMain.handle("projectd:sessions:previewMerge", async (_event, publicSessionId: string) => {
     try {
       return { success: true, preview: await getSharedProjectdClient().previewSessionMerge(publicSessionId) }

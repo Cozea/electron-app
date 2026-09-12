@@ -146,6 +146,23 @@ async function pushFromOutside(
   return remoteHead(remote)
 }
 
+/** Creates a target branch from the session's current base and advances it independently. */
+async function createTargetBranch(
+  remote: string,
+  sourceRoot: string,
+  files: Record<string, string>,
+  branch = "main",
+): Promise<{ root: string; head: string }> {
+  git(sourceRoot, "push", "-q", "origin", `${BRANCH}:refs/heads/${branch}`)
+  const root = await tempFolder(`target-${branch}`)
+  git(root, "clone", "-q", "-b", branch, remote, ".")
+  await writeFiles(root, files)
+  git(root, "add", "-A")
+  git(root, "commit", "-q", "-m", `Advance ${branch}`)
+  git(root, "push", "-q", "origin", branch)
+  return { root, head: git(root, "rev-parse", "HEAD") }
+}
+
 function newRoom(options: { leaseMs?: number } = {}): RoomHost {
   const room = new RoomHost(worker, options)
   cleanups.push(() => room.dispose())
@@ -217,12 +234,27 @@ function checkpointOf(peer: Peer): string | null {
 }
 
 /** The creator leads; the joiner, a clone of the same branch, follows. */
-async function startPair(room: RoomHost, repos: { creatorRoot: string; joinerRoot: string }, timing = FAST) {
+async function startPair(
+  room: RoomHost,
+  repos: { creatorRoot: string; joinerRoot: string },
+  timing = FAST,
+  targetBranch?: string,
+) {
   const roomKey = randomBytes(32)
-  const creator = await createPeer(room, "creator", roomKey, { root: repos.creatorRoot, clientId: "c_a", timing })
+  const creator = await createPeer(room, "creator", roomKey, {
+    root: repos.creatorRoot,
+    clientId: "c_a",
+    timing,
+    targetBranch,
+  })
   await startLive(creator, "the creator")
   await waitFor(() => autoGitOf(creator)?.state === "leader", "the creator to lead", GIT_WAIT_MS)
-  const joiner = await createPeer(room, "joiner", roomKey, { root: repos.joinerRoot, clientId: "c_b", timing })
+  const joiner = await createPeer(room, "joiner", roomKey, {
+    root: repos.joinerRoot,
+    clientId: "c_b",
+    timing,
+    targetBranch,
+  })
   await startLive(joiner, "the joiner")
   await waitFor(() => autoGitOf(joiner)?.state === "follower", "the joiner to follow", GIT_WAIT_MS)
   return { creator, joiner }
@@ -604,5 +636,125 @@ describe("AutoGit in projectd", () => {
     expect(creator.host.status().target).toMatchObject({ behind: 3, recommended: true })
     expect(creator.host.dismissTargetRecommendation()).toMatchObject({ behind: 3, recommended: false, reason: null })
     expect(git(repos.creatorRoot, "rev-parse", BRANCH)).toBe(before)
+  })
+
+  it("rebases the live session onto its target only when explicitly requested", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n" })
+    const target = await createTargetBranch(repos.remote, repos.creatorRoot, { "from-main.md": "main\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+
+    await joiner.write("notes.md", "base\nsession\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "base\nsession\n", "the creator to get the session edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    const before = remoteHead(repos.remote)
+
+    const result = await creator.host.rebase(false)
+    expect(result).toMatchObject({ outcome: "rebased" })
+    const rebased = remoteHead(repos.remote)
+    expect(rebased).not.toBe(before)
+    expect(result.commitOid).toBe(rebased)
+    expect(git(repos.remote, "rev-parse", `${rebased}^`)).toBe(target.head)
+    expect(git(repos.remote, "show", `${rebased}:from-main.md`)).toBe("main")
+    expect(git(repos.remote, "show", `${rebased}:notes.md`)).toBe("base\nsession")
+    expect(git(repos.remote, "merge-base", before, rebased)).toBe(repos.initial)
+
+    for (const [peer, label] of [
+      [creator, "creator"],
+      [joiner, "joiner"],
+    ] as const) {
+      await waitFor(
+        async () =>
+          (await peer.read("from-main.md")) === "main\n" &&
+          (await peer.read("notes.md")) === "base\nsession\n" &&
+          git(peer.root, "rev-parse", "HEAD") === rebased,
+        `the ${label} to adopt the rebased checkpoint`,
+        GIT_WAIT_MS,
+      )
+    }
+  })
+
+  it("reports rebase conflicts without changing the live session or remote branch", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\ntwo\n" })
+    await createTargetBranch(repos.remote, repos.creatorRoot, { "notes.md": "one\ntwo from main\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+
+    await joiner.write("notes.md", "one\ntwo from session\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo from session\n", "the creator to get the session edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    const before = remoteHead(repos.remote)
+
+    expect(await creator.host.rebase(false)).toMatchObject({
+      outcome: "conflicts",
+      conflictingPaths: ["notes.md"],
+    })
+    expect(remoteHead(repos.remote)).toBe(before)
+    expect(await creator.read("notes.md")).toBe("one\ntwo from session\n")
+    expect(await joiner.read("notes.md")).toBe("one\ntwo from session\n")
+    expect(await creator.read("notes.md")).not.toContain("<<<<<<<")
+  })
+
+  it("can carry explicit rebase conflicts into the live session and publish after resolution", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\ntwo\n" })
+    const target = await createTargetBranch(repos.remote, repos.creatorRoot, {
+      "notes.md": "one\ntwo from main\n",
+      "from-main.md": "main\n",
+    })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+
+    await joiner.write("notes.md", "one\ntwo from session\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo from session\n", "the creator to get the session edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    const before = remoteHead(repos.remote)
+
+    expect(await creator.host.rebase(true)).toMatchObject({ outcome: "held" })
+    expect(remoteHead(repos.remote)).toBe(before)
+    await waitFor(
+      async () =>
+        (await joiner.read("notes.md"))?.includes("<<<<<<<") === true &&
+        (await joiner.read("from-main.md")) === "main\n",
+      "the rebase result to reach the joiner",
+      GIT_WAIT_MS,
+    )
+    const conflicted = (await joiner.read("notes.md")) ?? ""
+    expect(conflicted).toContain("two from session")
+    expect(conflicted).toContain("two from main")
+    expect(conflicted).toContain("=======")
+    await waitFor(() => autoGitOf(joiner)?.detailCode === "CONFLICT_MARKERS", "the joiner to see the rebase hold", GIT_WAIT_MS)
+
+    await joiner.write("notes.md", "one\ntwo from session and main\n")
+    await waitFor(
+      async () => (await creator.read("notes.md")) === "one\ntwo from session and main\n",
+      "the creator to get the conflict resolution",
+    )
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    const rebased = remoteHead(repos.remote)
+    expect(rebased).not.toBe(before)
+    expect(git(repos.remote, "rev-parse", `${rebased}^`)).toBe(target.head)
+    expect(git(repos.remote, "show", `${rebased}:notes.md`)).toBe("one\ntwo from session and main")
+    expect(git(repos.remote, "show", `${rebased}:from-main.md`)).toBe("main")
+  })
+
+  it("refuses a pending rebase rewrite when the remote session branch moves", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\ntwo\n" })
+    await createTargetBranch(repos.remote, repos.creatorRoot, { "notes.md": "one\ntwo from main\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+
+    await joiner.write("notes.md", "one\ntwo from session\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo from session\n", "the creator to get the session edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    expect(await creator.host.rebase(true)).toMatchObject({ outcome: "held" })
+
+    const outside = await pushFromOutside(repos.remote, { "outside.md": "keep me\n" })
+    await joiner.write("notes.md", "one\nresolved\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\nresolved\n", "the creator to get the resolution")
+    await expect(creator.host.checkpointNow()).rejects.toMatchObject({ code: "REMOTE_CHANGED" })
+
+    expect(remoteHead(repos.remote)).toBe(outside)
+    expect(git(repos.remote, "show", `${outside}:outside.md`)).toBe("keep me")
+    expect(autoGitOf(creator)).toMatchObject({ state: "blocked", detailCode: "REMOTE_CHANGED" })
   })
 })

@@ -322,6 +322,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.invoke('projectd:sessions:ignoreEnvironmentFiles', publicSessionId),
       checkTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:checkTarget', publicSessionId),
       dismissTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:dismissTarget', publicSessionId),
+      rebase: (publicSessionId: string, allowConflicts: boolean) =>
+        ipcRenderer.invoke('projectd:sessions:rebase', { publicSessionId, allowConflicts }),
       previewMerge: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:previewMerge', publicSessionId),
       merge: (publicSessionId: string, strategy: 'merge' | 'squash', checkpointOid: string) =>
         ipcRenderer.invoke('projectd:sessions:merge', { publicSessionId, strategy, checkpointOid }),

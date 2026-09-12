@@ -9,11 +9,13 @@
 import { useState } from "react"
 
 import { MergeSessionDialog } from "../ui/MergeSessionDialog"
+import { RebaseSessionDialog } from "../ui/RebaseSessionDialog"
 import { SessionBranchNotice, SessionWorkbenchControls } from "./SessionWorkbenchControls"
 import type { LiveSessionController } from "./useLiveSession"
 
 export function LiveSessionBar({ live }: { live: LiveSessionController }) {
   const [merging, setMerging] = useState(false)
+  const [rebasing, setRebasing] = useState(false)
   if (live.session && live.sync) {
     return (
       <>
@@ -33,6 +35,7 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         onIgnoreEnvironmentFiles={live.ignoreEnvironmentFiles}
         onCheckTarget={live.checkTarget}
         onDismissTarget={live.dismissTarget}
+        onRebase={() => setRebasing(true)}
         onMerge={() => setMerging(true)}
         onJoin={live.join}
         onLeave={live.leave}
@@ -40,6 +43,13 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         onResume={live.resume}
         onEnd={live.end}
       />
+        <RebaseSessionDialog
+          isOpen={rebasing}
+          onOpenChange={setRebasing}
+          publicSessionId={live.session.publicSessionId}
+          branchName={live.session.branchName}
+          targetBranch={live.session.targetBranch}
+        />
         <MergeSessionDialog
           isOpen={merging}
           onOpenChange={setMerging}

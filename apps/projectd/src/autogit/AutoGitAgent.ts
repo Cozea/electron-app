@@ -26,6 +26,7 @@ import type {
   ProjectdAutoGitStatus,
   ProjectdCheckpointResult,
   ProjectdCheckpointSummary,
+  ProjectdRebaseResult,
 } from "@cozea/projectd-protocol"
 
 import type { SessionReplica } from "../collaboration/SessionReplica"
@@ -42,6 +43,7 @@ import { TextDocRegistry } from "../collaboration/TextDocRegistry"
 import { ScopePolicy } from "../filesystem/ScopePolicy"
 import type { GitExecuteOptions } from "../git/GitProcess"
 import type { GitService } from "../git/GitService"
+import { fallbackIdentityEnv } from "../git/identity"
 import { BarrierCapture, type BarrierSnapshot } from "./BarrierCapture"
 import { CheckpointBuilder, UnignoredEnvironmentFilesError, type CheckpointCommitResult } from "./CheckpointBuilder"
 import { GitBaselineAdopter } from "./GitBaselineAdopter"
@@ -135,6 +137,8 @@ export interface AutoGitAgentOptions {
    * reads as `expected`; returns the paths that changed meanwhile. Runs inside runExclusive.
    */
   applySessionChanges: (changes: SessionFileChange[]) => Promise<string[]>
+  /** The branch the session's work merges into, which an explicit rebase builds on (Section 21). */
+  targetBranch?: string | null
   onChange: () => void
   timing?: Partial<AutoGitTiming>
 }
@@ -241,6 +245,9 @@ export class AutoGitAgent {
   private integratedHead: string | null = null
   // Files that merge left with conflict markers; saving waits until they are resolved.
   private conflictPaths = new Set<string>()
+  // A rebase adopted into the session, waiting to be pushed over the save it replaces.
+  private rebase: { from: string; parentOid: string; baseTreeOid: string | null } | null = null
+  private rebaseRun: Promise<ProjectdRebaseResult> | null = null
 
   constructor(options: AutoGitAgentOptions) {
     this.options = options
@@ -292,6 +299,26 @@ export class AutoGitAgent {
     void this.runCheckpoint()
   }
 
+  /** A member asked the leader to rebase the session onto its target (Section 21.1). */
+  handleRebaseRequested(allowConflicts: boolean): void {
+    if (!this.leading) return
+    void this.rebaseOnto(allowConflicts).catch((error: unknown) =>
+      console.warn(`[projectd] Rebase of ${this.options.publicSessionId} failed: ${describeError(error)}`),
+    )
+  }
+
+  /** Rebases on the leader, or asks the leader to (Section 21). Nothing rebases without this. */
+  async requestRebase(allowConflicts: boolean): Promise<ProjectdRebaseResult> {
+    await this.start()
+    if (!this.repo) throw new AutoGitError("AUTOGIT_OFF", "This session's folder is not a Git repository.")
+    if (!this.options.targetBranch) throw new AutoGitError("NO_TARGET", "This session has no branch to rebase onto.")
+    if (this.leading) return this.rebaseOnto(allowConflicts)
+    const routed = await this.options.room.requestRebase(allowConflicts)
+    return routed
+      ? { outcome: "requested", message: "The Mac that saves this session is rebasing it now." }
+      : { outcome: "no_leader", message: "No member's Mac can push this session's branch right now." }
+  }
+
   /** The session moved: a peer's batch arrived or the room took one of this device's. */
   noteActivity(): void {
     if (this.stopped || !this.repo) return
@@ -335,11 +362,15 @@ export class AutoGitAgent {
       unsavedChanges: Math.max(0, this.options.transport.lastAppliedSessionSeq - this.cleanThroughSeq),
       saving: this.inFlight !== null,
       detail:
+        (this.rebaseRun ? `Rebasing the session onto ${this.options.targetBranch}…` : null) ??
         this.blocked?.message ??
         leaderNotice ??
         this.baselineNote ??
         (state === "ineligible" ? this.ineligibleReason : null),
-      detailCode: this.blocked?.code ?? (leaderNotice ? (this.lease?.noticeCode ?? null) : null),
+      detailCode:
+        (this.rebaseRun ? "REBASING" : null) ??
+        this.blocked?.code ??
+        (leaderNotice ? (this.lease?.noticeCode ?? null) : null),
       lastError: this.lastError,
     }
   }
@@ -581,6 +612,7 @@ export class AutoGitAgent {
         snapshot,
         pathPrefix: repo.prefix,
         maxTextFileBytes: this.options.maxTextFileBytes,
+        baseTreeOid: this.rebase?.baseTreeOid ?? null,
       })
     } catch (error) {
       if (error instanceof UnignoredEnvironmentFilesError) {
@@ -589,7 +621,30 @@ export class AutoGitAgent {
       throw error
     }
 
-    if (built.parentTreeOid !== null && built.treeOid === built.parentTreeOid) {
+    const rebase = this.rebase
+    // A squashing rebase always makes its commit: the target alone doesn't hold the session.
+    if (built.parentTreeOid !== null && built.treeOid === built.parentTreeOid && !rebase?.baseTreeOid) {
+      if (rebase && parentOid) {
+        // The rebased commits hold the session exactly: they replace the last save.
+        this.lease = await this.options.room.renewLease(generation)
+        await this.push(parentOid, rebase.from)
+        const grandparent = await this.git(["rev-parse", "--verify", "--quiet", `${parentOid}^`], {
+          allowNonZeroExit: true,
+        })
+        this.acceptCheckpoint(
+          await this.options.room.publishCheckpoint(generation, {
+            commitOid: parentOid,
+            parentOid: grandparent.success ? grandparent.stdout.trim() || null : null,
+            treeOid: built.treeOid,
+            sessionSeq: snapshot.sessionSeq,
+            barrierId: snapshot.barrierId,
+            logicalTreeHash: snapshot.logicalTreeHash,
+            rebasedFrom: rebase.from,
+          }),
+        )
+        await this.finishRebase(rebase)
+        return
+      }
       // The branch already holds this content. A branch the remote lacks still goes up,
       // so members can clone it.
       if (remoteHead === null && parentOid) {
@@ -602,7 +657,8 @@ export class AutoGitAgent {
 
     // Fencing (Section 14.6): the room must still name this device before anything leaves it.
     this.lease = await this.options.room.renewLease(generation)
-    await this.push(built.commitOid)
+    // After an explicit rebase the push replaces the last save, and only that save (Section 21.9).
+    await this.push(built.commitOid, rebase?.from)
     this.acceptCheckpoint(
       await this.options.room.publishCheckpoint(generation, {
         commitOid: built.commitOid,
@@ -611,8 +667,16 @@ export class AutoGitAgent {
         sessionSeq: snapshot.sessionSeq,
         barrierId: snapshot.barrierId,
         logicalTreeHash: snapshot.logicalTreeHash,
+        ...(rebase ? { rebasedFrom: rebase.from } : {}),
       }),
     )
+    if (rebase) await this.finishRebase(rebase)
+  }
+
+  /** The rebase is on the remote; the save it replaced stays reachable here for recovery (Section 21.9). */
+  private async finishRebase(rebase: { from: string }): Promise<void> {
+    this.rebase = null
+    await this.git(["update-ref", `refs/cozea/rebased/${rebase.from}`, rebase.from], { allowNonZeroExit: true })
   }
 
   /**
@@ -625,6 +689,17 @@ export class AutoGitAgent {
     const branch = this.options.branchName
     const remoteHead = await this.lsRemote()
     const anchor = this.checkpoint?.commitOid ?? null
+
+    // A rebase adopted into the session builds on its rebased commits, over the save it replaces.
+    const rebase = this.rebase
+    if (rebase) {
+      if (remoteHead === rebase.from) return { parentOid: rebase.parentOid, remoteHead }
+      this.rebase = null
+      throw new AutoGitError(
+        "REMOTE_CHANGED",
+        `${branch} changed on ${repo.remote} during the rebase, so AutoGit didn't push it rather than overwrite those commits. The session keeps its files; save again to build on the branch as it is now.`,
+      )
+    }
 
     if (anchor) {
       // Commits from outside the session already merged into it come after the checkpoint.
@@ -905,6 +980,193 @@ export class AutoGitAgent {
     }
   }
 
+  // ─── Explicit rebase (Section 21) ────────────────────────────────────────────
+
+  private rebaseOnto(allowConflicts: boolean): Promise<ProjectdRebaseResult> {
+    this.rebaseRun ??= this.runRebase(allowConflicts).finally(() => {
+      this.rebaseRun = null
+      this.options.onChange()
+    })
+    return this.rebaseRun
+  }
+
+  /**
+   * Saves the session, rebases that save onto the target away from everyone's folders,
+   * and adopts the result into the live session; the next save pushes it over the old
+   * history. Editing goes on meanwhile; only saving waits (Section 21.3 - 21.9).
+   */
+  private async runRebase(allowConflicts: boolean): Promise<ProjectdRebaseResult> {
+    const target = this.options.targetBranch
+    if (!target) throw new AutoGitError("NO_TARGET", "This session has no branch to rebase onto.")
+    if (!this.leading) throw new AutoGitError("NOT_LEADER", "Only the Mac that saves the session can rebase it.")
+    if (this.rebase) {
+      return { outcome: "held", message: "The last rebase is waiting for its conflict markers to be resolved." }
+    }
+    // Rebase from a save holding everything the session has (Section 21.3).
+    this.blocked = null
+    this.retryAt = 0
+    await this.runCheckpoint()
+    if (this.lastError) {
+      throw new AutoGitError(this.lastError.code, `Save the session to Git before rebasing: ${this.lastError.message}`)
+    }
+    const from = this.checkpoint?.commitOid
+    if (!from) throw new AutoGitError("NOT_SAVED", "The session hasn't been saved to Git yet.")
+
+    while (this.inFlight) await this.inFlight
+    let early: ProjectdRebaseResult | null = null
+    const computing = this.computeRebase(target, from, allowConflicts).then((result) => {
+      early = result
+    })
+    // Checkpoints wait while the rebase computes (Section 21.6).
+    this.inFlight = computing.then(
+      () => undefined,
+      () => undefined,
+    )
+    this.options.onChange()
+    try {
+      await computing
+    } catch (error) {
+      this.setNotice(null)
+      throw error
+    } finally {
+      this.inFlight = null
+      this.options.onChange()
+    }
+    if (early) {
+      this.setNotice(null)
+      return early
+    }
+
+    await this.runCheckpoint()
+    // runCheckpoint() mutates these fields asynchronously; capture them after the await so
+    // TypeScript does not keep the earlier explicit-null narrowing from the start of this method.
+    const blockedAfterRebase = this.blocked as AutoGitError | null
+    const errorAfterRebase = this.lastError as { code: string; message: string } | null
+    if (blockedAfterRebase?.code === "CONFLICT_MARKERS") {
+      return { outcome: "held", message: blockedAfterRebase.message }
+    }
+    if (errorAfterRebase) throw new AutoGitError(errorAfterRebase.code, errorAfterRebase.message)
+    return {
+      outcome: "rebased",
+      commitOid: this.checkpoint?.commitOid ?? null,
+      message: `Rebased the session onto ${target}.`,
+    }
+  }
+
+  /** Returns a result when the rebase stops here; null once the result waits in the session for the next save. */
+  private async computeRebase(target: string, from: string, allowConflicts: boolean): Promise<ProjectdRebaseResult | null> {
+    const repo = this.requireRepo()
+    this.setNotice(`Rebasing the session onto ${target}…`, "REBASING")
+    const onto = await this.fetchTarget(target)
+    if (!onto) throw new AutoGitError("TARGET_MISSING", `${target} doesn't exist on ${repo.remote}.`)
+    if (await this.isAncestor(onto, from)) {
+      return { outcome: "current", message: `The session already has everything on ${target}.` }
+    }
+
+    const rebased = await this.rebaseInWorktree(from, onto)
+    if (rebased.kind === "clean") {
+      // B/R/L (Section 21.7): what the rebase changed goes into the live session, merged
+      // with edits made since the save.
+      await this.integrateExternalCommits(from, rebased.commitOid)
+      this.rebase = { from, parentOid: rebased.commitOid, baseTreeOid: null }
+      return null
+    }
+    const conflictingPaths = rebased.paths.map((conflicted) => this.sessionPath(conflicted))
+    if (!allowConflicts) {
+      return {
+        outcome: "conflicts",
+        conflictingPaths,
+        message: `${formatPaths(conflictingPaths)} changed on both sides, so nothing was rebased. Rebase anyway to resolve them in the session, or resolve them in a pull request.`,
+      }
+    }
+    // Rebasing anyway: the session's changes become one commit on top of the target, and
+    // the files both sides changed carry conflict markers everyone can resolve live.
+    const merged = await this.mergeTreeWithMarkers(onto, from)
+    await this.integrateExternalCommits(from, merged.tree)
+    for (const conflicted of merged.conflicts) this.conflictPaths.add(this.sessionPath(conflicted))
+    this.rebase = { from, parentOid: onto, baseTreeOid: merged.tree }
+    return null
+  }
+
+  /** Real Git rebase semantics, in a worktree of its own, away from everyone's folders (Section 21.4). */
+  private async rebaseInWorktree(
+    from: string,
+    onto: string,
+  ): Promise<{ kind: "clean"; commitOid: string } | { kind: "conflicts"; paths: string[] }> {
+    const repo = this.requireRepo()
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-rebase-"))
+    const worktree = path.join(dir, "worktree")
+    try {
+      const added = await this.git(["worktree", "add", "--detach", worktree, from], { allowNonZeroExit: true })
+      if (!added.success) throw new AutoGitError("GIT_FAILED", firstLine(added.stderr) || "git worktree add failed")
+      const env = await fallbackIdentityEnv(this.options.gitService.process, repo.root, {
+        name: "Cozea AutoGit",
+        email: "autogit@cozea.local",
+      })
+      const inWorktree = (args: string[]) =>
+        this.options.gitService.process.execute(args, {
+          cwd: worktree,
+          env,
+          allowNonZeroExit: true,
+          timeoutMs: this.timing.remoteTimeoutMs,
+        })
+      // The person's hooks and signing are for their own commits, and no other branch moves.
+      const result = await inWorktree([
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        `core.hooksPath=${path.join(dir, "no-hooks")}`,
+        "rebase",
+        "--no-autostash",
+        "--no-autosquash",
+        "--no-update-refs",
+        onto,
+      ])
+      if (result.success) return { kind: "clean", commitOid: (await inWorktree(["rev-parse", "HEAD"])).stdout.trim() }
+      const conflicted = await inWorktree(["diff", "--name-only", "--diff-filter=U", "-z"])
+      await inWorktree(["rebase", "--abort"])
+      const paths = conflicted.stdout.split("\0").filter(Boolean)
+      if (paths.length === 0) throw new AutoGitError("GIT_FAILED", firstLine(result.stderr) || "git rebase failed")
+      return { kind: "conflicts", paths }
+    } finally {
+      await this.git(["worktree", "remove", "--force", worktree], { allowNonZeroExit: true })
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+
+  /** The target merged with the save in Git's object store, conflict markers and all. */
+  private async mergeTreeWithMarkers(onto: string, from: string): Promise<{ tree: string; conflicts: string[] }> {
+    const result = await this.git(["merge-tree", "--write-tree", "--name-only", "-z", "--no-messages", onto, from], {
+      allowNonZeroExit: true,
+    })
+    if (result.exitCode !== 0 && result.exitCode !== 1) {
+      throw new AutoGitError("GIT_FAILED", firstLine(result.stderr) || "git merge-tree failed")
+    }
+    const [tree = "", ...paths] = result.stdout.split("\0")
+    return { tree: tree.trim(), conflicts: [...new Set(paths.filter(Boolean))] }
+  }
+
+  private async fetchTarget(target: string): Promise<string | null> {
+    const repo = this.requireRepo()
+    const ref = `refs/remotes/${repo.remote}/${target}`
+    let result
+    try {
+      result = await this.git(["fetch", "--no-tags", repo.remote, `+refs/heads/${target}:${ref}`], {
+        allowNonZeroExit: true,
+        timeoutMs: this.timing.remoteTimeoutMs,
+      })
+    } catch (error) {
+      throw new AutoGitError("REMOTE_UNREACHABLE", `Git couldn't fetch ${target} from ${repo.remote}: ${describeError(error)}`)
+    }
+    if (!result.success) throw remoteFailure(repo.remote, result.stderr)
+    return this.options.gitService.getCommitOid(repo.root, ref)
+  }
+
+  private sessionPath(repoFilePath: string): string {
+    const prefix = this.requireRepo().prefix
+    return repoFilePath.startsWith(prefix) ? repoFilePath.slice(prefix.length) : repoFilePath
+  }
+
   private handleFailure(error: unknown): void {
     const code = error instanceof AutoGitError || error instanceof RoomRequestError ? error.code : "CHECKPOINT_FAILED"
     const message = describeError(error)
@@ -983,6 +1245,7 @@ export class AutoGitAgent {
         branchName: this.options.branchName,
         checkpointOid: checkpoint.commitOid,
         remote: repo.remote,
+        rewrittenFrom: checkpoint.rebasedFrom ?? null,
       })
       if (result.state === "skipped") {
         this.adoptionSkip = { oid: checkpoint.commitOid, at: Date.now() }
@@ -1037,14 +1300,19 @@ export class AutoGitAgent {
     if (!result.success) throw remoteFailure(repo.remote, result.stderr)
   }
 
-  /** Fast-forwards the session branch on the remote; never forces (Section 15.8). */
-  private async push(commitOid: string): Promise<void> {
+  /**
+   * Fast-forwards the session branch on the remote; never forces (Section 15.8). After an
+   * explicit rebase it replaces exactly `leaseFrom`, with --force-with-lease (Section 21.9).
+   */
+  private async push(commitOid: string, leaseFrom?: string): Promise<void> {
     const repo = this.requireRepo()
+    const branch = this.options.branchName
+    const lease = leaseFrom ? [`--force-with-lease=refs/heads/${branch}:${leaseFrom}`] : []
     let result
     try {
       // The user's pre-push hooks are for their own pushes, not for checkpoints every few seconds.
       result = await this.git(
-        ["push", "--no-verify", "--no-signed", "--porcelain", repo.remote, `${commitOid}:refs/heads/${this.options.branchName}`],
+        ["push", "--no-verify", "--no-signed", "--porcelain", ...lease, repo.remote, `${commitOid}:refs/heads/${branch}`],
         { allowNonZeroExit: true, timeoutMs: this.timing.remoteTimeoutMs },
       )
     } catch (error) {

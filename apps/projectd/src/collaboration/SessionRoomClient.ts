@@ -66,11 +66,13 @@ export interface RoomCheckpoint {
   publishedByPrincipalId: string
   /** The branch still holds the session at this later sequence; absent from older rooms. */
   savedThroughSeq?: number
+  /** An explicit rebase rewrote the branch, replacing this commit; carried until the next rebase. */
+  rebasedFrom?: string
 }
 
 export type RoomCheckpointInput = Pick<
   RoomCheckpoint,
-  "commitOid" | "parentOid" | "treeOid" | "sessionSeq" | "barrierId" | "logicalTreeHash"
+  "commitOid" | "parentOid" | "treeOid" | "sessionSeq" | "barrierId" | "logicalTreeHash" | "rebasedFrom"
 >
 
 export interface RoomAutoGitState {
@@ -103,6 +105,7 @@ type RequestReply =
   | { type: "checkpoint_ack"; requestId?: string; checkpoint: RoomCheckpoint }
   | { type: "checkpoint_clean_ack"; requestId?: string; checkpoint: RoomCheckpoint }
   | { type: "checkpoint_request_ack"; requestId?: string; routed: boolean }
+  | { type: "rebase_request_ack"; requestId?: string; routed: boolean }
 
 type ServerMessage =
   | RequestReply
@@ -112,6 +115,7 @@ type ServerMessage =
   | { type: "session_batch"; batch: WireBatch }
   | { type: "autogit_state"; lease: RoomLease | null; checkpoint: RoomCheckpoint | null; serverTime: number }
   | { type: "checkpoint_requested"; requestedByPrincipalId: string | null }
+  | { type: "rebase_requested"; requestedByPrincipalId: string | null; allowConflicts?: boolean }
   | { type: "error"; code: string; message: string; recoverable?: boolean; requestId?: string }
 
 type ReplyOf<K extends RequestReply["type"]> = Extract<RequestReply, { type: K }>
@@ -141,6 +145,8 @@ export interface SessionRoomClientOptions {
   onAutoGitState?: (state: RoomAutoGitState) => void
   /** Called on the leader when a member asks for a checkpoint now. */
   onCheckpointRequested?: (requestedByPrincipalId: string | null) => void
+  /** Called on the leader when a member asks to rebase the session onto its target. */
+  onRebaseRequested?: (allowConflicts: boolean, requestedByPrincipalId: string | null) => void
   /** How long connect() waits for replay to finish before giving up. */
   liveTimeoutMs?: number
   /** How long a request waits for the room's answer. */
@@ -155,6 +161,7 @@ export class SessionRoomClient {
   private readonly onStateChange?: (state: RoomClientState) => void
   private readonly onAutoGitState?: (state: RoomAutoGitState) => void
   private readonly onCheckpointRequested?: (requestedByPrincipalId: string | null) => void
+  private readonly onRebaseRequested?: (allowConflicts: boolean, requestedByPrincipalId: string | null) => void
   private readonly liveTimeoutMs: number
   private readonly requestTimeoutMs: number
 
@@ -178,6 +185,7 @@ export class SessionRoomClient {
     this.onStateChange = options.onStateChange
     this.onAutoGitState = options.onAutoGitState
     this.onCheckpointRequested = options.onCheckpointRequested
+    this.onRebaseRequested = options.onRebaseRequested
     this.liveTimeoutMs = options.liveTimeoutMs ?? DEFAULT_LIVE_TIMEOUT_MS
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   }
@@ -294,6 +302,11 @@ export class SessionRoomClient {
   /** Asks the leader for a checkpoint now. False when no device leads. */
   async requestCheckpoint(): Promise<boolean> {
     return (await this.request("checkpoint_request_ack", { type: "checkpoint_request" })).routed
+  }
+
+  /** Asks the leader to rebase the session onto its target. False when no device leads. */
+  async requestRebase(allowConflicts: boolean): Promise<boolean> {
+    return (await this.request("rebase_request_ack", { type: "rebase_request", allowConflicts })).routed
   }
 
   private request<K extends RequestReply["type"]>(
@@ -438,6 +451,7 @@ export class SessionRoomClient {
       case "checkpoint_ack":
       case "checkpoint_clean_ack":
       case "checkpoint_request_ack":
+      case "rebase_request_ack":
         this.settleRequest(message)
         return
       case "autogit_state":
@@ -450,6 +464,9 @@ export class SessionRoomClient {
         return
       case "checkpoint_requested":
         this.onCheckpointRequested?.(message.requestedByPrincipalId ?? null)
+        return
+      case "rebase_requested":
+        this.onRebaseRequested?.(message.allowConflicts === true, message.requestedByPrincipalId ?? null)
         return
       case "error":
         // A refused request belongs to its caller, not to the connection.

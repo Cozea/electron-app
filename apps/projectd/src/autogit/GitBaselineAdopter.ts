@@ -56,6 +56,8 @@ export class GitBaselineAdopter {
     branchName: string
     checkpointOid: string
     remote?: string
+    /** An explicit rebase rewrote the branch, replacing this commit (Section 21.9). */
+    rewrittenFrom?: string | null
   }): Promise<BaselineAdoptionResult> {
     const { cwd, branchName, checkpointOid, remote } = params
 
@@ -102,12 +104,16 @@ export class GitBaselineAdopter {
     if (!(await this.hasCommit(cwd, checkpointOid))) {
       return skip(`Git here does not have the checkpoint ${checkpointOid.slice(0, 7)} yet.`)
     }
-    if (oldHeadOid) {
-      const ancestor = await this.gitService.process.execute(["merge-base", "--is-ancestor", oldHeadOid, checkpointOid], {
-        cwd,
-        allowNonZeroExit: true,
-      })
-      if (ancestor.exitCode !== 0) {
+    if (oldHeadOid && !(await this.isAncestor(cwd, oldHeadOid, checkpointOid))) {
+      // After an explicit rebase the branch here may still be on the history it replaced;
+      // it follows only when it holds nothing beyond that history.
+      const rewrittenFrom = params.rewrittenFrom
+      const onReplacedHistory =
+        rewrittenFrom !== undefined &&
+        rewrittenFrom !== null &&
+        (await this.hasCommit(cwd, rewrittenFrom)) &&
+        (await this.isAncestor(cwd, oldHeadOid, rewrittenFrom))
+      if (!onReplacedHistory) {
         return skip(`${branchName} has commits in this folder that are not in the session's history.`)
       }
     }
@@ -134,6 +140,14 @@ export class GitBaselineAdopter {
       console.warn("[GitBaselineAdopter] Baseline advancement failed, leaving Git metadata behind:", message)
       return { ...skip(`Git could not move ${branchName} to the checkpoint.`), error: message }
     }
+  }
+
+  private async isAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
+    const result = await this.gitService.process.execute(["merge-base", "--is-ancestor", ancestor, descendant], {
+      cwd,
+      allowNonZeroExit: true,
+    })
+    return result.exitCode === 0
   }
 
   private async hasCommit(cwd: string, oid: string): Promise<boolean> {

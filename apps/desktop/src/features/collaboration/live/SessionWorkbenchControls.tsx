@@ -63,6 +63,8 @@ export interface SessionWorkbenchControlsProps {
   onIgnoreEnvironmentFiles?: () => void
   onCheckTarget?: () => void
   onDismissTarget?: () => void
+  /** Opens the explicit rebase onto the target branch (P21). */
+  onRebase?: () => void
   /** Opens the merge into the target branch (P22). */
   onMerge?: () => void
   onJoin?: () => void
@@ -88,6 +90,7 @@ export function SessionWorkbenchControls({
   onIgnoreEnvironmentFiles,
   onCheckTarget,
   onDismissTarget,
+  onRebase,
   onMerge,
   onJoin,
   onLeave,
@@ -184,6 +187,11 @@ export function SessionWorkbenchControls({
                 <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onSaveNow}>
                   {spinnerFor("save")}
                   Save now
+                </Button>
+              ) : null}
+              {membership === "active" && canEdit && autoGit && onRebase ? (
+                <Button type="button" size="sm" variant="ghost" className={BAR_BUTTON} disabled={busy} onClick={onRebase}>
+                  Rebase…
                 </Button>
               ) : null}
               {membership === "active" && canEdit && autoGit && onMerge ? (
