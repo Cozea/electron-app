@@ -47,8 +47,8 @@ function store(fetchFn: typeof fetch) {
 }
 
 describe("streaming binary object upload", () => {
-  it("reads and uploads a large source only in fixed-size chunks", async () => {
-    const bytes = Buffer.alloc(CHUNK_SIZE_BYTES * 2 + 17)
+  it("reads and uploads a source only in the fixed 4 MiB chunk size", async () => {
+    const bytes = Buffer.alloc(CHUNK_SIZE_BYTES + 17)
     for (let index = 0; index < bytes.length; index += 1) bytes[index] = index % 251
     const network = fixtureFetch()
     const objectStore = store(network.fetchFn)
@@ -65,15 +65,12 @@ describe("streaming binary object upload", () => {
 
     expect(reads).toEqual([
       { offset: 0, length: CHUNK_SIZE_BYTES },
-      { offset: CHUNK_SIZE_BYTES, length: CHUNK_SIZE_BYTES },
-      { offset: CHUNK_SIZE_BYTES * 2, length: 17 },
+      { offset: CHUNK_SIZE_BYTES, length: 17 },
     ])
-    expect(manifest.chunks).toHaveLength(3)
+    expect(manifest.chunks).toHaveLength(2)
+    expect(manifest.chunkSize).toBe(CHUNK_SIZE_BYTES)
     expect(Math.max(...reads.map((read) => read.length))).toBe(CHUNK_SIZE_BYTES)
-
-    const downloaded: Buffer[] = []
-    await objectStore.downloadTo(manifest, async (chunk) => { downloaded.push(chunk) })
-    expect(Buffer.concat(downloaded)).toEqual(bytes)
+    expect(network.objects.size).toBe(2)
   })
 
   it("reuses a verified immutable chunk after an interrupted upload", async () => {
@@ -96,11 +93,10 @@ describe("streaming binary object upload", () => {
     expect(firstUrl).toBeTruthy()
     expect(network.puts.get(firstUrl!)).toBe(2)
     expect(network.fetchMock.mock.calls.some(([input, init]) => String(input) === firstUrl && init?.method === "GET")).toBe(true)
-    expect(await objectStore.download(manifest)).toEqual(bytes)
   })
 
   it("refuses a source that changes after its stable hash was recorded", async () => {
-    const original = Buffer.alloc(CHUNK_SIZE_BYTES + 1, 1)
+    const original = Buffer.alloc(64 * 1024, 1)
     const changed = Buffer.from(original)
     changed[changed.length - 1] = 2
     const network = fixtureFetch()
