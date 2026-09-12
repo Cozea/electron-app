@@ -68,8 +68,13 @@ function textSnapshot(fileId: string, filePath: string, content: string): Barrie
 class FakeLfs implements GitLfsCleaner {
   availabilityChecks = 0
   cleanCalls: Array<{ cwd: string; filePath: string; bytes: Buffer }> = []
+  private readonly available: boolean
+  private readonly failClean: boolean
 
-  constructor(private readonly available: boolean, private readonly failClean = false) {}
+  constructor(available: boolean, failClean = false) {
+    this.available = available
+    this.failClean = failClean
+  }
 
   async isAvailable(): Promise<boolean> {
     this.availabilityChecks++
