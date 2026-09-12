@@ -109,7 +109,16 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     // Step 4 & 5: Full scan in-scope tree and compare against materialization index
     const diff = await this.scanner.diffAgainstIndex(this.sessionId, this.index)
 
-    // Step 6: Process genuine offline local changes
+    // Step 6: Process genuine offline local changes. Deletes go first, so a file that
+    // was renamed is known to be gone when its new name turns up.
+    for (const deleted of diff.deleted) {
+      this.emit("event", {
+        type: "delete",
+        relativePath: deleted.relativePath,
+        fileId: deleted.fileId,
+      } as NormalizedFileDelete)
+    }
+
     for (const created of diff.created) {
       if (created.contentHash) {
         this.emit("event", {
@@ -136,14 +145,6 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
           isSymlink: modified.isSymlink,
         } as NormalizedFileChange)
       }
-    }
-
-    for (const deleted of diff.deleted) {
-      this.emit("event", {
-        type: "delete",
-        relativePath: deleted.relativePath,
-        fileId: deleted.fileId,
-      } as NormalizedFileDelete)
     }
 
     // Step 7: Replay buffered watcher hints
@@ -181,6 +182,14 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
 
   async rescan(): Promise<void> {
     const diff = await this.scanner.diffAgainstIndex(this.sessionId, this.index)
+    // Deletes first, as at startup, so renames pair up.
+    for (const d of diff.deleted) {
+      this.emit("event", {
+        type: "delete",
+        relativePath: d.relativePath,
+        fileId: d.fileId,
+      } as NormalizedFileDelete)
+    }
     for (const c of diff.created) {
       if (c.contentHash) {
         this.emit("event", {
@@ -207,16 +216,14 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
         } as NormalizedFileChange)
       }
     }
-    for (const d of diff.deleted) {
-      this.emit("event", {
-        type: "delete",
-        relativePath: d.relativePath,
-        fileId: d.fileId,
-      } as NormalizedFileDelete)
-    }
   }
 
   private async processEventItem(item: NativeFSEventItem): Promise<void> {
+    // A folder moved or removed arrives as one event for the folder; its files are found by scanning.
+    if (item.isDir) {
+      await this.rescan()
+      return
+    }
     const rel = this.scopePolicy.normalizeRelativePath(item.path)
 
     if (this.scopePolicy.isAlwaysIgnored(rel)) {

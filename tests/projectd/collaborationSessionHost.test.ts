@@ -251,6 +251,56 @@ describe("projectd session host", () => {
     expect(joiner.host.status().fileCount).toBe(1)
   })
 
+  it("carries a rename as a rename, and keeps the file's identity", async () => {
+    const room = new RoomHost(worker)
+    const { creator, joiner } = await startPair(room, randomBytes(32), { "docs/draft.md": "# Draft\n" })
+    const idOf = (peer: Peer, filePath: string) =>
+      peer.host.replica.tree.listLiveEntries().find((entry) => entry.path === filePath)?.fileId ?? null
+    await waitFor(() => creator.host.status().pendingBatches === 0, "the seed to be acknowledged")
+    const fileId = idOf(creator, "docs/draft.md")
+    expect(fileId).not.toBeNull()
+    const batches = room.storage.batchCount()
+
+    await fs.rename(path.join(creator.root, "docs/draft.md"), path.join(creator.root, "docs/final.md"))
+    creator.events.report(creator.root, "docs/draft.md", "docs/final.md")
+    await waitFor(
+      async () => (await joiner.read("docs/final.md")) === "# Draft\n" && (await joiner.read("docs/draft.md")) === null,
+      "the rename to reach the joiner",
+    )
+    expect(idOf(joiner, "docs/final.md")).toBe(fileId)
+    expect(idOf(creator, "docs/final.md")).toBe(fileId)
+    expect(room.storage.batchCount()).toBe(batches + 1)
+  })
+
+  it("finds a folder moved while the daemon was down, and moves each file", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const creatorRoot = await tempFolder("creator")
+    await writeFiles(creatorRoot, { "old/a.md": "alpha\n", "old/b.md": "beta\n" })
+    const creatorDb = new ProjectdDatabase(":memory:")
+    const creator = await createPeer(room, "creator", roomKey, { root: creatorRoot, db: creatorDb })
+    await startLive(creator, "the creator")
+    await waitFor(() => creator.host.status().pendingBatches === 0, "the seed to be acknowledged")
+    const joiner = await createPeer(room, "joiner", roomKey)
+    await startLive(joiner, "the joiner")
+    const ids = new Map(joiner.host.replica.tree.listLiveEntries().map((entry) => [entry.path, entry.fileId]))
+    await creator.host.stop()
+
+    await fs.rename(path.join(creatorRoot, "old"), path.join(creatorRoot, "new"))
+    const restarted = await createPeer(room, "creator", roomKey, { root: creatorRoot, db: creatorDb })
+    await startLive(restarted, "the restarted creator")
+    await waitFor(
+      async () =>
+        (await joiner.read("new/a.md")) === "alpha\n" &&
+        (await joiner.read("new/b.md")) === "beta\n" &&
+        (await joiner.read("old/a.md")) === null,
+      "the moved folder to reach the joiner",
+    )
+    const moved = new Map(joiner.host.replica.tree.listLiveEntries().map((entry) => [entry.path, entry.fileId]))
+    expect(moved.get("new/a.md")).toBe(ids.get("old/a.md"))
+    expect(moved.get("new/b.md")).toBe(ids.get("old/b.md"))
+  })
+
   it("merges edits made while the daemon was down and resends what the room never acknowledged", async () => {
     const room = new RoomHost(worker)
     const roomKey = randomBytes(32)

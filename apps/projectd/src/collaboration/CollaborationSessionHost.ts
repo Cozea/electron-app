@@ -60,6 +60,8 @@ const DEFAULT_SUBMIT_DELAY_MS = 40
 const DEFAULT_MATERIALIZE_DELAY_MS = 25
 const DEFAULT_RESCAN_WITHOUT_EVENTS_MS = 2_000
 const DEFAULT_GIT_POLL_MS = 2_000
+// A rename reaches the watcher as a delete and a create; the delete waits this long for the new name.
+const DEFAULT_RENAME_WINDOW_MS = 500
 // The room caps an encrypted batch at 1 MiB, and base64 plus JSON add about 40%.
 const DEFAULT_MAX_TEXT_FILE_BYTES = 512 * 1024
 const SUBMIT_CHUNK_BYTES = 256 * 1024
@@ -109,6 +111,8 @@ export interface CollaborationSessionHostOptions {
   autoGitTiming?: Partial<AutoGitTiming>
   /** How often the folder's Git state is checked, which is also how soon a paused folder resumes. */
   gitPollMs?: number
+  /** How long a deleted file waits for a new name, so a rename travels as one change. */
+  renameWindowMs?: number
   connectorFactory?: (wsUrl: string) => RoomConnector
   fileEventSource?: FileEventSource
   /** Full rescans that stand in for file events when no native source runs; 0 turns them off. */
@@ -174,6 +178,7 @@ export class CollaborationSessionHost {
   private readonly reconnectDelaysMs: number[]
   private readonly maxTextFileBytes: number
   private readonly gitPollMs: number
+  private readonly renameWindowMs: number
   private readonly onStatus?: (status: ProjectdSessionStatus) => void
   private readonly onTicketNeeded?: () => void
   private readonly unsubscribeRemote: () => void
@@ -197,6 +202,8 @@ export class CollaborationSessionHost {
   private rescanTimer: NodeJS.Timeout | null = null
   private statusTimer: NodeJS.Timeout | null = null
   private readonly skippedPaths = new Set<string>()
+  // Deleted files waiting for a new name, by file id, with the bytes they last had on disk.
+  private readonly pendingDeletes = new Map<string, { path: string; diskHash: string; timer: NodeJS.Timeout }>()
   private lastError: { code: string; message: string } | null = null
   private readonly gitService?: GitService
   // The folder's Git directory, looked up once; null outside a repository or without a branch.
@@ -222,6 +229,7 @@ export class CollaborationSessionHost {
     this.reconnectDelaysMs = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS
     this.maxTextFileBytes = options.maxTextFileBytes ?? DEFAULT_MAX_TEXT_FILE_BYTES
     this.gitPollMs = options.gitPollMs ?? DEFAULT_GIT_POLL_MS
+    this.renameWindowMs = options.renameWindowMs ?? DEFAULT_RENAME_WINDOW_MS
     this.onStatus = options.onStatus
     this.onTicketNeeded = options.onTicketNeeded
 
@@ -358,6 +366,7 @@ export class CollaborationSessionHost {
 
   /** Resolves once queued ingestion and materialization have run and changes were submitted. */
   async flush(): Promise<void> {
+    if (this.pendingDeletes.size > 0) void this.enqueue(() => this.commitPendingDeletes())
     if (this.materializeTimer) {
       clearTimeout(this.materializeTimer)
       this.materializeTimer = null
@@ -584,6 +593,8 @@ export class CollaborationSessionHost {
       return
     }
     for (const event of offlineEvents) await this.ingest(event)
+    // Deletes that found no new name are deletes.
+    await this.commitPendingDeletes()
 
     this.pendingMaterialize.clear()
     for (const entry of this.replica.tree.listAllEntries()) {
@@ -739,14 +750,20 @@ export class CollaborationSessionHost {
     if (entry) {
       this.adapter.applyExternalDiskChange({ fileId: entry.fileId, diskText: text, actor: this.actor })
     } else {
-      entry = this.replica.createFile({
-        path: filePath,
-        kind: "text",
-        content: text,
-        mode: fileMode(stat.mode),
-        actor: this.actor,
-      })
-      this.adapter.initializeBaseline(entry.fileId, text)
+      // The exact bytes of a file just deleted: that file, renamed (Section 10.19).
+      const renamedFrom = this.takeRenamedFrom(filePath, diskHash)
+      if (renamedFrom) {
+        entry = this.replica.renameFile(renamedFrom, filePath, this.actor)
+      } else {
+        entry = this.replica.createFile({
+          path: filePath,
+          kind: "text",
+          content: text,
+          mode: fileMode(stat.mode),
+          actor: this.actor,
+        })
+        this.adapter.initializeBaseline(entry.fileId, text)
+      }
     }
     this.skippedPaths.delete(filePath)
     this.recordDiskState(entry, diskHash, stat)
@@ -779,10 +796,56 @@ export class CollaborationSessionHost {
       if (fileId) this.index.remove(this.publicSessionId, fileId)
       return
     }
-    this.replica.deleteFile(entry.fileId, this.actor)
-    this.index.remove(this.publicSessionId, entry.fileId)
-    this.baselines.deleteBaseline(entry.fileId)
+    // A rename arrives as a delete and a create: the delete waits briefly for the new name.
+    const indexed = this.index.getByFileId(this.publicSessionId, entry.fileId)
+    if (indexed && entry.kind === "text" && this.renameWindowMs > 0) {
+      if (this.pendingDeletes.has(entry.fileId)) return
+      const fileIdToDelete = entry.fileId
+      const timer = setTimeout(() => void this.enqueue(() => this.commitPendingDelete(fileIdToDelete)), this.renameWindowMs)
+      this.pendingDeletes.set(entry.fileId, { path: filePath, diskHash: indexed.diskHash, timer })
+      return
+    }
+    this.deleteEntry(entry.fileId)
+  }
+
+  private deleteEntry(fileId: string): void {
+    this.replica.deleteFile(fileId, this.actor)
+    this.index.remove(this.publicSessionId, fileId)
+    this.baselines.deleteBaseline(fileId)
     this.scheduleSubmit()
+  }
+
+  /** Deletes a file whose new name never turned up. */
+  private async commitPendingDelete(fileId: string): Promise<void> {
+    const pending = this.pendingDeletes.get(fileId)
+    if (!pending) return
+    clearTimeout(pending.timer)
+    this.pendingDeletes.delete(fileId)
+    if (!this.running || this.gitPause || !this.liveEntryById(fileId)) return
+    // Back at its old path, as after an atomic save.
+    if (await pathExists(path.join(this.workspaceRoot, pending.path))) return
+    this.deleteEntry(fileId)
+  }
+
+  private async commitPendingDeletes(): Promise<void> {
+    for (const fileId of [...this.pendingDeletes.keys()]) await this.commitPendingDelete(fileId)
+  }
+
+  /** The file just deleted that this new file continues: the same bytes, preferring the same name. */
+  private takeRenamedFrom(filePath: string, diskHash: string): string | null {
+    let match: string | null = null
+    for (const [fileId, pending] of this.pendingDeletes) {
+      if (pending.diskHash !== diskHash) continue
+      // Files with the same bytes: the one with the same name wins, as in a folder move.
+      const sameName = path.posix.basename(pending.path) === path.posix.basename(filePath)
+      if (!match || sameName) match = fileId
+      if (sameName) break
+    }
+    if (!match) return null
+    const pending = this.pendingDeletes.get(match)
+    if (pending) clearTimeout(pending.timer)
+    this.pendingDeletes.delete(match)
+    return match
   }
 
   /**
@@ -1179,6 +1242,9 @@ export class CollaborationSessionHost {
       clearInterval(this.gitPollTimer)
       this.gitPollTimer = null
     }
+    // A delete still waiting stays in the index, so the next attach finds it again.
+    for (const pending of this.pendingDeletes.values()) clearTimeout(pending.timer)
+    this.pendingDeletes.clear()
     // A leader gives its lease up while the connection is still open.
     this.autoGit?.stop()
     this.target?.stop()
