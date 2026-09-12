@@ -48,7 +48,10 @@ function validate(record: SessionPullRequestRecord): void {
 
 /** Device-local durable record of the PR that carries one collaboration branch. */
 export class SessionPullRequestStore {
-  constructor(private readonly database: ProjectdDatabase) {
+  private readonly database: ProjectdDatabase
+
+  constructor(database: ProjectdDatabase) {
+    this.database = database
     this.database.db.exec(`CREATE TABLE IF NOT EXISTS session_pull_requests (
       session_id TEXT NOT NULL,
       repository TEXT NOT NULL,
