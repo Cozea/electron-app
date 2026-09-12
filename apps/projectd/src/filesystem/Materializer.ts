@@ -25,6 +25,9 @@ import type { SessionReplica } from "../collaboration/SessionReplica"
 import type { ProjectEntryRecord } from "../collaboration/TreeDoc"
 import { resolveWorkspaceFilePath } from "./workspacePath"
 import { ConflictEngine } from "../collaboration/ConflictEngine"
+import { writeVerifiedBinaryAtomic } from "./AtomicBinaryMaterialization"
+
+const HASH_READ_BYTES = 4 * 1024 * 1024
 
 export interface MaterializerOptions {
   workspaceRoot: string
@@ -32,8 +35,10 @@ export interface MaterializerOptions {
   replica: SessionReplica
   index: MaterializationIndex
   baselineStore: BaselineStore
-  /** Resolves a verified binary revision from the local cache or encrypted object store. */
+  /** Compatibility fallback for bounded callers that still resolve a complete binary. */
   resolveBinary?: (revision: BinaryRevision) => Promise<Buffer>
+  /** Preferred path: streams a verified immutable binary revision in bounded chunks. */
+  streamBinary?: (revision: BinaryRevision, write: (chunk: Buffer) => Promise<void>) => Promise<void>
   normalDelayMs?: number
   maxDelayMs?: number
 }
@@ -51,6 +56,7 @@ export class FilesystemMaterializer {
   readonly index: MaterializationIndex
   readonly baselineStore: BaselineStore
   private readonly resolveBinary?: (revision: BinaryRevision) => Promise<Buffer>
+  private readonly streamBinary?: (revision: BinaryRevision, write: (chunk: Buffer) => Promise<void>) => Promise<void>
 
   readonly normalDelayMs: number
   readonly maxDelayMs: number
@@ -67,6 +73,7 @@ export class FilesystemMaterializer {
     this.index = options.index
     this.baselineStore = options.baselineStore
     this.resolveBinary = options.resolveBinary
+    this.streamBinary = options.streamBinary
     this.normalDelayMs = options.normalDelayMs ?? 25
     this.maxDelayMs = options.maxDelayMs ?? 100
   }
@@ -306,36 +313,35 @@ export class FilesystemMaterializer {
     }
     const revision = this.replica.binaryStore.getHeadRevision(entry.fileId)
     if (!revision) return false
-    if (!this.resolveBinary) {
+    if (!this.streamBinary && !this.resolveBinary) {
       throw new Error(`Cannot materialize binary ${entry.path}: no binary resolver is configured`)
     }
-
-    const content = await this.resolveBinary(revision)
-    const contentHash = sha256(content)
-    if (contentHash !== revision.contentHash || content.length !== revision.size) {
-      throw new Error(`Cannot materialize binary ${entry.path}: resolved bytes do not match revision metadata`)
-    }
-
-    const dir = path.dirname(absPath)
-    await fs.mkdir(dir, { recursive: true })
 
     const previous = this.index.getByFileId(this.sessionId, entry.fileId)
     const existing = await fs.lstat(absPath).catch(() => null)
     if (existing?.isFile()) {
-      const diskExisting = await fs.readFile(absPath)
-      const diskHash = sha256(diskExisting)
-      if (previous && diskHash !== previous.diskHash && diskHash !== contentHash) {
+      const diskHash = await hashRegularFile(absPath)
+      if (previous && diskHash !== previous.diskHash && diskHash !== revision.contentHash) {
         const backupPath = `${absPath}.conflict.${Date.now()}`
-        await fs.writeFile(backupPath, diskExisting)
+        await fs.copyFile(absPath, backupPath)
         console.warn(`[Materializer] Preserved divergent local binary at ${backupPath}`)
       }
     }
 
-    const tempPath = `${absPath}.tmp.${entry.fileId}.${crypto.randomUUID().slice(0, 8)}`
-    await fs.writeFile(tempPath, content, { mode: entry.mode })
-    await fs.chmod(tempPath, entry.mode & 0o777)
-    await fs.rename(tempPath, absPath)
-    const stat = await fs.lstat(absPath)
+    const result = await writeVerifiedBinaryAtomic({
+      destinationPath: absPath,
+      tempIdentity: entry.fileId,
+      mode: entry.mode,
+      expectedSize: revision.size,
+      expectedHash: revision.contentHash,
+      stream: async (write) => {
+        if (this.streamBinary) {
+          await this.streamBinary(revision, write)
+          return
+        }
+        await write(await this.resolveBinary!(revision))
+      },
+    })
 
     this.index.recordMaterialization({
       sessionId: this.sessionId,
@@ -343,9 +349,9 @@ export class FilesystemMaterializer {
       relativePath: entry.path,
       kind: "binary",
       mode: entry.mode,
-      diskHash: contentHash,
-      diskSize: stat.size,
-      diskMtimeMs: stat.mtimeMs,
+      diskHash: result.contentHash,
+      diskSize: result.size,
+      diskMtimeMs: result.mtimeMs,
       state: "materialized",
     })
     return true
@@ -403,6 +409,24 @@ function sha256(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex")
 }
 
+async function hashRegularFile(absPath: string): Promise<string> {
+  const handle = await fs.open(absPath, "r")
+  const digest = createHash("sha256")
+  try {
+    let position = 0
+    for (;;) {
+      const buffer = Buffer.allocUnsafe(HASH_READ_BYTES)
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, position)
+      if (!bytesRead) break
+      digest.update(buffer.subarray(0, bytesRead))
+      position += bytesRead
+    }
+    return digest.digest("hex")
+  } finally {
+    await handle.close()
+  }
+}
+
 async function hashDiskEntry(absPath: string, kind: string): Promise<string | null> {
   try {
     const stat = await fs.lstat(absPath)
@@ -411,7 +435,7 @@ async function hashDiskEntry(absPath: string, kind: string): Promise<string | nu
       return sha256(await fs.readlink(absPath))
     }
     if (!stat.isFile()) return null
-    return sha256(await fs.readFile(absPath))
+    return hashRegularFile(absPath)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
     throw error
