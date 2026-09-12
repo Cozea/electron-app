@@ -27,7 +27,9 @@ function fixtureFetch(options: { failSecondPutOnce?: boolean } = {}) {
     }
     if (init?.method === "GET") {
       const body = objects.get(url)
-      return body ? new Response(body, { status: 200 }) : new Response(null, { status: 404 })
+      if (!body) return new Response(null, { status: 404 })
+      const responseBody = body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer
+      return new Response(responseBody, { status: 200 })
     }
     return new Response(null, { status: 405 })
   })
