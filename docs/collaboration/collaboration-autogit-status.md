@@ -295,6 +295,12 @@ Decided: a member who deletes an env file removes it from every member's Mac, al
 - Tests: `tests/collaboration/rebaseSessionDialog.test.tsx`, `sessionWorkbenchControls.test.tsx`, extended `tests/projectd/autoGitSession.test.ts` — all green pre-push (focused 7 files / 58 tests; full 413 files / 3061 tests).
 - The P21 library bugs (empty conflict bundle, never pushes) are addressed by this wiring; confirm in the two-copy run.
 
+### Convex redeploy — 2026-09-12 (from `0be42dcb` tree)
+
+- Prod was still on the second 2026-09-12 deploy, which predated the `283047c3` URL fix: `normalizeSessionRepositoryUrl` used `url.username` setters the Convex runtime doesn't implement, so `create` failed for any folder with a remote. The fix lives in `shared/collaboration/repositoryUrl.ts`, bundled into `convex/collaborationSessions.ts`.
+- Ran `bunx convex deploy` against production (`knowing-finch-546`). Result: TypeScript + schema validation pass, no indexes deleted, functions deployed. Local tree exports 188 function definitions outside `_generated` (dashboard counted 195 at the last deploy; counting methods differ, no function was added or removed since).
+- Worker `cozea-collab` is still on the step-4 build — P20–P22 room changes (`checkpoint_clean`, coded leader notices) are NOT deployed. That deploy is still pending and needs Docker unless the sandbox is unchanged (`--containers-rollout=none`).
+
 ---
 
 ## P00 — Rebaseline, preserve product truth, and create the ledger
