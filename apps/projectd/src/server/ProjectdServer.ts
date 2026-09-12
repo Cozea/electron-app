@@ -47,6 +47,7 @@ import { BackgroundSessionStore, type BackgroundSessionDescriptor } from "../col
 import { BackgroundAccessDenied, refreshBackgroundSession, getBackgroundRecoveryAccess, shareBackgroundRecoveryKeys } from "../collaboration/BackgroundSessionAuth"
 import { SessionRecoveryCoordinator } from "../collaboration/SessionRecoveryCoordinator"
 import { exportLocalRecovery } from "../collaboration/LocalRecoveryExporter"
+import { previewLocalRecovery } from "../collaboration/LocalRecoveryPreview"
 import { SessionMerger } from "../autogit/SessionMerger"
 import { GitHubSessionPullRequest } from "../autogit/GitHubSessionPullRequest"
 import { getBackgroundRepositoryToken } from "../collaboration/BackgroundRepositoryAuth"
@@ -1061,6 +1062,25 @@ export class ProjectdServer {
         break
       case "sessions.recovery.list":
         this.reply(state, req.id, async () => this.backgroundStore.discoverRecovery(await this.backgroundIdentity.loadExistingIdentity()))
+        break
+      case "sessions.recovery.preview":
+        this.reply(state, req.id, async () => {
+          const publicSessionId = requireSessionId(req.params)
+          const p = (req.params ?? {}) as { afterCursor?: unknown; limit?: unknown }
+          if (p.afterCursor !== undefined && (typeof p.afterCursor !== "string" || p.afterCursor.length > 512)) {
+            throw invalidParams("afterCursor must be a bounded recovery cursor")
+          }
+          if (p.limit !== undefined && (typeof p.limit !== "number" || !Number.isSafeInteger(p.limit) || p.limit < 1 || p.limit > 100)) {
+            throw invalidParams("limit must be an integer from 1 to 100")
+          }
+          const identity = await this.backgroundIdentity.loadExistingIdentity()
+          const descriptor = this.backgroundStore.findRecovery(publicSessionId, identity)
+          if (!descriptor) throw new ProjectdRequestError("NOT_FOUND", "No local recovery record exists for this device")
+          return previewLocalRecovery(this.db, descriptor, {
+            afterCursor: p.afterCursor as string | undefined,
+            limit: p.limit as number | undefined,
+          })
+        })
         break
       case "sessions.recovery.export":
         this.reply(state, req.id, () => this.changeSessions(async () => {
