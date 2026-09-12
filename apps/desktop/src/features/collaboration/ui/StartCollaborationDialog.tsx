@@ -6,10 +6,11 @@
  *
  * The session starts from the folder as it is, uncommitted changes included: once
  * the session exists, the background sync service seeds it from this folder. Using
- * another branch means switching to it first.
+ * another branch means switching to it first. The session records the folder's Git
+ * remote, so invitees without a copy get one when they accept.
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -28,6 +29,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { appToast } from "@/lib/appToast"
 import { useCreateCollaborationSession } from "../hooks/useCreateCollaborationSession"
 import { planLiveSessionStart } from "../live/liveSessionModel"
+import { describeSessionRepository, normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
 
 type AccessMode = "invite_only" | "organization_available"
 
@@ -64,6 +66,24 @@ export function StartCollaborationDialog({
   const sessions = useQuery(api.collaborationSessions.listByProject, isOpen ? { projectId } : "skip")
   const plan = planLiveSessionStart({ branch: currentBranch, hasGitRepo, sessions })
   const submitting = stage === "creating_session"
+  const [repositoryUrl, setRepositoryUrl] = useState<string | null>(null)
+  const [shareEnvironmentFiles, setShareEnvironmentFiles] = useState(true)
+
+  useEffect(() => {
+    if (!isOpen) return
+    let cancelled = false
+    void window.electronAPI.workspace
+      ?.getActiveForProject(String(projectId))
+      .then((workspace) => {
+        if (!cancelled) setRepositoryUrl(normalizeSessionRepositoryUrl(workspace?.gitOriginUrl))
+      })
+      .catch(() => {
+        if (!cancelled) setRepositoryUrl(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, projectId])
 
   const close = (open: boolean) => {
     if (submitting) return
@@ -80,6 +100,8 @@ export function StartCollaborationDialog({
         branchName: plan.branch,
         targetBranch,
         accessMode,
+        repositoryUrl,
+        shareEnvironmentFiles,
       })
       appToast.success({
         title: "Live session started",
@@ -113,6 +135,32 @@ export function StartCollaborationDialog({
               {currentBranch && targetBranch !== currentBranch ? ` Its work is meant to merge into ${targetBranch}.` : null}
             </p>
           </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs font-medium">Copies for people you invite</Label>
+            <p className="text-[11px] text-muted-foreground">
+              {repositoryUrl
+                ? `Anyone you invite who has no copy of ${projectName} gets one cloned from ${describeSessionRepository(repositoryUrl)}.`
+                : "This folder has no https or ssh remote to share, so people you invite need their own copy on this branch."}
+            </p>
+          </div>
+
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={shareEnvironmentFiles}
+              onChange={(event) => setShareEnvironmentFiles(event.target.checked)}
+              disabled={submitting}
+            />
+            <span className="space-y-0.5">
+              <span className="block">Share .env files</span>
+              <span className="block text-[11px] text-muted-foreground">
+                Everyone in the session gets the same env files, end-to-end encrypted, and a change anyone makes reaches
+                everyone. They never go into Git. Anyone you remove keeps the copies they already have.
+              </span>
+            </span>
+          </label>
 
           {uncommittedFileCount > 0 ? (
             <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">

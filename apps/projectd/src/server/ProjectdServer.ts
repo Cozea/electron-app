@@ -125,6 +125,7 @@ function parseAttachParams(params: unknown) {
     actor: attach.actor,
     branchName:
       typeof attach.branchName === "string" && attach.branchName.trim() ? attach.branchName.trim() : undefined,
+    shareEnvironmentFiles: attach.shareEnvironmentFiles === true,
   }
 }
 
@@ -853,6 +854,7 @@ export class ProjectdServer {
       db: this.db,
       gitService: this.gitService,
       branchName: attach.branchName,
+      shareEnvironmentFiles: attach.shareEnvironmentFiles,
       actor: {
         actorType: "user",
         principalId: attach.actor?.principalId,

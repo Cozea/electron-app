@@ -238,6 +238,42 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
     expect(head.stdout.trim()).toBe(parentOid)
   })
 
+  it("never adds env files or anything else Git ignores", async () => {
+    const ignoreRules = ".env*\n!.env.example\n*.log\n"
+    fs.mkdirSync(path.join(testRepoDir, "src"), { recursive: true })
+    fs.writeFileSync(path.join(testRepoDir, ".gitignore"), ignoreRules)
+    fs.writeFileSync(path.join(testRepoDir, ".env.example"), "API_KEY=\n")
+    fs.writeFileSync(path.join(testRepoDir, "src/app.ts"), "export const answer = 42\n")
+    const parentOid = commitAll(testRepoDir)
+
+    const replica = new SessionReplica(sessionId, "leader_client")
+    replica.createFile({ path: ".gitignore", kind: "text", content: ignoreRules, actor })
+    replica.createFile({ path: ".env.example", kind: "text", content: "API_KEY=\nREGION=\n", actor })
+    replica.createFile({ path: "src/app.ts", kind: "text", content: "export const answer = 43\n", actor })
+    replica.createFile({ path: "notes.md", kind: "text", content: "# Notes\n", actor })
+    // The session carries these, and Git must never get them: ignored env files, an env
+    // file this repository forgot to ignore, and an ignored log.
+    replica.createFile({ path: ".env", kind: "text", content: "API_KEY=secret\n", actor })
+    replica.createFile({ path: "apps/web/.env.local", kind: "text", content: "TOKEN=secret\n", actor })
+    replica.createFile({ path: ".dev.vars", kind: "text", content: "SECRET=1\n", actor })
+    replica.createFile({ path: "debug.log", kind: "text", content: "noise\n", actor })
+    const snapshot = BarrierCapture.captureSnapshot(
+      { barrierId: "barrier_env_test", sessionSeq: 3, serverTime: 1726000200000 },
+      replica,
+    )
+
+    const result = await checkpointBuilder.buildCheckpointCommit({
+      repoPath: testRepoDir,
+      sessionId,
+      parentOid,
+      leaseGeneration: 1,
+      snapshot,
+    })
+
+    expect(await listTree(result.commitOid)).toEqual([".env.example", ".gitignore", "notes.md", "src/app.ts"])
+    expect(await showFile(`${result.commitOid}:.env.example`)).toBe("API_KEY=\nREGION=\n")
+  })
+
   it("reports a checkpoint that would change nothing", async () => {
     fs.writeFileSync(path.join(testRepoDir, "README.md"), "# Demo\n")
     fs.writeFileSync(path.join(testRepoDir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]))

@@ -125,6 +125,7 @@ async function createPeer(
     ttlSeconds?: number
     onTicketNeeded?: () => void
     gitService?: GitService
+    shareEnvironmentFiles?: boolean
   } = {},
 ): Promise<Peer> {
   const root = options.root ?? (await tempFolder(name))
@@ -143,6 +144,7 @@ async function createPeer(
     db: options.db ?? new ProjectdDatabase(":memory:"),
     actor: { actorType: "user", principalId: `principal_${name}` },
     gitService: options.gitService,
+    shareEnvironmentFiles: options.shareEnvironmentFiles,
     connectorFactory: () => options.connector ?? room.connector(),
     fileEventSource: events,
     submitDelayMs: 5,
@@ -345,6 +347,55 @@ describe("projectd session host", () => {
       message: expect.stringContaining("Commit or stash"),
     })
     expect(await edited.read("README.md")).toBe("# Demo v1, edited here\n")
+  })
+
+  it("joins a folder it has not synced before afresh, so files the folder lacks arrive rather than leave", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const creatorRoot = await tempFolder("creator")
+    await writeFiles(creatorRoot, { "README.md": "# Demo\n", ".env": "GREETING=hello\n" })
+    const creator = await createPeer(room, "creator", roomKey, { root: creatorRoot, shareEnvironmentFiles: true })
+    await startLive(creator, "the creator")
+    await waitFor(() => creator.host.status().pendingBatches === 0, "the seed to be acknowledged")
+
+    const memberDb = new ProjectdDatabase(":memory:")
+    const first = await createPeer(room, "member", roomKey, { db: memberDb, shareEnvironmentFiles: true })
+    await startLive(first, "the member's first folder")
+    expect(await first.read(".env")).toBe("GREETING=hello\n")
+    await first.host.stop()
+    const batches = room.storage.batchCount()
+
+    // The member links a fresh clone instead: it has what Git has, and no .env.
+    const cloneRoot = await tempFolder("clone")
+    await writeFiles(cloneRoot, { "README.md": "# Demo\n" })
+    const clone = await createPeer(room, "member", roomKey, { root: cloneRoot, db: memberDb, shareEnvironmentFiles: true })
+    await startLive(clone, "the member's new folder")
+    await waitFor(() => clone.host.status().pendingBatches === 0, "the new folder to settle")
+
+    expect(await clone.read(".env")).toBe("GREETING=hello\n")
+    expect(await creator.read(".env")).toBe("GREETING=hello\n")
+    expect(room.storage.batchCount()).toBe(batches)
+  })
+
+  it("still sends what was deleted in the same folder while the daemon was down", async () => {
+    const room = new RoomHost(worker)
+    const roomKey = randomBytes(32)
+    const creatorRoot = await tempFolder("creator")
+    await writeFiles(creatorRoot, { "README.md": "# Demo\n", "draft.md": "scratch\n" })
+    const creatorDb = new ProjectdDatabase(":memory:")
+    const creator = await createPeer(room, "creator", roomKey, { root: creatorRoot, db: creatorDb })
+    await startLive(creator, "the creator")
+    await waitFor(() => creator.host.status().pendingBatches === 0, "the seed to be acknowledged")
+    const joiner = await createPeer(room, "joiner", roomKey)
+    await startLive(joiner, "the joiner")
+    expect(await joiner.read("draft.md")).toBe("scratch\n")
+    await creator.host.stop()
+
+    await fs.rm(path.join(creatorRoot, "draft.md"))
+    const restarted = await createPeer(room, "creator", roomKey, { root: creatorRoot, db: creatorDb })
+    await startLive(restarted, "the restarted creator")
+    await waitFor(async () => (await joiner.read("draft.md")) === null, "the offline delete to reach the joiner")
+    expect(await joiner.read("README.md")).toBe("# Demo\n")
   })
 
   it("asks for a new ticket when the token has expired", async () => {

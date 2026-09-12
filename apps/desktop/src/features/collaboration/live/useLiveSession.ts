@@ -8,7 +8,7 @@
  * member, and offers the membership and lifecycle actions the bar shows.
  */
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useMutation } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -17,6 +17,7 @@ import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { checkoutGitBranchCompat } from "@/features/workbench/branch-control/workbenchBranchCompat"
+import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
 import { findBranchSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import {
@@ -38,6 +39,10 @@ export interface LiveSessionRecord {
   lifecycle: string
   /** This device's membership status; null when it is not a member. */
   viewerMembership?: string | null
+  /** The Git remote invitees clone from; absent on sessions started before sessions recorded one. */
+  repositoryUrl?: string | null
+  /** Whether env files travel with the session although Git ignores them. */
+  shareEnvironmentFiles?: boolean
 }
 
 export interface LiveSessionController {
@@ -103,6 +108,7 @@ export function useLiveSession(input: {
     membersQuery.data?.map((member) => ({ ...member, principalId: String(member.principalId) })) ?? NO_MEMBERS
   const membership = resolveMembership(session?.viewerMembership, members)
   const canManage = membership === "active" && members.some((member) => member.isSelf && member.role === "project_manager")
+  const canEdit = membership === "active" && members.some((member) => member.isSelf && member.role !== "viewer")
 
   const daemon = useDaemonCollaborationSession({
     enabled: daemonEnabled && membership === "active",
@@ -112,6 +118,25 @@ export function useLiveSession(input: {
     rootPath: input.rootPath,
     principalId: input.principalId,
   })
+
+  // A session started before sessions recorded their Git remote gets it from the folder
+  // of a member who can edit, once that folder syncs with the session.
+  const recordRepository = useMutation(api.collaborationSessions.recordRepository)
+  const repositoryRecordAttempted = useRef<string | null>(null)
+  const sessionRepositoryUrl = session?.repositoryUrl ?? null
+  const projectId = input.projectId
+  useEffect(() => {
+    if (!sessionId || sessionRepositoryUrl || !canEdit || !projectId || daemon.phase !== "attached") return
+    if (repositoryRecordAttempted.current === sessionId) return
+    repositoryRecordAttempted.current = sessionId
+    void window.electronAPI.workspace
+      ?.getActiveForProject(projectId)
+      .then((workspace) => {
+        const repositoryUrl = normalizeSessionRepositoryUrl(workspace?.gitOriginUrl)
+        return repositoryUrl ? recordRepository({ sessionId, repositoryUrl }) : undefined
+      })
+      .catch((error: unknown) => console.warn("[LiveSession] Could not record the session's Git remote:", error))
+  }, [sessionId, sessionRepositoryUrl, canEdit, projectId, daemon.phase, recordRepository])
 
   const joinSession = useMutation(api.collaborationSessions.join)
   const leaveSession = useMutation(api.collaborationSessions.leave)

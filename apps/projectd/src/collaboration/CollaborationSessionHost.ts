@@ -31,6 +31,7 @@ import { FSEventsClient, type FileEventSource } from "../filesystem/FSEventsClie
 import { MaterializationIndex } from "../filesystem/MaterializationIndex"
 import { FilesystemMaterializer } from "../filesystem/Materializer"
 import { ScopePolicy } from "../filesystem/ScopePolicy"
+import { isSharedEnvironmentFile } from "../filesystem/environmentFiles"
 import { WorkspaceFilesystemWatcher, type NormalizedFsEvent } from "../filesystem/WorkspaceFilesystemWatcher"
 import { resolveWorkspaceFilePath } from "../filesystem/workspacePath"
 import type { GitService } from "../git/GitService"
@@ -92,6 +93,8 @@ export interface CollaborationSessionHostOptions {
   gitService?: GitService
   /** The session's branch: the folder syncs only while it is checked out, and AutoGit saves to it. */
   branchName?: string
+  /** Share env files (.env) through the session although Git ignores them; AutoGit never commits them. */
+  shareEnvironmentFiles?: boolean
   /** Fixes this device's replica client id; tests use it to choose which device leads. */
   clientId?: string
   autoGitTiming?: Partial<AutoGitTiming>
@@ -152,6 +155,7 @@ export class CollaborationSessionHost {
   private readonly autoGit: AutoGitAgent | null
   private readonly actor: ChangeActor
   private readonly branchName: string | null
+  private readonly shareEnvironmentFiles: boolean
   private readonly connectorFactory: (wsUrl: string) => RoomConnector
   private readonly rescanIntervalMs: number
   private readonly submitDelayMs: number
@@ -200,6 +204,7 @@ export class CollaborationSessionHost {
     this.ticket = options.ticket
     this.actor = options.actor
     this.branchName = options.branchName?.trim() || null
+    this.shareEnvironmentFiles = options.shareEnvironmentFiles === true
     this.connectorFactory = options.connectorFactory ?? webSocketRoomConnector
     this.submitDelayMs = options.submitDelayMs ?? DEFAULT_SUBMIT_DELAY_MS
     this.materializeDelayMs = options.materializeDelayMs ?? DEFAULT_MATERIALIZE_DELAY_MS
@@ -243,7 +248,9 @@ export class CollaborationSessionHost {
     this.watcher = new WorkspaceFilesystemWatcher({
       workspaceRoot: this.workspaceRoot,
       sessionId: this.publicSessionId,
-      scopePolicy: new ScopePolicy(this.workspaceRoot, options.gitService),
+      scopePolicy: new ScopePolicy(this.workspaceRoot, options.gitService, {
+        shareEnvironmentFiles: this.shareEnvironmentFiles,
+      }),
       index: this.index,
       fseventsClient: eventSource ?? new IdleFileEventSource(),
     })
@@ -475,10 +482,19 @@ export class CollaborationSessionHost {
    * First sync after connecting (Section 12.3). An empty room is seeded from the
    * folder. Otherwise the folder's offline edits go in and the room's state comes
    * out. A folder that already holds different versions of session files is
-   * refused rather than overwritten.
+   * refused rather than overwritten. A folder other than the one the session last
+   * synced joins afresh.
    */
   private async reconcile(): Promise<void> {
     if (await this.pauseIfFolderLeftBranch()) return
+    // The index describes the disk of the folder it was recorded in. Read against another
+    // folder, such as a fresh clone, what that folder lacks would look deleted, and the
+    // deletion would reach every member.
+    if (this.index.bindFolder(this.publicSessionId, this.workspaceId, this.workspaceRoot)) {
+      console.info(
+        `[CollaborationSessionHost] ${this.workspaceRoot} joins session ${this.publicSessionId} afresh: it last synced another folder`,
+      )
+    }
     if (this.index.list(this.publicSessionId).length === 0) {
       if (this.replica.tree.listLiveEntries().length === 0) {
         if (this.canWrite) await this.seedFromFolder()
@@ -526,8 +542,9 @@ export class CollaborationSessionHost {
    * First attach to a folder with files. Files that match the session are adopted.
    * A different file the session may replace is one Git holds unchanged at HEAD, as
    * in a fresh clone of the session branch: the session's version is written over it
-   * (Section 6.3, Git-assisted bootstrap). Any other difference is work only this
-   * folder has, so the folder is refused rather than overwritten.
+   * (Section 6.3, Git-assisted bootstrap). A shared env file is replaced too, and the
+   * folder's own version kept beside it. Any other difference is work only this folder
+   * has, so the folder is refused rather than overwritten.
    */
   private async adoptMatchingFiles(): Promise<void> {
     const matching: Array<{ entry: ProjectEntryRecord; diskHash: string; size: number; mtimeMs: number }> = []
@@ -547,7 +564,12 @@ export class CollaborationSessionHost {
     }
 
     const restorable = differing.length > 0 ? await this.filesGitCanRestore() : null
-    const blocking = differing.filter((entry) => !restorable?.has(entry.path))
+    const replacedEnvironmentFiles = this.shareEnvironmentFiles
+      ? differing.filter((entry) => isSharedEnvironmentFile(entry.path))
+      : []
+    const blocking = differing.filter(
+      (entry) => !restorable?.has(entry.path) && !replacedEnvironmentFiles.includes(entry),
+    )
     if (blocking.length > 0) {
       const sample = blocking
         .slice(0, 5)
@@ -565,8 +587,16 @@ export class CollaborationSessionHost {
       this.adapter.initializeBaseline(entry.fileId)
       this.recordDiskState(entry, diskHash, { size, mtimeMs })
     }
-    // Git keeps the versions these replace, at HEAD.
+    for (const entry of replacedEnvironmentFiles) await this.keepLocalCopy(entry.path)
+    // Git keeps the versions these replace, at HEAD; env files were copied aside just now.
     for (const entry of differing) await this.materializer.materializeFile(entry.fileId, Date.now())
+  }
+
+  /** Keeps this folder's version of a file the session replaces, as `<file>.conflict.<time>`, which never syncs. */
+  private async keepLocalCopy(relativePath: string): Promise<void> {
+    const absolutePath = await this.resolveEntryPath(relativePath)
+    if (!absolutePath) return
+    await fs.copyFile(absolutePath, `${absolutePath}.conflict.${Date.now()}`)
   }
 
   /** Files Git holds unchanged at HEAD, relative to the folder; null outside a Git work tree. */

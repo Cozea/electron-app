@@ -444,4 +444,78 @@ describe("collaborationSessions members for the session bar", () => {
     await runConvexHandler(sessions.leave, world.teammate.ctx, { sessionId })
     expect(await membershipOf(world.teammate)).toBe("left")
   })
+
+  it("records the folder's remote without credentials and hands it to invitees", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world, { repositoryUrl: "https://ghp_token@github.com/acme/app.git" })
+    expect((await world.db.get(sessionId))?.repositoryUrl).toBe("https://github.com/acme/app.git")
+
+    const { invitationId } = await runConvexHandler<{ invitationId: string }>(sessions.inviteParticipant, world.owner.ctx, {
+      sessionId,
+      targetPrincipalId: world.invitee.id,
+    })
+    const inbox = await runConvexHandler<Array<{ repositoryUrl: string | null }>>(
+      sessions.listIncomingInvitations,
+      world.invitee.ctx,
+      {},
+    )
+    expect(inbox[0]?.repositoryUrl).toBe("https://github.com/acme/app.git")
+
+    const accepted = await runConvexHandler(sessions.resolveInvitation, world.invitee.ctx, { invitationId, accept: true })
+    expect(accepted).toEqual(expect.objectContaining({ accepted: true, repositoryUrl: "https://github.com/acme/app.git" }))
+  })
+
+  it("drops a remote another Mac cannot safely clone", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world, { repositoryUrl: "file:///Users/owner/app" })
+    expect((await world.db.get(sessionId))?.repositoryUrl).toBeUndefined()
+  })
+
+  it("records whether env files travel with the session and tells invitees", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world, { shareEnvironmentFiles: true })
+    expect((await world.db.get(sessionId))?.shareEnvironmentFiles).toBe(true)
+    await runConvexHandler(sessions.inviteParticipant, world.owner.ctx, { sessionId, targetPrincipalId: world.invitee.id })
+    const inbox = await runConvexHandler<Array<{ shareEnvironmentFiles: boolean }>>(
+      sessions.listIncomingInvitations,
+      world.invitee.ctx,
+      {},
+    )
+    expect(inbox[0]?.shareEnvironmentFiles).toBe(true)
+
+    const other = await createSession(world, { branchName: "feature/other" })
+    expect((await world.db.get(other.sessionId))?.shareEnvironmentFiles).toBe(false)
+  })
+
+  it("lets a member who can edit record a missing remote, once", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world)
+    const { invitationId } = await runConvexHandler<{ invitationId: string }>(sessions.inviteParticipant, world.owner.ctx, {
+      sessionId,
+      targetPrincipalId: world.invitee.id,
+      role: "viewer",
+    })
+    await runConvexHandler(sessions.resolveInvitation, world.invitee.ctx, { invitationId, accept: true })
+    const remote = { sessionId, repositoryUrl: "https://github.com/acme/app.git" }
+
+    await expect(runConvexHandler(sessions.recordRepository, world.invitee.ctx, remote)).rejects.toThrow(
+      /Only members who can edit/,
+    )
+    await expect(runConvexHandler(sessions.recordRepository, world.outsider.ctx, remote)).rejects.toThrow(
+      /Only members who can edit/,
+    )
+    await expect(
+      runConvexHandler(sessions.recordRepository, world.owner.ctx, { sessionId, repositoryUrl: "/Users/owner/app" }),
+    ).rejects.toThrow(/https and ssh/)
+
+    expect(
+      await runConvexHandler(sessions.recordRepository, world.owner.ctx, { sessionId, repositoryUrl: "git@github.com:acme/app.git" }),
+    ).toEqual({ recorded: true, repositoryUrl: "git@github.com:acme/app.git" })
+    expect(
+      await runConvexHandler(sessions.recordRepository, world.owner.ctx, {
+        sessionId,
+        repositoryUrl: "https://github.com/someone-else/app.git",
+      }),
+    ).toEqual({ recorded: false, repositoryUrl: "git@github.com:acme/app.git" })
+  })
 })

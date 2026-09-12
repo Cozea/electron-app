@@ -107,6 +107,8 @@ export interface DaemonSessionTarget {
   principalId: string | null
   /** The session's branch: the daemon syncs the folder only while it is checked out, and saves to it. */
   branchName?: string | null
+  /** Share env files (.env) through the session although Git ignores them. */
+  shareEnvironmentFiles?: boolean
 }
 
 export interface DaemonSessionConnection {
@@ -152,6 +154,7 @@ export async function connectDaemonSession(
       ticket,
       actor: target.principalId ? { principalId: target.principalId } : undefined,
       ...(target.branchName ? { branchName: target.branchName } : {}),
+      ...(target.shareEnvironmentFiles ? { shareEnvironmentFiles: true } : {}),
     })
     if (!result.success) {
       throw new Error(result.error)

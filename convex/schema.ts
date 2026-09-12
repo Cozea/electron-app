@@ -884,6 +884,10 @@ export default defineSchema({
     repositoryBindingId: v.string(),
     branchName: v.string(),
     targetBranch: v.string(),
+    /** The Git remote invitees clone from, without credentials (shared/collaboration/repositoryUrl.ts). */
+    repositoryUrl: v.optional(v.string()),
+    /** Whether env files (.env) travel with the session although Git ignores them. */
+    shareEnvironmentFiles: v.optional(v.boolean()),
     createdByPrincipalId: v.id("devicePrincipals"),
     lifecycle: v.union(
       v.literal("CREATING"),

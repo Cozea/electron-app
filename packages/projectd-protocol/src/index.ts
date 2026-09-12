@@ -163,6 +163,12 @@ export interface ProjectdSessionAttachParams {
    * another branch is checked out, and saves the session to the branch (AutoGit).
    */
   branchName?: string
+  /**
+   * Share the project's env files (.env) through the session although Git ignores
+   * them. They travel end to end encrypted like every session file, and AutoGit never
+   * commits them.
+   */
+  shareEnvironmentFiles?: boolean
 }
 
 export type ProjectdSessionState =

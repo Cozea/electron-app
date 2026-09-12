@@ -11,6 +11,8 @@ import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { appToast } from "@/lib/appToast"
 import { SessionInvitationCard, type SessionInvitationItem } from "@/features/inbox/components/SessionInvitationCard"
+import { describeInviteeCopy, ensureInviteeCopy, type InviteeCopyOutcome } from "@/features/inbox/sessionCopy"
+import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -52,9 +54,28 @@ interface AcceptedInvitation {
   projectName: string
   /** What happens next, when there is more to say than "Invitation accepted". */
   detail: string | null
+  /** True while Cozea is still setting up a copy of the project on this Mac. */
+  settingUp?: boolean
 }
 
 const NO_SESSION_INVITATIONS: SessionInvitationItem[] = []
+
+/** A clone can take a while, so its result is also announced for anyone who left the Inbox. */
+function announceInviteeCopy(copy: InviteeCopyOutcome, projectName: string): void {
+  switch (copy.kind) {
+    case "cloned":
+      appToast.success({ title: `${projectName} is ready`, description: `Cozea cloned ${copy.repository}. Open the project to start syncing.` })
+      return
+    case "no_repository":
+      appToast.info({ title: `Link your copy of ${projectName}`, description: "The session hasn't recorded its Git remote." })
+      return
+    case "failed":
+      appToast.error({ title: `No copy of ${projectName} was set up`, description: copy.message })
+      return
+    case "existing":
+      return
+  }
+}
 
 export function InboxPage() {
   const { t } = useTranslation()
@@ -120,12 +141,31 @@ export function InboxPage() {
   )
 
   const handleSessionAccepted = useCallback(
-    (item: SessionInvitationItem) => {
-      rememberAccepted(`session:${String(item.invitationId)}`, {
-        projectId: String(item.projectId),
-        projectName: item.projectName,
-        detail: `You're in the live session on ${item.branchName}. Switch to that branch to sync with it.`,
+    (item: SessionInvitationItem, accepted: { projectId: string; branchName: string; repositoryUrl: string | null }) => {
+      const key = `session:${String(item.invitationId)}`
+      const base = { projectId: accepted.projectId, projectName: item.projectName }
+      rememberAccepted(key, {
+        ...base,
+        detail: `You're in the live session on ${accepted.branchName}. Setting up ${item.projectName} on this Mac…`,
+        settingUp: true,
       })
+      void ensureInviteeCopy(
+        {
+          projectId: accepted.projectId,
+          projectName: item.projectName,
+          branchName: accepted.branchName,
+          repositoryUrl: accepted.repositoryUrl,
+        },
+        window.electronAPI.workspace,
+      )
+        .catch((error: unknown): InviteeCopyOutcome => ({ kind: "failed", message: cleanConvexError(error, "Setup failed.") }))
+        .then((copy) => {
+          // The project's folder lookup is cached and may still say "no folder" from before
+          // the clone, in which case opening the project would not find the new copy.
+          if (copy.kind === "cloned") invalidateProjectWorkspaceResolution(accepted.projectId)
+          rememberAccepted(key, { ...base, detail: describeInviteeCopy(copy, accepted.branchName), settingUp: false })
+          announceInviteeCopy(copy, item.projectName)
+        })
     },
     [rememberAccepted],
   )
@@ -217,12 +257,16 @@ export function InboxPage() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-foreground">{info.projectName}</p>
-                          <p className="text-xs text-muted-foreground">{info.detail ?? t("inbox.accepted")}</p>
+                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            {info.settingUp ? <Spinner size="xs" /> : null}
+                            <span>{info.detail ?? t("inbox.accepted")}</span>
+                          </p>
                         </div>
                       </div>
                       <Button
                         size="sm"
                         className="gap-1.5"
+                        disabled={info.settingUp}
                         onClick={() => handleOpenProject(info.projectId)}
                       >
                         <span>{t("inbox.openProject")}</span>
@@ -240,7 +284,7 @@ export function InboxPage() {
                     <SessionInvitationCard
                       key={String(item.invitationId)}
                       item={item}
-                      onAccepted={() => handleSessionAccepted(item)}
+                      onAccepted={(result) => handleSessionAccepted(item, result)}
                     />
                   ))}
                 </section>

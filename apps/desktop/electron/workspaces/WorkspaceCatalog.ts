@@ -1485,8 +1485,8 @@ export const WorkspaceCatalogLive = Layer.effect(
           catch: (e) => new Error(String(e)),
         })
 
-        const cloneArgs = ["clone", repoUrl, targetPath]
-        if (branch) cloneArgs.push("--branch", branch)
+        // Options go before `--`, so a URL that came from another device is never read as one.
+        const cloneArgs = ["clone", ...(branch ? ["--branch", branch] : []), "--", repoUrl, targetPath]
 
         yield* Effect.tryPromise({
           try: async () => {

@@ -157,6 +157,15 @@ describe("connectDaemonSession", () => {
     expect(deps.daemon.attach).toHaveBeenCalledWith(expect.objectContaining({ branchName: "feat/live" }))
   })
 
+  it("tells the daemon when the session shares env files", async () => {
+    const { deps } = createDeps([
+      { status: "ready", keyVersion: 1, wrappedKey: "w", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },
+    ])
+
+    await connectDaemonSession(deps, { ...TARGET, shareEnvironmentFiles: true })
+    expect(deps.daemon.attach).toHaveBeenCalledWith(expect.objectContaining({ shareEnvironmentFiles: true }))
+  })
+
   it("reports a daemon that is not running and stops listening", async () => {
     const { deps, listeners } = createDeps([
       { status: "ready", keyVersion: 1, wrappedKey: "w", wrapAlgorithm: "ECDH-P256+A256GCM", senderPublicKeyJwk: "{}" },

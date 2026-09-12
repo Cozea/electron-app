@@ -5,7 +5,8 @@
  * Phase: P15
  *
  * Accepting joins the session and grants project access in one step on the server.
- * The folder starts syncing once the invitee opens the project on the session branch.
+ * The Inbox then makes sure this Mac has a copy of the project (sessionCopy.ts), and
+ * the folder starts syncing once the invitee opens the project on the session branch.
  */
 
 import { useState } from "react"
@@ -29,6 +30,10 @@ export interface SessionInvitationItem {
   projectName: string
   branchName: string
   targetBranch: string
+  /** The Git remote the session recorded; cloned when this Mac has no copy of the project. */
+  repositoryUrl: string | null
+  /** Whether the session shares the project's env files. */
+  shareEnvironmentFiles: boolean
   role: string
   sessionLifecycle: string
   inviterName: string
@@ -48,7 +53,7 @@ export function SessionInvitationCard({
   onAccepted,
 }: {
   item: SessionInvitationItem
-  onAccepted?: (result: { projectId: string; sessionId: string; branchName: string }) => void
+  onAccepted?: (result: { projectId: string; sessionId: string; branchName: string; repositoryUrl: string | null }) => void
 }) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState<"accept" | "decline" | null>(null)
@@ -65,14 +70,16 @@ export function SessionInvitationCard({
           description: `Ask for a new invitation to ${item.projectName}.`,
         })
       } else if (res.accepted) {
+        const branchName = res.branchName ?? item.branchName
         appToast.success({
           title: "Joined the live session",
-          description: `Open ${item.projectName} on ${item.branchName} to sync with it.`,
+          description: `You're in the live session on ${branchName} in ${item.projectName}.`,
         })
         onAccepted?.({
           projectId: String(res.projectId),
           sessionId: String(res.sessionId),
-          branchName: res.branchName ?? item.branchName,
+          branchName,
+          repositoryUrl: res.repositoryUrl ?? item.repositoryUrl,
         })
       } else {
         appToast.info({
@@ -111,6 +118,7 @@ export function SessionInvitationCard({
           <p className="text-xs text-muted-foreground">
             {item.inviterName} invited you to the live session on {item.branchName}
             {item.targetBranch !== item.branchName ? `, which merges into ${item.targetBranch}` : ""}.
+            {item.shareEnvironmentFiles ? " It shares the project's .env files with you." : ""}
           </p>
         </div>
       </div>

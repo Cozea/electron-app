@@ -18,6 +18,7 @@ import { isOrgMember } from "./lib/orgAccess"
 import { canAccessProject, canEditProject, canManageProject } from "./lib/projectAccess"
 import { isDeviceIdentityKey, normalizeDeviceIdentityKey } from "../shared/deviceIdentity"
 import { canTransitionSessionLifecycle } from "../shared/collaboration/stateMachines"
+import { normalizeSessionRepositoryUrl } from "../shared/collaboration/repositoryUrl"
 
 type Session = Doc<"collaborationSessions">
 type SessionMember = Doc<"collaborationSessionMembers">
@@ -259,6 +260,8 @@ export const listIncomingInvitations = query({
           projectName: project.name,
           branchName: session.branchName,
           targetBranch: session.targetBranch,
+          repositoryUrl: session.repositoryUrl ?? null,
+          shareEnvironmentFiles: session.shareEnvironmentFiles === true,
           role: invite.role,
           sessionLifecycle: session.lifecycle,
           inviterName: inviter?.displayName ?? "A team member",
@@ -324,6 +327,10 @@ export const create = mutation({
     targetBranch: v.string(),
     accessMode: v.union(v.literal("invite_only"), v.literal("organization_available")),
     organizationId: v.optional(v.id("organizations")),
+    /** The folder's Git remote, which invitees clone. Dropped unless it is a shareable network URL. */
+    repositoryUrl: v.optional(v.string()),
+    /** Share env files (.env) through the session although Git ignores them. */
+    shareEnvironmentFiles: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const caller = await requireAuthenticatedDevice(ctx)
@@ -374,6 +381,8 @@ export const create = mutation({
       repositoryBindingId: args.repositoryBindingId,
       branchName,
       targetBranch,
+      repositoryUrl: normalizeSessionRepositoryUrl(args.repositoryUrl) ?? undefined,
+      shareEnvironmentFiles: args.shareEnvironmentFiles === true,
       createdByPrincipalId: caller._id,
       lifecycle: "ACTIVE",
       accessMode: args.accessMode,
@@ -408,6 +417,42 @@ export const create = mutation({
     })
 
     return { sessionId, publicSessionId }
+  },
+})
+
+/**
+ * Records the Git remote invitees clone from, for sessions started before sessions
+ * carried one. Only a member who can edit records it, and only while none is recorded,
+ * so nobody can later point invitees at a different repository.
+ */
+export const recordRepository = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+    repositoryUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    if (isClosedOrClosing(session)) {
+      throw new ConvexError("Session no longer available")
+    }
+    const membership = await getMembership(ctx, session._id, caller._id)
+    if (
+      membership?.status !== "active" ||
+      membership.role === "viewer" ||
+      !(await canEditProject(ctx, session.projectId, caller._id))
+    ) {
+      throw new ConvexError("Only members who can edit the session can record its repository")
+    }
+    if (session.repositoryUrl) {
+      return { recorded: false as const, repositoryUrl: session.repositoryUrl }
+    }
+    const repositoryUrl = normalizeSessionRepositoryUrl(args.repositoryUrl)
+    if (!repositoryUrl) {
+      throw new ConvexError("Only https and ssh Git remotes can be shared with invitees")
+    }
+    await ctx.db.patch(session._id, { repositoryUrl, updatedAt: Date.now() })
+    return { recorded: true as const, repositoryUrl }
   },
 })
 
@@ -981,6 +1026,7 @@ export const resolveInvitation = mutation({
       publicSessionId: session.publicSessionId,
       projectId: session.projectId,
       branchName: session.branchName,
+      repositoryUrl: session.repositoryUrl ?? null,
       memberId,
     }
   },

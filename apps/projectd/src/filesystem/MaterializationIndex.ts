@@ -181,6 +181,42 @@ export class MaterializationIndex {
     }
   }
 
+  /**
+   * Ties the session's materializations to the folder being synced. What was recorded
+   * for another folder describes that folder's disk, so it is forgotten, as before the
+   * first attach. A session recorded before folders were has no folder and starts over
+   * too: a needless fresh join costs a re-check, a wrong index costs deletions.
+   * Returns true when it forgot materializations.
+   */
+  bindFolder(sessionId: string, workspaceId: string, rootPath: string): boolean {
+    const bound = this.db.db
+      .prepare("SELECT workspace_id, root_path FROM session_folders WHERE session_id = ?")
+      .get(sessionId) as { workspace_id: string; root_path: string } | undefined
+    if (bound?.workspace_id === workspaceId && bound.root_path === rootPath) return false
+
+    const forgetting = this.list(sessionId).length > 0
+    this.db.db.exec("BEGIN TRANSACTION;")
+    try {
+      this.db.db.prepare("DELETE FROM file_materializations WHERE session_id = ?").run(sessionId)
+      this.db.db.prepare("DELETE FROM path_index WHERE session_id = ?").run(sessionId)
+      this.db.db
+        .prepare(`
+          INSERT INTO session_folders (session_id, workspace_id, root_path, updated_at)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(session_id) DO UPDATE SET
+            workspace_id = excluded.workspace_id,
+            root_path = excluded.root_path,
+            updated_at = excluded.updated_at
+        `)
+        .run(sessionId, workspaceId, rootPath, Date.now())
+      this.db.db.exec("COMMIT;")
+    } catch (err) {
+      this.db.db.exec("ROLLBACK;")
+      throw err
+    }
+    return forgetting
+  }
+
   private rowToEntry(row: any): MaterializedEntry {
     return {
       sessionId: String(row.session_id),

@@ -23,6 +23,7 @@ import path from "node:path"
 import { normalizeProjectPath } from "../collaboration/projectPath"
 import { TextDocRegistry } from "../collaboration/TextDocRegistry"
 import { ScopePolicy } from "../filesystem/ScopePolicy"
+import { isSharedEnvironmentFile } from "../filesystem/environmentFiles"
 import type { GitService } from "../git/GitService"
 import type { BarrierSnapshot } from "./BarrierCapture"
 
@@ -157,8 +158,15 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
         indexEnv,
       })
 
+      // Env files a session shares, and anything else Git ignores, never enter a checkpoint.
+      const keptOutOfGit = await this.pathsKeptOutOfGit(
+        git,
+        [...snapshotFiles.keys()].filter((repoFilePath) => !parentEntries.has(repoFilePath)),
+        indexEnv,
+      )
       const updates: string[] = []
       for (const [repoFilePath, file] of snapshotFiles) {
+        if (keptOutOfGit.has(repoFilePath)) continue
         const parent = parentEntries.get(repoFilePath)
         if (file.kind === "text" && file.textContent !== undefined) {
           const mode = file.mode === 0o100755 ? "100755" : "100644"
@@ -306,6 +314,35 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
       if (syncable.has(candidate.oid)) removals.push(candidate.path)
     }
     return removals
+  }
+
+  /**
+   * New paths a checkpoint must never add: env files, even where the repository forgot
+   * to ignore them, and anything Git ignores. A path the parent commit already tracks
+   * stays tracked. When Git cannot read its ignore rules the checkpoint fails, rather
+   * than risk committing a secret.
+   */
+  private async pathsKeptOutOfGit(
+    git: GitRunner,
+    paths: string[],
+    indexEnv: Record<string, string>,
+  ): Promise<Set<string>> {
+    const kept = new Set(paths.filter((repoFilePath) => isSharedEnvironmentFile(repoFilePath)))
+    const candidates = paths.filter((repoFilePath) => !kept.has(repoFilePath))
+    if (candidates.length === 0) return kept
+    const result = await git(["check-ignore", "-z", "--stdin"], {
+      env: indexEnv,
+      stdin: `${candidates.join("\0")}\0`,
+      allowNonZeroExit: true,
+    })
+    // Exit 1 means none of the paths is ignored.
+    if (!result.success && result.exitCode !== 1) {
+      throw new Error(`Git could not read its ignore rules: ${result.stderr.trim() || `exit ${result.exitCode}`}`)
+    }
+    for (const ignored of result.stdout.split("\0")) {
+      if (ignored) kept.add(ignored)
+    }
+    return kept
   }
 
   /** Paths under a Git filter such as LFS: their stored bytes are not what the folder holds. */

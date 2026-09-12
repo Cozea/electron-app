@@ -140,7 +140,7 @@ async function createPeer(
   room: RoomHost,
   name: string,
   roomKey: Buffer,
-  options: { root: string; clientId: string; timing?: Partial<AutoGitTiming> },
+  options: { root: string; clientId: string; timing?: Partial<AutoGitTiming>; shareEnvironmentFiles?: boolean },
 ): Promise<Peer> {
   const events = new ManualFileEvents()
   const token = await sessionTokenFor(worker, `principal_${name}`)()
@@ -154,6 +154,7 @@ async function createPeer(
     actor: { actorType: "user", principalId: `principal_${name}` },
     gitService: new GitService(),
     branchName: BRANCH,
+    shareEnvironmentFiles: options.shareEnvironmentFiles,
     clientId: options.clientId,
     autoGitTiming: options.timing ?? FAST,
     gitPollMs: 20,
@@ -259,6 +260,48 @@ describe("AutoGit in projectd", () => {
     const second = checkpointOf(joiner) ?? ""
     expect(git(repos.remote, "rev-parse", `${second}^`)).toBe(first)
     expect(git(repos.remote, "ls-tree", "-r", "--name-only", second).split("\n")).toEqual(["logo.png", "src/app.ts"])
+  })
+
+  it("shares ignored env files live and never saves them to Git", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ ".gitignore": ".env*\n", "src/app.ts": "export const answer = 42\n" })
+    await writeFiles(repos.creatorRoot, { ".env": "API_KEY=creator\n" })
+    // The joiner has its own env file: the session's replaces it, and its own stays beside it.
+    await writeFiles(repos.joinerRoot, { ".env": "API_KEY=joiner-local\n" })
+    const roomKey = randomBytes(32)
+    const creator = await createPeer(room, "creator", roomKey, {
+      root: repos.creatorRoot,
+      clientId: "c_a",
+      shareEnvironmentFiles: true,
+    })
+    await startLive(creator, "the creator")
+    await waitFor(() => autoGitOf(creator)?.state === "leader", "the creator to lead", GIT_WAIT_MS)
+    const joiner = await createPeer(room, "joiner", roomKey, {
+      root: repos.joinerRoot,
+      clientId: "c_b",
+      shareEnvironmentFiles: true,
+    })
+    await startLive(joiner, "the joiner")
+
+    expect(await joiner.read(".env")).toBe("API_KEY=creator\n")
+    const keptCopies = (await fs.readdir(repos.joinerRoot)).filter((name) => name.startsWith(".env.conflict."))
+    expect(keptCopies).toHaveLength(1)
+    expect(await joiner.read(keptCopies[0] ?? "")).toBe("API_KEY=joiner-local\n")
+
+    // A change anyone makes reaches everyone.
+    await joiner.write(".env", "API_KEY=rotated\n")
+    await waitFor(
+      async () => (await creator.read(".env")) === "API_KEY=rotated\n",
+      "the rotated key to reach the creator",
+      GIT_WAIT_MS,
+    )
+
+    // Saving the session to Git leaves the env file out.
+    await creator.write("src/app.ts", "export const answer = 43\n")
+    await waitFor(() => remoteHead(repos.remote) !== repos.initial, "the session to be saved", GIT_WAIT_MS)
+    const saved = remoteHead(repos.remote)
+    expect(git(repos.remote, "ls-tree", "-r", "--name-only", saved).split("\n")).toEqual([".gitignore", "src/app.ts"])
+    expect(git(repos.remote, "show", `${saved}:src/app.ts`)).toBe("export const answer = 43")
   })
 
   it("saves when any member asks, and stops rather than overwrite commits made outside the session", async () => {

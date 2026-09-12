@@ -4,10 +4,10 @@
  * Master Specification: Section 6.1
  * Phase: P14
  *
- * This creates the cloud session record only. Provisioning the local session
- * workspace and Session Workbench belongs to projectd, which the app does not call
- * yet, so the hook reports "ready" once the record exists instead of simulating
- * those steps.
+ * This creates the cloud session record only, with the Git remote invitees clone from.
+ * The creator's folder already is the session's folder; an invitee without a copy
+ * gets one when they accept (features/inbox/sessionCopy.ts). So the hook reports
+ * "ready" once the record exists.
  */
 
 import { useState, useCallback } from "react"
@@ -27,6 +27,10 @@ export interface CreateSessionParams {
   includeDirtyChanges?: boolean
   accessMode: SessionAccessMode
   organizationId?: Id<"organizations">
+  /** The folder's Git remote; invitees without a copy clone it. */
+  repositoryUrl?: string | null
+  /** Share env files (.env) through the session although Git ignores them. */
+  shareEnvironmentFiles?: boolean
 }
 
 export interface CreateSessionResult {
@@ -54,6 +58,8 @@ export function useCreateCollaborationSession() {
           targetBranch: params.targetBranch ?? "main",
           accessMode: params.accessMode,
           organizationId: params.organizationId,
+          repositoryUrl: params.repositoryUrl ?? undefined,
+          shareEnvironmentFiles: params.shareEnvironmentFiles ?? false,
         })
 
         setStage("ready")
