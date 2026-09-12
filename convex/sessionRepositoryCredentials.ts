@@ -66,6 +66,41 @@ function issueForSession(purpose: "pull_request" | "git_write") {
 }
 
 const tokenResult = v.object({ token: v.string(), expiresAt: v.number(), repositoryUrl: v.string(), projectId: v.id("projects") })
+const capabilityResult = v.object({
+  repositoryUrl: v.string(),
+  projectId: v.id("projects"),
+  pullRequest: v.boolean(),
+  gitWrite: v.boolean(),
+})
+
+/**
+ * Authenticated capability discovery for the canonical session repository. This does
+ * not contact GitHub or mint an installation token; it only reports whether the
+ * operator provisioned the exact binding and app credentials needed for each action.
+ */
+export const capabilities = action({
+  args: { publicSessionId: v.string() },
+  returns: capabilityResult,
+  handler: async (ctx, args) => {
+    const before = await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)
+    let pullRequest = false
+    let gitWrite = false
+    try {
+      const grant = repositoryGrant(process.env.COZEA_GITHUB_REPOSITORY_GRANTS ?? "[]", before.projectId, before.repositoryUrl)
+      const configured = Boolean(process.env.COZEA_GITHUB_APP_ID && process.env.COZEA_GITHUB_APP_PRIVATE_KEY)
+      pullRequest = configured
+      gitWrite = configured && grant.allowGitWrite === true
+    } catch {
+      // An authorized session may learn only that this exact canonical repository is
+      // not provisioned. Installation ids, repository ids and app secrets stay server-side.
+    }
+    const after = await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)
+    if (after.projectId !== before.projectId || after.repositoryUrl !== before.repositoryUrl) {
+      throw new ConvexError("Repository binding changed while checking capabilities.")
+    }
+    return { repositoryUrl: before.repositoryUrl, projectId: before.projectId, pullRequest, gitWrite }
+  },
+})
 
 export const forPullRequest = action({
   args: { publicSessionId: v.string() }, returns: tokenResult,
