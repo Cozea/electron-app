@@ -218,6 +218,48 @@ export interface ProjectdSessionRecoveryEntry {
   requiresOnlineVerification: boolean
 }
 
+export type ProjectdRecoveryConflictKind =
+  | "path_collision"
+  | "concurrent_rename"
+  | "delete_modify"
+  | "binary_concurrent_revision"
+
+/** Bounded inspect-only metadata/content for one retained file identity. */
+export interface ProjectdRecoveryPreviewEntry {
+  /** Stable only while retained state is unchanged; a missing cursor means refresh. */
+  cursor: string
+  fileId: string | null
+  path: string
+  kind: "text" | "binary" | "symlink"
+  mode: number
+  deleted: boolean
+  size: number | null
+  textPreview: string | null
+  textTruncated: boolean
+  symlinkTarget: string | null
+  symlinkTargetTruncated: boolean
+  revisionCount: number
+  pendingBinaryVersions: number
+  conflictKinds: ProjectdRecoveryConflictKind[]
+}
+
+/** Local-only frozen-session inspection. This never implies a shared-session mutation. */
+export interface ProjectdRecoveryPreviewResult {
+  publicSessionId: string
+  snapshotSequence: number | null
+  pendingBatches: number
+  pendingBinaryVersions: number
+  totalEntries: number
+  entries: ProjectdRecoveryPreviewEntry[]
+  nextCursor: string | null
+  conflicts: {
+    pathCollisions: number
+    concurrentRenames: number
+    deleteModify: number
+    binary: number
+  }
+}
+
 export interface ProjectdRecoveryExportResult {
   directory: string
   files: number
