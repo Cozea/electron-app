@@ -12,6 +12,7 @@
  */
 
 import { createHash } from "node:crypto"
+import type { Stats } from "node:fs"
 import fs from "node:fs/promises"
 
 const HASH_READ_CHUNK_BYTES = 1024 * 1024
@@ -128,7 +129,7 @@ export class StableFileReader {
   /** Null means the file changed during this attempt and must be retried. */
   private async readWithStat(
     absolutePath: string,
-    stat1: Awaited<ReturnType<typeof fs.lstat>>,
+    stat1: Stats,
     includeBytes: boolean,
   ): Promise<StableReadResult | null> {
     if (stat1.isSymbolicLink()) return this.symlinkResult(absolutePath, stat1, includeBytes)
@@ -185,7 +186,7 @@ export class StableFileReader {
 
   private async symlinkResult(
     absolutePath: string,
-    stat: Awaited<ReturnType<typeof fs.lstat>>,
+    stat: Stats,
     includeBytes: boolean,
   ): Promise<StableReadResult> {
     const target = await fs.readlink(absolutePath)
@@ -204,10 +205,7 @@ export class StableFileReader {
     }
   }
 
-  private specialResult(
-    absolutePath: string,
-    stat: Awaited<ReturnType<typeof fs.lstat>>,
-  ): StableReadResult {
+  private specialResult(absolutePath: string, stat: Stats): StableReadResult {
     return {
       path: absolutePath,
       exists: true,
