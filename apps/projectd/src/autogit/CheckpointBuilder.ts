@@ -40,7 +40,7 @@ import {
   type LfsAvailabilityState,
 } from "./CheckpointFilterPolicy"
 
-export { GitLfsCleanError, GitLfsUnavailableError, UnsupportedGitFilterError } from "./CheckpointFilterPolicy"
+export { GitLfsCleanError, GitLfsUnavailableError, UnsupportedGitFilterError }
 
 const DEFAULT_MAX_TEXT_FILE_BYTES = 512 * 1024
 const REGULAR_FILE_MODES = new Set(["100644", "100755"])
