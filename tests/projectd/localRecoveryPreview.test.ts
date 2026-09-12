@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { describe, expect, it } from "vitest"
 
-import { LocalRecoveryPreviewFile, previewLocalRecovery } from "../../apps/projectd/src/collaboration/LocalRecoveryPreview"
+import { previewLocalRecovery, type LocalRecoveryPreviewFile } from "../../apps/projectd/src/collaboration/LocalRecoveryPreview"
 import { LocalReplicaStore } from "../../apps/projectd/src/collaboration/LocalReplicaStore"
 import { OutboundBatchQueue } from "../../apps/projectd/src/collaboration/OutboundBatchQueue"
 import { PendingBinaryStore } from "../../apps/projectd/src/collaboration/PendingBinaryStore"
