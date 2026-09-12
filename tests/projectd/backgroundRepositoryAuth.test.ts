@@ -1,7 +1,10 @@
 import { expect, it, vi } from "vitest"
 import { getFunctionName } from "convex/server"
 import { BackgroundDeviceIdentityManager } from "../../apps/projectd/src/identity/BackgroundDeviceIdentity"
-import { getBackgroundRepositoryToken } from "../../apps/projectd/src/collaboration/BackgroundRepositoryAuth"
+import {
+  getBackgroundRepositoryCapabilities,
+  getBackgroundRepositoryToken,
+} from "../../apps/projectd/src/collaboration/BackgroundRepositoryAuth"
 
 const cloud = vi.hoisted(() => ({ action: vi.fn(), setAuth: vi.fn() }))
 vi.mock("convex/browser", () => ({ ConvexHttpClient: class { action = cloud.action; setAuth = cloud.setAuth } }))
@@ -37,5 +40,26 @@ it("uses saved device authentication and accepts only live credentials for the e
   }
   cloud.action.mockRejectedValue(new Error("failure containing repository-token"))
   await expect(get()).rejects.not.toThrow("repository-token")
+  vi.restoreAllMocks()
+})
+
+it("discovers operator capabilities without requesting a GitHub installation token", async () => {
+  const manager = new BackgroundDeviceIdentityManager()
+  const identity = await manager.generateNewIdentity()
+  vi.spyOn(manager, "loadExistingIdentity").mockResolvedValue(identity)
+  vi.spyOn(manager, "authenticateWithCloud").mockResolvedValue({ token: "device-token", principalId: "principal", expiresAt: Date.now() + 60_000 })
+  const descriptor = { publicSessionId: "session", projectId: "project", workspaceId: "workspace", rootPath: "/unused",
+    background: { gatewayUrl: "https://gateway.example", convexUrl: "https://example.convex.cloud" } }
+  cloud.action.mockImplementationOnce(async (reference, args) => {
+    expect(getFunctionName(reference)).toBe("sessionRepositoryCredentials:capabilities")
+    expect(args).toEqual({ publicSessionId: "session" })
+    return { projectId: "project", repositoryUrl: "https://github.com/team/app.git", pullRequest: true, gitWrite: false }
+  })
+  expect(await getBackgroundRepositoryCapabilities(descriptor, { owner: "team", repository: "app" }, manager))
+    .toEqual({ pullRequest: true, gitWrite: false })
+
+  cloud.action.mockResolvedValueOnce({ projectId: "project", repositoryUrl: "https://github.com/team/other.git", pullRequest: true, gitWrite: true })
+  expect(await getBackgroundRepositoryCapabilities(descriptor, { owner: "team", repository: "app" }, manager))
+    .toEqual({ pullRequest: false, gitWrite: false })
   vi.restoreAllMocks()
 })
