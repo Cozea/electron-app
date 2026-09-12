@@ -139,6 +139,14 @@ module.exports = {
       to: "projectd",
       filter: ["projectd.mjs"],
     },
+    {
+      // The daemon's native helper for FSEvents and the Keychain identity, built
+      // universal by `prepare:projectd-helper`. The launcher gives the daemon its
+      // path when it sits here; without it the daemon polls the folder instead.
+      from: "../../build/projectd-helper",
+      to: "projectd",
+      filter: ["cozea-projectd-mac-helper"],
+    },
   ],
   mac: {
     category: "public.app-category.developer-tools",

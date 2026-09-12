@@ -34,6 +34,7 @@ build/runtime/**
 build/local-automation/**
 build/computer-use-runtime/**
 build/devapp-container-runtime/**
+build/projectd-helper/**
 native/**/.build/
 native/**/.cache/
 # Cargo output for the native helpers. Hundreds of files, rebuilt on demand.

@@ -1,3 +1,5 @@
+// First, so a second copy's own profile is in place before anything reads the profile.
+import './profileOverride'
 import { createControlledAppUpdateInstaller } from "./services/controlledAppUpdate"
 import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, protocol, shell, ipcMain, nativeTheme, session } from 'electron'
 import { syncShellEnvironment } from './syncShellEnvironment'

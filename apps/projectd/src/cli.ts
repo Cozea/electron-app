@@ -2,7 +2,13 @@
 import {
   getProjectdSocketPath,
   ProjectdClient,
+  type ProjectdCheckpointSummary,
 } from "@cozea/projectd-protocol"
+
+function describeCheckpoint(checkpoint: ProjectdCheckpointSummary): string {
+  const at = new Date(checkpoint.publishedAt).toLocaleTimeString()
+  return `${checkpoint.commitOid.slice(0, 8)} at sequence ${checkpoint.sessionSeq}, ${at}`
+}
 
 async function run(): Promise<void> {
   const args = process.argv.slice(2)
@@ -124,6 +130,59 @@ async function run(): Promise<void> {
         }
         break
       }
+      case "sessions": {
+        const sub = args[1] && !args[1].startsWith("--") ? args[1] : "list"
+        if (sub === "save") {
+          const publicSessionId = args[2]
+          if (!publicSessionId || publicSessionId.startsWith("--")) {
+            console.error("Usage: cozea-projectctl sessions save <publicSessionId>")
+            process.exit(1)
+          }
+          const res = await client.checkpointSession(publicSessionId)
+          if (jsonOutput) {
+            console.log(JSON.stringify(res, null, 2))
+          } else {
+            console.log(`Save now: ${res.outcome}`)
+            if (res.lastCheckpoint) console.log(`  Last checkpoint: ${describeCheckpoint(res.lastCheckpoint)}`)
+          }
+          break
+        }
+        if (sub !== "list") {
+          console.error("Usage: cozea-projectctl sessions [list | save <publicSessionId>]")
+          process.exit(1)
+        }
+        const sessions = await client.listSessions()
+        if (jsonOutput) {
+          console.log(JSON.stringify(sessions, null, 2))
+          break
+        }
+        if (sessions.length === 0) {
+          console.log("No live sessions.")
+          break
+        }
+        for (const session of sessions) {
+          const paused = session.pausedReason ? ` (${session.pausedReason})` : ""
+          console.log(`Session ${session.publicSessionId}: ${session.state}${paused}`)
+          console.log(`  Folder:   ${session.rootPath}`)
+          console.log(`  Role:     ${session.role}`)
+          console.log(
+            `  Files:    ${session.fileCount} synced, ${session.skippedPaths.length} kept on this Mac, ${session.pendingBatches} batches waiting`,
+          )
+          console.log(`  Sequence: ${session.lastAppliedSessionSeq}`)
+          if (session.lastError) console.log(`  Error:    ${session.lastError.code}: ${session.lastError.message}`)
+          const autoGit = session.autoGit
+          if (autoGit) {
+            const saving = autoGit.saving ? ", saving" : ""
+            console.log(`  AutoGit:  ${autoGit.state}${saving}, ${autoGit.unsavedChanges} unsaved changes`)
+            console.log(
+              `            last checkpoint ${autoGit.lastCheckpoint ? describeCheckpoint(autoGit.lastCheckpoint) : "none yet"}`,
+            )
+            if (autoGit.detail) console.log(`            ${autoGit.detail}`)
+            if (autoGit.lastError) console.log(`            ${autoGit.lastError.code}: ${autoGit.lastError.message}`)
+          }
+        }
+        break
+      }
       case "help":
       case "--help":
       case "-h": {
@@ -135,6 +194,8 @@ Commands:
   workbenches <projectId>                     List workbenches for a project
   workbench activate <projectId> <wbId>       Activate a workbench for a project
   workspaces <projectId>                      List workspaces for a project
+  sessions                                    List live sessions with sync and AutoGit state
+  sessions save <publicSessionId>             Save a live session to Git now
   echo <text>                                 Send echo request to projectd
   help                                        Show this help message
 
