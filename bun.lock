@@ -162,7 +162,20 @@
     },
     "apps/desktop": {
       "name": "@cozea/desktop",
-      "version": "0.2.2",
+      "version": "0.2.3-beta.3",
+    },
+    "apps/projectd": {
+      "name": "@cozea/projectd",
+      "version": "0.1.0",
+      "bin": {
+        "projectd": "./src/main.ts",
+        "cozea-projectctl": "./src/cli.ts",
+      },
+      "dependencies": {
+        "@cozea/projectd-protocol": "workspace:*",
+        "diff-match-patch": "^1.0.5",
+        "yjs": "14.0.0-16",
+      },
     },
     "apps/server": {
       "name": "@cozea/server",
@@ -212,6 +225,10 @@
       "peerDependencies": {
         "effect": "^4.0.0-beta.25",
       },
+    },
+    "packages/projectd-protocol": {
+      "name": "@cozea/projectd-protocol",
+      "version": "0.1.0",
     },
     "packages/pty": {
       "name": "@cozea/pty",
@@ -361,6 +378,10 @@
     "@cozea/devapp-api": ["@cozea/devapp-api@workspace:packages/devapp-api"],
 
     "@cozea/effect-acp": ["@cozea/effect-acp@workspace:packages/effect-acp"],
+
+    "@cozea/projectd": ["@cozea/projectd@workspace:apps/projectd"],
+
+    "@cozea/projectd-protocol": ["@cozea/projectd-protocol@workspace:packages/projectd-protocol"],
 
     "@cozea/pty": ["@cozea/pty@workspace:packages/pty"],
 
