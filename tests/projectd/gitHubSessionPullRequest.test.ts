@@ -1,5 +1,7 @@
 import { expect, it, vi } from "vitest"
 import { GitHubSessionPullRequest } from "../../apps/projectd/src/autogit/GitHubSessionPullRequest"
+import { SessionPullRequestStore } from "../../apps/projectd/src/autogit/SessionPullRequestStore"
+import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 
 const input = { remoteUrl: "git@github.com:team/app.git", branch: "feat/live", targetBranch: "main",
   checkpointOid: "a".repeat(40), targetOid: "b".repeat(40) }
@@ -63,4 +65,47 @@ it("does not trust a matching PR URL with a different checkpoint", async () => {
       : Response.json([{ ...pr, head: { ...pr.head, sha: "c".repeat(40) } }])
   }) as unknown as typeof fetch
   await expect(new GitHubSessionPullRequest({ getRepositoryToken: async () => "secret", fetchFn }).ensure(input)).rejects.toThrow("differs from the reviewed")
+})
+
+it("discovers PR capability without issuing a repository token", async () => {
+  const getRepositoryToken = vi.fn(async () => "secret")
+  const getRepositoryCapabilities = vi.fn(async () => ({ pullRequest: false, gitWrite: true }))
+  const client = new GitHubSessionPullRequest({ getRepositoryToken, getRepositoryCapabilities })
+  expect(await client.canCreate(input.remoteUrl)).toBe(false)
+  expect(getRepositoryCapabilities).toHaveBeenCalledWith({ owner: "team", repository: "app" })
+  expect(getRepositoryToken).not.toHaveBeenCalled()
+  expect(await client.canCreate("https://github.com.evil.test/team/app.git")).toBe(false)
+})
+
+it("persists creation and refreshes closed or merged PR status by number", async () => {
+  const db = new ProjectdDatabase(":memory:")
+  const store = new SessionPullRequestStore(db)
+  let now = 100
+  let refreshed = false
+  const fetchFn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const pathname = new URL(String(url)).pathname
+    if (pathname.includes("/git/ref/")) return Response.json({ object: { sha: pathname.endsWith("main") ? input.targetOid : input.checkpointOid } })
+    if (pathname.endsWith("/pulls/12")) {
+      refreshed = true
+      return Response.json({ ...pr, state: "closed", merged_at: "2026-09-12T00:00:00Z",
+        head: { ...pr.head, sha: "c".repeat(40) }, base: { ...pr.base, sha: "d".repeat(40) } })
+    }
+    return Response.json(init?.method === "POST" ? pr : [])
+  }) as unknown as typeof fetch
+  const client = new GitHubSessionPullRequest({
+    getRepositoryToken: async () => "secret",
+    fetchFn,
+    store,
+    publicSessionId: "czs_0123456789abcdef",
+    now: () => now,
+  })
+  await client.ensure(input)
+  expect(client.persisted(input)).toMatchObject({ number: 12, state: "open", headOid: input.checkpointOid, checkedAt: 100 })
+
+  now = 200
+  const status = await client.refresh(input)
+  expect(refreshed).toBe(true)
+  expect(status).toMatchObject({ number: 12, state: "merged", headOid: "c".repeat(40), targetOid: "d".repeat(40), checkedAt: 200 })
+  expect(client.persisted(input)).toEqual(status)
+  db.close()
 })
