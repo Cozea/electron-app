@@ -5,10 +5,12 @@
  */
 
 import { createHash } from "node:crypto"
-import type { GitProcessRunner } from "./GitProcess"
+import type { GitProcess } from "./GitProcess"
 
 export const LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/v1"
 const MAX_LFS_POINTER_BYTES = 1024 * 1024
+
+type GitProcessRunner = Pick<GitProcess, "execute">
 
 export interface LfsPointer {
   oid: string // sha256:hex
@@ -21,7 +23,11 @@ export interface GitLfsCleaner {
 }
 
 export class GitLfs implements GitLfsCleaner {
-  constructor(private readonly git?: GitProcessRunner) {}
+  private readonly git?: GitProcessRunner
+
+  constructor(git?: GitProcessRunner) {
+    this.git = git
+  }
 
   static isLfsPointer(content: string | Buffer): boolean {
     const bytes = typeof content === "string" ? Buffer.from(content, "utf8") : content
