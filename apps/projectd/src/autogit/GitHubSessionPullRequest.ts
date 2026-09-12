@@ -54,9 +54,11 @@ export class GitHubSessionPullRequest {
 
   /** Whether the configured operator grant can create PRs for this exact repository. */
   async canCreate(remoteUrl: string): Promise<boolean> {
+    // Test/custom providers that do not opt into capability discovery retain the
+    // historical provider-presence behavior. Production supplies the callback below.
+    if (!this.options.getRepositoryCapabilities) return true
     const parsed = parseRepository(remoteUrl)
     if (!parsed) return false
-    if (!this.options.getRepositoryCapabilities) return true
     try {
       return (await this.options.getRepositoryCapabilities(parsed.scope)).pullRequest === true
     } catch {
