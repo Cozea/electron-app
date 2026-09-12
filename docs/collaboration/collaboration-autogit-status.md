@@ -23,7 +23,7 @@ The `Status:` line of each phase below has been corrected. The phase logs are ke
 
 Entry points: renderer `main.tsx`, Electron `main.ts` and `preload.ts`, projectd `main.ts`, and the worker's `index.ts`.
 
-At a glance: complete P00–P01 · partial P02–P10, P12, P14–P19, P23 · library only P11, P13, P20–P22 · tests only P24 · stub P25 · not done P26 · blocked P27.
+At a glance: complete P00–P01 · partial P02–P10, P12, P14–P23 · library only P11, P13 · tests only P24 · P25 deferred (stub removed) · not done P26 · blocked P27.
 
 ### Remediation on `fix/collab-audit-remediation`
 
@@ -266,6 +266,34 @@ Still open:
 - The first sync after this update treats every attached folder as new, once. It refuses a folder that was edited while the daemon was down, if the edited files differ from what Git holds. That folder must commit or stash its changes, where before they would have been merged.
 
 Decided: a member who deletes an env file removes it from every member's Mac, although Git has no copy to bring back. The user confirmed this is intended: live sync carries deletions.
+
+---
+
+### Outside pushes, target tracking, ignore rules — 2026-09-12 (`283047c3`)
+
+- **Outside pushes merge in (P19 rest, P20 part).** The leader polls the remote every minute. Commits pushed to the session branch from outside the session merge into the session three-way with `git merge-file`, and the next checkpoint builds on them. Lines both sides changed get conflict markers and saving waits until resolved. A rewritten branch still stops saving. A session's first save no longer undoes commits pushed since it started.
+- **Git's own ignore rules decide checkpoints.** A new env file Git doesn't ignore holds saving, with an "Add to .gitignore" fix in the session bar (`sessions.ignoreEnvironmentFiles`), instead of filename exclusion. When a barrier finds nothing new for Git, the leader records the last checkpoint as still holding (`checkpoint_clean`), so env-only edits stop counting as unsaved. A save matching an existing commit records that commit.
+- **P20 wired.** Each host fetches the target branch every 15 minutes and on request, measures behind/ahead and overlapping changed paths, and recommends a rebase with its reason. Nothing rebases on its own (Invariant C25). Leader notices carry a code so members get the right fix.
+- **Start dialog warns** about sign-in details in the remote and that uncommitted work is pushed soon after start. The repair screen no longer shows a raw project ID.
+- **P25 deferred.** The microphone stub (`SessionMediaService.ts` + test) is removed, not shipped.
+- Deployed: nothing since the second 2026-09-12 Convex deploy.
+- Verified pre-push on 2026-09-12 (this tree): full vitest 413 files passed + 1 skipped, 3061 tests passed + 5 skipped; typechecks clean (app, electron, projectd, Convex, worker); oxlint 0 warnings/errors; `build` + `build:projectd` pass. Two-copy app run still pending (needs rebuild + user-driven steps).
+
+### Renames as renames — 2026-09-12 (`3cd9414a`)
+
+- A rename used to reach the session as delete + new file, losing file identity. The watcher now reports deletes before new files at startup and on rescans, and scans the tree when a folder moves or goes away (FSEvents reports that as one folder event). A deleted text file waits 500 ms for a new file with exactly its bytes; on match the session records a rename keeping the file id, otherwise the delete goes out as before. Waiting deletes flush at end of first sync and on flush.
+- Tests in `tests/projectd/collaborationSessionHost.test.ts`, green in the pre-push full run (413 files / 3061 tests pass).
+
+### Merge / PR controls — 2026-09-12 (`169f243e`, P22)
+
+- **P22 wired end to end.** `SessionMerger` previews merging the session's last save (an immutable commit) into the target with `git merge-tree` only: ahead/behind, both-sides files, unsaved changes left out. Execute pushes a merge or squash commit on the target, never forced. A save or target that moved since review asks for another review; a remote refusing direct pushes (protected branch) gets a pull request instead (GitHub/GitLab/Bitbucket links built from host + path only, so credentials never reach them). The commit uses the person's identity, Cozea's only when Git has none. Afterwards a manager may pause or end the session; the branch is never deleted. Daemon error codes such as `NOT_SAVED` reach clients.
+- Entry chain: `CollaborationSessionHost` → `ProjectdServer sessions.*` → client → `registerProjectdHandlers` → preload → `shared/electronApiTypes.ts` → `MergeSessionDialog.tsx` in the session bar. Green in the pre-push full run.
+
+### Explicit rebase — 2026-09-12 (`e3de14e3`, P21)
+
+- **P21 wired end to end.** `AutoGitAgent.rebaseOnto` → `CollaborationSessionHost.rebase` → `ProjectdServer sessions.rebase` → `rebaseSession` client → `projectd:sessions:rebase` IPC → preload → `shared/electronApiTypes.ts` (`ProjectdRebaseResult`) → `RebaseSessionDialog.tsx` in the session bar. Commit identity via the new `apps/projectd/src/git/identity.ts` (person's Git config, Cozea fallback through environment, never written to config).
+- Tests: `tests/collaboration/rebaseSessionDialog.test.tsx`, `sessionWorkbenchControls.test.tsx`, extended `tests/projectd/autoGitSession.test.ts` — all green pre-push (focused 7 files / 58 tests; full 413 files / 3061 tests).
+- The P21 library bugs (empty conflict bundle, never pushes) are addressed by this wiring; confirm in the two-copy run.
 
 ---
 
@@ -1777,7 +1805,7 @@ Exit-gate evidence:
 
 ## P20 — Target tracking and rebase recommendation
 
-Status: library only — no entry point imports it.
+Status: partial — wired end to end in `283047c3` (host fetches target every 15 min + on request, behind/ahead + overlap, SUGGESTED with reason, never auto-REQUEST per C25). Unit/build verification green pre-push; two-copy app run pending.
 
 Baseline:
 - base commit: `af3ce101` (P19 complete commit)
@@ -1842,7 +1870,7 @@ Exit-gate evidence:
 
 ## P21 — Explicit isolated Rebase from main
 
-Status: library only — no entry point imports it. The conflict bundle is empty and the coordinator never pushes. Fixed 2026-09-11: without an explicit barrier it no longer assumes sessionSeq 100.
+Status: partial — wired end to end in `e3de14e3` (`AutoGitAgent.rebaseOnto` → host → `sessions.rebase` → client → IPC → preload → `RebaseSessionDialog`). Unit/build verification green pre-push; two-copy app run pending (must confirm non-empty conflict bundle + push). Fixed 2026-09-11: without an explicit barrier it no longer assumes sessionSeq 100.
 
 Baseline:
 - base commit: `32c5dda8` (P20 complete commit)
@@ -1908,7 +1936,7 @@ Exit-gate evidence:
 
 ## P22 — Merge/PR controls
 
-Status: library only — no entry point imports it. Fixed 2026-09-11: a direct merge refuses a checkpoint that moved after review or a checked-out target with tracked changes, and fast-forwards a checked-out target instead of moving its ref underneath it.
+Status: partial — wired end to end in `169f243e` (isolated `merge-tree` preview, direct/squash execute, PR fallback, `MergeSessionDialog`). Unit/build verification green pre-push; two-copy app run pending. Fixed 2026-09-11: a direct merge refuses a checkpoint that moved after review or a checked-out target with tracked changes, and fast-forwards a checked-out target instead of moving its ref underneath it.
 
 Baseline:
 - base commit: `06327dd4` (P21 complete commit)
@@ -2099,7 +2127,7 @@ Exit-gate evidence:
 
 ## P25 — Microphone/session media
 
-Status: stub — see the 2026-09-11 audit report.
+Status: deferred — the stub (`SessionMediaService.ts` + test) was removed in `283047c3` on 2026-09-12, not shipped. See the 2026-09-11 audit report for what it was.
 
 Baseline:
 - base commit: `3103af37` (P24 complete commit)
