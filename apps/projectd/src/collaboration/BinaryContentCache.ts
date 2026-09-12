@@ -166,6 +166,55 @@ export class BinaryContentCache {
   }
 
   /**
+   * Validates the complete cache object before exposing any bytes to a sink that
+   * cannot be reset. This permits safe network fallback into the same atomic
+   * materialization stream when a cache file is missing or corrupt.
+   */
+  async copyVerifiedTo(contentHash: string, expectedSize: number, write: (chunk: Buffer) => Promise<void>): Promise<boolean> {
+    const cachePath = this.getCachePath(contentHash)
+    const verifyHandle = await fs.open(cachePath, "r").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null
+      throw error
+    })
+    if (!verifyHandle) return false
+    try {
+      if ((await verifyHandle.stat()).size !== expectedSize) return false
+      const digest = createHash("sha256")
+      let position = 0
+      while (position < expectedSize) {
+        const buffer = Buffer.allocUnsafe(Math.min(CHUNK_SIZE_BYTES, expectedSize - position))
+        const { bytesRead } = await verifyHandle.read(buffer, 0, buffer.length, position)
+        if (!bytesRead) return false
+        digest.update(buffer.subarray(0, bytesRead))
+        position += bytesRead
+      }
+      if (digest.digest("hex") !== contentHash) return false
+    } finally {
+      await verifyHandle.close()
+    }
+
+    const streamHandle = await fs.open(cachePath, "r").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null
+      throw error
+    })
+    if (!streamHandle) return false
+    try {
+      if ((await streamHandle.stat()).size !== expectedSize) return false
+      let position = 0
+      while (position < expectedSize) {
+        const buffer = Buffer.allocUnsafe(Math.min(CHUNK_SIZE_BYTES, expectedSize - position))
+        const { bytesRead } = await streamHandle.read(buffer, 0, buffer.length, position)
+        if (!bytesRead) return false
+        await write(buffer.subarray(0, bytesRead))
+        position += bytesRead
+      }
+      return position === expectedSize
+    } finally {
+      await streamHandle.close()
+    }
+  }
+
+  /**
    * Section 11.4: Splits large binary into 4 MiB chunks and builds manifest.
    */
   createManifest(bytes: Buffer | Uint8Array, baseUri = "blob:"): BinaryManifest {
