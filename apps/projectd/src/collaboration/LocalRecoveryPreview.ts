@@ -102,18 +102,23 @@ export function previewLocalRecovery(
   for (const conflict of conflicts.concurrentRenames) mark(conflict.fileId, "concurrent_rename")
   for (const conflict of conflicts.deleteModifyConflicts) mark(conflict.fileId, "delete_modify")
 
-  const stagedByPath = new Map<string, PendingBinaryRecord[]>()
+  // File identity, not path, determines whether a staged binary belongs to an
+  // existing replica entry. A deleted file and a new file may legitimately reuse
+  // the same path and must remain distinct in recovery inspection.
+  const stagedByFileId = new Map<string, PendingBinaryRecord[]>()
+  const unmatchedStaged = new Map<string, PendingBinaryRecord>()
   for (const record of staged) {
-    const records = stagedByPath.get(record.path) ?? []
+    unmatchedStaged.set(record.revisionId, record)
+    if (!record.fileId) continue
+    const records = stagedByFileId.get(record.fileId) ?? []
     records.push(record)
-    stagedByPath.set(record.path, records)
+    stagedByFileId.set(record.fileId, records)
   }
 
   let binaryConflicts = 0
-  const consumedStagedPaths = new Set<string>()
   const entries: LocalRecoveryPreviewFile[] = replica.tree.listAllEntries().map((entry) => {
-    const stagedForPath = stagedByPath.get(entry.path) ?? []
-    if (stagedForPath.length > 0) consumedStagedPaths.add(entry.path)
+    const stagedForEntry = stagedByFileId.get(entry.fileId) ?? []
+    for (const record of stagedForEntry) unmatchedStaged.delete(record.revisionId)
     let size: number | null = null
     let textPreview: string | null = null
     let textTruncated = false
@@ -157,18 +162,24 @@ export function previewLocalRecovery(
       symlinkTarget,
       symlinkTargetTruncated,
       revisionCount,
-      pendingBinaryVersions: stagedForPath.length,
+      pendingBinaryVersions: stagedForEntry.length,
       conflictKinds: [...(conflictKinds.get(entry.fileId) ?? [])].sort(),
     }
   })
 
-  for (const [pendingPath, records] of stagedByPath) {
-    if (consumedStagedPaths.has(pendingPath)) continue
+  const unmatchedGroups = new Map<string, PendingBinaryRecord[]>()
+  for (const record of unmatchedStaged.values()) {
+    const identity = record.fileId ? `file:${record.fileId}` : `path:${record.path}`
+    const records = unmatchedGroups.get(identity) ?? []
+    records.push(record)
+    unmatchedGroups.set(identity, records)
+  }
+  for (const records of unmatchedGroups.values()) {
     const latest = [...records].sort((a, b) => b.createdAt - a.createdAt || b.revisionId.localeCompare(a.revisionId))[0]!
     entries.push({
       cursor: `pending:${latest.revisionId}`,
       fileId: latest.fileId,
-      path: pendingPath,
+      path: latest.path,
       kind: "binary",
       mode: latest.mode,
       deleted: false,
