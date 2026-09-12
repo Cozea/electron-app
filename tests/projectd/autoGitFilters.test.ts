@@ -46,7 +46,6 @@ function binaryRevision(fileId: string, bytes: Buffer, revisionId = "rev-asset")
 function snapshot(files: BarrierSnapshot["files"], hash = "a".repeat(64)): BarrierSnapshot {
   return {
     barrierId: "bar_filter",
-    sessionId: "czs_0123456789abcdef",
     sessionSeq: 12,
     serverTime: 1_760_000_000_000,
     logicalTreeHash: hash,
