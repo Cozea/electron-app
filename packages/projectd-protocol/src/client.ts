@@ -100,6 +100,11 @@ export class ProjectdClient {
 
           this.isConnected = true
           this.isConnecting = false
+          // The daemon keeps subscriptions per connection, so after a reconnect, or a daemon
+          // restart, it holds none of this client's until they are sent again.
+          for (const topic of this.topicListeners.keys()) {
+            socket.write(encodeMessage({ type: "subscribe", id: `sub_${crypto.randomUUID()}`, topic }))
+          }
           resolve()
         } catch (err) {
           clearTimeout(timeoutTimer)
