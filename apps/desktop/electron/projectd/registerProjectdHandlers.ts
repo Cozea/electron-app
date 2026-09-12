@@ -223,6 +223,13 @@ export function registerProjectdHandlers(): void {
     try { return { success: true, entries: await getSharedProjectdClient().listSessionRecovery() } } catch (err) { return toFailure(err) }
   })
 
+  ipcMain.handle("projectd:sessions:recovery:preview", async (_event, publicSessionId: string, afterCursor?: string, limit?: number) => {
+    try {
+      if (!PUBLIC_SESSION_ID_PATTERN.test(publicSessionId)) throw new Error("Invalid session ID")
+      return { success: true, preview: await getSharedProjectdClient().previewSessionRecovery(publicSessionId, afterCursor, limit) }
+    } catch (err) { return toFailure(err) }
+  })
+
   ipcMain.handle("projectd:sessions:recovery:export", async (_event, publicSessionId: string, source: "local" | "cloud" = "local", projectId?: string) => {
     try {
       if (!PUBLIC_SESSION_ID_PATTERN.test(publicSessionId)) throw new Error("Invalid session ID")
