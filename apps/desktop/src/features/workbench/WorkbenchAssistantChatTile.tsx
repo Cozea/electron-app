@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { DockviewApi, DockviewPanelApi } from "dockview-react";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { appToast } from "@/lib/appToast";
 import { CozeaChatSurface } from "@/features/assistant/chat/CozeaChatSurface";
 import { ThreadArtifactsView } from "@/features/assistant/artifacts/ThreadArtifactsView";
 import { WorkbenchAssistantDiffDialog } from "@/features/workbench/assistant/WorkbenchAssistantDiffDialog";
@@ -50,6 +52,7 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
     diffDialog,
     closeDiffDialog,
     handleDeleteThread,
+    applyThreadWorktree,
     surfaceProps,
     artifacts,
     artifactMedia,
@@ -70,6 +73,32 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
   const deleteThreadButtonRef = useRef<HTMLButtonElement>(null);
   const deleteThreadWasFocusedRef = useRef(false);
   const [panelVisible, setPanelVisible] = useState(props.panelApi.isVisible);
+  const [isApplying, setIsApplying] = useState(false);
+
+  const handleApply = async () => {
+    setIsApplying(true);
+    try {
+      const res = await applyThreadWorktree();
+      if (res.success) {
+        appToast.success({
+          title: "Applied to Session",
+          description: `${res.appliedFiles.length} file(s) imported into the Session Workspace.`,
+        });
+      } else {
+        appToast.error({
+          title: "Could not apply to Session",
+          description: res.error ?? "Failed to apply worktree changes",
+        });
+      }
+    } catch (err) {
+      appToast.error({
+        title: "Could not apply to Session",
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setIsApplying(false);
+    }
+  };
   useEffect(() => {
     const update = () => {
       activeRef.current = props.panelApi.isActive && props.panelApi.isVisible;
@@ -147,6 +176,20 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
         assistantProvider={props.tile.provider}
         actions={
           <>
+            {props.tile.laneBinding === "threadWorktree" && surfaceProps.thread?.worktreePath ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs font-medium text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/10"
+                disabled={isApplying}
+                onClick={handleApply}
+                title="Apply private thread worktree changes into the collaborative Session Workspace"
+              >
+                {isApplying ? <Spinner size="xs" className="mr-1" /> : null}
+                Apply to Session
+              </Button>
+            ) : null}
             <AssistantHistoryButton
               context={{
                 projectId: props.projectId,
@@ -247,30 +290,50 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
           </>
         }
       >
-        <div className="relative h-full min-h-0 flex-1 overflow-hidden">
-          <div
-            className={cn("absolute inset-0", viewMode !== "chat" && "hidden")}
-            aria-hidden={viewMode !== "chat"}
-          >
-            <CozeaChatSurface
-              {...surfaceProps}
-              onRestartAgent={stopAgentSession}
-              isChatVisible={panelVisible && viewMode === "chat"}
-              artifactUrlsById={artifactMedia.urlsById}
-              onOpenArtifact={openArtifact}
-            />
-          </div>
-          <div
-            className={cn("absolute inset-0", viewMode !== "artifacts" && "hidden")}
-            aria-hidden={viewMode !== "artifacts"}
-          >
-            <ThreadArtifactsView
-              artifacts={artifacts}
-              media={artifactMedia}
-              selectedArtifactId={selectedArtifactId}
-              onSelectedArtifactChange={setSelectedArtifactId}
-              onBackToChat={() => setViewMode("chat")}
-            />
+        <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          {props.tile.laneBinding === "threadWorktree" && surfaceProps.thread?.worktreePath && viewMode === "chat" ? (
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+              <span className="truncate font-medium">
+                Private thread worktree active. Changes remain isolated until applied.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-6 shrink-0 px-2 text-[11px] font-medium border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+                disabled={isApplying}
+                onClick={handleApply}
+              >
+                {isApplying ? <Spinner size="xs" className="mr-1" /> : null}
+                Apply to Session
+              </Button>
+            </div>
+          ) : null}
+          <div className="relative flex-1 overflow-hidden">
+            <div
+              className={cn("absolute inset-0", viewMode !== "chat" && "hidden")}
+              aria-hidden={viewMode !== "chat"}
+            >
+              <CozeaChatSurface
+                {...surfaceProps}
+                onRestartAgent={stopAgentSession}
+                isChatVisible={panelVisible && viewMode === "chat"}
+                artifactUrlsById={artifactMedia.urlsById}
+                onOpenArtifact={openArtifact}
+              />
+            </div>
+            <div
+              className={cn("absolute inset-0", viewMode !== "artifacts" && "hidden")}
+              aria-hidden={viewMode !== "artifacts"}
+            >
+              <ThreadArtifactsView
+                artifacts={artifacts}
+                media={artifactMedia}
+                selectedArtifactId={selectedArtifactId}
+                onSelectedArtifactChange={setSelectedArtifactId}
+                onBackToChat={() => setViewMode("chat")}
+              />
+            </div>
           </div>
         </div>
       </WorkbenchTileChrome>

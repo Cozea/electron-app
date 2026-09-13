@@ -7,6 +7,14 @@ Authoritative specification: [docs/collaboration/collaboration-autogit-master-pl
 
 ## Implementation continuation — 2026-09-13
 
+Phase 5 Review Follow-up (2026-09-13T19:15Z): Reopened Phase 5 following review of commit b1576b30. Remaining gaps to resolve:
+(1) U02 must fail closed: if private worktree creation fails for a `threadWorktree` tile, thread creation must NOT fall back to `worktreePath: null` (which would leak private agent work into the collaborative Session Workspace); it must abort with an actionable error.
+(2) Wire 'Apply to Session' action into `WorkbenchAssistantChatTile` UI so users can explicitly adopt private worktree changes into the Session Workspace.
+(3) Secure `project:applyThreadWorktree` IPC: require mandatory `workspaceId`, resolve destination exclusively via `resolveAuthorizedWorkspaceAccess`, reject renderer-supplied `workspaceRoot`, validate `worktreePath` provenance, and prevent directory traversal (`..`, absolute paths).
+(4) Enhance `applyThreadWorktreeToWorkspace` to apply the full worktree delta (including deletions and symlinks) rather than merely copying existing files.
+(5) Capability evidence: directly exercise production DevApp `writeProjectFile` and scheduled task `scheduledTaskRunner` execution paths.
+(6) Process deviation recorded: production Convex and Cloudflare Worker deployments occurred out-of-order during Phase 5 (ahead of Phase 8); recorded as an already-occurred deviation, with no further cloud deployments until Phase 8. Phase 6 remains blocked.
+
 Phase 5 Review Rework & Full Production Qualification (2026-09-13T18:50Z): Replaced synthetic tests in `capabilityIntegrationMatrix.test.ts` with real production APIs driven by a multi-peer Session Workspace + projectd harness, resolved production Assistant laneBinding gap, deployed production Convex and Cloudflare Worker, and qualified all U01–U10 capabilities live across two independent running Electron instances (`Cozea.app` on primary daemon and `PeerMac` on peer daemon connected to `cozea-collab.kelyan-engone.workers.dev`):
 (1) Assistant threadWorktree production implementation: implemented `threadWorktreeService.ts` (`createPrivateThreadWorktree`, `applyThreadWorktreeToWorkspace`, `removePrivateThreadWorktree`), consumed `tile.laneBinding` in `useWorkbenchAssistantTileController.tsx` so `threadWorktree` executes in a private worktree outside Session Workspace observation, and exposed `applyThreadWorktree` in tile controller and IPC `project:applyThreadWorktree`.
 (2) Unified capability matrix (U01–U10):

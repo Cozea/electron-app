@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **6 — P25 media**
-- Current checkpoint: **6A — WebRTC signaling + TURN, microphone permission, mute/unmute shell**
-- Blocking gate: media failure/reconnect cannot block CRDT/AutoGit
-- Next authorized work: Phase 6 only
-- Branch: `feat/collab-step3-session-ui` · Phase 5 closed with full production qualification (see ledger 2026-09-13 Phase 5 entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification U01–U10: Assistant laneBinding threadWorktree private-until-adopt + production harness + live GUI dual-app verification proven)
+- Current phase: **5 — P24 capability qualification (rework)**
+- Current checkpoint: **5A — U02 fail-closed + Apply UI + secure Apply IPC delta + production U06/U08**
+- Blocking gate: Assistant threadWorktree must fail closed (never run in Session Workspace on worktree failure); explicit Apply reachable in UI and secure
+- Next authorized work: Phase 5 rework only (Phase 6 remains blocked)
+- Branch: `feat/collab-step3-session-ui` · Phase 5 review rework (reopened following review of b1576b30)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven)
 
 ## How this file is used
 
@@ -64,7 +64,7 @@ Then works only inside NX.
 | P15 invite/resume | Substantially implemented | Failure/retry qualification |
 | P16–P22 AutoGit/Git | Substantially implemented (isolated rebase + durable `RebaseJournal` in active use) | Real GitHub/two-device qualification + binary publication cleanup |
 | P23 Electron cutover | Partial (dual system kept deliberately; `collaborationGate.ts` gates session WBs to projectd until P26) | Session/Workbench identity everywhere; no renderer-owned lifetime |
-| P24 capabilities | Fully qualified | Real Assistant laneBinding (sessionWorkspace vs threadWorktree private-until-adopt) + production API harness for U01–U10 qualified |
+| P24 capabilities | Review rework | U02 fail-closed + Apply UI + IPC security + U06/U08 production paths |
 | P25 media | Not implemented / deliberately deferred (stub removed) | Real microphone/media system |
 | P26 legacy/Git-owner removal | Not done (`YjsProjectContext`, `CollabWsProvider`, `useYjsFileWriteback`, `gitSyncService` still have production callers) | Delete old engine; consolidate Git |
 | P27 release qualification | Not run / blocked | Deploy + signed package + two physical Macs + full matrix |
@@ -228,12 +228,13 @@ legacy deletion, deployment.
 
 ## Phase 5 — P24 capability qualification (matrix U01–U10)
 
-- [x] Rerun every capability against Session Workspace through real production APIs;
+- [ ] Rerun every capability against Session Workspace through real production APIs;
   fix failures at the common Workspace/filesystem boundary, never with a
   collaboration-specific transport:
   - U01: Cozea agent `sessionWorkspace` live sync (worktreePath: null).
   - U02: Cozea agent `threadWorktree` private execution outside Session Workspace observation
-    until explicit Apply/Adopt into Session Workspace; peer sees nothing before and exact changes after.
+    (fails closed on worktree failure) until explicit Apply/Adopt into Session Workspace;
+    peer sees nothing before and exact changes after; Apply reachable in UI.
   - U03: Real Terminal workspace API + shell/formatter write.
   - U04: Real DevServer against Session Workspace + observable reload from peer materialization.
   - U05: Real Browser surface/storage scope; navigation/cookies remain local.
@@ -243,8 +244,8 @@ legacy deletion, deployment.
   - U09: Real Session Workspace watcher / external-save path (Computer Use / VS Code).
   - U10: Actual AgentSkillService / userData / provider roots.
 
-**Gate:** no capability needs a private collaboration file transport; Assistant threadWorktree is private until explicit adopt.
-**Advance condition:** U01–U10 evidenced in ledger with real capability harness.
+**Gate:** no capability needs a private collaboration file transport; Assistant threadWorktree is private until explicit adopt and fails closed.
+**Advance condition:** U01–U10 evidenced in ledger with real capability harness and Apply UI action.
 
 ---
 

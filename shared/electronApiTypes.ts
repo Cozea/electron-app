@@ -2232,8 +2232,7 @@ export interface ElectronAPI {
       path?: string | null
     }) => Promise<ProjectGitCreateWorktreeResult>
     applyThreadWorktree: (options: {
-      workspaceId?: string
-      workspaceRoot?: string
+      workspaceId: string
       worktreePath: string
       relativePaths?: string[]
     }) => Promise<{ success: boolean; appliedFiles: string[]; error?: string }>

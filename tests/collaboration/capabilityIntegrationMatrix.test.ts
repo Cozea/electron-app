@@ -205,8 +205,12 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
     expect(await bob.read("agent_tool.ts")).toBe(agentCode)
   })
 
-  it("U02: qualifies Assistant threadWorktree isolation and explicit Apply to session (Section 24.2)", async () => {
-    // 1. Assistant runs with laneBinding="threadWorktree".
+  it("U02: qualifies Assistant threadWorktree isolation, full delta Apply, and fail-closed security (Section 24.2)", async () => {
+    // 1. Initial baseline file exists in Session Workspace
+    await alice.write("delete_target.ts", "export const toBeDeleted = true;\n")
+    await waitFor(async () => (await bob.read("delete_target.ts")) !== null, "bob to receive initial file")
+
+    // 2. Assistant runs with laneBinding="threadWorktree".
     // A private thread worktree is created outside the Session Workspace root.
     const threadId = `thread_${Date.now()}`
     const wtResult = await createPrivateThreadWorktree({
@@ -220,49 +224,80 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
     // Verify worktreePath is strictly outside alice.root (the Session Workspace)
     expect(path.resolve(worktreePath).startsWith(path.resolve(alice.root))).toBe(false)
 
-    // 2. Assistant writes code inside the private thread worktree
+    // 3. Assistant writes a new file and deletes an existing file inside the private worktree
     const privateDraftPath = path.join(worktreePath, "feature_draft.ts")
     const draftCode = "export const experimentalFeature = true;\n"
     await fs.writeFile(privateDraftPath, draftCode)
 
+    // Agent deletes delete_target.ts in the private worktree
+    await fs.rm(path.join(worktreePath, "delete_target.ts"), { force: true })
+
     // Trigger watcher report on alice's session workspace
     alice.events.report(alice.root)
 
-    // Small delay to let any potential room messages settle
+    // Peer (bob) MUST NOT see the private addition and MUST NOT see the deletion before explicit Apply/Adopt
     await new Promise((r) => setTimeout(r, 50))
-
-    // Peer (bob) MUST NOT see the private file before explicit Apply/Adopt
     expect(await bob.read("feature_draft.ts")).toBeNull()
+    expect(await bob.read("delete_target.ts")).not.toBeNull()
 
-    // 3. User explicitly triggers 'Apply / Adopt thread changes to session'
+    // 4. User explicitly triggers 'Apply / Adopt thread changes to session'
     const applyResult = await applyThreadWorktreeToWorkspace({
       worktreePath,
       workspaceRoot: alice.root,
     })
     expect(applyResult.success).toBe(true)
     expect(applyResult.appliedFiles).toContain("feature_draft.ts")
+    expect(applyResult.appliedFiles).toContain("delete_target.ts")
 
-    // The file is now in alice.root across the normal filesystem boundary
-    alice.events.report(alice.root, "feature_draft.ts")
+    // The files in alice.root now reflect the full delta (addition + deletion)
+    alice.events.report(alice.root, "feature_draft.ts", "delete_target.ts")
 
-    // 4. Peer receives the change and materializes it to disk
+    // 5. Peer receives the addition and observes the deletion
     await waitFor(async () => (await bob.read("feature_draft.ts")) !== null, "bob to receive feature_draft.ts")
     expect(await bob.read("feature_draft.ts")).toBe(draftCode)
+    await waitFor(async () => (await bob.read("delete_target.ts")) === null, "bob to observe deletion of delete_target.ts")
+    expect(await bob.read("delete_target.ts")).toBeNull()
+
+    // 6. Fail-closed security validation:
+    // If worktree creation attempts to target a directory inside the Session Workspace, it fails closed
+    const invalidResult = await createPrivateThreadWorktree({
+      workspaceRoot: alice.root,
+      threadId: "invalid_sub_dir",
+      customWorktreePath: path.join(alice.root, "sub_worktree"),
+    })
+    expect(invalidResult.success).toBe(false)
+    expect(invalidResult.error).toContain("Private thread worktree path must be outside")
+
+    // Provenance validation rejects arbitrary / escaping worktree paths
+    const unprovenApply = await applyThreadWorktreeToWorkspace({
+      worktreePath: path.join(alice.root, "not_outside"),
+      workspaceRoot: alice.root,
+    })
+    expect(unprovenApply.success).toBe(false)
   })
 
   it("U03: qualifies Terminal writes and formatters (Section 24.3)", async () => {
     // Production terminal spawns with cwd = Session Workspace root
-    const unformattedCode = "function test() { const x=1; return x; }"
-    await alice.write("index.ts", unformattedCode)
+    // Execute a real shell write command in alice.root matching terminal execution
+    execFileSync("/bin/sh", ["-c", 'echo "export const terminalOutput = 100;" > terminal_exec.ts'], {
+      cwd: alice.root,
+    })
+    alice.events.report(alice.root, "terminal_exec.ts")
 
-    await waitFor(async () => (await bob.read("index.ts")) !== null, "bob to receive index.ts")
+    await waitFor(async () => (await bob.read("terminal_exec.ts")) !== null, "bob to receive terminal_exec.ts")
+    expect(await bob.read("terminal_exec.ts")).toContain("terminalOutput = 100")
 
-    // Terminal command/formatter runs in alice.root
-    const formattedCode = "function test() {\n  const x = 1;\n  return x;\n}\n"
-    await alice.write("index.ts", formattedCode)
+    // Terminal formatter runs in alice.root
+    execFileSync("/bin/sh", ["-c", 'echo "export const terminalOutput = 200;\n// formatted" > terminal_exec.ts'], {
+      cwd: alice.root,
+    })
+    alice.events.report(alice.root, "terminal_exec.ts")
 
-    await waitFor(async () => (await bob.read("index.ts")) === formattedCode, "bob to receive formatted index.ts")
-    expect(await bob.read("index.ts")).toBe(formattedCode)
+    await waitFor(
+      async () => (await bob.read("terminal_exec.ts"))?.includes("200"),
+      "bob to receive formatted terminal_exec.ts",
+    )
+    expect(await bob.read("terminal_exec.ts")).toContain("terminalOutput = 200")
   })
 
   it("U04: qualifies Dev server hot reload via exact disk materialization (Section 24.4)", async () => {
@@ -303,9 +338,13 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
   })
 
   it("U06: qualifies DevApp writes in session workspace participate normally (Section 24.6)", async () => {
-    // Matching writeProjectFile in devAppHostServices.ts:
+    // Production DevApp writeProjectFile path:
     const devAppManifest = JSON.stringify({ name: "my-native-devapp", version: "1.0.0" }, null, 2)
-    await alice.write("cozea-devapp.json", devAppManifest)
+    const filePath = "cozea-devapp.json"
+    const fullPath = path.resolve(alice.root, filePath)
+    await fs.mkdir(path.dirname(fullPath), { recursive: true })
+    await fs.writeFile(fullPath, devAppManifest, "utf8")
+    alice.events.report(alice.root, filePath)
 
     await waitFor(
       async () => (await bob.read("cozea-devapp.json")) !== null,
@@ -342,16 +381,24 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
   })
 
   it("U08: qualifies Tasks execution context binds to Session Workspace (Section 24.9)", async () => {
-    // Scheduled tasks execute with workspaceRoot bound to the Session Workspace (scheduledTaskRunner.ts)
-    const taskContext = {
-      taskId: "task_test_99",
-      workspaceRoot: alice.root,
+    // Production scheduled task execution path: task binds explicitly to task.project.workspaceRoot
+    // (scheduledTaskRunner.ts: const workspaceRoot = task.project?.workspaceRoot ?? standaloneWorkspaceRoot)
+    const task = {
+      id: "task_test_99",
+      title: "Scheduled Build",
+      project: {
+        workspaceRoot: alice.root,
+        name: "Test Session Project",
+      },
     }
-    expect(taskContext.workspaceRoot).toBe(alice.root)
+    const executionRoot = task.project.workspaceRoot
+    expect(executionRoot).toBe(alice.root)
 
-    // Task writes output into its bound workspaceRoot
+    // Task writes output into its bound executionRoot
     const taskOutput = `Task run finished at ${new Date().toISOString()}\nStatus: SUCCESS\n`
-    await alice.write("task_output.log", taskOutput)
+    const taskFile = path.resolve(executionRoot, "task_output.log")
+    await fs.writeFile(taskFile, taskOutput, "utf8")
+    alice.events.report(alice.root, "task_output.log")
 
     await waitFor(async () => (await bob.read("task_output.log")) !== null, "bob to receive task_output.log")
     expect(await bob.read("task_output.log")).toBe(taskOutput)

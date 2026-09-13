@@ -1648,18 +1648,31 @@ export function useWorkbenchAssistantTileController(
 
         const laneBinding = input.tile.laneBinding ?? "sessionWorkspace";
         let resolvedWorktreePath: string | null = null;
-        if (laneBinding === "threadWorktree" && input.workspaceId) {
+        if (laneBinding === "threadWorktree") {
+          if (!input.workspaceId) {
+            setSendError("Cannot create private thread worktree: workspace is not ready.");
+            return;
+          }
+          let createError: string | null = null;
           try {
             const wtResult = await window.electronAPI?.project?.createGitWorktree?.({
               workspaceId: input.workspaceId,
               branch: verifiedBranchRef.current || "main",
               newBranch: `thread-${threadId.slice(0, 8)}`,
             });
-            if (wtResult?.success && wtResult.worktree) {
+            if (wtResult?.success && wtResult.worktree?.path) {
               resolvedWorktreePath = wtResult.worktree.path;
+            } else {
+              createError = wtResult?.error || "Unknown git worktree creation failure";
             }
           } catch (wtErr) {
-            console.warn("[AssistantTileController] Failed to create private thread worktree:", wtErr);
+            createError = wtErr instanceof Error ? wtErr.message : String(wtErr);
+          }
+
+          if (!resolvedWorktreePath) {
+            const failureMsg = `Failed to create private thread worktree (${createError}). Thread creation stopped to prevent private work from leaking into the Session Workspace.`;
+            setSendError(failureMsg);
+            return;
           }
         }
 
@@ -2218,9 +2231,11 @@ export function useWorkbenchAssistantTileController(
     if (!wtPath) {
       return { success: false, appliedFiles: [], error: "No private thread worktree found for this thread." };
     }
+    if (!input.workspaceId) {
+      return { success: false, appliedFiles: [], error: "Workspace is not ready." };
+    }
     return await window.electronAPI.project.applyThreadWorktree({
-      workspaceId: input.workspaceId ?? undefined,
-      workspaceRoot: input.projectRootPath ?? undefined,
+      workspaceId: input.workspaceId,
       worktreePath: wtPath,
       relativePaths,
     });

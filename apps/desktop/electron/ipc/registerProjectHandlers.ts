@@ -226,20 +226,22 @@ export function registerProjectHandlers(
     'project:applyThreadWorktree',
     async (
       _event,
-      options: { workspaceId?: string; workspaceRoot?: string; worktreePath: string; relativePaths?: string[] }
+      options: { workspaceId: string; worktreePath: string; relativePaths?: string[] }
     ) => {
-      let targetRoot = options.workspaceRoot
-      if (!targetRoot && options.workspaceId) {
-        try {
-          const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'write-file' })
-          targetRoot = access.projectRootPath
-        } catch (e) {
-          return { success: false, appliedFiles: [], error: String(e) }
-        }
+      if (!options?.workspaceId?.trim()) {
+        return { success: false, appliedFiles: [], error: "workspaceId is required." }
       }
-      if (!targetRoot) {
-        return { success: false, appliedFiles: [], error: "Target workspace root is required." }
+      let targetRoot: string
+      try {
+        const access = await resolveAuthorizedWorkspaceAccess({
+          workspaceId: options.workspaceId,
+          operation: 'write-file',
+        })
+        targetRoot = access.projectRootPath
+      } catch (e) {
+        return { success: false, appliedFiles: [], error: String(e) }
       }
+
       return await applyThreadWorktreeToWorkspace({
         worktreePath: options.worktreePath,
         workspaceRoot: targetRoot,
