@@ -95,7 +95,11 @@ describe("streamed binary materialization", () => {
 
     expect(wholeResolver).not.toHaveBeenCalled()
     expect(writes).toEqual(chunks.map((chunk) => chunk.length))
-    expect(await fs.readFile(destination)).toEqual(expected)
+    // NOTE: Buffer.equals, not toEqual — vitest deep-equality on multi-MiB
+    // buffers costs seconds per assertion and trips the 20s CI timeout.
+    const materialized = await fs.readFile(destination)
+    expect(materialized.length).toBe(expected.length)
+    expect(materialized.equals(expected)).toBe(true)
     const names = await fs.readdir(path.dirname(destination))
     const backupName = names.find((name) => name.startsWith("model.bin.conflict."))
     expect(backupName).toBeTruthy()

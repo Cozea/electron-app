@@ -34,7 +34,11 @@ describe("streaming binary content cache", () => {
     })
 
     expect(result).toEqual({ contentHash, size: bytes.length, cachedPath: cache.getCachePath(contentHash) })
-    expect(await fs.readFile(result.cachedPath)).toEqual(bytes)
+    // NOTE: Buffer.equals, not toEqual — vitest deep-equality on multi-MiB
+    // buffers costs seconds per assertion and trips the 20s CI timeout.
+    const stored = await fs.readFile(result.cachedPath)
+    expect(stored.length).toBe(bytes.length)
+    expect(stored.equals(bytes)).toBe(true)
     expect((await fs.readdir(root)).filter((name) => name.includes(".tmp."))).toEqual([])
   })
 
@@ -78,6 +82,8 @@ describe("streaming binary content cache", () => {
       verifiedWrites.push(Buffer.from(chunk))
     })).toBe(true)
     expect(verifiedWrites.map((chunk) => chunk.length)).toEqual([CHUNK_SIZE_BYTES, 9])
-    expect(Buffer.concat(verifiedWrites)).toEqual(expected)
+    const verified = Buffer.concat(verifiedWrites)
+    expect(verified.length).toBe(expected.length)
+    expect(verified.equals(expected)).toBe(true)
   })
 })

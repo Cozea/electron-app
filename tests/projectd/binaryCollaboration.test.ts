@@ -106,11 +106,17 @@ describe("P11 binary live collaboration", () => {
     expect([...stored.values()][0]?.equals(bytes)).toBe(false)
 
     // A fresh client with no local cache can fetch, authenticate and verify the same objects.
+    // NOTE: Buffer.equals, not toEqual — vitest deep-equality on large
+    // buffers costs seconds per assertion under full-suite CI load.
     const reader = new SessionBinaryObjectStore(options)
-    expect(await reader.download(manifest)).toEqual(bytes)
+    const downloaded = await reader.download(manifest)
+    expect(downloaded.length).toBe(bytes.length)
+    expect(downloaded.equals(bytes)).toBe(true)
     const streamed: Buffer[] = []
     await reader.downloadTo(manifest, async (chunk) => { expect(chunk.length).toBeLessThanOrEqual(CHUNK_SIZE_BYTES); streamed.push(chunk) })
-    expect(Buffer.concat(streamed)).toEqual(bytes)
+    const streamedBytes = Buffer.concat(streamed)
+    expect(streamedBytes.length).toBe(bytes.length)
+    expect(streamedBytes.equals(bytes)).toBe(true)
     await expect(reader.downloadTo(manifest, async () => { throw new Error("sink full") })).rejects.toThrow("sink full")
 
     const firstUrl = [...stored.keys()][0]!

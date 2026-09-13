@@ -36,7 +36,11 @@ describe("writeVerifiedBinaryAtomic", () => {
     })
 
     expect(result).toMatchObject({ size: expected.length, contentHash: hash(expected) })
-    expect(await fs.readFile(destination)).toEqual(expected)
+    // NOTE: Buffer.equals, not toEqual — vitest deep-equality on multi-MiB
+    // buffers costs seconds per assertion and trips the 20s CI timeout.
+    const materialized = await fs.readFile(destination)
+    expect(materialized.length).toBe(expected.length)
+    expect(materialized.equals(expected)).toBe(true)
     expect((await fs.readdir(root)).filter((name) => name.includes(".tmp."))).toEqual([])
   })
 

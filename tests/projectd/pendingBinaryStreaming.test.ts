@@ -86,12 +86,19 @@ describe("streamed retained binary staging", () => {
     const output: Buffer[] = []
     await store.writeTo(restored, async (chunk) => { output.push(Buffer.from(chunk)) })
     expect(output.map((chunk) => chunk.length)).toEqual([CHUNK_SIZE_BYTES, 17])
-    expect(Buffer.concat(output)).toEqual(bytes)
+    // NOTE: Buffer.equals, not toEqual — vitest deep-equality on multi-MiB
+    // buffers costs seconds per assertion and trips the 20s CI timeout.
+    const streamed = Buffer.concat(output)
+    expect(streamed.length).toBe(bytes.length)
+    expect(streamed.equals(bytes)).toBe(true)
 
     const source = store.asSource(restored)
     expect(source.contentHash).toBe(contentHash)
     expect(source.size).toBe(bytes.length)
-    expect(await source.read(0, CHUNK_SIZE_BYTES)).toEqual(bytes.subarray(0, CHUNK_SIZE_BYTES))
+    const head = await source.read(0, CHUNK_SIZE_BYTES)
+    const headExpected = bytes.subarray(0, CHUNK_SIZE_BYTES)
+    expect(head.length).toBe(headExpected.length)
+    expect(head.equals(headExpected)).toBe(true)
     expect(await source.read(CHUNK_SIZE_BYTES, 17)).toEqual(bytes.subarray(CHUNK_SIZE_BYTES))
     // A bounded upload client may ask an unaligned range that crosses a stored chunk.
     expect(await source.read(CHUNK_SIZE_BYTES - 8, 16)).toEqual(bytes.subarray(CHUNK_SIZE_BYTES - 8, CHUNK_SIZE_BYTES + 8))

@@ -39,7 +39,11 @@ it("retains encrypted binary versions across restart and key rotation, with atom
         // Removal from another store must not invalidate an in-flight export.
         new PendingBinaryStore(db, keys).remove(first.revisionId)
       })
-      expect(Buffer.concat(capturedChunks)).toEqual(bytes)
+      // NOTE: Buffer.equals, not toEqual — vitest deep-equality on multi-MiB
+      // buffers costs seconds per assertion and trips the 20s CI timeout.
+      const captured = Buffer.concat(capturedChunks)
+      expect(captured.length).toBe(bytes.length)
+      expect(captured.equals(bytes)).toBe(true)
     } finally { capture.close() }
     new PendingBinaryStore(db, keys).stage(intent, bytes)
     const wholeRead = vi.spyOn(PendingBinaryStore.prototype, "readBytes").mockImplementation(() => { throw new Error("whole draft read forbidden") })

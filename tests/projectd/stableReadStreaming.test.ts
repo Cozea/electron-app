@@ -30,7 +30,12 @@ describe("StableFileReader metadata streaming", () => {
     expect(metadata.contentHash).toBe(createHash("sha256").update(bytes).digest("hex"))
 
     const complete = await reader.read(file)
-    expect(complete.bytes).toEqual(bytes)
+    // NOTE: Buffer.equals, not toEqual — vitest deep-equality on multi-MiB
+    // buffers costs seconds per assertion and trips the 20s CI timeout.
+    expect(Buffer.isBuffer(complete.bytes)).toBe(true)
+    const payload = complete.bytes as Buffer
+    expect(payload.length).toBe(bytes.length)
+    expect(payload.equals(bytes)).toBe(true)
     expect(complete.contentHash).toBe(metadata.contentHash)
   })
 

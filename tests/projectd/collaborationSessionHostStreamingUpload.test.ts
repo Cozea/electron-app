@@ -118,7 +118,11 @@ describe("CollaborationSessionHost streaming binary upload", () => {
         contentHash: hash(binary),
         size: binary.length,
       })
-      expect(await host.binaryCache.get(hash(binary))).toEqual(binary)
+      // NOTE: Buffer.equals, not toEqual — vitest deep-equality on large
+      // buffers costs seconds per assertion under full-suite CI load.
+      const cached = await host.binaryCache.get(hash(binary))
+      expect(cached?.length).toBe(binary.length)
+      expect(cached!.equals(binary)).toBe(true)
     } finally {
       await host.stop()
       room.dispose()
