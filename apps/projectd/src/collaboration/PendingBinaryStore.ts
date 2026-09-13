@@ -41,6 +41,15 @@ export class PendingBinaryStore {
       session_id TEXT NOT NULL, revision_id TEXT NOT NULL, chunk_index INTEGER NOT NULL, envelope TEXT NOT NULL,
       PRIMARY KEY (session_id, revision_id, chunk_index)
     )`)
+    // A crash may leave encrypted chunks before the version row commit marker was
+    // written. They are unreachable by design, so remove them whenever this
+    // session store is reopened—even if the workspace file has since changed hash.
+    database.db.prepare(`DELETE FROM pending_binary_chunks
+      WHERE session_id=? AND NOT EXISTS (
+        SELECT 1 FROM pending_binary_versions
+        WHERE pending_binary_versions.session_id=pending_binary_chunks.session_id
+          AND pending_binary_versions.revision_id=pending_binary_chunks.revision_id
+      )`).run(this.cipher.sessionId)
   }
 
   stage(intent: PendingBinaryIntent, bytes: Buffer): PendingBinaryRecord {
