@@ -155,7 +155,7 @@ describe("AutoGit checkpoint filter policy", () => {
 
     expect(fakeLfs.availabilityChecks).toBe(1)
     expect(fakeLfs.cleanCalls).toHaveLength(1)
-    expect(fakeLfs.cleanCalls[0]).toMatchObject({ cwd: root, filePath: "asset.bin" })
+    expect(fakeLfs.cleanCalls[0]).toMatchObject({ cwd: await fs.realpath(root), filePath: "asset.bin" })
     expect(fakeLfs.cleanCalls[0]!.bytes.equals(bytes)).toBe(true)
     const stored = (await git.process.execute(["show", `${result.commitOid}:asset.bin`], { cwd: root })).stdoutBuffer
     const pointer = GitLfs.parsePointer(stored)

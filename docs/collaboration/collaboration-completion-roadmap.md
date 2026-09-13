@@ -7,15 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **0 — Green baseline**
-- Current checkpoint: **0A — reproduce and classify the red gates**
-- Blocking gate: full suite + all typechecks must be green
-- Next authorized work: Phase 0 only
-- Branch: `feat/collab-step3-session-ui` · head `b5498ef0` (2026-09-13)
-- Known red at head: `typecheck:projectd` 1 error (`apps/projectd/src/main.ts:26`,
-  `roomKeyBase64` optional vs required); `tests/projectd` 2 failures
-  (LFS-pointer `cwd` `/var` vs `/private/var` symlink assertion;
-  streaming-host-upload 5s observation timeout)
+- Current phase: **1 — P11 binary closure**
+- Current checkpoint: **1A — Filesystem → collaboration upload**
+- Blocking gate: B01–B05 executable + memory gate
+- Next authorized work: 1A only
+- Branch: `feat/collab-step3-session-ui` · Phase-0 baseline committed (see ledger 2026-09-13 entry)
+- Phase 0 closed 2026-09-13: 5/5 typechecks, lint, projectd build, full suite 444 files / 3,170 passed, production build, Electron correctness + perf green
 
 ## How this file is used
 
@@ -78,7 +75,7 @@ Then works only inside NX.
 
 Nothing else is developed until the branch has one known-good checkpoint.
 
-- [ ] **0A — Reproduce and classify every red gate.** The streaming-host-upload
+- [x] **0A — Reproduce and classify every red gate.** The streaming-host-upload
   regression waits 5s for the host to publish the staged binary. Determine
   exactly which is true: production upload path stuck; staging succeeds but
   replay unscheduled; upload occurs but test observes wrong state; or CI
@@ -86,16 +83,16 @@ Nothing else is developed until the branch has one known-good checkpoint.
   Instrument the exact transition:
   `scan → stable read → stageFrom → retained record → uploadFrom → cache →
   BinaryRevision → queue/outbox → retained record deletion`.
-- [ ] **0B — Close the projectd type error** (`main.ts:26`, optional
+- [x] **0B — Close the projectd type error** (`main.ts:26`, optional
   `roomKeyBase64` vs required descriptor field) at the type boundary, not
   with a cast that hides a missing-key state.
-- [ ] **0C — Close the LFS-pointer `cwd` assertion** via canonicalized paths
+- [x] **0C — Close the LFS-pointer `cwd` assertion** via canonicalized paths
   (`realpath` both sides), not by weakening the assertion.
-- [ ] **0D — Full verification green:** `bun run typecheck`,
+- [x] **0D — Full verification green:** `bun run typecheck`,
   `typecheck:projectd`, `typecheck:electron`, `typecheck:tests`,
   `typecheck:cloudflare`, projectd build, full Vitest, production build,
   Electron validation.
-- [ ] **0E — Record head + results in the ledger.**
+- [x] **0E — Record head + results in the ledger.**
 
 **Gate:** all of 0D green at one commit.
 **Out of scope until later:** any P11–P27 behavior change.

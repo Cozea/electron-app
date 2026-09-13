@@ -5,6 +5,10 @@ Authoritative specification: [docs/collaboration/collaboration-autogit-master-pl
 ---
 
 
+## Implementation continuation — 2026-09-13
+
+Phase 0 green baseline (2026-09-13T01:15Z): Roadmap `collaboration-completion-roadmap.md` Phases 0–9 is now canonical; this ledger remains the evidence record. Closed all three red gates at head: (0A) streaming-host-upload timeout classified as a test bug — the test hand-signed a room token with guessed claims (`sid`/`room`/`jti`/`role`), the real room code rejects it with ROOM_MISMATCH (`claims.roomId`/`protocolVersion` required), so the host waited for a ticket forever; production chain verified end-to-end in ~1s with a `sessionTokenFor` token, no timeout change made. Fixed by using the harness helper. (0B) `typecheck:projectd` error `main.ts:26` fixed honestly — `activeSession` now declares `BackgroundSessionIntent` (what `findActive` returns and both consumers already accept) instead of `BackgroundSessionDescriptor`. (0C) LFS-pointer `cwd` assertion now compares against `fs.realpath(root)` (macOS `/var`→`/private/var` symlink), assertion strength unchanged. Full verification green: 5/5 typechecks, root lint, `build:projectd`, full Vitest 444 files / 3,170 tests passed / 5 skipped, production `bun run build`, navigation-test build, real-Electron correctness passed, 100-sample perf p95 33.1ms passed. Baseline checkpoint for all later phases.
+
 ## Implementation continuation — 2026-09-12
 
 Merge and target-monitor credentials (2026-09-12T18:28Z): Active session target checks and merge fetch/push now use the scoped credential broker. Push requires fetch and push URLs to identify the same repository, so uncertain pushes cannot be reconciled against another repository. Local real-Git integration verifies credential routing and a completed fixture merge; focused 11 tests pass. Full suite: 3,143 passed/five skipped; daemon/test typechecks, root/target lint, daemon build and diff check pass. This supersedes the corresponding gaps in the previous entry. Frozen-session recovery previews, LFS, operator grants/deployment and live GitHub qualification remain unfinished.

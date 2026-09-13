@@ -11,9 +11,8 @@ import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 import {
   loadSessionRoomWorker,
   RoomHost,
+  sessionTokenFor,
   TEST_PUBLIC_SESSION_ID,
-  TEST_ROOM_ENV,
-  TEST_ROOM_ID,
   type SessionRoomWorker,
 } from "../helpers/sessionRoomHarness"
 
@@ -90,13 +89,7 @@ describe("CollaborationSessionHost streaming binary upload", () => {
     binary[0] = 0
     await fs.writeFile(path.join(root, "asset.bin"), binary)
 
-    const token = await worker.signSessionToken(TEST_ROOM_ENV, {
-      sub: "principal_streaming_upload",
-      sid: TEST_PUBLIC_SESSION_ID,
-      room: TEST_ROOM_ID,
-      jti: "streaming-upload-ticket",
-      role: "developer",
-    })
+    const token = await sessionTokenFor(worker, "principal_streaming_upload", { sessionRole: "developer" })()
     const host = new CollaborationSessionHost({
       publicSessionId: TEST_PUBLIC_SESSION_ID,
       workspaceId: "workspace_streaming_upload",

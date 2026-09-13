@@ -3,7 +3,7 @@ import { getProjectdSocketPath } from "@cozea/projectd-protocol"
 import { GitHubSessionPullRequest } from "./autogit/GitHubSessionPullRequest"
 import { SessionPullRequestStore } from "./autogit/SessionPullRequestStore"
 import { getBackgroundRepositoryCapabilities, getBackgroundRepositoryToken } from "./collaboration/BackgroundRepositoryAuth"
-import { BackgroundSessionStore, type BackgroundSessionDescriptor } from "./collaboration/BackgroundSessionStore"
+import { BackgroundSessionStore, type BackgroundSessionIntent } from "./collaboration/BackgroundSessionStore"
 import { BackgroundDeviceIdentityManager, type StoredDeviceIdentity } from "./identity/BackgroundDeviceIdentity"
 import { ProjectdServer } from "./server/ProjectdServer"
 import { ProjectdDatabase } from "./storage/Database"
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
 
   const activeSession = async (projectId: string, publicSessionId: string): Promise<{
     identity: StoredDeviceIdentity
-    descriptor: BackgroundSessionDescriptor
+    descriptor: BackgroundSessionIntent
   }> => {
     const identity = await backgroundIdentity.loadExistingIdentity()
     if (backgroundStore.accessState(publicSessionId, identity).denied) throw new Error("Session access was revoked")
