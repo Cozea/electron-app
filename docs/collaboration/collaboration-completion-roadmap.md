@@ -8,11 +8,11 @@
 ## Current status (executor updates this block every turn)
 
 - Current phase: **1 — P11 binary closure**
-- Current checkpoint: **1C — First-attach bounded binary comparison**
+- Current checkpoint: **1D — Bounded external-Git binary adoption**
 - Blocking gate: B01–B05 executable + memory gate
-- Next authorized work: 1C only
-- Branch: `feat/collab-step3-session-ui` · 1B closed (see ledger 2026-09-13 1B entry)
-- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming materialization proven, fallback confined; full suite 446 files / 3,173 passed)
+- Next authorized work: 1D only
+- Branch: `feat/collab-step3-session-ui` · 1C closed (see ledger 2026-09-13 1C entry)
+- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming materialization proof); 1C (bounded first-attach compare; full suite 447 files / 3,174 passed)
 
 ## How this file is used
 
@@ -116,7 +116,7 @@ resume-by-verify-on-retry stay.
   → SHA-256 verify → rename`. Keep the buffered fallback only for
   test/custom transports lacking the streaming interface; production must
   never select it.
-- [ ] **1C — First-attach bounded binary comparison.** `adoptMatchingFiles()`
+- [x] **1C — First-attach bounded binary comparison.** `adoptMatchingFiles()`
   must stop reading whole binaries to compare: `StableFileReader.readMetadata()`
   → streamed SHA-256 → compare with `BinaryRevision` hash. Only text below
   the text-size ceiling may be materialized into a `Buffer`.

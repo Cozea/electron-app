@@ -1323,13 +1323,30 @@ export class CollaborationSessionHost {
       if (!absolutePath) continue
       const stat = await fs.lstat(absolutePath).catch(() => null)
       if (!stat) continue
+      if (entry.kind === "binary") {
+        // Bounded first-attach compare: stream the on-disk hash and compare it
+        // with the session revision. A binary is never read whole merely to
+        // decide whether the local copy matches.
+        const head = this.replica.binaryStore.getHeadRevision(entry.fileId)
+        const metadata = stat.isFile()
+          ? await this.watcher.scanner.stableReader.readMetadata(absolutePath, { skipInitialDelay: true })
+          : null
+        const diskHash = metadata && metadata.exists && !metadata.isSymlink && metadata.contentHash
+          ? metadata.contentHash
+          : null
+        if (!head || diskHash === null || diskHash !== head.contentHash || fileMode(stat.mode) !== entry.mode) {
+          differing.push(entry)
+          continue
+        }
+        matching.push({ entry, diskHash, size: stat.size, mtimeMs: stat.mtimeMs })
+        continue
+      }
       const bytes = stat.isSymbolicLink() ? Buffer.from(await fs.readlink(absolutePath)) : stat.isFile() ? await fs.readFile(absolutePath) : null
       const matches =
         entry.kind === "symlink"
           ? stat.isSymbolicLink() && bytes?.toString("utf8") === entry.symlinkTarget
-          : !stat.isFile() ? false : entry.kind === "text"
-          ? Boolean(bytes && bytes.toString("utf8") === this.replica.textDocs.getTextContent(entry.fileId))
-          : Boolean(bytes && this.replica.binaryStore.getHeadRevision(entry.fileId)?.contentHash === sha256(bytes))
+          : !stat.isFile() ? false
+          : Boolean(bytes && bytes.toString("utf8") === this.replica.textDocs.getTextContent(entry.fileId))
       if (!matches || !bytes || (entry.kind !== "symlink" && fileMode(stat.mode) !== entry.mode)) {
         differing.push(entry)
         continue
