@@ -533,7 +533,7 @@ export class AutoGitAgent {
     await this.fetchBranch()
     const remoteHead = await this.lsRemote()
     const localHead = await this.options.gitService.getCommitOid(repo.root, `refs/heads/${this.options.branchName}`)
-    const known = this.checkpoint?.commitOid ?? this.integratedHead ?? localHead
+    const known = this.integratedHead ?? this.checkpoint?.commitOid ?? localHead
     if (!remoteHead || known === remoteHead) {
       return { status: "up_to_date" }
     }

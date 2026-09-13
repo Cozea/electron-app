@@ -42,6 +42,7 @@ export class MaterializationIndex {
   }
 
   recordMaterialization(entry: MaterializedEntry): void {
+    if (!this.db.db.isOpen) return
     const normalized = this.normalizePath(entry.relativePath)
 
     this.db.db.exec("BEGIN TRANSACTION;")
@@ -112,6 +113,7 @@ export class MaterializationIndex {
   }
 
   getByFileId(sessionId: string, fileId: string): MaterializedEntry | null {
+    if (!this.db.db.isOpen) return null
     const stmt = this.db.db.prepare(
       "SELECT * FROM file_materializations WHERE session_id = ? AND file_id = ?",
     )
@@ -120,6 +122,7 @@ export class MaterializationIndex {
   }
 
   getByPath(sessionId: string, relativePath: string): MaterializedEntry | null {
+    if (!this.db.db.isOpen) return null
     const normalized = this.normalizePath(relativePath)
     const stmt = this.db.db.prepare(`
       SELECT m.* FROM file_materializations m
@@ -145,6 +148,7 @@ export class MaterializationIndex {
   }
 
   list(sessionId: string): MaterializedEntry[] {
+    if (!this.db.db.isOpen) return []
     const stmt = this.db.db.prepare(
       "SELECT * FROM file_materializations WHERE session_id = ? ORDER BY relative_path ASC",
     )
@@ -153,6 +157,7 @@ export class MaterializationIndex {
   }
 
   remove(sessionId: string, fileId: string): void {
+    if (!this.db.db.isOpen) return
     this.db.db.exec("BEGIN TRANSACTION;")
     try {
       this.db.db
@@ -170,6 +175,7 @@ export class MaterializationIndex {
 
   /** Forgets what was written for a session, as before its first attach. */
   clearSession(sessionId: string): void {
+    if (!this.db.db.isOpen) return
     this.db.db.exec("BEGIN TRANSACTION;")
     try {
       this.db.db.prepare("DELETE FROM file_materializations WHERE session_id = ?").run(sessionId)
@@ -189,6 +195,7 @@ export class MaterializationIndex {
    * Returns true when it forgot materializations.
    */
   bindFolder(sessionId: string, workspaceId: string, rootPath: string): boolean {
+    if (!this.db.db.isOpen) return false
     const bound = this.db.db
       .prepare("SELECT workspace_id, root_path FROM session_folders WHERE session_id = ?")
       .get(sessionId) as { workspace_id: string; root_path: string } | undefined
@@ -218,6 +225,7 @@ export class MaterializationIndex {
   }
 
   matchesFolder(sessionId: string, workspaceId: string, rootPath: string): boolean {
+    if (!this.db.db.isOpen) return false
     const bound = this.db.db.prepare("SELECT workspace_id, root_path FROM session_folders WHERE session_id=?")
       .get(sessionId) as { workspace_id: string; root_path: string } | undefined
     return bound?.workspace_id === workspaceId && bound.root_path === rootPath

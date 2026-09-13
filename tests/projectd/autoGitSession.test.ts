@@ -1732,14 +1732,33 @@ describe("AutoGit in projectd", () => {
     const room = newRoom()
     const repos = await setUpRepositories({ "notes.md": "base\n" })
     const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
-    const outside = await pushFromOutside(repos.remote, { "from_github.txt": "external commit\n" })
 
-    const res = await creator.host.syncFromGitHub()
-    expect(res.status).toBe("fast_forward_integrated")
-    expect(res.remoteOid).toBe(outside)
+    // Consecutive external fast-forwards modifying the same file before another checkpoint
+    const r1 = await pushFromOutside(repos.remote, { "notes.md": "base\nfirst external edit\n" })
+    const res1 = await creator.host.syncFromGitHub()
+    expect(res1.status).toBe("fast_forward_integrated")
+    expect(res1.remoteOid).toBe(r1)
+    await waitFor(async () => (await creator.read("notes.md")) === "base\nfirst external edit\n", "creator R1 integrated")
+    await waitFor(async () => (await joiner.read("notes.md")) === "base\nfirst external edit\n", "joiner R1 integrated")
 
-    await waitFor(async () => (await creator.read("from_github.txt")) === "external commit\n", "creator integrated")
-    await waitFor(async () => (await joiner.read("from_github.txt")) === "external commit\n", "joiner integrated")
+    const r2 = await pushFromOutside(repos.remote, { "notes.md": "base\nfirst external edit\nsecond external edit\n" })
+    const res2 = await creator.host.syncFromGitHub()
+    expect(res2.status).toBe("fast_forward_integrated")
+    expect(res2.remoteOid).toBe(r2)
+    await waitFor(
+      async () => (await creator.read("notes.md")) === "base\nfirst external edit\nsecond external edit\n",
+      "creator R2 integrated",
+    )
+    await waitFor(
+      async () => (await joiner.read("notes.md")) === "base\nfirst external edit\nsecond external edit\n",
+      "joiner R2 integrated",
+    )
+
+    // Both peers end at the exact R2 bytes with zero false conflict markers
+    expect(await creator.read("notes.md")).not.toContain("<<<<<<<")
+    expect(await joiner.read("notes.md")).not.toContain("<<<<<<<")
+    expect(await creator.read("notes.md")).toBe("base\nfirst external edit\nsecond external edit\n")
+    expect(await joiner.read("notes.md")).toBe("base\nfirst external edit\nsecond external edit\n")
   })
 
   it("invalidates merge review when a peer edits after preview and requires fresh re-preview", async () => {

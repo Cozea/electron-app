@@ -160,8 +160,12 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     this.emit("state", "ready")
   }
 
+  private isStopped(): boolean {
+    return this.lifecycle === "stopped"
+  }
+
   private handleRawEvents(items: NativeFSEventItem[]): void {
-    if (this.lifecycle === "stopped") return
+    if (this.isStopped()) return
     if (this.lifecycle === "starting" || this.lifecycle === "reconciling") {
       this.bufferedHints.push(...items)
       return
@@ -169,9 +173,13 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
 
     void (async () => {
       for (const item of items) {
+        if (this.isStopped()) break
         await this.processEventItem(item)
       }
-    })()
+    })().catch((error: unknown) => {
+      if (this.isStopped()) return
+      console.warn("[WorkspaceWatcher] Event processing failed:", error)
+    })
   }
 
   private handleDropped(reason: string): void {
@@ -181,7 +189,9 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
   }
 
   async rescan(): Promise<void> {
+    if (this.isStopped()) return
     const diff = await this.scanner.diffAgainstIndex(this.sessionId, this.index)
+    if (this.isStopped()) return
     // Deletes first, as at startup, so renames pair up.
     for (const d of diff.deleted) {
       this.emit("event", {
@@ -230,8 +240,9 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
       return
     }
 
+    if (this.isStopped()) return
     const inScope = await this.scopePolicy.isInScope(rel)
-    if (!inScope) {
+    if (!inScope || this.isStopped()) {
       return
     }
 
@@ -245,6 +256,7 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
         await fs.lstat(absPath)
       } catch (err: any) {
         if (err.code === "ENOENT") {
+          if (this.isStopped()) return
           this.emit("event", {
             type: "delete",
             relativePath: rel,
@@ -257,6 +269,7 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     // The watcher needs stable hash/metadata only. The host reads actual payload bytes
     // once if this proves to be a genuine local modification.
     const stable = await this.stableReader.readMetadata(absPath)
+    if (this.isStopped()) return
     if (!stable.exists || !stable.contentHash) {
       // File deleted during atomic-save transition
       this.emit("event", {
@@ -267,6 +280,7 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     }
 
     // Invariant C14 / Section 12.7: Hash-based echo classification
+    if (this.isStopped()) return
     const indexed = this.index.getByPath(this.sessionId, rel)
     const mode = (stable.mode ?? 0o100644) & 0o111 ? 0o100755 : 0o100644
     const sameKind = stable.isSymlink === (indexed?.kind === "symlink")

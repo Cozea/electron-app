@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **3 — P16–P22 AutoGit/Git program: review rework**
-- Current checkpoint: **3R — review items 1–3 (done, awaiting re-review)**
-- Blocking gate: A/C/G/R/M rows green against real Git remotes; production wiring
-- Next authorized work: none until re-review (Phase 4 explicitly not started)
-- Branch: `feat/collab-step3-session-ui` · Phase 3 review rework complete (see ledger 2026-09-13 rework entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 rework — 1 (G07/G10 production wiring), 2 (P18 ref-race elimination), 3 (M01 post-preview dirty-state race eliminated; full suite 450 files / 3,218 passed)
+- Current phase: **4 — P23 Electron cutover**
+- Current checkpoint: **4A — Session UI addresses sessions by Session/Workbench identity everywhere**
+- Blocking gate: closing renderer does not stop live CRDT/session
+- Next authorized work: Phase 4 only
+- Branch: `feat/collab-step3-session-ui` · Phase 3 closed (see ledger 2026-09-13 Phase 3 closure entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 — 3A–3F (A/C/G/R/M matrices green against real Git remotes; G10 consecutive fast-forwards proven; full suite 450 files / 3,218 passed)
 
 ## How this file is used
 
