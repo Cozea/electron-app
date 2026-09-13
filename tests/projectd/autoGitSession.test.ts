@@ -16,6 +16,7 @@ import { sessionBinaryObjects } from "../helpers/sessionBinaryObjects"
 import { CollaborationSessionHost } from "../../apps/projectd/src/collaboration/CollaborationSessionHost"
 import type { FileEventSource, NativeFSEventItem } from "../../apps/projectd/src/filesystem/FSEventsClient"
 import { GitService } from "../../apps/projectd/src/git/GitService"
+import { GitProcess } from "../../apps/projectd/src/git/GitProcess"
 import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 import {
   RoomHost,
@@ -1232,11 +1233,13 @@ describe("AutoGit in projectd", () => {
     const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
     await creator.host.checkpointNow()
     const before = remoteHead(repos.remote)
-    const upload = creator.host.binaryObjects.upload.bind(creator.host.binaryObjects)
+    const objects = creator.host.binaryObjects
+    if (!objects.uploadFrom) throw new Error("test requires a streaming binary object store")
+    const streamUpload = objects.uploadFrom.bind(objects)
     let uploads = 0
-    const failure = vi.spyOn(creator.host.binaryObjects, "upload").mockImplementation(async (bytes) => {
+    const failure = vi.spyOn(objects, "uploadFrom").mockImplementation(async (source) => {
       if (++uploads === 2) throw new Error("interrupted binary upload")
-      return upload(bytes)
+      return streamUpload(source)
     })
     try { await expect(creator.host.rebase(false)).rejects.toThrow(/interrupted binary upload/) }
     finally { failure.mockRestore() }
@@ -1270,6 +1273,34 @@ describe("AutoGit in projectd", () => {
     const saved = remoteHead(repos.remote)
     expect(execFileSync("git", ["show", `${saved}:asset.bin`], { cwd: repos.remote })).toEqual(next)
     expect(execFileSync("git", ["show", `${saved}:new.bin`], { cwd: repos.remote })).toEqual(added)
+  })
+
+  it("adopts a multi-chunk external binary without buffering Git blobs", async () => {
+    const room = newRoom()
+    // One full 4 MiB chunk plus a tail: forces multi-range streaming if any
+    // code path buffers whole blobs, the failure this test guards against.
+    const big = randomBytes(4 * 1024 * 1024 + 512)
+    const repos = await setUpRepositories({ "notes.md": "base\n" })
+    await createTargetBranch(repos.remote, repos.creatorRoot, { "big.bin": big })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+    await creator.host.checkpointNow()
+    const blobReads: string[][] = []
+    const execute = vi.spyOn(GitProcess.prototype, "execute")
+    try {
+      const result = await creator.host.rebase(false)
+      expect(result).toMatchObject({ outcome: "rebased" })
+      for (const [args] of execute.mock.calls) {
+        if (args[0] === "cat-file" && args[1] === "blob") blobReads.push(args)
+      }
+      expect(blobReads).toHaveLength(0)
+    } finally {
+      execute.mockRestore()
+    }
+    for (const peer of [creator, joiner]) {
+      await waitFor(async () => (await fs.readFile(path.join(peer.root, "big.bin")).catch(() => Buffer.alloc(0))).equals(big), "rebased large binary bytes")
+    }
+    const saved = remoteHead(repos.remote)
+    expect(execFileSync("git", ["show", `${saved}:big.bin`], { cwd: repos.remote, maxBuffer: 16 * 1024 * 1024 }).equals(big)).toBe(true)
   })
 
   it("rebases the live session onto its target only when explicitly requested", async () => {

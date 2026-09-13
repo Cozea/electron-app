@@ -117,6 +117,65 @@ export class GitProcess {
     return [0, 0]
   }
 
+  /**
+   * Streams a blob's bytes without buffering the object. The sink decides how
+   * much to retain; chunks arrive in object order. Rejects on non-zero exit.
+   */
+  async streamBlob(
+    params: { cwd: string; oid: string; timeoutMs?: number },
+    onData: (chunk: Buffer) => Promise<void> | void,
+  ): Promise<void> {
+    if (!/^[0-9a-f]{40,64}$/.test(params.oid)) throw new Error(`Refusing to stream invalid blob id ${params.oid}`)
+    const execPath = this.resolveExecutablePath()
+    const timeout = params.timeoutMs ?? 30_000
+    return new Promise<void>((resolve, reject) => {
+      const gitEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        LC_ALL: "C",
+        LANG: "C",
+      }
+      const proc = spawn(execPath, ["cat-file", "blob", params.oid], {
+        cwd: params.cwd,
+        env: gitEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+      })
+      let settled = false
+      const stderrChunks: Buffer[] = []
+      const done = (fn: () => void): void => {
+        if (settled) return
+        settled = true
+        if (timer) clearTimeout(timer)
+        fn()
+      }
+      const timer: NodeJS.Timeout | null = setTimeout(() => {
+        proc.kill("SIGKILL")
+        done(() => reject(new Error(`Git cat-file blob timed out after ${timeout}ms`)))
+      }, timeout)
+      proc.stdout?.on("data", (chunk: Buffer) => {
+        proc.stdout?.pause()
+        Promise.resolve()
+          .then(() => onData(chunk))
+          .then(() => proc.stdout?.resume())
+          .catch((error: unknown) => {
+            proc.kill("SIGKILL")
+            done(() => reject(error))
+          })
+      })
+      proc.stderr?.on("data", (chunk: Buffer) => {
+        if (stderrChunks.length < 8) stderrChunks.push(chunk)
+      })
+      proc.on("error", (error) => done(() => reject(error)))
+      proc.on("close", (code) => {
+        if (code === 0) done(() => resolve())
+        else {
+          const stderr = Buffer.concat(stderrChunks).toString("utf8")
+          done(() => reject(new Error(`Git cat-file blob failed with exit code ${code}:\n${stderr}`)))
+        }
+      })
+    })
+  }
+
   async execute(args: string[], options: GitExecuteOptions): Promise<GitProcessResult> {
     const execPath = this.resolveExecutablePath()
     const timeout = options.timeoutMs ?? 30_000

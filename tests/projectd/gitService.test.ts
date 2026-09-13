@@ -39,6 +39,25 @@ describe("P05 GitService consolidation foundation", () => {
     }
   })
 
+  it("streams blob hashes and bounded ranges without buffering objects", async () => {
+    await gitService.initRepo(testRepoDir, "main")
+    const { createHash, randomBytes } = await import("node:crypto")
+    const bytes = randomBytes(300 * 1024 + 17)
+    fs.writeFileSync(path.join(testRepoDir, "asset.bin"), bytes)
+    const oid = (await gitService.process.execute(["hash-object", "-w", "asset.bin"], { cwd: testRepoDir })).stdout.trim()
+    expect(oid).toMatch(/^[0-9a-f]{40}$/)
+
+    await expect(gitService.hashBlob(testRepoDir, oid)).resolves.toBe(createHash("sha256").update(bytes).digest("hex"))
+    await expect(gitService.readBlobRange(testRepoDir, oid, 0, bytes.length).then((b) => b.equals(bytes))).resolves.toBe(true)
+    await expect(gitService.readBlobRange(testRepoDir, oid, 1, 1024).then((b) => b.equals(bytes.subarray(1, 1025)))).resolves.toBe(true)
+    await expect(gitService.readBlobRange(testRepoDir, oid, bytes.length - 16, 16).then((b) => b.equals(bytes.subarray(bytes.length - 16)))).resolves.toBe(true)
+    await expect(gitService.readBlobRange(testRepoDir, oid, 0, bytes.length + 1)).rejects.toThrow(/shorter/)
+    await expect(gitService.readBlobRange(testRepoDir, oid, -1, 16)).rejects.toThrow(/Invalid blob range/)
+    await expect(gitService.readBlobRange(testRepoDir, oid, 0, 0)).rejects.toThrow(/Invalid blob range/)
+    await expect(gitService.hashBlob(testRepoDir, "not-an-oid")).rejects.toThrow(/invalid blob id/i)
+    await expect(gitService.hashBlob(testRepoDir, "0".repeat(40))).rejects.toThrow(/exit code/i)
+  })
+
   it("reports an early Git rejection without an unhandled stdin broken pipe", async () => {
     const result = await gitService.process.execute(["check-ignore", "--stdin"], {
       cwd: testRepoDir, stdin: "path.txt\n".repeat(200_000), allowNonZeroExit: true,

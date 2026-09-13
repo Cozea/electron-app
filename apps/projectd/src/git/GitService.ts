@@ -5,6 +5,7 @@
  * Consolidates Git operations into a single daemon-owned authority.
  */
 
+import { createHash } from "node:crypto"
 import { GitProcess, type GitProcessHealth } from "./GitProcess"
 import { GitStatusParser, type ParsedGitStatus } from "./GitStatus"
 import { GitAttributes, type PathAttributes } from "./GitAttributes"
@@ -112,6 +113,46 @@ export class GitService {
       allowNonZeroExit: true,
     })
     return res.success ? res.stdout.trim() : null
+  }
+
+  /**
+   * Streams a blob's SHA-256 without buffering the object. The blob is
+   * re-hashed from the object store, never trusted from a recorded size.
+   */
+  async hashBlob(repoPath: string, oid: string): Promise<string> {
+    const digest = createHash("sha256")
+    await this.process.streamBlob({ cwd: repoPath, oid }, (chunk) => {
+      digest.update(chunk)
+    })
+    return digest.digest("hex")
+  }
+
+  /**
+   * Reads one bounded range of a blob. Memory stays O(length) no matter how
+   * large the object is; shorter-than-requested objects throw.
+   */
+  async readBlobRange(repoPath: string, oid: string, offset: number, length: number): Promise<Buffer> {
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length <= 0) {
+      throw new Error("Invalid blob range for a bounded Git read")
+    }
+    const parts: Buffer[] = []
+    let skipped = 0
+    let taken = 0
+    await this.process.streamBlob({ cwd: repoPath, oid }, (chunk) => {
+      let position = 0
+      if (skipped < offset) {
+        const skip = Math.min(chunk.length, offset - skipped)
+        position += skip
+        skipped += skip
+      }
+      if (position < chunk.length && taken < length) {
+        const take = Math.min(chunk.length - position, length - taken)
+        parts.push(chunk.subarray(position, position + take))
+        taken += take
+      }
+    })
+    if (taken !== length) throw new Error(`Git blob is shorter than its recorded size`)
+    return Buffer.concat(parts, taken)
   }
 
   /**

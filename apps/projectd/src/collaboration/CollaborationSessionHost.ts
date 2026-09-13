@@ -1796,11 +1796,35 @@ export class CollaborationSessionHost {
     }
     // Upload every payload before any replica mutation. A failed upload leaves the
     // complete live change set untouched; successful objects are immutable.
+    // Git-originated binaries arrive as immutable blob descriptors and stream
+    // through the durable capture; no whole payload crosses this boundary.
     const binaries = new Map<SessionFileChange, Awaited<ReturnType<SessionBinaryObjectStore["upload"]>>>()
     for (const change of changes) {
-      if (change.binary?.bytes) {
-        await this.binaryCache.put(change.binary.bytes)
-        binaries.set(change, await this.binaryObjects.upload(change.binary.bytes))
+      const blob = change.binary?.blob
+      if (blob) {
+        if (!this.gitService) {
+          throw new SessionHostError("AUTOGIT_OFF", `Cannot adopt the Git binary for ${change.path} without repository access.`)
+        }
+        const gitService = this.gitService
+        const live = this.findLiveEntry(change.path)
+        const source = {
+          contentHash: blob.contentHash,
+          size: blob.size,
+          read: (offset: number, length: number) => gitService.readBlobRange(blob.repoPath, blob.blobOid, offset, length),
+        }
+        const staged = await this.pendingBinaryStore.stageFrom({
+          path: change.path,
+          fileId: live?.fileId ?? null,
+          baseRevisionId: live && live.kind === "binary"
+            ? this.replica.binaryStore.getHeadRevision(live.fileId)?.revisionId ?? null
+            : null,
+          mode: change.mode !== undefined ? fileMode(change.mode) : live?.mode ?? 0o100644,
+        }, source)
+        try {
+          binaries.set(change, await this.uploadStagedBinary(staged))
+        } finally {
+          this.pendingBinaryStore.remove(staged.revisionId)
+        }
       }
     }
     await this.flushAndAwaitAcks()
@@ -1839,7 +1863,7 @@ export class CollaborationSessionHost {
           continue
         }
         if (change.binary) {
-          if (change.binary.bytes === null) {
+          if (change.binary.blob === null) {
             if (entry) { staged.deleteFile(entry.fileId, this.actor); touched.push(entry.fileId) }
             continue
           }

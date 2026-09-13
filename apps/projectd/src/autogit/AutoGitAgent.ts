@@ -115,7 +115,12 @@ export interface SessionFileChange {
   expectedFingerprint?: string
   modeOnly?: boolean
   symlinkTarget?: string
-  binary?: { bytes: Buffer | null; fingerprint: string }
+  /**
+   * A Git-originated binary change as an immutable object descriptor. A null
+   * blob deletes the file. Payload bytes never cross this interface; the
+   * consumer streams bounded ranges from the repository object store.
+   */
+  binary?: { blob: { repoPath: string; blobOid: string; size: number; contentHash: string } | null; fingerprint: string }
   expected: string | null
   /** The merged text; null deletes the file. */
   text: string | null
@@ -1105,41 +1110,80 @@ export class AutoGitAgent {
   }
 
   private async mergeExternalSymlink(file: ExternalFile): Promise<{ change: SessionFileChange; conflicted: boolean } | null> {
-    const read = async (oid: string): Promise<Buffer | null> => {
+    const repoPath = this.requireRepo().root
+    const blobSize = async (oid: string): Promise<number | null> => {
       if (/^0+$/.test(oid)) return null
       const size = await this.git(["cat-file", "-s", oid])
-      if (Number(size.stdout.trim()) > 64 * 1024 * 1024) throw new AutoGitError("BINARY_TOO_LARGE", "Git type-change integration currently supports files up to 64 MiB.")
-      return (await this.git(["cat-file", "blob", oid])).stdoutBuffer
+      const bytes = Number(size.stdout.trim())
+      if (!Number.isSafeInteger(bytes) || bytes < 0) throw new AutoGitError("GIT_UNREADABLE", `Git reported an unreadable size for an object in ${file.sessionPath}.`)
+      if (bytes > 64 * 1024 * 1024) throw new AutoGitError("BINARY_TOO_LARGE", "Git type-change integration currently supports files up to 64 MiB.")
+      return bytes
     }
-    const [base, theirs] = await Promise.all([read(file.baseOid), read(file.headOid)])
+    const [baseSize, theirsSize] = await Promise.all([blobSize(file.baseOid), blobSize(file.headOid)])
+    // Small blobs are read bounded for text classification; anything larger is
+    // compared by streamed hash and never buffered.
+    const readHead = async (oid: string, size: number | null): Promise<Buffer | null> => {
+      if (size === null) return null
+      if (size > this.options.maxTextFileBytes) return null
+      return this.options.gitService.readBlobRange(repoPath, oid, 0, size)
+    }
+    const [baseHead, theirsHead] = await Promise.all([
+      file.baseOid && baseSize !== null ? readHead(file.baseOid, baseSize) : Promise.resolve(null),
+      file.headOid && theirsSize !== null ? readHead(file.headOid, theirsSize) : Promise.resolve(null),
+    ])
+    const hashOf = (bytes: Buffer | null) => bytes === null ? null : createHash("sha256").update(bytes).digest("hex")
+    const [baseHash, theirsHash] = await Promise.all([
+      file.baseOid && baseSize !== null && baseHead === null ? this.options.gitService.hashBlob(repoPath, file.baseOid) : Promise.resolve(hashOf(baseHead)),
+      file.headOid && theirsSize !== null && theirsHead === null ? this.options.gitService.hashBlob(repoPath, file.headOid) : Promise.resolve(hashOf(theirsHead)),
+    ])
     const replica = this.options.replica
     const entry = replica.tree.listLiveEntries().find((candidate) => candidate.path === file.sessionPath)
     const fingerprint = sessionFileFingerprint(replica, file.sessionPath)
     const hash = (bytes: Buffer | null) => bytes === null ? null : createHash("sha256").update(bytes).digest("hex")
     const ours = !entry ? null : entry.kind === "symlink" ? hash(Buffer.from(entry.symlinkTarget ?? "")) : entry.kind === "text"
       ? hash(Buffer.from(replica.textDocs.getTextContent(entry.fileId))) : replica.binaryStore.getHeadRevision(entry.fileId)?.contentHash
-    const matches = (bytes: Buffer | null, mode: number) => ours === hash(bytes) && (bytes === null ? !entry : entry?.mode === mode)
-    if (matches(theirs, file.mode) || (hash(base) === hash(theirs) && file.baseMode === file.mode)) return null
-    if (!matches(base, file.baseMode) || (entry?.kind === "binary" && replica.binaryStore.detectConcurrentRevisions(entry.fileId))) {
+    const matchesHash = (candidate: string | null, mode: number, present: boolean) =>
+      ours === candidate && (present ? entry?.mode === mode : !entry)
+    if (matchesHash(theirsHash, file.mode, theirsSize !== null) ||
+      (baseHash === theirsHash && file.baseMode === file.mode)) return null
+    if (!matchesHash(baseHash, file.baseMode, baseSize !== null) ||
+      (entry?.kind === "binary" && replica.binaryStore.detectConcurrentRevisions(entry.fileId))) {
       throw new AutoGitError("REBASE_LIVE_CONFLICT", `Git and live changes overlap in the type or symlink target of ${file.sessionPath}. Retained versions need explicit resolution.`)
     }
     const change: SessionFileChange = { path: file.sessionPath, expected: null, expectedFingerprint: fingerprint, text: null, mode: file.mode }
-    if (theirs !== null) {
-      if (file.mode === 0o120000) change.symlinkTarget = theirs.toString("utf8")
-      else if (theirs.length <= this.options.maxTextFileBytes && TextDocRegistry.classifyContent(theirs) === "text") change.text = theirs.toString("utf8")
-      else change.binary = { bytes: theirs, fingerprint }
+    if (theirsSize !== null) {
+      if (file.mode === 0o120000) {
+        if (!theirsHead) throw new AutoGitError("BINARY_TOO_LARGE", `Git symlink target for ${file.sessionPath} exceeds the text ceiling.`)
+        change.symlinkTarget = theirsHead.toString("utf8")
+      } else if (theirsHead !== null && TextDocRegistry.classifyContent(theirsHead) === "text") {
+        change.text = theirsHead.toString("utf8")
+      } else {
+        change.binary = {
+          blob: { repoPath, blobOid: file.headOid, size: theirsSize, contentHash: theirsHash! },
+          fingerprint,
+        }
+      }
     }
     return { change, conflicted: false }
   }
 
   private async mergeExternalBinary(file: ExternalFile): Promise<{ change: SessionFileChange; conflicted: boolean } | null> {
-    const read = async (oid: string): Promise<Buffer | null> => {
+    const repoPath = this.requireRepo().root
+    const gitService = this.options.gitService
+    const blobSize = async (oid: string): Promise<number | null> => {
       if (/^0+$/.test(oid)) return null
       const size = await this.git(["cat-file", "-s", oid])
-      if (Number(size.stdout.trim()) > 64 * 1024 * 1024) throw new AutoGitError("BINARY_TOO_LARGE", "Git binary integration currently supports files up to 64 MiB.")
-      return (await this.git(["cat-file", "blob", oid])).stdoutBuffer
+      const bytes = Number(size.stdout.trim())
+      if (!Number.isSafeInteger(bytes) || bytes < 0) throw new AutoGitError("GIT_UNREADABLE", `Git reported an unreadable size for an object in ${file.sessionPath}.`)
+      if (bytes > 64 * 1024 * 1024) throw new AutoGitError("BINARY_TOO_LARGE", "Git binary integration currently supports files up to 64 MiB.")
+      return bytes
     }
-    const [base, theirs] = await Promise.all([read(file.baseOid), read(file.headOid)])
+    const [baseSize, theirsSize] = await Promise.all([blobSize(file.baseOid), blobSize(file.headOid)])
+    // Hashes stream straight from the object store; blob bytes are never buffered here.
+    const [baseHash, theirsHash] = await Promise.all([
+      baseSize === null ? Promise.resolve(null) : gitService.hashBlob(repoPath, file.baseOid),
+      theirsSize === null ? Promise.resolve(null) : gitService.hashBlob(repoPath, file.headOid),
+    ])
     const replica = this.options.replica
     const entry = replica.tree.listLiveEntries().find((candidate) => candidate.path === file.sessionPath)
     const fingerprint = sessionFileFingerprint(replica, file.sessionPath)
@@ -1148,12 +1192,19 @@ export class AutoGitAgent {
       replica.binaryStore.getHeadRevision(entry.fileId)?.contentHash
     if (entry?.kind === "binary" && replica.binaryStore.detectConcurrentRevisions(entry.fileId)) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Resolve binary conflicts in ${file.sessionPath} before integrating Git changes.`)
     const mode = entry && file.baseMode === file.mode ? entry.mode : file.mode
-    if (ours === hash(theirs) || hash(base) === hash(theirs)) return entry && entry.mode !== mode ? {
+    if (ours === theirsHash || baseHash === theirsHash) return entry && entry.mode !== mode ? {
       change: { path: file.sessionPath, expected: null, text: null, expectedFingerprint: fingerprint, modeOnly: true, mode }, conflicted: false,
     } : null
-    if (theirs === null && entry && entry.mode !== file.baseMode) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Deletion overlaps a file-mode change in ${file.sessionPath}.`)
-    if (ours !== hash(base)) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Git and live edits both changed ${file.sessionPath}. Both versions have been retained; resolve this binary change before adoption.`)
-    return { change: { path: file.sessionPath, expected: null, text: null, mode, binary: { bytes: theirs, fingerprint } }, conflicted: false }
+    if (theirsSize === null && entry && entry.mode !== file.baseMode) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Deletion overlaps a file-mode change in ${file.sessionPath}.`)
+    if (ours !== baseHash) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Git and live edits both changed ${file.sessionPath}. Both versions have been retained; resolve this binary change before adoption.`)
+    if (theirsSize === null || theirsHash === null) throw new AutoGitError("GIT_UNREADABLE", `Git lost the binary object for ${file.sessionPath} during the merge.`)
+    return {
+      change: {
+        path: file.sessionPath, expected: null, text: null, mode,
+        binary: { blob: { repoPath, blobOid: file.headOid, size: theirsSize, contentHash: theirsHash }, fingerprint },
+      },
+      conflicted: false,
+    }
   }
 
   /** A blob's text: null for no blob, undefined when the session wouldn't carry it as text. */

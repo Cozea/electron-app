@@ -8,11 +8,11 @@
 ## Current status (executor updates this block every turn)
 
 - Current phase: **1 — P11 binary closure**
-- Current checkpoint: **1D — Bounded external-Git binary adoption**
+- Current checkpoint: **1E — Bounded AutoGit checkpoint publication**
 - Blocking gate: B01–B05 executable + memory gate
-- Next authorized work: 1D only
-- Branch: `feat/collab-step3-session-ui` · 1C closed (see ledger 2026-09-13 1C entry)
-- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming proof incl. forced remote fetch); 1C (bounded first-attach incl. text ceiling; review-hardened; full suite 447 files / 3,174 passed)
+- Next authorized work: 1E only
+- Branch: `feat/collab-step3-session-ui` · 1D closed (see ledger 2026-09-13 1D entry)
+- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming proof incl. forced remote fetch); 1C (bounded first-attach incl. text ceiling, sealed); 1D (descriptor-based external adoption; full suite 447 files / 3,179 passed)
 
 ## How this file is used
 
@@ -120,7 +120,7 @@ resume-by-verify-on-retry stay.
   must stop reading whole binaries to compare: `StableFileReader.readMetadata()`
   → streamed SHA-256 → compare with `BinaryRevision` hash. Only text below
   the text-size ceiling may be materialized into a `Buffer`.
-- [ ] **1D — Bounded external-Git binary adoption.** Replace
+- [x] **1D — Bounded external-Git binary adoption.** Replace
   `SessionFileChange.binary.bytes: Buffer | null` with an immutable
   descriptor/source (revision/hash/size + bounded reader or staged object) so
   Git-originated adoption never moves whole payloads through AutoGit memory.
