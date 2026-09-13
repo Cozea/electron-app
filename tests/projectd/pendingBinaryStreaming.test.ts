@@ -52,6 +52,7 @@ describe("streamed retained binary staging", () => {
     let store = new PendingBinaryStore(database, { sessionId, roomKey })
 
     const bytes = Buffer.alloc(CHUNK_SIZE_BYTES + 17, 6)
+    for (let index = CHUNK_SIZE_BYTES - 8; index < bytes.length; index++) bytes[index] = index % 251
     const contentHash = hash(bytes)
     const stagedId = revisionId(intent, contentHash)
     database.db.prepare("INSERT INTO pending_binary_chunks VALUES (?, ?, ?, ?)")
@@ -86,6 +87,15 @@ describe("streamed retained binary staging", () => {
     await store.writeTo(restored, async (chunk) => { output.push(Buffer.from(chunk)) })
     expect(output.map((chunk) => chunk.length)).toEqual([CHUNK_SIZE_BYTES, 17])
     expect(Buffer.concat(output)).toEqual(bytes)
+
+    const source = store.asSource(restored)
+    expect(source.contentHash).toBe(contentHash)
+    expect(source.size).toBe(bytes.length)
+    expect(await source.read(0, CHUNK_SIZE_BYTES)).toEqual(bytes.subarray(0, CHUNK_SIZE_BYTES))
+    expect(await source.read(CHUNK_SIZE_BYTES, 17)).toEqual(bytes.subarray(CHUNK_SIZE_BYTES))
+    // A bounded upload client may ask an unaligned range that crosses a stored chunk.
+    expect(await source.read(CHUNK_SIZE_BYTES - 8, 16)).toEqual(bytes.subarray(CHUNK_SIZE_BYTES - 8, CHUNK_SIZE_BYTES + 8))
+    await expect(source.read(0, CHUNK_SIZE_BYTES + 1)).rejects.toThrow("range")
   })
 
   it("removes provisional chunks when a stable source changes during capture", async () => {
