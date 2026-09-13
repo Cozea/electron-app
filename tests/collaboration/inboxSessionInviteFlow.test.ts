@@ -34,6 +34,13 @@ describe("P15 Inbox invite acceptance and Resume flow", () => {
     ctx.projectMembershipCreated = true
     ctx.sessionMembershipCreated = true
 
+    if (options.sessionLifecycle === "PAUSED") {
+      ctx.localWorkspaceStatus = "ready"
+      ctx.workbenchStatus = "idle"
+      ctx.error = "Session is paused; the folder is ready and joins when a manager resumes it"
+      return ctx
+    }
+
     if (options.networkAvailable === false) {
       ctx.localWorkspaceStatus = "blocked"
       ctx.workbenchStatus = "creating"
@@ -114,5 +121,35 @@ describe("P15 Inbox invite acceptance and Resume flow", () => {
     expect(result.invitationStatus).toBe("pending")
     expect(result.projectMembershipCreated).toBe(false)
     expect(result.error).toContain("session is closed")
+  })
+
+  it("queues offline when the room is unreachable but the folder is ready", () => {
+    const result = simulateAcceptAndBootstrap({
+      networkAvailable: true,
+      diskAvailable: true,
+      roomAvailable: false,
+      sessionLifecycle: "ACTIVE",
+    })
+
+    // Membership is never rolled back for a room outage; the folder is usable
+    // locally and syncs when the room returns.
+    expect(result.invitationStatus).toBe("accepted")
+    expect(result.sessionMembershipCreated).toBe(true)
+    expect(result.localWorkspaceStatus).toBe("ready")
+    expect(result.workbenchStatus).toBe("idle")
+    expect(result.error).toContain("queued offline")
+  })
+
+  it("holds a paused session without joining until it resumes", () => {
+    const result = simulateAcceptAndBootstrap({
+      networkAvailable: true,
+      diskAvailable: true,
+      roomAvailable: true,
+      sessionLifecycle: "PAUSED",
+    })
+
+    expect(result.invitationStatus).toBe("accepted")
+    expect(result.sessionMembershipCreated).toBe(true)
+    expect(result.workbenchStatus).not.toBe("active")
   })
 })

@@ -24,7 +24,7 @@ import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncCon
 import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
-import { findBranchSession } from "../collaborationGate"
+import { findBranchSession, findWorkspaceSession } from "../collaborationGate"
 
 type SessionRole = "viewer" | "developer" | "project_manager"
 
@@ -59,10 +59,13 @@ export function LiveSessionShareSection({
   const workspaceId = sync?.workspaceId ?? null
 
   const sessions = useQuery(api.collaborationSessions.listByProject, { projectId })
-  const branchSession = activeBranch ? findBranchSession(sessions, activeBranch) : null
+  // The Workbench decides the session; the branch lookup only covers the
+  // pre-mount bootstrap and must never decide the open session.
+  const activeSession = findWorkspaceSession(sessions, workspaceId) ??
+    (workspaceId ? null : activeBranch ? findBranchSession(sessions, activeBranch) : null)
   const sessionMembers = useQuery(
     api.collaborationSessions.listMembers,
-    branchSession ? { sessionId: branchSession._id } : "skip",
+    activeSession ? { sessionId: activeSession._id } : "skip",
   )
   const invite = useMutation(api.collaborationSessions.inviteParticipant)
 
@@ -89,13 +92,13 @@ export function LiveSessionShareSection({
   const invitable = (projectMembers ?? []).filter(
     (member) => !inSessionIds.has(String(member.principalId)) && String(member.principalId) !== String(principalId),
   )
-  const otherSessions = (sessions ?? []).filter((candidate) => candidate.branchName !== activeBranch)
+  const otherSessions = (sessions ?? []).filter((candidate) => candidate.publicSessionId !== activeSession?.publicSessionId)
 
   const inviteMember = (member: ShareableProjectMember) => {
-    if (!branchSession) return
+    if (!activeSession) return
     void run(`invite:${String(member.principalId)}`, async () => {
       const result = await invite({
-        sessionId: branchSession._id,
+        sessionId: activeSession._id,
         targetPrincipalId: member.principalId,
         role: sessionRoleFor(member.role),
       })
@@ -107,9 +110,9 @@ export function LiveSessionShareSection({
 
   const inviteDevice = () => {
     const targetIdentityKey = identityKey.trim()
-    if (!branchSession || !targetIdentityKey) return
+    if (!activeSession || !targetIdentityKey) return
     void run("invite:device", async () => {
-      const result = await invite({ sessionId: branchSession._id, targetIdentityKey, role: "developer" })
+      const result = await invite({ sessionId: activeSession._id, targetIdentityKey, role: "developer" })
       setIdentityKey("")
       return result.duplicate
         ? "That device already has an invitation."
@@ -152,7 +155,7 @@ export function LiveSessionShareSection({
         Live sessions follow a Git branch. Open a project folder that is a Git repository to start one.
       </p>
     )
-  } else if (!branchSession) {
+  } else if (!activeSession) {
     body = (
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-2.5 py-2">
         <p className="min-w-0 text-xs text-muted-foreground">
@@ -168,8 +171,8 @@ export function LiveSessionShareSection({
       <div className="space-y-2">
         <p className="text-xs">
           {inSession.length} {inSession.length === 1 ? "person is" : "people are"} in the live session on{" "}
-          <span className="font-mono">{branchSession.branchName}</span>
-          {branchSession.lifecycle === "ACTIVE" ? "." : ` (${branchSession.lifecycle.toLowerCase()}).`}
+          <span className="font-mono">{activeSession.branchName}</span>
+          {activeSession.lifecycle === "ACTIVE" ? "." : ` (${activeSession.lifecycle.toLowerCase()}).`}
         </p>
         {canInvite ? (
           <>

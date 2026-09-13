@@ -1,8 +1,13 @@
 /**
- * The live session on the project's active branch, for the session bar.
+ * The live session for the active Session Workbench, for the session bar.
  *
  * Master Specification: Section 5.3, 6.3, 6.7, 23.2
  * Phase: P23
+ *
+ * The session is resolved by Workbench identity (workbenchId → workspaceId →
+ * collaborationSessionId); its branchName is only a Git property. The branch
+ * lookup below runs solely while no workspace is mounted yet, so the bar can
+ * resolve membership during bootstrap; it must never decide the open session.
  *
  * Hands the session to the cozea-projectd daemon while this device is an active
  * member, and offers the membership and lifecycle actions the bar shows.
@@ -21,7 +26,7 @@ import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
-import { findBranchSession } from "../collaborationGate"
+import { findBranchSession, findWorkspaceSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import {
   describeAutoGit,
@@ -53,7 +58,7 @@ export interface LiveSessionRecord {
 }
 
 export interface LiveSessionController {
-  /** The session on the active branch. */
+  /** The session for the active Workbench, if it is a Session Workbench. */
   session: LiveSessionRecord | null
   /** Sessions on the project's other branches that this device is in. */
   otherSessions: LiveSessionRecord[]
@@ -135,7 +140,10 @@ export function useLiveSession(input: {
 }): LiveSessionController {
   const navigate = useViewTransitionNavigate()
   const { enabled, daemonEnabled, sessions, activeBranch, workspaceId } = input
-  const session = enabled ? findBranchSession(sessions, activeBranch) : null
+  const session = enabled
+    ? (findWorkspaceSession(sessions, workspaceId) ??
+      (workspaceId ? null : findBranchSession(sessions, activeBranch)))
+    : null
   const sessionId = session?._id ?? null
 
   const membersQuery = useSafeConvexQuery(
@@ -248,7 +256,7 @@ export function useLiveSession(input: {
   const otherSessions = enabled
     ? (sessions ?? []).filter(
         (candidate) =>
-          candidate.branchName !== activeBranch &&
+          candidate.publicSessionId !== session?.publicSessionId &&
           candidate.lifecycle !== "CLOSED" &&
           candidate.viewerMembership === "active",
       )

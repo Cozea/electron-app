@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveCollaborationGate } from "@/features/collaboration/collaborationGate"
+import { findWorkspaceSession, resolveCollaborationGate } from "@/features/collaboration/collaborationGate"
 
 describe("P23 collaboration gate", () => {
   it("keeps the shared branch collaborating when no session exists for it", () => {
@@ -72,5 +72,30 @@ describe("P23 collaboration gate", () => {
     expect(resolveCollaborationGate({ activeBranch: "feature/solo", sharedBranch: "main", sessions }).enabled).toBe(
       false,
     )
+  })
+})
+
+describe("P13 session resolution by Workbench identity", () => {
+  const sessions = [
+    { branchName: "feat/a", lifecycle: "ACTIVE", publicSessionId: "czs_aaaaaaaaaaaaaaaa" },
+    { branchName: "feat/b", lifecycle: "DORMANT", publicSessionId: "czs_bbbbbbbbbbbbbbbb" },
+    { branchName: "feat/closed", lifecycle: "CLOSED", publicSessionId: "czs_cccccccccccccccc" },
+  ]
+
+  it("resolves the session for a Session Workbench regardless of branch", () => {
+    expect(findWorkspaceSession(sessions, "ws_collab_czs_aaaaaaaaaaaaaaaa")).toMatchObject({
+      branchName: "feat/a",
+    })
+    expect(findWorkspaceSession(sessions, "ws_collab_czs_bbbbbbbbbbbbbbbb")).toMatchObject({
+      branchName: "feat/b",
+    })
+  })
+
+  it("returns null outside Session Workbenches, for unknown sessions, and closed ones", () => {
+    expect(findWorkspaceSession(sessions, "ws_ordinary_123")).toBeNull()
+    expect(findWorkspaceSession(sessions, null)).toBeNull()
+    expect(findWorkspaceSession(sessions, "ws_collab_czs_missing")).toBeNull()
+    expect(findWorkspaceSession(sessions, "ws_collab_czs_cccccccccccccccc")).toBeNull()
+    expect(findWorkspaceSession(undefined, "ws_collab_czs_aaaaaaaaaaaaaaaa")).toBeNull()
   })
 })

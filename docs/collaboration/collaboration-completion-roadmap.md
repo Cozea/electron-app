@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **2 — P12–P15 Session/Workbench lifecycle**
-- Current checkpoint: **2A — P12 control plane verification**
-- Blocking gate: W01–W07 + S01–S10 green; no session resolved by branch
-- Next authorized work: 2A only
-- Branch: `feat/collab-step3-session-ui` · Phase 1 accepted row-by-row (see ledger 2026-09-13 gate entry)
-- Closed: Phase 0 (baseline green); Phase 1 — 1A (upload chain), 1B (streaming proof), 1C (bounded first-attach, sealed), 1D (descriptor adoption), 1E (bounded checkpoint publication), 1F gate B01–B05 + memory gate evidenced (full suite 448 files / 3,184 passed)
+- Current phase: **3 — P16–P22 AutoGit/Git program**
+- Current checkpoint: **3A — P16 leader lease**
+- Blocking gate: A/C/G/R/M rows green against a real remote
+- Next authorized work: 3A only (awaiting operator go-ahead; Phase 2 complete, review pending)
+- Branch: `feat/collab-step3-session-ui` · Phase 2 closed whole-phase per instruction (see ledger 2026-09-13 Phase 2 entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 — 2A (control plane verified), 2B (Workbench identity), 2C (creator rows verified), 2D (bootstrap matrix completed; full suite 448 files / 3,188 passed)
 
 ## How this file is used
 
@@ -145,11 +145,11 @@ application buffers.
 
 Cleanup of identity semantics + systematic qualification. No new transport.
 
-- [ ] **2A — P12 control plane verification:** invite-only, org-available,
+- [x] **2A — P12 control plane verification:** invite-only, org-available,
   unauthorized-org rejection, project+session membership, leave/rejoin,
   pause/resume, dormant/no-participant, close lifecycle, recovery access.
   Exit: session identity/access without ProjectLayout branch equality.
-- [ ] **2B — P13 Workbench identity authoritative.** Remove the residual
+- [x] **2B — P13 Workbench identity authoritative.** Remove the residual
   branch-era model: `useLiveSession()` resolves via
   `findBranchSession(sessions, activeBranch)`. Invert to
   `workbenchId → workspaceId → collaborationSessionId`, with `branchName` a
@@ -157,10 +157,10 @@ Cleanup of identity semantics + systematic qualification. No new transport.
   to the session, it does not identify the UI.** Then qualify W01–W07
   (independent persistence, local-only activation, idle sync continues,
   presentation-delete ≠ session-delete, divergent layouts, headless sync).
-- [ ] **2C — P14 creator flow.** Validate S01–S06: clean/new-branch share,
+- [x] **2C — P14 creator flow.** Validate S01–S06: clean/new-branch share,
   dirty include/exclude with source Workbench untouched, dedicated Session WB,
   invite + project-access cases, error/retry at every step.
-- [ ] **2D — P15 invite/resume.** Inbox accept creates/reuses the right
+- [x] **2D — P15 invite/resume.** Inbox accept creates/reuses the right
   Session WB; missing repo auto-clones; existing copy attaches safely;
   accept-then-network-loss stays retryable; restart resumes the same WB
   without duplicates; failure tests (room unavailable, disk-full clone,

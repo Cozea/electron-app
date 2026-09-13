@@ -33,12 +33,36 @@ export interface CollaborationGate {
 
 const COLLABORATING_SESSION_LIFECYCLES = new Set(["ACTIVE", "DORMANT"])
 
+/** Workspace id prefix for dedicated Session Workbenches: the session, not the branch, owns the Workbench. */
+export const SESSION_WORKSPACE_PREFIX = "ws_collab_"
+
 /** The session record that decides collaboration for a branch, if there is one. */
 export function findBranchSession<T extends CollaborationSessionSummary>(
   sessions: readonly T[] | undefined,
   branch: string,
 ): T | null {
   return sessions?.find((candidate) => candidate.branchName === branch && candidate.lifecycle !== "CLOSED") ?? null
+}
+
+export interface WorkbenchSessionSummary extends CollaborationSessionSummary {
+  readonly publicSessionId: string
+}
+
+/**
+ * The session record for the active Workbench, resolved by Workbench identity:
+ * workbenchId → workspaceId → collaborationSessionId. The session's branchName
+ * is a Git property of the session, never the lookup key. Returns null outside
+ * a Session Workbench.
+ */
+export function findWorkspaceSession<T extends WorkbenchSessionSummary>(
+  sessions: readonly T[] | undefined,
+  workspaceId: string | null,
+): T | null {
+  if (!workspaceId || !workspaceId.startsWith(SESSION_WORKSPACE_PREFIX)) return null
+  const publicSessionId = workspaceId.slice(SESSION_WORKSPACE_PREFIX.length)
+  return sessions?.find((candidate) =>
+    candidate.publicSessionId === publicSessionId && candidate.lifecycle !== "CLOSED",
+  ) ?? null
 }
 
 export function resolveCollaborationGate(input: {
