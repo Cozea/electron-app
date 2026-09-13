@@ -30,7 +30,13 @@ function newRoom(leaseMs?: number): RoomHost {
   return room
 }
 
-function createClient(room: RoomHost, clientId: string, roomKey: Buffer, role: SessionRole = "developer") {
+function createClient(
+  room: RoomHost,
+  clientId: string,
+  roomKey: Buffer,
+  role: SessionRole = "developer",
+  hooks: { requestTimeoutMs?: number } = {},
+) {
   const replica = new SessionReplica(TEST_PUBLIC_SESSION_ID, clientId)
   const transport = new SessionTransport({ sessionId: TEST_PUBLIC_SESSION_ID, replica, roomKey })
   const saveRequestsFrom: Array<string | null> = []
@@ -39,6 +45,7 @@ function createClient(room: RoomHost, clientId: string, roomKey: Buffer, role: S
     connect: room.connector(),
     getToken: sessionTokenFor(worker, `principal_${clientId}`, { sessionRole: role }),
     onCheckpointRequested: (principalId) => saveRequestsFrom.push(principalId),
+    ...(hooks.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: hooks.requestTimeoutMs }),
   })
   clients.push(client)
   return { client, replica, saveRequestsFrom }
@@ -283,6 +290,90 @@ describe("AutoGit lease in the session room", () => {
     a.client.setLeaderNotice(generation, "Something else.", "not a code")
     await waitFor(() => b.client.autoGitState?.lease?.notice === "Something else.", "the next notice")
     expect(b.client.autoGitState?.lease?.noticeCode).toBeNull()
+    expect(room.errors).toEqual([])
+  })
+
+  it("A01: elects exactly one leader among three eligible writers", async () => {
+    const room = newRoom()
+    const roomKey = randomBytes(32)
+    const a = createClient(room, "c_a", roomKey)
+    const b = createClient(room, "c_b", roomKey)
+    const c = createClient(room, "c_c", roomKey)
+    await a.client.connect()
+    await b.client.connect()
+    await c.client.connect()
+    a.client.setAutoGitEligibility(true)
+    b.client.setAutoGitEligibility(true)
+    c.client.setAutoGitEligibility(true)
+    await waitFor(() => leaderOf(a.client) !== null, "a leader to emerge")
+    const leader = leaderOf(a.client)!
+    expect(leaderOf(b.client)).toBe(leader)
+    expect(leaderOf(c.client)).toBe(leader)
+    expect(["c_a", "c_b", "c_c"]).toContain(leader)
+    await room.settled()
+    // One generation, heard identically everywhere: no split leadership.
+    expect(generationOf(a.client)).toBe(generationOf(b.client))
+    expect(generationOf(b.client)).toBe(generationOf(c.client))
+    expect(room.errors).toEqual([])
+  })
+
+  it("A04: a partitioned leader cannot renew or push while an eligible peer takes over", async () => {
+    const room = newRoom(150)
+    const roomKey = randomBytes(32)
+    const a = createClient(room, "c_a", roomKey, "developer", { requestTimeoutMs: 500 })
+    const b = createClient(room, "c_b", roomKey)
+    await a.client.connect()
+    await b.client.connect()
+    a.client.setAutoGitEligibility(true)
+    await waitFor(() => leaderOf(b.client) === "c_a", "a to lead")
+    const generation = generationOf(b.client)
+    b.client.setAutoGitEligibility(true)
+
+    // Partition: kill the leader's current socket room-side without telling
+    // the client, which still believes it is connected. Its traffic goes
+    // nowhere. Sockets are matched by authenticated attachment, never by
+    // accept order, because clients may reconnect.
+    const leaderSockets = room.sockets.filter(
+      (socket) => (socket.deserializeAttachment() as { clientId?: string } | null)?.clientId === "c_a",
+    )
+    expect(leaderSockets.length).toBeGreaterThan(0)
+    leaderSockets[leaderSockets.length - 1]!.closed = true
+    // The partitioned leader's renewal goes unanswered instead of succeeding.
+    await expect(a.client.renewLease(generation)).rejects.toMatchObject({ code: "TIMEOUT" })
+    // The room expires the unheard lease and elects the eligible peer. The
+    // generation only moves forward; bare test clients never renew, so the
+    // room re-grants on its alarm and exact arithmetic would be timing noise.
+    await waitFor(() => leaderOf(b.client) === "c_b", "b to lead once the partition starves the lease")
+    expect(generationOf(b.client)).toBeGreaterThan(generation)
+    // The old generation stays dead even for direct checkpoint writes.
+    const current = generationOf(b.client)
+    const barrier = await b.client.requestBarrier(current)
+    await expect(
+      a.client.publishCheckpoint(generation, checkpointAt(barrier, "a")),
+    ).rejects.toMatchObject({ code: "TIMEOUT" })
+    expect(room.errors).toEqual([])
+  })
+
+  it("A06: with no eligible leader the lease lapses and CRDT collaboration continues", async () => {
+    const room = newRoom(150)
+    const roomKey = randomBytes(32)
+    const a = createClient(room, "c_a", roomKey)
+    const b = createClient(room, "c_b", roomKey)
+    await a.client.connect()
+    await b.client.connect()
+    a.client.setAutoGitEligibility(true)
+    await waitFor(() => leaderOf(b.client) === "c_a", "a to lead")
+    // Nobody else is eligible: saving is unavailable, not broken.
+    expect(await b.client.requestCheckpoint()).toBe(true)
+
+    a.client.disconnect()
+    await waitFor(() => leaderOf(b.client) === null, "the lease to lapse with no successor")
+    expect(await b.client.requestCheckpoint()).toBe(false)
+    // CRDT collaboration is unaffected by the missing leader.
+    b.replica.createFile({ path: "leaderless.md", kind: "text", content: "still syncing", actor: { actorType: "user" } })
+    const batch = b.client.submitLocalChanges()!
+    expect(batch).toBeTruthy()
+    await waitFor(() => (room.storage.data.get(`batch-id:${batch}`) as number) >= 1, "the leaderless edit to land")
     expect(room.errors).toEqual([])
   })
 })

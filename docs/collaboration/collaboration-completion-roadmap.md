@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **2 — P12–P15 Session/Workbench lifecycle: review rework**
-- Current checkpoint: **2R — review items R1–R5 (done, awaiting re-review)**
-- Blocking gate: W01–W07 + S01–S10 green with no branch-resolved session; production-path evidence
-- Next authorized work: none until re-review (3A explicitly not started)
-- Branch: `feat/collab-step3-session-ui` · Phase 2 rework complete (see ledger 2026-09-13 rework entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 rework — R1 (no branch fallback), R2 (S10 retry), R3 (real-path 2D), R4 (ensureSession matrix), R5 (W03/W05/W06 prequalification; full suite 450 files / 3,201 passed)
+- Current phase: **3 — P16–P22 AutoGit/Git program**
+- Current checkpoint: **3B — P17 checkpoint barrier**
+- Blocking gate: A/C/G/R/M rows green against a real remote
+- Next authorized work: 3B only — immutable barrier + deterministic commit + failover reproduction
+- Branch: `feat/collab-step3-session-ui` · 3A closed (see ledger 2026-09-13 3A entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); 3A (leader lease A01/A04/A06)
 
 ## How this file is used
 
@@ -178,7 +178,7 @@ the active path.
 Prove the composed state machine. No separate rewrites. Real Git remote
 required before P27; nothing here is unit-test-only.
 
-- [ ] **3A — P16 leader lease:** 3 eligible Macs elect one; leave/offline/
+- [x] **3A — P16 leader lease:** 3 eligible Macs elect one; leave/offline/
   stale-generation/no-lease/no-eligible-leader behavior; CRDT unaffected when
   leaderless.
 - [ ] **3B — P17 checkpoint barrier:** commit contains exactly N with N+1
