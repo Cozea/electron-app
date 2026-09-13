@@ -8,11 +8,11 @@
 ## Current status (executor updates this block every turn)
 
 - Current phase: **1 — P11 binary closure**
-- Current checkpoint: **1B — Collaboration → filesystem materialization**
+- Current checkpoint: **1C — First-attach bounded binary comparison**
 - Blocking gate: B01–B05 executable + memory gate
-- Next authorized work: 1B only
-- Branch: `feat/collab-step3-session-ui` · 1A closed (see ledger 2026-09-13 1A entry)
-- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay + defer-not-brick; full suite 445 files / 3,172 passed)
+- Next authorized work: 1C only
+- Branch: `feat/collab-step3-session-ui` · 1B closed (see ledger 2026-09-13 1B entry)
+- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming materialization proven, fallback confined; full suite 446 files / 3,173 passed)
 
 ## How this file is used
 
@@ -111,7 +111,7 @@ resume-by-verify-on-retry stay.
   `PendingBinaryStore` → `stageFrom()` → bounded retained range reads →
   `uploadFrom()` → verified cache → restart replay → crash-orphan cleanup,
   including the Phase-0 host regression.
-- [ ] **1B — Collaboration → filesystem materialization.** Production path:
+- [x] **1B — Collaboration → filesystem materialization.** Production path:
   `binary object → decrypt/verify chunks → verified cache → atomic temp file
   → SHA-256 verify → rename`. Keep the buffered fallback only for
   test/custom transports lacking the streaming interface; production must
