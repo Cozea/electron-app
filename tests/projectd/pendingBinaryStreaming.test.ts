@@ -118,4 +118,22 @@ describe("streamed retained binary staging", () => {
     expect((database.db.prepare("SELECT count(*) AS count FROM pending_binary_chunks WHERE session_id=? AND revision_id=?")
       .get(sessionId, stagedId) as { count: number }).count).toBe(0)
   })
+
+  it("purges crash chunks even when the workspace content changed before reopen", () => {
+    const database = new ProjectdDatabase(":memory:")
+    databases.push(database)
+    new PendingBinaryStore(database, { sessionId, roomKey })
+    const abandonedRevision = revisionId(intent, hash(Buffer.from("old bytes")))
+    database.db.prepare("INSERT INTO pending_binary_chunks VALUES (?, ?, ?, ?)")
+      .run(sessionId, abandonedRevision, 0, "abandoned-encrypted-chunk")
+    database.db.prepare("INSERT INTO pending_binary_chunks VALUES (?, ?, ?, ?)")
+      .run("czs_other_session00", "staged_other", 0, "other-session-chunk")
+
+    new PendingBinaryStore(database, { sessionId, roomKey })
+
+    expect((database.db.prepare("SELECT count(*) AS count FROM pending_binary_chunks WHERE session_id=?")
+      .get(sessionId) as { count: number }).count).toBe(0)
+    expect((database.db.prepare("SELECT count(*) AS count FROM pending_binary_chunks WHERE session_id=?")
+      .get("czs_other_session00") as { count: number }).count).toBe(1)
+  })
 })
