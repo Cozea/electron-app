@@ -1110,7 +1110,14 @@ export class CollaborationSessionHost {
       const alreadyPublished = this.replica.tree.listAllEntries().some((entry) =>
         this.replica.binaryStore.getRevisions(entry.fileId).some((revision) => revision.revisionId === staged.revisionId))
       if (!alreadyPublished) {
-        const manifest = await this.uploadStagedBinary(staged)
+        const manifest = await this.uploadStagedBinary(staged).catch((error: unknown) => {
+          // An interrupted upload must stay resumable, never fail the host: the
+          // durable capture is retained and the replay timer picks it back up.
+          this.recordError("BINARY_UPLOAD_DEFERRED", error)
+          this.scheduleBinaryReplay()
+          return null
+        })
+        if (!manifest) continue
         if (!this.running || this.stopping || !this.canWrite || await this.pauseIfFolderLeftBranch()) return
         let entry = staged.fileId ? this.replica.tree.getEntry(staged.fileId) : null
         if (!entry || entry.kind !== "binary") {
@@ -1564,7 +1571,14 @@ export class CollaborationSessionHost {
       this.emitStatusSoon()
       return
     }
-    const manifest = await this.uploadStagedBinary(staged)
+    const manifest = await this.uploadStagedBinary(staged).catch((error: unknown) => {
+      // An interrupted seed upload must stay resumable, never fail reconcile:
+      // the durable capture is retained and the replay pass picks it back up.
+      this.recordError("BINARY_UPLOAD_DEFERRED", error)
+      this.scheduleBinaryReplay()
+      return null
+    })
+    if (!manifest) return
 
     let entry = this.findLiveEntry(filePath)
     if (entry && entry.kind !== "binary") {

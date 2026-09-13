@@ -8,11 +8,11 @@
 ## Current status (executor updates this block every turn)
 
 - Current phase: **1 — P11 binary closure**
-- Current checkpoint: **1A — Filesystem → collaboration upload**
+- Current checkpoint: **1B — Collaboration → filesystem materialization**
 - Blocking gate: B01–B05 executable + memory gate
-- Next authorized work: 1A only
-- Branch: `feat/collab-step3-session-ui` · Phase-0 baseline committed (see ledger 2026-09-13 entry)
-- Phase 0 closed 2026-09-13: 5/5 typechecks, lint, projectd build, full suite 444 files / 3,170 passed, production build, Electron correctness + perf green
+- Next authorized work: 1B only
+- Branch: `feat/collab-step3-session-ui` · 1A closed (see ledger 2026-09-13 1A entry)
+- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay + defer-not-brick; full suite 445 files / 3,172 passed)
 
 ## How this file is used
 
@@ -106,7 +106,7 @@ Only substantial data-path phase still open. **Do not redesign the binary
 protocol**: fixed 4 MiB encrypted immutable chunks, whole-object hashes, and
 resume-by-verify-on-retry stay.
 
-- [ ] **1A — Filesystem → collaboration upload.** Qualify the production
+- [x] **1A — Filesystem → collaboration upload.** Qualify the production
   sequence end to end: large-file stable streaming hash → encrypted durable
   `PendingBinaryStore` → `stageFrom()` → bounded retained range reads →
   `uploadFrom()` → verified cache → restart replay → crash-orphan cleanup,
