@@ -12,7 +12,7 @@
 - Blocking gate: B01–B05 executable + memory gate
 - Next authorized work: 1D only
 - Branch: `feat/collab-step3-session-ui` · 1C closed (see ledger 2026-09-13 1C entry)
-- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming materialization proof); 1C (bounded first-attach compare; full suite 447 files / 3,174 passed)
+- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming proof incl. forced remote fetch); 1C (bounded first-attach incl. text ceiling; review-hardened; full suite 447 files / 3,174 passed)
 
 ## How this file is used
 

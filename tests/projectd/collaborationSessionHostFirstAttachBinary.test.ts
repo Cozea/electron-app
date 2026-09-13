@@ -1,9 +1,8 @@
 import { createHash, randomBytes } from "node:crypto"
-import fsp from "node:fs/promises"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 
 import { CollaborationSessionHost } from "../../apps/projectd/src/collaboration/CollaborationSessionHost"
 import { CHUNK_SIZE_BYTES, type BinaryManifest } from "../../apps/projectd/src/collaboration/BinaryContentCache"
@@ -73,11 +72,7 @@ describe("CollaborationSessionHost first-attach binary compare", () => {
     worker = await loadSessionRoomWorker()
   })
 
-  afterAll(() => {
-    // RoomHost instances are disposed per test; nothing global remains.
-  })
-
-  it("adopts a matching binary without reading the whole file, and refuses a differing one", async () => {
+  it("adopts matching large files without whole-file reads, and refuses a differing one", async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-host-first-attach-"))
     const creatorRoot = path.join(tmp, "creator")
     const cloneRoot = path.join(tmp, "clone")
@@ -85,19 +80,30 @@ describe("CollaborationSessionHost first-attach binary compare", () => {
     await fs.mkdir(creatorRoot, { recursive: true })
     await fs.mkdir(cloneRoot, { recursive: true })
     await fs.mkdir(divergentRoot, { recursive: true })
-    // Larger than the 512 KiB text ceiling, so only the binary path applies.
+    // One full 4 MiB chunk plus a tail (two chunks total): larger than the
+    // 512 KiB text ceiling, so only the binary path applies.
     const binary = Buffer.alloc(CHUNK_SIZE_BYTES + 512, 0x5a)
     binary[0] = 0
     const divergent = Buffer.from(binary)
     divergent[divergent.length - 1] ^= 0xff
+    // 4 KiB of text: a text entry for the creator, oversized for a 1 KiB
+    // ceiling on the clone, so it must take the streamed-hash path too.
+    const notes = `${"session notes\n".repeat(280)}`
     await fs.writeFile(path.join(creatorRoot, "asset.bin"), binary)
     await fs.writeFile(path.join(cloneRoot, "asset.bin"), binary)
     await fs.writeFile(path.join(divergentRoot, "asset.bin"), divergent)
+    await fs.writeFile(path.join(creatorRoot, "notes.txt"), notes)
+    await fs.writeFile(path.join(cloneRoot, "notes.txt"), notes)
 
     const roomKey = randomBytes(32)
     const objects = new MemoryObjects()
     const room = new RoomHost(worker)
-    const makeHost = async (name: string, root: string, db: ProjectdDatabase): Promise<CollaborationSessionHost> =>
+    const makeHost = async (
+      name: string,
+      root: string,
+      db: ProjectdDatabase,
+      maxTextFileBytes?: number,
+    ): Promise<CollaborationSessionHost> =>
       new CollaborationSessionHost({
         publicSessionId: TEST_PUBLIC_SESSION_ID,
         workspaceId: `ws_first_attach_${name}`,
@@ -116,14 +122,15 @@ describe("CollaborationSessionHost first-attach binary compare", () => {
         submitDelayMs: 1,
         materializeDelayMs: 1,
         reconnectDelaysMs: [1],
+        ...(maxTextFileBytes === undefined ? {} : { maxTextFileBytes }),
       })
 
-    const readFileSpy = vi.spyOn(fsp, "readFile")
+    const readFileSpy = vi.spyOn(fs, "readFile")
     const creatorDb = new ProjectdDatabase(":memory:")
     const cloneDb = new ProjectdDatabase(":memory:")
     const divergentDb = new ProjectdDatabase(":memory:")
     const creator = await makeHost("creator", creatorRoot, creatorDb)
-    const clone = await makeHost("clone", cloneRoot, cloneDb)
+    const clone = await makeHost("clone", cloneRoot, cloneDb, 1024)
     const divergentPeer = await makeHost("divergent", divergentRoot, divergentDb)
     try {
       await creator.start()
@@ -131,19 +138,21 @@ describe("CollaborationSessionHost first-attach binary compare", () => {
         () => creator.replica.tree.listLiveEntries().some((entry) => entry.path === "asset.bin" && entry.kind === "binary"),
         "creator live binary entry",
       )
+      await waitFor(
+        () => creator.replica.tree.listLiveEntries().some((entry) => entry.path === "notes.txt" && entry.kind === "text"),
+        "creator live text entry",
+      )
       readFileSpy.mockClear()
 
       await clone.start()
-      await waitFor(() => (clone as unknown as { hostState: string }).hostState === "live", "clone to go live")
-      expect((clone as unknown as { hostState: string }).hostState).not.toBe("failed")
-      // The matching multi-megabyte binary is adopted with zero whole-file reads.
+      await waitFor(() => clone.status().state === "live", "clone to go live")
+      // The matching binary and the oversized text are adopted with zero
+      // whole-file reads on the joining folder.
       expect(readFileSpy.mock.calls.filter(([p]) => String(p).includes(cloneRoot))).toHaveLength(0)
+      expect(await fs.readFile(path.join(cloneRoot, "notes.txt"), "utf8")).toBe(notes)
 
       await divergentPeer.start()
-      await waitFor(
-        () => (divergentPeer as unknown as { hostState: string }).hostState === "failed",
-        "the divergent folder to be refused",
-      )
+      await waitFor(() => divergentPeer.status().state === "failed", "the divergent folder to be refused")
       expect(divergentPeer.status().lastError).toMatchObject({ code: "WORKSPACE_CONFLICT" })
       // Refusal still holds the local bytes; the session never overwrote them.
       expect((await fs.readFile(path.join(divergentRoot, "asset.bin"))).equals(divergent)).toBe(true)

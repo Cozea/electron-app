@@ -1326,32 +1326,69 @@ export class CollaborationSessionHost {
       if (entry.kind === "binary") {
         // Bounded first-attach compare: stream the on-disk hash and compare it
         // with the session revision. A binary is never read whole merely to
-        // decide whether the local copy matches.
+        // decide whether the local copy matches. All fields come from the same
+        // stable observation, never from the pre-read lstat.
         const head = this.replica.binaryStore.getHeadRevision(entry.fileId)
         const metadata = stat.isFile()
           ? await this.watcher.scanner.stableReader.readMetadata(absolutePath, { skipInitialDelay: true })
           : null
-        const diskHash = metadata && metadata.exists && !metadata.isSymlink && metadata.contentHash
+        const diskHash = metadata && metadata.exists && !metadata.isSymlink && metadata.contentHash !== undefined
           ? metadata.contentHash
           : null
-        if (!head || diskHash === null || diskHash !== head.contentHash || fileMode(stat.mode) !== entry.mode) {
+        const diskMode = metadata && metadata.exists && !metadata.isSymlink && metadata.mode !== undefined
+          ? metadata.mode
+          : null
+        const diskSize = metadata && metadata.exists && !metadata.isSymlink && metadata.size !== undefined
+          ? metadata.size
+          : null
+        const diskMtimeMs = metadata && metadata.exists && !metadata.isSymlink && metadata.mtimeMs !== undefined
+          ? metadata.mtimeMs
+          : null
+        if (!head || diskHash === null || diskMode === null || diskSize === null || diskMtimeMs === null ||
+          diskHash !== head.contentHash || fileMode(diskMode) !== entry.mode) {
           differing.push(entry)
           continue
         }
-        matching.push({ entry, diskHash, size: stat.size, mtimeMs: stat.mtimeMs })
+        matching.push({ entry, diskHash, size: diskSize, mtimeMs: diskMtimeMs })
         continue
       }
-      const bytes = stat.isSymbolicLink() ? Buffer.from(await fs.readlink(absolutePath)) : stat.isFile() ? await fs.readFile(absolutePath) : null
-      const matches =
-        entry.kind === "symlink"
-          ? stat.isSymbolicLink() && bytes?.toString("utf8") === entry.symlinkTarget
-          : !stat.isFile() ? false
-          : Boolean(bytes && bytes.toString("utf8") === this.replica.textDocs.getTextContent(entry.fileId))
-      if (!matches || !bytes || (entry.kind !== "symlink" && fileMode(stat.mode) !== entry.mode)) {
+      if (stat.isSymbolicLink()) {
+        const target = await fs.readlink(absolutePath)
+        if (entry.kind !== "symlink" || target !== entry.symlinkTarget) {
+          differing.push(entry)
+          continue
+        }
+        matching.push({ entry, diskHash: sha256(target), size: target.length, mtimeMs: stat.mtimeMs })
+        continue
+      }
+      if (!stat.isFile() || entry.kind !== "text") {
         differing.push(entry)
         continue
       }
-      matching.push({ entry, diskHash: sha256(bytes), size: stat.size, mtimeMs: stat.mtimeMs })
+      // Bounded text compare: stable metadata first, then a whole read only
+      // below the text-size ceiling. Oversized text compares streamed hashes.
+      const textMetadata = await this.watcher.scanner.stableReader.readMetadata(absolutePath, { skipInitialDelay: true })
+      if (!textMetadata.exists || textMetadata.isSymlink || textMetadata.contentHash === undefined ||
+        textMetadata.size === undefined || textMetadata.mtimeMs === undefined || textMetadata.mode === undefined) {
+        differing.push(entry)
+        continue
+      }
+      let textMatches: boolean
+      if (textMetadata.size <= this.maxTextFileBytes) {
+        const complete = await this.watcher.scanner.stableReader.read(absolutePath, { skipInitialDelay: true })
+        if (!complete.exists || complete.isSymlink || !complete.bytes) {
+          differing.push(entry)
+          continue
+        }
+        textMatches = complete.bytes.toString("utf8") === this.replica.textDocs.getTextContent(entry.fileId)
+      } else {
+        textMatches = textMetadata.contentHash === sha256(this.replica.textDocs.getTextContent(entry.fileId))
+      }
+      if (!textMatches || fileMode(textMetadata.mode) !== entry.mode) {
+        differing.push(entry)
+        continue
+      }
+      matching.push({ entry, diskHash: textMetadata.contentHash, size: textMetadata.size, mtimeMs: textMetadata.mtimeMs })
     }
 
     const restorable = differing.length > 0 ? await this.filesGitCanRestore() : null

@@ -35,6 +35,7 @@ async function waitFor(predicate: () => boolean | Promise<boolean>, what: string
  */
 class StreamingOnlyObjects implements BinaryObjectClient {
   downloadCalls = 0
+  downloadToCalls = 0
   uploadCalls = 0
   private readonly objects = new Map<string, Buffer>()
 
@@ -66,6 +67,7 @@ class StreamingOnlyObjects implements BinaryObjectClient {
   }
 
   async downloadTo(manifest: BinaryManifest, write: (chunk: Buffer) => Promise<void>): Promise<void> {
+    this.downloadToCalls++
     for (const chunk of manifest.chunks) {
       const bytes = this.objects.get(chunk.hash)
       if (!bytes) throw new Error(`unknown chunk ${chunk.hash}`)
@@ -91,7 +93,8 @@ describe("CollaborationSessionHost streaming materialization", () => {
     const joinerRoot = path.join(tmp, "joiner")
     await fs.mkdir(creatorRoot, { recursive: true })
     await fs.mkdir(joinerRoot, { recursive: true })
-    // Two 4 MiB chunks plus a tail, so streaming spans more than one chunk.
+    // One full 4 MiB chunk plus a tail (two chunks total), so streaming
+    // spans more than one chunk.
     const binary = Buffer.alloc(CHUNK_SIZE_BYTES + 512, 0x5a)
     binary[0] = 0
     await fs.writeFile(path.join(creatorRoot, "asset.bin"), binary)
@@ -126,6 +129,11 @@ describe("CollaborationSessionHost streaming materialization", () => {
 
     const creatorDb = new ProjectdDatabase(":memory:")
     const joinerDb = new ProjectdDatabase(":memory:")
+    // Isolate the binary cache in the test tmpdir: both hosts share the
+    // process cache location, so evict the creator's object to force the
+    // joiner through a genuine remote streaming fetch.
+    const previousCacheDir = process.env.COZEA_BINARY_CACHE_DIR
+    process.env.COZEA_BINARY_CACHE_DIR = path.join(tmp, "binary-cache")
     const creator = await makeHost("creator", creatorRoot, creatorDb)
     const joiner = await makeHost("joiner", joinerRoot, joinerDb)
     try {
@@ -134,18 +142,28 @@ describe("CollaborationSessionHost streaming materialization", () => {
         () => creator.replica.tree.listLiveEntries().some((entry) => entry.path === "asset.bin" && entry.kind === "binary"),
         "creator live binary entry",
       )
+      await fs.rm(creator.binaryCache.getCachePath(hash(binary)), { force: true })
+      expect(await creator.binaryCache.get(hash(binary))).toBeNull()
       await joiner.start()
       await waitFor(async () => {
         const disk = await fs.readFile(path.join(joinerRoot, "asset.bin")).catch(() => null)
         return disk !== null && disk.equals(binary)
       }, "joiner materialized bytes")
-      // The buffered whole-binary download must never have been selected.
+      // The buffered whole-binary download must never have been selected;
+      // the joiner fetched every byte through the streaming download.
       expect(objects.downloadCalls).toBe(0)
+      expect(objects.downloadToCalls).toBeGreaterThan(0)
       expect(objects.uploadCalls).toBe(0)
-      // Streaming populates the verified cache on the receiving side.
-      expect(await joiner.binaryCache.get(hash(binary))).toEqual(binary)
+      // Streaming repopulates the verified cache on the receiving side.
+      // Length + Buffer.equals: vitest deep-equality on multi-MiB buffers
+      // costs seconds per assertion under full-suite load.
+      const cached = await joiner.binaryCache.get(hash(binary))
+      expect(cached?.length).toBe(binary.length)
+      expect(cached!.equals(binary)).toBe(true)
       expect(creator.pendingBinaryStore.count()).toBe(0)
     } finally {
+      if (previousCacheDir === undefined) delete process.env.COZEA_BINARY_CACHE_DIR
+      else process.env.COZEA_BINARY_CACHE_DIR = previousCacheDir
       await creator.stop()
       await joiner.stop()
       room.dispose()
