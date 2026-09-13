@@ -56,6 +56,54 @@ describe("StableFileReader metadata streaming", () => {
     expect(allowed.bytes?.length).toBe(4096)
   })
 
+  it("returns bytes exactly at the bound and rejects invalid bounds", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-stable-edge-"))
+    roots.push(root)
+    const file = path.join(root, "edge.bin")
+    await fs.writeFile(file, Buffer.alloc(1024, 0xa5))
+
+    const reader = new StableFileReader({ settleDelayMs: 0 })
+    const exact = await reader.read(file, { skipInitialDelay: true, maxBytes: 1024 })
+    expect(exact.exceedsMaxBytes).toBeUndefined()
+    expect(exact.bytes?.length).toBe(1024)
+
+    const zero = await reader.read(file, { skipInitialDelay: true, maxBytes: 0 })
+    expect(zero.exceedsMaxBytes).toBe(true)
+    expect(zero.bytes).toBeUndefined()
+
+    await expect(reader.read(file, { skipInitialDelay: true, maxBytes: -1 })).rejects.toThrow("Invalid maxBytes")
+    await expect(reader.read(file, { skipInitialDelay: true, maxBytes: 1.5 })).rejects.toThrow("Invalid maxBytes")
+  })
+
+  it("never returns more than maxBytes while the file churns", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-stable-churn-"))
+    roots.push(root)
+    const file = path.join(root, "churn.bin")
+    await fs.writeFile(file, Buffer.alloc(512, 0xa5))
+
+    const reader = new StableFileReader({ settleDelayMs: 0 })
+    const stop = { done: false }
+    const churner = (async () => {
+      while (!stop.done) {
+        await fs.appendFile(file, Buffer.alloc(64 * 1024, 0x5a)).catch(() => undefined)
+      }
+    })()
+    try {
+      for (let i = 0; i < 10; i++) {
+        const result = await reader.read(file, { skipInitialDelay: true, maxBytes: 4096 })
+        // Whatever the outcome — bounded bytes, exceeds marker, or a
+        // stability retry surfaced as missing — the bound must hold.
+        expect(!result.bytes || result.bytes.length <= 4096).toBe(true)
+        if (result.bytes) {
+          expect(result.contentHash).toBe(createHash("sha256").update(result.bytes).digest("hex"))
+        }
+      }
+    } finally {
+      stop.done = true
+      await churner
+    }
+  })
+
   it("preserves literal symlink metadata without reading the target", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-stable-link-"))
     roots.push(root)

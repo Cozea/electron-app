@@ -50,7 +50,11 @@ export class StableFileReader {
   }
 
   /** Stable read for callers that genuinely need complete file bytes. */
-  read(absolutePath: string, options?: { skipInitialDelay?: boolean; maxBytes?: number }): Promise<StableReadResult> {
+  async read(absolutePath: string, options?: { skipInitialDelay?: boolean; maxBytes?: number }): Promise<StableReadResult> {
+    if (options?.maxBytes !== undefined &&
+      (!Number.isSafeInteger(options.maxBytes) || (options.maxBytes as number) < 0)) {
+      throw new Error("Invalid maxBytes for a bounded stable read")
+    }
     return this.readInternal(absolutePath, true, options)
   }
 
@@ -102,6 +106,24 @@ export class StableFileReader {
         return { path: absolutePath, exists: true, isSymlink: false, exceedsMaxBytes: true }
       }
       if (includeBytes) {
+        if (options?.maxBytes !== undefined) {
+          const bounded = await this.readBounded(absolutePath, options.maxBytes)
+          if (bounded.exceeded || !bounded.bytes) {
+            return { path: absolutePath, exists: true, isSymlink: false, exceedsMaxBytes: true }
+          }
+          const boundedBytes = bounded.bytes
+          return {
+            path: absolutePath,
+            exists: true,
+            bytes: boundedBytes,
+            contentHash: createHash("sha256").update(boundedBytes).digest("hex"),
+            size: boundedBytes.length,
+            mtimeMs: stat.mtimeMs,
+            mode: stat.mode,
+            inode: stat.ino,
+            isSymlink: false,
+          }
+        }
         const bytes = await fs.readFile(absolutePath)
         return {
           path: absolutePath,
@@ -131,6 +153,31 @@ export class StableFileReader {
     }
   }
 
+  /**
+   * Reads at most maxBytes + 1 bytes through a file handle, never buffering
+   * more. One byte over the bound reports exceeded; otherwise the bounded
+   * bytes are returned for the usual stability validation.
+   */
+  private async readBounded(absolutePath: string, maxBytes: number): Promise<{ bytes?: Buffer; exceeded: boolean }> {
+    const handle = await fs.open(absolutePath, "r")
+    const parts: Buffer[] = []
+    let total = 0
+    try {
+      for (;;) {
+        const want = Math.min(HASH_READ_CHUNK_BYTES, maxBytes + 1 - total)
+        if (want <= 0) return { exceeded: true }
+        const buffer = Buffer.allocUnsafe(want)
+        const { bytesRead } = await handle.read(buffer, 0, want, total)
+        if (bytesRead === 0) return { bytes: Buffer.concat(parts, total), exceeded: false }
+        parts.push(buffer.subarray(0, bytesRead))
+        total += bytesRead
+        if (total > maxBytes) return { exceeded: true }
+      }
+    } finally {
+      await handle.close().catch(() => undefined)
+    }
+  }
+
   /** Null means the file changed during this attempt and must be retried. */
   private async readWithStat(
     absolutePath: string,
@@ -148,9 +195,19 @@ export class StableFileReader {
     let contentHash: string
     let size: number
     if (includeBytes) {
-      bytes = await fs.readFile(absolutePath)
-      size = bytes.length
-      contentHash = createHash("sha256").update(bytes).digest("hex")
+      if (maxBytes !== undefined) {
+        const bounded = await this.readBounded(absolutePath, maxBytes)
+        if (bounded.exceeded || !bounded.bytes) {
+          return { path: absolutePath, exists: true, isSymlink: false, exceedsMaxBytes: true }
+        }
+        bytes = bounded.bytes
+        size = bytes.length
+        contentHash = createHash("sha256").update(bytes).digest("hex")
+      } else {
+        bytes = await fs.readFile(absolutePath)
+        size = bytes.length
+        contentHash = createHash("sha256").update(bytes).digest("hex")
+      }
     } else {
       const streamed = await this.hashRegularFile(absolutePath, stat1.size)
       size = streamed.size
