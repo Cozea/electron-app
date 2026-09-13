@@ -58,6 +58,69 @@ interface AcceptedInvitation {
   detail: string | null
   /** True while Cozea is still setting up a copy of the project on this Mac. */
   settingUp?: boolean
+  /**
+   * The bootstrap request retained after acceptance, so a failed setup can be
+   * retried without re-accepting (S10). Re-running it reuses the same Session
+   * Workbench; it never duplicates it.
+   */
+  setupRequest?: {
+    publicSessionId: string
+    branchName: string
+    repositoryUrl: string | null
+  }
+  /** True when the last setup attempt failed and retry is offered. */
+  setupFailed?: boolean
+}
+
+/** The retained accepted-invitation row: hook-free so its states stay directly testable. */
+export function AcceptedSetupCard({
+  projectName,
+  detail,
+  acceptedLabel,
+  settingUp,
+  canRetry,
+  retryLabel,
+  openLabel,
+  onOpen,
+  onRetry,
+}: {
+  projectName: string
+  detail: string | null
+  acceptedLabel: string
+  settingUp?: boolean
+  canRetry?: boolean
+  retryLabel?: string
+  openLabel: string
+  onOpen: () => void
+  onRetry?: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <HugeiconsIcon icon={__CheckCircleHugeIcon} className="size-5" />
+        </div>
+        <div>
+          <p className="text-sm font-medium text-foreground">{projectName}</p>
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {settingUp ? <Spinner size="xs" /> : null}
+            <span>{detail ?? acceptedLabel}</span>
+          </p>
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {canRetry ? (
+          <Button size="sm" variant="outline" className="gap-1.5" disabled={settingUp} onClick={onRetry}>
+            <span>{retryLabel ?? "Retry setup"}</span>
+          </Button>
+        ) : null}
+        <Button size="sm" className="gap-1.5" disabled={settingUp} onClick={onOpen}>
+          <span>{openLabel}</span>
+          <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5" />
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 const NO_SESSION_INVITATIONS: SessionInvitationItem[] = []
@@ -140,6 +203,48 @@ export function InboxPage() {
     [rememberAccepted, resolveEnrollment, t],
   )
 
+  const runInviteeSetup = useCallback(
+    (
+      key: string,
+      base: { projectId: string; projectName: string },
+      request: { publicSessionId: string; branchName: string; repositoryUrl: string | null },
+    ) => {
+      rememberAccepted(key, {
+        ...base,
+        workspaceId: null,
+        detail: `You're in the live session on ${request.branchName}. Setting up ${base.projectName} on this Mac…`,
+        settingUp: true,
+        setupRequest: request,
+        setupFailed: false,
+      })
+      void ensureInviteeCopy(
+        {
+          projectId: base.projectId,
+          projectName: base.projectName,
+          publicSessionId: request.publicSessionId,
+          branchName: request.branchName,
+          repositoryUrl: request.repositoryUrl,
+        },
+        window.electronAPI.workspace,
+        window.electronAPI.projectd.workbenches,
+      )
+        .catch((error: unknown): InviteeCopyOutcome => ({ kind: "failed", message: cleanConvexError(error, "Setup failed.") }))
+        .then((copy) => {
+          if (copy.kind === "ready") invalidateProjectWorkspaceResolution(base.projectId)
+          rememberAccepted(key, {
+            ...base,
+            workspaceId: copy.kind === "ready" ? copy.workspaceId : null,
+            detail: describeInviteeCopy(copy, request.branchName),
+            settingUp: false,
+            setupRequest: request,
+            setupFailed: copy.kind === "failed",
+          })
+          announceInviteeCopy(copy, base.projectName)
+        })
+    },
+    [rememberAccepted],
+  )
+
   const handleSessionAccepted = useCallback(
     (item: SessionInvitationItem, accepted: {
       projectId: string
@@ -148,36 +253,9 @@ export function InboxPage() {
       repositoryUrl: string | null
     }) => {
       const key = `session:${String(item.invitationId)}`
-      const base = { projectId: accepted.projectId, projectName: item.projectName }
-      rememberAccepted(key, {
-        ...base,
-        detail: `You're in the live session on ${accepted.branchName}. Setting up ${item.projectName} on this Mac…`,
-        settingUp: true,
-      })
-      void ensureInviteeCopy(
-        {
-          projectId: accepted.projectId,
-          projectName: item.projectName,
-          publicSessionId: accepted.publicSessionId,
-          branchName: accepted.branchName,
-          repositoryUrl: accepted.repositoryUrl,
-        },
-        window.electronAPI.workspace,
-        window.electronAPI.projectd.workbenches,
-      )
-        .catch((error: unknown): InviteeCopyOutcome => ({ kind: "failed", message: cleanConvexError(error, "Setup failed.") }))
-        .then((copy) => {
-          if (copy.kind === "ready") invalidateProjectWorkspaceResolution(accepted.projectId)
-          rememberAccepted(key, {
-            ...base,
-            workspaceId: copy.kind === "ready" ? copy.workspaceId : null,
-            detail: describeInviteeCopy(copy, accepted.branchName),
-            settingUp: false,
-          })
-          announceInviteeCopy(copy, item.projectName)
-        })
+      runInviteeSetup(key, { projectId: accepted.projectId, projectName: item.projectName }, accepted)
     },
-    [rememberAccepted],
+    [runInviteeSetup],
   )
 
   const handleOpenProject = useCallback(
@@ -259,32 +337,27 @@ export function InboxPage() {
               {recentlyAccepted.size > 0 ? (
                 <div className="space-y-3">
                   {Array.from(recentlyAccepted.entries()).map(([id, info]) => (
-                    <div
+                    <AcceptedSetupCard
                       key={`accepted-${id}`}
-                      className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                          <HugeiconsIcon icon={__CheckCircleHugeIcon} className="size-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{info.projectName}</p>
-                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            {info.settingUp ? <Spinner size="xs" /> : null}
-                            <span>{info.detail ?? t("inbox.accepted")}</span>
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        className="gap-1.5"
-                        disabled={info.settingUp}
-                        onClick={() => handleOpenProject(info.projectId, info.workspaceId)}
-                      >
-                        <span>{t("inbox.openProject")}</span>
-                        <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5" />
-                      </Button>
-                    </div>
+                      projectName={info.projectName}
+                      detail={info.detail}
+                      acceptedLabel={t("inbox.accepted")}
+                      settingUp={info.settingUp}
+                      canRetry={info.setupFailed && !info.settingUp && info.setupRequest !== undefined}
+                      retryLabel={t("inbox.retrySetup")}
+                      openLabel={t("inbox.openProject")}
+                      onOpen={() => handleOpenProject(info.projectId, info.workspaceId)}
+                      onRetry={
+                        info.setupRequest
+                          ? () =>
+                              runInviteeSetup(
+                                id,
+                                { projectId: info.projectId, projectName: info.projectName },
+                                info.setupRequest!,
+                              )
+                          : undefined
+                      }
+                    />
                   ))}
                 </div>
               ) : null}

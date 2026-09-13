@@ -832,6 +832,7 @@ const es: Record<TranslationKey, string> = {
   "inbox.decline": "Rechazar",
   "inbox.openProject": "Abrir proyecto",
   "inbox.accepted": "Invitación aceptada",
+  "inbox.retrySetup": "Reintentar configuración",
   "inbox.declined": "Invitación rechazada",
   "inbox.invitedBy": "Invitado por",
   "inbox.deviceInvitations": "Invitaciones de dispositivos",

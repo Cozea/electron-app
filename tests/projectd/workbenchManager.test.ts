@@ -13,6 +13,7 @@ import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 import { SqliteWorkbenchStore } from "../../apps/projectd/src/workbenches/SqliteWorkbenchStore"
 import { WorkspaceRegistry } from "../../apps/projectd/src/workspaces/WorkspaceRegistry"
 import { WorkbenchManager } from "../../apps/projectd/src/workbenches/WorkbenchManager"
+import { GitService } from "../../apps/projectd/src/git/GitService"
 
 describe("P13 local Session Workbench and multi-Workbench switching", () => {
   const tmpDir = "/tmp"
@@ -147,5 +148,190 @@ describe("P13 local Session Workbench and multi-Workbench switching", () => {
 
     // Verify ordinary workspace directory remained untouched throughout
     expect(fs.existsSync(testOrdinaryDir)).toBe(true)
+  })
+})
+
+describe("Session provisioning matrix and presentation lifecycle (S01-S06, S10, W03, W05)", () => {
+  const tmpDir = "/tmp"
+  let testDbPath: string
+  let testCollabDir: string
+  let ordinaryDir: string
+  let sourceDir: string
+  let db: ProjectdDatabase
+  let store: SqliteWorkbenchStore
+  let registry: WorkspaceRegistry
+  let gitManager: WorkbenchManager
+  let gitService: GitService
+
+  const projectId = asProjectId("proj_provision_matrix")
+
+  async function makeSourceRepo(files: Record<string, string>): Promise<string> {    const dir = path.join(tmpDir, `test_p13_source_${Date.now()}_${Math.random().toString(36).slice(2)}`)
+    fs.mkdirSync(dir, { recursive: true })
+    for (const [name, content] of Object.entries(files)) {
+      fs.writeFileSync(path.join(dir, name), content)
+    }
+    await gitService.initRepo(dir, "main")
+    await gitService.process.execute(["add", "-A"], { cwd: dir })
+    await gitService.createCommit(dir, "base", { author: { name: "Tester", email: "test@example.com" } })
+    return dir
+  }
+
+  beforeEach(async () => {
+    const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`
+    testDbPath = path.join(tmpDir, `test_p13_matrix_db_${id}.sqlite`)
+    testCollabDir = path.join(tmpDir, `test_p13_matrix_collab_${id}`)
+    ordinaryDir = path.join(tmpDir, `test_p13_matrix_ord_${id}`)
+    fs.mkdirSync(testCollabDir, { recursive: true })
+    fs.mkdirSync(ordinaryDir, { recursive: true })
+
+    db = new ProjectdDatabase(testDbPath)
+    store = new SqliteWorkbenchStore(db)
+    registry = new WorkspaceRegistry(db)
+    gitService = new GitService()
+    gitManager = new WorkbenchManager({ store, workspaceRegistry: registry, gitService, collabReposDir: testCollabDir })
+    sourceDir = await makeSourceRepo({ "app.ts": "export const answer = 42\n" })
+    fs.writeFileSync(path.join(sourceDir, "draft.md"), "# uncommitted draft\n")
+  })
+
+  afterEach(() => {
+    if (db) db.close()
+    for (const p of [testDbPath, `${testDbPath}-wal`, `${testDbPath}-shm`, testCollabDir, ordinaryDir, sourceDir]) {
+      try {
+        if (fs.existsSync(p)) {
+          fs.rmSync(p, { recursive: true, force: true })
+        }
+      } catch {
+        // Ignore
+      }
+    }
+  })
+
+  it("provisions an existing branch excluding dirty work without touching the source", async () => {
+    const ensured = await gitManager.ensureSessionWorkbench({
+      projectId,
+      sessionId: asSessionId("sess_existing_branch"),
+      branchName: asBranchName("main"),
+      title: "Existing",
+      sourceRepoUrl: sourceDir,
+      sourceRootPath: sourceDir,
+      includeDirtyChanges: false,
+    })
+
+    expect(ensured.reused).toBe(false)
+    expect(fs.readFileSync(path.join(ensured.rootPath, "app.ts"), "utf8")).toBe("export const answer = 42\n")
+    expect(fs.existsSync(path.join(ensured.rootPath, "draft.md"))).toBe(false)
+    expect(fs.readFileSync(path.join(sourceDir, "draft.md"), "utf8")).toBe("# uncommitted draft\n")
+  })
+
+  it("creates a new branch from its base and includes dirty work as a copy", async () => {
+    const ensured = await gitManager.ensureSessionWorkbench({
+      projectId,
+      sessionId: asSessionId("sess_new_branch"),
+      branchName: asBranchName("feature/live"),
+      baseBranch: asBranchName("main"),
+      createBranch: true,
+      title: "New branch",
+      sourceRepoUrl: sourceDir,
+      sourceRootPath: sourceDir,
+      includeDirtyChanges: true,
+    })
+
+    const current = await gitService.process.execute(["branch", "--show-current"], { cwd: ensured.rootPath })
+    expect(current.stdout.trim()).toBe("feature/live")
+    expect(fs.readFileSync(path.join(ensured.rootPath, "app.ts"), "utf8")).toBe("export const answer = 42\n")
+    expect(fs.readFileSync(path.join(ensured.rootPath, "draft.md"), "utf8")).toBe("# uncommitted draft\n")
+    // The source folder is a copy source, never modified by provisioning.
+    expect(fs.readFileSync(path.join(sourceDir, "draft.md"), "utf8")).toBe("# uncommitted draft\n")
+  })
+
+  it("retries the same session after a failed setup without duplicating the workbench", async () => {
+    const params = {
+      projectId,
+      sessionId: asSessionId("sess_retry_setup"),
+      branchName: asBranchName("main"),
+      title: "Retry",
+      sourceRepoUrl: "file:///nonexistent-cozea-test-remote",
+      sourceRootPath: sourceDir,
+    } as const
+    await expect(gitManager.ensureSessionWorkbench({ ...params })).rejects.toThrow()
+    expect(await store.listByProject(projectId)).toHaveLength(0)
+
+    const first = await gitManager.ensureSessionWorkbench({ ...params, sourceRepoUrl: sourceDir })
+    expect(first.reused).toBe(false)
+    const second = await gitManager.ensureSessionWorkbench({ ...params, sourceRepoUrl: sourceDir })
+    expect(second.reused).toBe(true)
+    expect(second.workbench.workbenchId).toBe(first.workbench.workbenchId)
+    expect(second.rootPath).toBe(first.rootPath)
+    expect(await store.listByProject(projectId)).toHaveLength(1)
+  })
+
+  it("W03: switching presentation away leaves the session workbench intact", async () => {
+    // Ordinary workspace must exist in the registry for creation.
+    await registry.registerWorkspace({
+      workspaceId: asWorkspaceId("ws_matrix_ord"),
+      projectId,
+      rootPath: ordinaryDir,
+      source: "local",
+      storageOwnership: "attached",
+    })
+    const ordinary = await gitManager.createOrdinaryWorkbench({
+      projectId,
+      workspaceId: asWorkspaceId("ws_matrix_ord"),
+      branchName: asBranchName("main"),
+      title: "Ordinary",
+      setActive: false,
+    })
+    const session = await gitManager.ensureSessionWorkbench({
+      projectId,
+      sessionId: asSessionId("sess_switch_away"),
+      branchName: asBranchName("main"),
+      title: "Session",
+      sourceRepoUrl: sourceDir,
+      sourceRootPath: sourceDir,
+      setActive: true,
+    })
+    expect((await gitManager.getActiveWorkbench(projectId))?.workbenchId).toBe(session.workbench.workbenchId)
+
+    await gitManager.switchActiveWorkbench(projectId, ordinary.workbenchId)
+    const listed = await store.listByProject(projectId)
+    expect(listed).toHaveLength(2)
+    const kept = listed.find((candidate) => candidate.workbenchId === session.workbench.workbenchId)
+    expect(kept?.collaborationSessionId).toBe("sess_switch_away")
+    expect(kept?.lifecycle).toBe("idle")
+    expect((await gitManager.getActiveWorkbench(projectId))?.workbenchId).toBe(ordinary.workbenchId)
+
+    await gitManager.switchActiveWorkbench(projectId, session.workbench.workbenchId)
+    expect((await gitManager.getActiveWorkbench(projectId))?.workbenchId).toBe(session.workbench.workbenchId)
+    expect(await store.listByProject(projectId)).toHaveLength(2)
+  })
+
+  it("W05: deleting the presentation record keeps the folder and lets the session reopen", async () => {
+    const ensured = await gitManager.ensureSessionWorkbench({
+      projectId,
+      sessionId: asSessionId("sess_reopen"),
+      branchName: asBranchName("main"),
+      title: "Session",
+      sourceRepoUrl: sourceDir,
+      sourceRootPath: sourceDir,
+    })
+    const marker = path.join(ensured.rootPath, "local-proof.txt")
+    fs.writeFileSync(marker, "survives presentation deletion\n")
+
+    expect(await store.delete(ensured.workbench.workbenchId)).toBe(true)
+    expect(await store.get(ensured.workbench.workbenchId)).toBeNull()
+    // Folder and catalog entry survive presentation deletion by invariant.
+    expect(fs.existsSync(marker)).toBe(true)
+    expect((await registry.get(ensured.workbench.workspaceId))?.rootPath).toBe(ensured.rootPath)
+
+    const reopened = await gitManager.ensureSessionWorkbench({
+      projectId,
+      sessionId: asSessionId("sess_reopen"),
+      branchName: asBranchName("main"),
+      title: "Session",
+      sourceRepoUrl: sourceDir,
+      sourceRootPath: sourceDir,
+    })
+    expect(reopened.rootPath).toBe(ensured.rootPath)
+    expect(fs.readFileSync(marker, "utf8")).toBe("survives presentation deletion\n")
   })
 })

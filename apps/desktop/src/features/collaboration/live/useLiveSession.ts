@@ -5,9 +5,9 @@
  * Phase: P23
  *
  * The session is resolved by Workbench identity (workbenchId → workspaceId →
- * collaborationSessionId); its branchName is only a Git property. The branch
- * lookup below runs solely while no workspace is mounted yet, so the bar can
- * resolve membership during bootstrap; it must never decide the open session.
+ * collaborationSessionId) and nothing else; its branchName is only a Git
+ * property. While the workspace is unresolved there is no active session, so
+ * the bar stays hidden instead of guessing from the branch.
  *
  * Hands the session to the cozea-projectd daemon while this device is an active
  * member, and offers the membership and lifecycle actions the bar shows.
@@ -26,7 +26,7 @@ import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
-import { findBranchSession, findWorkspaceSession } from "../collaborationGate"
+import { findWorkspaceSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import {
   describeAutoGit,
@@ -131,7 +131,6 @@ export function useLiveSession(input: {
   enabled: boolean
   daemonEnabled: boolean
   sessions: readonly LiveSessionRecord[] | undefined
-  activeBranch: string
   projectId: string | null
   projectName?: string | null
   workspaceId: string | null
@@ -139,11 +138,8 @@ export function useLiveSession(input: {
   principalId: string | null
 }): LiveSessionController {
   const navigate = useViewTransitionNavigate()
-  const { enabled, daemonEnabled, sessions, activeBranch, workspaceId } = input
-  const session = enabled
-    ? (findWorkspaceSession(sessions, workspaceId) ??
-      (workspaceId ? null : findBranchSession(sessions, activeBranch)))
-    : null
+  const { enabled, daemonEnabled, sessions, workspaceId } = input
+  const session = enabled ? findWorkspaceSession(sessions, workspaceId) : null
   const sessionId = session?._id ?? null
 
   const membersQuery = useSafeConvexQuery(

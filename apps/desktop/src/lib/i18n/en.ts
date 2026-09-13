@@ -821,6 +821,7 @@ const en = {
   "inbox.decline": "Decline",
   "inbox.openProject": "Open project",
   "inbox.accepted": "Invitation accepted",
+  "inbox.retrySetup": "Retry setup",
   "inbox.declined": "Invitation declined",
   "inbox.invitedBy": "Invited by",
   "inbox.deviceInvitations": "Device invitations",

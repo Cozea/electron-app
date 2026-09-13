@@ -319,7 +319,6 @@ export function ProjectLayout({
     enabled: Boolean(project?._id) && isConvexAuthReady,
     daemonEnabled: featureFlags.daemonCollaboration,
     sessions: collaborationSessionsQuery.data,
-    activeBranch,
     projectId: project?._id ? String(project._id) : null,
     workspaceId: runtimeWorkspaceId,
     rootPath: activeProjectRootPath,

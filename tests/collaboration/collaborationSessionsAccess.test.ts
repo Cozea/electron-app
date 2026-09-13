@@ -174,6 +174,37 @@ describe("collaborationSessions access control", () => {
     expect(world.db.rows("collaborationSessionMembers")).toHaveLength(1)
   })
 
+  it("rejects accepting an invitation to a closed session", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world)
+    const { invitationId } = await runConvexHandler<{ invitationId: string }>(sessions.inviteParticipant, world.owner.ctx, {
+      sessionId,
+      targetPrincipalId: world.invitee.id,
+    })
+
+    await world.db.patch(sessionId, { lifecycle: "CLOSED" })
+    await expect(
+      runConvexHandler(sessions.resolveInvitation, world.invitee.ctx, { invitationId, accept: true }),
+    ).rejects.toThrow(/no longer available/)
+    expect(world.db.rows("collaborationSessionMembers")).toHaveLength(1)
+  })
+
+  it("rejects accepting a revoked invitation", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world)
+    const { invitationId } = await runConvexHandler<{ invitationId: string }>(sessions.inviteParticipant, world.owner.ctx, {
+      sessionId,
+      targetPrincipalId: world.invitee.id,
+    })
+
+    await runConvexHandler(sessions.revokeMember, world.owner.ctx, { sessionId, memberPrincipalId: world.invitee.id })
+    expect((await world.db.get(invitationId))?.status).toBe("revoked")
+    await expect(
+      runConvexHandler(sessions.resolveInvitation, world.invitee.ctx, { invitationId, accept: true }),
+    ).rejects.toThrow(/no longer pending/)
+    expect(world.db.rows("collaborationSessionMembers")).toHaveLength(1)
+  })
+
   it("delivers identity-key invitations to the invited device's inbox", async () => {
     const world = createWorld()
     const { sessionId } = await createSession(world)

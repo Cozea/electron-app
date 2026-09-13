@@ -24,7 +24,7 @@ import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncCon
 import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
-import { findBranchSession, findWorkspaceSession } from "../collaborationGate"
+import { findWorkspaceSession } from "../collaborationGate"
 
 type SessionRole = "viewer" | "developer" | "project_manager"
 
@@ -59,10 +59,9 @@ export function LiveSessionShareSection({
   const workspaceId = sync?.workspaceId ?? null
 
   const sessions = useQuery(api.collaborationSessions.listByProject, { projectId })
-  // The Workbench decides the session; the branch lookup only covers the
-  // pre-mount bootstrap and must never decide the open session.
-  const activeSession = findWorkspaceSession(sessions, workspaceId) ??
-    (workspaceId ? null : activeBranch ? findBranchSession(sessions, activeBranch) : null)
+  // The Workbench decides the session. While no workspace is mounted there is
+  // no active session here rather than a branch-derived guess.
+  const activeSession = findWorkspaceSession(sessions, workspaceId)
   const sessionMembers = useQuery(
     api.collaborationSessions.listMembers,
     activeSession ? { sessionId: activeSession._id } : "skip",

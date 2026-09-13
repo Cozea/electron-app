@@ -183,6 +183,27 @@ describe("setting up an invitee's Session Workbench", () => {
     expect((await ensureInviteeCopy(REQUEST, apis.workspaceApi, undefined)).kind).toBe("failed")
   })
 
+  it("retries the same retained request after a failed setup without re-accepting", async () => {
+    const failing = fakeApis({ ensure: new Error("git clone failed: Could not resolve host github.com") })
+    const first = await ensureInviteeCopy(REQUEST, failing.workspaceApi, failing.workbenchApi)
+    expect(first.kind).toBe("failed")
+
+    // Retry reuses the exact retained bootstrap request: same session, same
+    // branch, same remote — so the daemon resolves the same Workbench.
+    const retrying = fakeApis()
+    const second = await ensureInviteeCopy(REQUEST, retrying.workspaceApi, retrying.workbenchApi)
+    expect(second).toEqual({
+      kind: "ready",
+      rootPath: SESSION_ROOT,
+      workspaceId: SESSION_WORKSPACE_ID,
+      repository: "github.com/acme/app",
+    })
+    expect(retrying.ensureSession).toHaveBeenCalledWith(expect.objectContaining({
+      publicSessionId: REQUEST.publicSessionId,
+      branchName: REQUEST.branchName,
+    }))
+  })
+
   it("describes the resulting dedicated workbench", () => {
     expect(
       describeInviteeCopy(

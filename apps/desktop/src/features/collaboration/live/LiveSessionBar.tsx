@@ -1,6 +1,6 @@
 /**
- * The bar under the project header: the live session on the active branch, or a
- * pointer to this device's session on another branch.
+ * The bar under the project header: the live session for the active Session
+ * Workbench, or a pointer to this device's session on another branch.
  *
  * Master Specification: Section 5.3, 23.2
  * Phase: P23

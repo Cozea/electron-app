@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **3 — P16–P22 AutoGit/Git program**
-- Current checkpoint: **3A — P16 leader lease**
-- Blocking gate: A/C/G/R/M rows green against a real remote
-- Next authorized work: 3A only (awaiting operator go-ahead; Phase 2 complete, review pending)
-- Branch: `feat/collab-step3-session-ui` · Phase 2 closed whole-phase per instruction (see ledger 2026-09-13 Phase 2 entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 — 2A (control plane verified), 2B (Workbench identity), 2C (creator rows verified), 2D (bootstrap matrix completed; full suite 448 files / 3,188 passed)
+- Current phase: **2 — P12–P15 Session/Workbench lifecycle: review rework**
+- Current checkpoint: **2R — review items R1–R5 (done, awaiting re-review)**
+- Blocking gate: W01–W07 + S01–S10 green with no branch-resolved session; production-path evidence
+- Next authorized work: none until re-review (3A explicitly not started)
+- Branch: `feat/collab-step3-session-ui` · Phase 2 rework complete (see ledger 2026-09-13 rework entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 rework — R1 (no branch fallback), R2 (S10 retry), R3 (real-path 2D), R4 (ensureSession matrix), R5 (W03/W05/W06 prequalification; full suite 450 files / 3,201 passed)
 
 ## How this file is used
 
