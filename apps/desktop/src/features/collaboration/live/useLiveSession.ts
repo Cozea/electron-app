@@ -26,7 +26,7 @@ import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
-import { findWorkspaceSession } from "../collaborationGate"
+import { findOpenSessionById, findWorkspaceSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import {
   describeAutoGit,
@@ -60,7 +60,7 @@ export interface LiveSessionRecord {
 export interface LiveSessionController {
   /** The session for the active Workbench, if it is a Session Workbench. */
   session: LiveSessionRecord | null
-  /** Sessions on the project's other branches that this device is in. */
+  /** This device's other live sessions, excluding the active one. */
   otherSessions: LiveSessionRecord[]
   members: LiveSessionMember[]
   membership: SessionMembership
@@ -85,7 +85,8 @@ export interface LiveSessionController {
   closeReview: ProjectdClosePreflight | null
   cancelClose: () => void
   confirmClose: (choice: ProjectdCloseChoice) => void
-  openSessionWorkbench: (branch: string) => void
+  /** Opens the Session Workbench for the session with this id. */
+  openSessionWorkbench: (publicSessionId: string) => void
 }
 
 const NO_MEMBERS: LiveSessionMember[] = []
@@ -336,10 +337,10 @@ export function useLiveSession(input: {
         setCloseReview(result.review)
       })
     },
-    openSessionWorkbench: (branch) =>
-      run("switch", `Could not open ${branch}`, async () => {
-        const target = (sessions ?? []).find((candidate) => candidate.branchName === branch)
-        if (!target) throw new Error(`The live session on ${branch} is no longer available.`)
+    openSessionWorkbench: (publicSessionId) =>
+      run("switch", "Could not open the Session Workbench", async () => {
+        const target = findOpenSessionById(sessions, publicSessionId)
+        if (!target) throw new Error("That live session is no longer available.")
         await ensureAndOpenSessionWorkbench(target)
       }),
   }

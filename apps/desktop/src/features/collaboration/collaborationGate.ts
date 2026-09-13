@@ -65,6 +65,21 @@ export function findWorkspaceSession<T extends WorkbenchSessionSummary>(
   ) ?? null
 }
 
+/**
+ * Finds a switchable session strictly by identity. Sessions are never
+ * re-identified by branchName here: a closed session keeps its branch name,
+ * so a branch lookup could open the wrong record depending on array order.
+ * Closed sessions are not switchable.
+ */
+export function findOpenSessionById<T extends WorkbenchSessionSummary>(
+  sessions: readonly T[] | undefined,
+  publicSessionId: string,
+): T | null {
+  return sessions?.find((candidate) =>
+    candidate.publicSessionId === publicSessionId && candidate.lifecycle !== "CLOSED",
+  ) ?? null
+}
+
 export function resolveCollaborationGate(input: {
   activeBranch: string
   sharedBranch: string

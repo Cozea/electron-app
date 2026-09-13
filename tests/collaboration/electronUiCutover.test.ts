@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { findWorkspaceSession, resolveCollaborationGate } from "@/features/collaboration/collaborationGate"
+import { findOpenSessionById, findWorkspaceSession, resolveCollaborationGate } from "@/features/collaboration/collaborationGate"
 
 describe("P23 collaboration gate", () => {
   it("keeps the shared branch collaborating when no session exists for it", () => {
@@ -97,5 +97,18 @@ describe("P13 session resolution by Workbench identity", () => {
     expect(findWorkspaceSession(sessions, "ws_collab_czs_missing")).toBeNull()
     expect(findWorkspaceSession(sessions, "ws_collab_czs_cccccccccccccccc")).toBeNull()
     expect(findWorkspaceSession(undefined, "ws_collab_czs_aaaaaaaaaaaaaaaa")).toBeNull()
+  })
+
+  it("opens switch targets by session id even when a closed session keeps the branch name", () => {
+    const collision = [
+      { branchName: "feat/x", lifecycle: "CLOSED", publicSessionId: "czs_closeddddddddddd" },
+      { branchName: "feat/x", lifecycle: "ACTIVE", publicSessionId: "czs_activedddddddddd" },
+    ]
+    // The requested id decides, never array order or the shared branch name.
+    expect(findOpenSessionById(collision, "czs_activedddddddddd")).toMatchObject({ lifecycle: "ACTIVE" })
+    expect(findOpenSessionById([...collision].reverse(), "czs_activedddddddddd")).toMatchObject({ lifecycle: "ACTIVE" })
+    expect(findOpenSessionById(collision, "czs_closeddddddddddd")).toBeNull()
+    expect(findOpenSessionById(collision, "czs_missing")).toBeNull()
+    expect(findOpenSessionById(undefined, "czs_activedddddddddd")).toBeNull()
   })
 })

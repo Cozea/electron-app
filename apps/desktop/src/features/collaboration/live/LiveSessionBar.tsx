@@ -1,6 +1,6 @@
 /**
  * The bar under the project header: the live session for the active Session
- * Workbench, or a pointer to this device's session on another branch.
+ * Workbench, or a pointer to another of this device's live sessions.
  *
  * Master Specification: Section 5.3, 23.2
  * Phase: P23
@@ -83,7 +83,7 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
     <SessionBranchNotice
       branchName={other.branchName}
       busy={live.busyAction === "switch"}
-      onSwitch={() => live.openSessionWorkbench(other.branchName)}
+      onSwitch={() => live.openSessionWorkbench(other.publicSessionId)}
     />
   )
 }
