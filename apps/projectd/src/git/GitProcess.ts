@@ -143,6 +143,12 @@ export class GitProcess {
       let totalBytes = 0
       const maxBuffer = options.maxBuffer ?? 50 * 1024 * 1024 // 50MB
       let killedForMaxBuffer = false
+      let stdinError: Error | null = null
+      proc.stdin?.on("error", (error: Error) => {
+        // Git can reject a command before consuming its input (e.g. outside a
+        // repository). Preserve the exit result instead of crashing the daemon.
+        stdinError = error
+      })
 
       let timer: NodeJS.Timeout | null = setTimeout(() => {
         timer = null
@@ -180,6 +186,10 @@ export class GitProcess {
         const stderr = stderrBuffer.toString("utf8")
 
         const success = code === 0
+        if (success && stdinError) {
+          reject(stdinError)
+          return
+        }
         if (!success && !options.allowNonZeroExit) {
           // If non-zero is not allowed, reject with informative error
           const err = new Error(

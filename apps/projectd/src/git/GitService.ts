@@ -114,6 +114,34 @@ export class GitService {
     return res.success ? res.stdout.trim() : null
   }
 
+  /**
+   * Files under `cwd` that Git can restore exactly: tracked, and unchanged from HEAD
+   * in both the index and the work tree. Paths are relative to `cwd`. Returns null
+   * outside a work tree or before the first commit.
+   */
+  async listUnmodifiedTrackedFiles(cwd: string): Promise<Set<string> | null> {
+    const prefix = await this.process.execute(["rev-parse", "--show-prefix"], { cwd, allowNonZeroExit: true })
+    if (!prefix.success || !(await this.getCommitOid(cwd))) return null
+    // ls-files --full-name and porcelain status name paths from the repository root.
+    const cwdPrefix = prefix.stdout.trim()
+    const underCwd = (repoPath: string | undefined): string | null =>
+      repoPath && repoPath.startsWith(cwdPrefix) ? repoPath.slice(cwdPrefix.length) : null
+
+    const tracked = await this.process.execute(["ls-files", "-z", "--full-name"], { cwd })
+    const unmodified = new Set<string>()
+    for (const repoPath of tracked.stdout.split("\0")) {
+      const relative = underCwd(repoPath)
+      if (relative) unmodified.add(relative)
+    }
+    for (const file of (await this.getStatus(cwd)).files) {
+      for (const changed of [file.path, file.origPath]) {
+        const relative = underCwd(changed)
+        if (relative) unmodified.delete(relative)
+      }
+    }
+    return unmodified
+  }
+
   async initRepo(cwd: string, defaultBranch = "main"): Promise<void> {
     const res = await this.process.execute(["init", "-b", defaultBranch], { cwd })
     if (!res.success) {

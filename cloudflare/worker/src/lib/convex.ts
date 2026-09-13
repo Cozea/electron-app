@@ -11,6 +11,7 @@ import type { FunctionReference } from 'convex/server'
 import { isTokenIssuedAfterRevocationBoundary } from '../../../../shared/deviceIdentity'
 import type { DevAppRuntimeReleaseImage } from '../../../../shared/devAppContainedRuntime'
 import type { DevAppParts } from '../../../../shared/devAppParts'
+import type { SessionLifecycleFence } from '../../../../shared/collaboration/lifecycleFence'
 
 type AnyQueryReference = FunctionReference<'query', 'public', Record<string, unknown>, unknown>
 type AnyMutationReference = FunctionReference<'mutation', 'public', Record<string, unknown>, unknown>
@@ -282,12 +283,14 @@ export interface SessionRoomAccess {
   identityKey: string
   projectId: string
   role: 'viewer' | 'developer' | 'project_manager'
+  keyVersion: number
 }
 
 export async function authorizeSessionRoomInConvex(
   env: Env,
   auth: DeviceAccessClaims,
   publicSessionId: string,
+  recovery = false,
 ): Promise<SessionRoomAccess> {
   const principal = await requireActiveDeviceAccessInConvex(env, auth)
   const access = await runServerQuery<{
@@ -295,11 +298,13 @@ export async function authorizeSessionRoomInConvex(
     reason?: string
     projectId?: string
     role?: SessionRoomAccess['role']
+    keyVersion?: number
   }>(env, 'collaborationSessions:getRoomAccessForServer', {
     publicSessionId,
     principalId: principal.principalId,
+    recovery,
   })
-  if (!access.allowed || !access.projectId || !access.role) {
+  if (!access.allowed || !access.projectId || !access.role || !Number.isInteger(access.keyVersion) || access.keyVersion! < 1) {
     throw new Error(access.reason ?? 'The authenticated device cannot join this session room')
   }
   return {
@@ -307,7 +312,44 @@ export async function authorizeSessionRoomInConvex(
     identityKey: principal.identityKey,
     projectId: access.projectId,
     role: access.role,
+    keyVersion: access.keyVersion!,
   }
+}
+
+/** Revalidates an already-open session-room socket against current Convex membership/key generation. */
+export async function validateSessionRoomPrincipalInConvex(
+  env: Env,
+  args: { publicSessionId: string; principalId: string; recovery?: boolean },
+): Promise<{ role: SessionRoomAccess['role']; keyVersion: number; lifecycleRevision: number }> {
+  const access = await runServerQuery<{
+    allowed: boolean
+    reason?: string
+    role?: SessionRoomAccess['role']
+    keyVersion?: number
+    lifecycleRevision?: number
+  }>(env, 'collaborationSessions:getRoomAccessForServer', {
+    publicSessionId: args.publicSessionId,
+    principalId: args.principalId,
+    recovery: args.recovery === true,
+  })
+  if (!access.allowed || !access.role || !Number.isInteger(access.keyVersion) || access.keyVersion! < 1) {
+    throw new Error(access.reason ?? 'The device is no longer authorized for this session room')
+  }
+  if (!Number.isSafeInteger(access.lifecycleRevision) || access.lifecycleRevision! < 0) {
+    throw new Error('Session lifecycle protocol requires an updated control plane')
+  }
+  return { role: access.role, keyVersion: access.keyVersion!, lifecycleRevision: access.lifecycleRevision! }
+}
+
+export async function finalizeSessionLifecycleInConvex(env: Env, args: {
+  publicSessionId: string; principalId: string; expectedRevision: number; fence: SessionLifecycleFence
+}): Promise<{ committed: true; revision: number; superseded: boolean }> {
+  const client = new ConvexHttpClient(env.CONVEX_URL, {
+    fetch: (input, init) => fetch(input, { ...init, redirect: 'error', signal: AbortSignal.timeout(10_000) }),
+  })
+  return await client.mutation(asMutation('collaborationSessions:finalizeLifecycleFromServer'), {
+    ...args, serverSecret: env.AI_GATEWAY_SECRET,
+  }) as { committed: true; revision: number; superseded: boolean }
 }
 
 export async function createCollabSessionFromConvex(

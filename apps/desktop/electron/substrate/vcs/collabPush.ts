@@ -10,7 +10,6 @@ export interface CollabPushGitRunner {
     args: string[],
     options: {
       cwd: string;
-      extraHeader?: string;
       timeoutMs?: number;
     },
   ) => Promise<{ success: boolean; error?: string; stdout?: string; stderr?: string }>;
@@ -22,7 +21,6 @@ export interface CollabPushWithSafetyInput {
   readonly projectPath: string;
   readonly remote: string;
   readonly branch: string;
-  readonly extraHeader?: string;
   readonly runner: CollabPushGitRunner;
 }
 
@@ -46,14 +44,13 @@ function parseUpstreamRef(
  * Push with Phase 4e safety — refuses mismatched feature→upstream refspecs.
  */
 export async function pushWithSafety(input: CollabPushWithSafetyInput): Promise<GitSyncPushResult> {
-  const { projectPath, remote, branch, extraHeader, runner } = input;
+  const { projectPath, remote, branch, runner } = input;
   const currentBranch = (await runner.getCurrentBranch(projectPath)) ?? branch;
   const upstreamRef = await runner.getUpstreamRef(projectPath);
 
   if (!upstreamRef) {
     const push = await runner.runGit(["push", "-u", remote, `HEAD:refs/heads/${currentBranch}`], {
       cwd: projectPath,
-      extraHeader,
       timeoutMs: 120_000,
     });
     if (!push.success) {
@@ -100,7 +97,7 @@ export async function pushWithSafety(input: CollabPushWithSafetyInput): Promise<
 
   const push = await runner.runGit(
     ["push", decision.remoteName, decision.refspec],
-    { cwd: projectPath, extraHeader, timeoutMs: 120_000 },
+    { cwd: projectPath, timeoutMs: 120_000 },
   );
   if (!push.success) {
     return { success: false, remote: decision.remoteName, branch: currentBranch, error: push.error };

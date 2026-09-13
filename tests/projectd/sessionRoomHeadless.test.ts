@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto"
-import { beforeAll, describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it, vi } from "vitest"
 
 import { SessionReplica } from "../../apps/projectd/src/collaboration/SessionReplica"
 import {
@@ -48,6 +48,117 @@ beforeAll(async () => {
 })
 
 describe("P10 session room headless slice", () => {
+  it("issues replica-only barriers to writers without granting a Git lease", async () => {
+    const host = new RoomHost(worker)
+    const key = randomBytes(32)
+    const writer = createClient(host, "snapshot_writer", key)
+    const viewer = createClient(host, "snapshot_viewer", key, {
+      getToken: sessionTokenFor(worker, "principal_viewer", { sessionRole: "viewer" }),
+    })
+    try {
+      await writer.client.connect()
+      await viewer.client.connect()
+      await expect(viewer.client.requestSnapshotBarrier(() => {})).rejects.toThrow(/Viewers cannot/)
+      let capturedSequence: number | undefined
+      const barrier = await writer.client.requestSnapshotBarrier((value) => { capturedSequence = value.sessionSeq })
+      expect(capturedSequence).toBe(0)
+      expect(barrier).toMatchObject({ sessionSeq: 0, leaseGeneration: 0 })
+      expect(barrier).not.toHaveProperty("snapshotPrincipalId")
+      expect(host.storage.data.get("autogit:lease")).toBeUndefined()
+      await expect(writer.client.requestBarrier(0)).rejects.toThrow(/Only the AutoGit leader/)
+    } finally {
+      writer.client.disconnect()
+      viewer.client.disconnect()
+      host.dispose()
+    }
+  })
+
+  it("freezes only a durable frontier for managers, retains retries across eviction, and cancels by exact fence", async () => {
+    const host = new RoomHost(worker)
+    const key = randomBytes(32)
+    const manager = createClient(host, "manager", key, {
+      getToken: sessionTokenFor(worker, "principal_manager", { sessionRole: "project_manager" }),
+    })
+    const writer = createClient(host, "writer", key)
+    const barrierId = `barrier_${"a".repeat(32)}`
+    try {
+      await manager.client.connect()
+      await writer.client.connect()
+      await expect(writer.client.prepareLifecycleFence("pause", barrierId)).rejects.toThrow(/Only a session manager/)
+      await expect(manager.client.prepareLifecycleFence("pause", barrierId)).rejects.toThrow(/current durable snapshot/)
+      writer.replica.createFile({ path: "saved.txt", kind: "text", content: "durable", actor })
+      const original = writer.replica.exportBatch()!
+      writer.client.submitBatch(original)
+      await waitFor(() => writer.client.pendingBatchCount === 0, "initial batch acknowledgement")
+      // Snapshot publication and R2 integrity are exercised by autoGitSession.
+      // This fixture isolates the transactional frontier/admission boundary.
+      await host.storage.put("replica:snapshot", { sessionSeq: 0, barrierId, keyVersion: 1 })
+      await expect(manager.client.prepareLifecycleFence("pause", barrierId)).rejects.toThrow(/current durable snapshot/)
+      expect(await manager.client.getLifecycleFence()).toBeNull()
+      await host.storage.put("replica:snapshot", { sessionSeq: 1, barrierId, keyVersion: 1 })
+      await expect(manager.client.prepareLifecycleFence("close", barrierId)).rejects.toThrow(/Explicitly choose/)
+      const failure = vi.spyOn(host.storage, "put").mockImplementationOnce(async () => { throw new Error("disk full") })
+      await expect(manager.client.prepareLifecycleFence("pause", barrierId)).rejects.toThrow(/could not retain/)
+      failure.mockRestore()
+      expect(await manager.client.getLifecycleFence()).toBeNull()
+      const fence = await manager.client.prepareLifecycleFence("close", barrierId, true)
+      expect(fence).toMatchObject({ sessionSeq: 1, intent: "close", gitSavedThroughSeq: null,
+        requestedByPrincipalId: "principal_manager" })
+      expect(await manager.client.prepareLifecycleFence("close", barrierId, true)).toEqual(fence)
+      await expect(manager.client.prepareLifecycleFence("pause", barrierId)).rejects.toThrow(/Another lifecycle/)
+      await expect(writer.client.cancelLifecycleFence(fence.fenceId)).rejects.toThrow(/Only a session manager/)
+      host.evict()
+      expect(await manager.client.getLifecycleFence()).toEqual(fence)
+      writer.client.submitBatch(original)
+      await waitFor(() => writer.client.pendingBatchCount === 0, "already accepted retry while frozen")
+      writer.replica.createFile({ path: "pending.txt", kind: "text", content: "retain locally", actor })
+      writer.client.submitLocalChanges()
+      await waitFor(() => writer.client.state === "disconnected", "frozen write rejection")
+      expect(writer.client.pendingBatchCount).toBe(1)
+      expect(host.storage.data.get("currentSeq")).toBe(1)
+      await expect(manager.client.cancelLifecycleFence("stale-id")).rejects.toThrow(/Refresh lifecycle/)
+      expect(await manager.client.getLifecycleFence()).toEqual(fence)
+      await manager.client.cancelLifecycleFence(fence.fenceId)
+      expect(await manager.client.getLifecycleFence()).toBeNull()
+      writer.client.disconnect()
+      await writer.client.connect()
+      await waitFor(() => writer.client.pendingBatchCount === 0, "retained work after cancellation")
+      expect(host.storage.data.get("currentSeq")).toBe(2)
+      expect(host.errors).toHaveLength(0)
+    } finally {
+      manager.client.disconnect()
+      writer.client.disconnect()
+      host.dispose()
+    }
+  })
+
+  it("does not consume a sequence when durable batch acceptance fails", async () => {
+    const host = new RoomHost(worker)
+    const a = createClient(host, "c_failed_write", randomBytes(32))
+    await a.client.connect()
+    await host.settled()
+    const failure = vi.spyOn(host.storage, "put").mockImplementationOnce(async () => { throw new Error("storage unavailable") })
+    try {
+      a.replica.createFile({ path: "retained.txt", kind: "text", content: "keep", actor })
+      a.client.submitLocalChanges()
+      await host.settled()
+      expect(host.storage.data.get("currentSeq")).toBeUndefined()
+      expect(a.client.pendingBatchCount).toBe(1)
+      expect(a.client.state).toBe("disconnected")
+      expect(host.errors).toHaveLength(0)
+      failure.mockRestore()
+      a.client.disconnect()
+      await a.client.connect()
+      await waitFor(() => a.client.pendingBatchCount === 0, "retry after failed durable acceptance")
+      expect(host.storage.data.get("currentSeq")).toBe(1)
+      expect(a.transport.lastAppliedSessionSeq).toBe(1)
+    } finally {
+      failure.mockRestore()
+      a.client.disconnect()
+      host.dispose()
+    }
+  })
+
   it("speaks the same protocol version on both ends", () => {
     expect(worker.SESSION_ROOM_PROTOCOL_VERSION).toBe(SESSION_ROOM_PROTOCOL_VERSION)
   })
@@ -90,8 +201,12 @@ describe("P10 session room headless slice", () => {
     expect(a.transport.lastAppliedSessionSeq).toBe(3)
     expect(b.transport.lastAppliedSessionSeq).toBe(3)
 
-    const barrier = await a.client.requestBarrier()
+    // Barriers are for the device that holds the AutoGit lease.
+    a.client.setAutoGitEligibility(true)
+    await waitFor(() => a.client.autoGitState?.lease?.leaderClientId === "c_a", "client A to take the lease")
+    const barrier = await a.client.requestBarrier(a.client.autoGitState?.lease?.generation ?? 0)
     expect(barrier.sessionSeq).toBe(3)
+    host.dispose()
   })
 
   it("exports nothing when nothing changed, even after deletions", async () => {

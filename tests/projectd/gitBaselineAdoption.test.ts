@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { GitService } from "../../apps/projectd/src/git/GitService"
 import { GitBaselineAdopter } from "../../apps/projectd/src/autogit/GitBaselineAdopter"
+import { useTestGitIdentity } from "../helpers/gitIdentity"
+
+useTestGitIdentity()
 
 describe("P18 Local Git baseline advancement after AutoGit checkpoint", () => {
   const tmpDir = "/tmp"

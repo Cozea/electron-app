@@ -1,20 +1,26 @@
 /**
  * Daemon-side client for the session room.
  *
- * Master Specification: Section 13.1 - 13.10
+ * Master Specification: Section 13.1 - 13.10, 14.5 - 14.7, 15.3
  * Speaks the session-room protocol over any WebSocket-like connection: authenticates
  * with a session token, replays from the transport's contiguous watermark, resends
  * batches the room never acknowledged, and applies peers' batches as they arrive.
  * The room deduplicates by batchId, so a resend after a lost acknowledgement cannot
  * create a second copy.
+ *
+ * It also carries AutoGit's side of the protocol: whether this daemon can push, the
+ * leader lease, barriers, checkpoint records, and members' requests to save now.
  */
 
-import type { CollaborationBatch } from "./SessionReplica"
+import type { CollaborationBatch, ReplicaSnapshot } from "./SessionReplica"
 import type { SessionTransport } from "./SessionTransport"
+import type { CloudSnapshotRecord } from "@shared/collaboration/cloudSnapshot"
+import type { SessionLifecycleFence, SessionLifecycleState } from "@shared/collaboration/lifecycleFence"
 
 /** Must match SESSION_ROOM_PROTOCOL_VERSION in cloudflare/worker/src/durableObjects/CollaborationSessionRoom.ts. */
 export const SESSION_ROOM_PROTOCOL_VERSION = "session-room/1"
 const DEFAULT_LIVE_TIMEOUT_MS = 30_000
+const DEFAULT_REQUEST_TIMEOUT_MS = 15_000
 
 export interface RoomConnection {
   send(data: string): void
@@ -34,6 +40,69 @@ export interface RoomBarrier {
   barrierId: string
   sessionSeq: number
   serverTime: number
+  leaseGeneration: number
+}
+
+/** Which daemon may push the session branch. The generation only grows (Section 14.5). */
+export interface RoomLease {
+  generation: number
+  leaderClientId: string | null
+  leaderPrincipalId: string | null
+  expiresAt: number
+  /** Why the leader stopped saving, when it did. */
+  notice?: string | null
+  /** What kind of stop the notice describes, such as ENV_NOT_IGNORED. */
+  noticeCode?: string | null
+}
+
+/** The last checkpoint pushed to the session branch (Section 15.10). */
+export interface RoomCheckpoint {
+  confirmedAt?: number
+  commitOid: string
+  parentOid: string | null
+  treeOid: string
+  sessionSeq: number
+  barrierId: string
+  logicalTreeHash: string
+  leaseGeneration: number
+  publishedAt: number
+  publishedByPrincipalId: string
+  /** The branch still holds the session at this later sequence; absent from older rooms. */
+  savedThroughSeq?: number
+  /** An explicit rebase rewrote the branch, replacing this commit; carried until the next rebase. */
+  rebasedFrom?: string
+  rebaseAdoptionId?: string
+}
+
+export type RoomCheckpointInput = Pick<
+  RoomCheckpoint,
+  "commitOid" | "parentOid" | "treeOid" | "sessionSeq" | "barrierId" | "logicalTreeHash" | "rebasedFrom" | "rebaseAdoptionId"
+>
+
+export interface RoomRebaseAdoption {
+  id: string
+  from: string
+  resultOid: string
+  principalId: string
+  startedSeq: number
+}
+
+export interface RoomAutoGitState {
+  rebaseAdoption?: RoomRebaseAdoption | null
+  lease: RoomLease | null
+  checkpoint: RoomCheckpoint | null
+  serverTime: number
+}
+
+/** The room refused one request, or did not answer it. */
+export class RoomRequestError extends Error {
+  readonly code: string
+
+  constructor(code: string, message: string) {
+    super(message)
+    this.name = "RoomRequestError"
+    this.code = code
+  }
 }
 
 interface WireBatch {
@@ -43,37 +112,92 @@ interface WireBatch {
   encryptedPayload: string
 }
 
+export interface RoomRebaseReceipt {
+  adoption: RoomRebaseAdoption
+  checkpoint: RoomCheckpoint
+}
+
+export interface RoomIntegrationBarrier { id: string; sessionSeq: number; expiresAt: number }
+
+type RequestReply =
+  | { type: "integration_started"; requestId?: string; barrier: RoomIntegrationBarrier }
+  | { type: "integration_finished"; requestId?: string; sessionSeq: number }
+  | { type: "rebase_receipt_ack"; requestId?: string; receipt: RoomRebaseReceipt | null }
+  | { type: "rebase_adoption_ack"; requestId?: string; adoption: RoomRebaseAdoption }
+  | ({ type: "lifecycle_ack"; requestId?: string } & SessionLifecycleState)
+  | { type: "snapshot_ack"; requestId?: string; snapshot: CloudSnapshotRecord | null }
+  | { type: "barrier_ack"; requestId?: string; barrier: RoomBarrier }
+  | { type: "lease_ack"; requestId?: string; lease: RoomLease }
+  | { type: "checkpoint_ack"; requestId?: string; checkpoint: RoomCheckpoint }
+  | { type: "checkpoint_clean_ack"; requestId?: string; checkpoint: RoomCheckpoint }
+  | { type: "checkpoint_request_ack"; requestId?: string; routed: boolean; serverTime?: number }
+  | { type: "rebase_request_ack"; requestId?: string; routed: boolean }
+
 type ServerMessage =
-  | { type: "ready"; headSeq: number }
+  | RequestReply
+  | { type: "ready"; headSeq: number; snapshots?: boolean }
+  | { type: "snapshot_required"; replayFloor: number }
   | { type: "sync_delta"; toSeq: number; headSeq: number; batches: WireBatch[] }
   | { type: "batch_ack"; batchId: string; sessionSeq: number; duplicate: boolean }
   | { type: "session_batch"; batch: WireBatch }
-  | { type: "barrier_ack"; barrier: RoomBarrier }
-  | { type: "error"; code: string; message: string; recoverable?: boolean }
+  | { type: "autogit_state"; lease: RoomLease | null; checkpoint: RoomCheckpoint | null; rebaseAdoption?: RoomRebaseAdoption | null; serverTime: number }
+  | { type: "checkpoint_requested"; requestedByPrincipalId: string | null }
+  | { type: "rebase_requested"; requestedByPrincipalId: string | null; allowConflicts?: boolean }
+  | { type: "error"; code: string; message: string; recoverable?: boolean; requestId?: string }
+
+type ReplyOf<K extends RequestReply["type"]> = Extract<RequestReply, { type: K }>
 
 interface Waiter<T> {
   resolve(value: T): void
   reject(error: Error): void
 }
 
+interface PendingRequest {
+  expected: RequestReply["type"]
+  resolve(reply: RequestReply): void
+  reject(error: Error): void
+  timer: NodeJS.Timeout
+  /** Runs while the reply is handled, before any later message is applied. */
+  onReply?: (reply: RequestReply) => void
+}
+
 export interface SessionRoomClientOptions {
+  loadSnapshot?: (record: CloudSnapshotRecord) => Promise<ReplicaSnapshot>
   transport: SessionTransport
   connect: RoomConnector
   getToken: () => Promise<string>
   /** Called when the room assigns a sequence to one of this client's batches. */
   onAcknowledged?: (batchId: string, sessionSeq: number) => void
   onStateChange?: (state: RoomClientState) => void
+  /** Called with the room's AutoGit lease and last checkpoint on connect and whenever either changes. */
+  onAutoGitState?: (state: RoomAutoGitState) => void
+  /** Called on the leader when a member asks for a checkpoint now. */
+  onCheckpointRequested?: (requestedByPrincipalId: string | null) => void
+  /** Called on the leader when a member asks to rebase the session onto its target. */
+  onRebaseRequested?: (allowConflicts: boolean, requestedByPrincipalId: string | null) => void
   /** How long connect() waits for replay to finish before giving up. */
   liveTimeoutMs?: number
+  /** How long a request waits for the room's answer. */
+  requestTimeoutMs?: number
 }
 
 export class SessionRoomClient {
+  public supportsSnapshots = false
+  private readonly loadSnapshot?: (record: CloudSnapshotRecord) => Promise<ReplicaSnapshot>
+  private restoringSnapshot = false
+  private snapshotBufferedBatches: WireBatch[] = []
+  private snapshotBufferedChars = 0
+  private requiredSnapshotSeq = 0
   readonly transport: SessionTransport
   private readonly connector: RoomConnector
   private readonly getToken: () => Promise<string>
   private readonly onAcknowledged?: (batchId: string, sessionSeq: number) => void
   private readonly onStateChange?: (state: RoomClientState) => void
+  private readonly onAutoGitState?: (state: RoomAutoGitState) => void
+  private readonly onCheckpointRequested?: (requestedByPrincipalId: string | null) => void
+  private readonly onRebaseRequested?: (allowConflicts: boolean, requestedByPrincipalId: string | null) => void
   private readonly liveTimeoutMs: number
+  private readonly requestTimeoutMs: number
 
   private connection: RoomConnection | null = null
   private connecting: Promise<void> | null = null
@@ -81,7 +205,10 @@ export class SessionRoomClient {
   // Encrypted batches the room has not acknowledged, in submission order.
   private readonly pending = new Map<string, string>()
   private liveWaiters: Array<Waiter<void>> = []
-  private barrierWaiters: Array<Waiter<RoomBarrier>> = []
+  private readonly requests = new Map<string, PendingRequest>()
+  private requestCounter = 0
+  private autoGitEligible: boolean | null = null
+  private lastAutoGitState: RoomAutoGitState | null = null
   public lastError: { code: string; message: string } | null = null
 
   constructor(options: SessionRoomClientOptions) {
@@ -90,7 +217,12 @@ export class SessionRoomClient {
     this.getToken = options.getToken
     this.onAcknowledged = options.onAcknowledged
     this.onStateChange = options.onStateChange
+    this.onAutoGitState = options.onAutoGitState
+    this.loadSnapshot = options.loadSnapshot
+    this.onCheckpointRequested = options.onCheckpointRequested
+    this.onRebaseRequested = options.onRebaseRequested
     this.liveTimeoutMs = options.liveTimeoutMs ?? DEFAULT_LIVE_TIMEOUT_MS
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
   }
 
   get state(): RoomClientState {
@@ -99,6 +231,16 @@ export class SessionRoomClient {
 
   get pendingBatchCount(): number {
     return this.pending.size
+  }
+
+  /** The id this daemon's replica goes by in the room; the lease names it. */
+  get clientId(): string {
+    return this.transport.replica.clientId
+  }
+
+  /** The room's AutoGit lease and last checkpoint, as of the last message about them. */
+  get autoGitState(): RoomAutoGitState | null {
+    return this.lastAutoGitState
   }
 
   /** Connects and resolves once replay has caught up and unacknowledged batches were resent. */
@@ -140,15 +282,199 @@ export class SessionRoomClient {
     }
   }
 
-  /** Asks the room for a barrier at its current sequence (Section 15.3). */
-  requestBarrier(): Promise<RoomBarrier> {
-    if (!this.connection || this.clientState !== "live") {
-      return Promise.reject(new Error("Connect to the session room before requesting a barrier"))
-    }
-    const barrier = new Promise<RoomBarrier>((resolve, reject) => this.barrierWaiters.push({ resolve, reject }))
-    this.connection.send(JSON.stringify({ type: "barrier_request" }))
-    return barrier
+  // ─── AutoGit (Section 14, 15) ────────────────────────────────────────────────
+
+  /** Tells the room whether this daemon can push the session branch; sent again after each reconnect. */
+  setAutoGitEligibility(eligible: boolean): void {
+    this.autoGitEligible = eligible
+    if (this.clientState === "live") this.sendEligibility()
   }
+
+  /** Extends this daemon's lease. The room refuses with LEASE_STALE once it has moved on (Section 14.6). */
+  async renewLease(generation: number): Promise<RoomLease> {
+    return (await this.request("lease_ack", { type: "lease_renew", generation })).lease
+  }
+
+  /** Gives the lease up now, so the room elects another device without waiting for it to run out. */
+  releaseLease(generation: number): void {
+    if (this.clientState !== "live") return
+    this.connection?.send(JSON.stringify({ type: "lease_release", generation }))
+  }
+
+  /** Tells every member why the leader stopped saving, and what kind of stop it is; null clears it. */
+  setLeaderNotice(generation: number, notice: string | null, code: string | null = null): void {
+    if (this.clientState !== "live") return
+    this.connection?.send(JSON.stringify({ type: "lease_notice", generation, notice, code }))
+  }
+
+  /**
+   * Asks the room for a barrier at its current sequence (Section 15.3). `onBarrier`
+   * runs as the answer arrives, before any later batch is applied, so it sees this
+   * replica exactly at the barrier.
+   */
+  async requestBarrier(generation: number, onBarrier?: (barrier: RoomBarrier) => void, rebaseAdoptionId?: string): Promise<RoomBarrier> {
+    const reply = await this.request(
+      "barrier_ack",
+      { type: "barrier_request", generation, ...(rebaseAdoptionId ? { rebaseAdoptionId } : {}) },
+      onBarrier ? (answer) => onBarrier(answer.barrier) : undefined,
+    )
+    return reply.barrier
+  }
+
+  /** A durable replica snapshot does not require a Git credential or leader lease. */
+  async requestSnapshotBarrier(onBarrier: (barrier: RoomBarrier) => void): Promise<RoomBarrier> {
+    return (await this.request("barrier_ack", { type: "snapshot_barrier_request" },
+      (answer) => onBarrier(answer.barrier))).barrier
+  }
+
+  /** Records a pushed checkpoint in the room, which tells every member (Section 15.10). */
+  async publishSnapshot(generation: number, snapshot: CloudSnapshotRecord): Promise<CloudSnapshotRecord> {
+    const result = (await this.request("snapshot_ack", { type: "snapshot_publish", generation, snapshot })).snapshot
+    if (!result) throw new Error("Room did not retain the snapshot")
+    return result
+  }
+
+  async getSnapshot(): Promise<CloudSnapshotRecord | null> {
+    return (await this.request("snapshot_ack", { type: "snapshot_get" })).snapshot
+  }
+
+  async getLifecycleFence(): Promise<SessionLifecycleFence | null> {
+    return (await this.getLifecycleState()).fence
+  }
+
+  async getLifecycleState(): Promise<SessionLifecycleState> {
+    const { fence, pausedClose } = await this.request("lifecycle_ack", { type: "lifecycle_get" })
+    return { fence, ...(pausedClose ? { pausedClose } : {}) }
+  }
+
+  async prepareLifecycleFence(intent: "pause" | "close", barrierId: string,
+    allowUnpublishedGit = false): Promise<SessionLifecycleFence> {
+    const { fence } = await this.request("lifecycle_ack", {
+      type: "lifecycle_prepare", intent, barrierId, allowUnpublishedGit,
+    })
+    if (!fence) throw new Error("Room did not retain the lifecycle fence")
+    return fence
+  }
+
+  async cancelLifecycleFence(fenceId: string): Promise<void> {
+    await this.request("lifecycle_ack", { type: "lifecycle_cancel", fenceId })
+  }
+
+  async commitLifecycleFence(fenceId: string): Promise<void> {
+    await this.request("lifecycle_ack", { type: "lifecycle_commit", fenceId })
+  }
+
+  /** Requires a dedicated paused_close ticket; ordinary recovery remains read-only. */
+  async closePausedSession(pauseFenceId: string, barrierId: string, allowUnpublishedGit: boolean): Promise<void> {
+    await this.request("lifecycle_ack", { type: "paused_close", pauseFenceId, barrierId, allowUnpublishedGit })
+  }
+
+  /** Records a pushed checkpoint in the room, which tells every member (Section 15.10). */
+  async beginIntegration(generation: number, adoptionId: string): Promise<RoomIntegrationBarrier> {
+    return (await this.request("integration_started", { type: "integration_begin", generation, adoptionId })).barrier
+  }
+
+  async finishIntegration(generation: number, id: string, batch?: CollaborationBatch): Promise<number> {
+    return (await this.request("integration_finished", { type: "integration_finish", generation, id,
+      ...(batch ? { batchId: batch.batchId, encryptedPayload: this.transport.encryptBatch(batch) } : {}) })).sessionSeq
+  }
+
+  async getRebaseReceipt(id: string): Promise<RoomRebaseReceipt | null> {
+    return (await this.request("rebase_receipt_ack", { type: "rebase_receipt_get", id })).receipt
+  }
+
+  async beginRebaseAdoption(generation: number, basis: { id: string; from: string; resultOid: string }): Promise<RoomRebaseAdoption> {
+    return (await this.request("rebase_adoption_ack", { type: "rebase_adoption_begin", generation, ...basis })).adoption
+  }
+
+  async publishCheckpoint(generation: number, checkpoint: RoomCheckpointInput): Promise<RoomCheckpoint> {
+    return (await this.request("checkpoint_ack", { type: "checkpoint_publish", generation, checkpoint })).checkpoint
+  }
+
+  /**
+   * Records that the last checkpoint still holds the session at this barrier: Git had
+   * nothing new to take, as after an edit to an ignored env file.
+   */
+  async markSavedThrough(generation: number, barrierId: string): Promise<RoomCheckpoint> {
+    return (await this.request("checkpoint_clean_ack", { type: "checkpoint_clean", generation, barrierId })).checkpoint
+  }
+
+  /** Asks the leader for a checkpoint now. False when no device leads. */
+  async requestCheckpoint(): Promise<boolean> {
+    return (await this.request("checkpoint_request_ack", { type: "checkpoint_request" })).routed
+  }
+
+  async requestFreshCheckpoint(): Promise<{ routed: boolean; serverTime: number }> {
+    const reply = await this.request("checkpoint_request_ack", { type: "checkpoint_request" })
+    if (!Number.isFinite(reply.serverTime)) throw new Error("The session room needs an update before merge review")
+    return { routed: reply.routed, serverTime: reply.serverTime! }
+  }
+
+  /** Asks the leader to rebase the session onto its target. False when no device leads. */
+  async requestRebase(allowConflicts: boolean): Promise<boolean> {
+    return (await this.request("rebase_request_ack", { type: "rebase_request", allowConflicts })).routed
+  }
+
+  private request<K extends RequestReply["type"]>(
+    expected: K,
+    message: Record<string, unknown>,
+    onReply?: (reply: ReplyOf<K>) => void,
+  ): Promise<ReplyOf<K>> {
+    const connection = this.connection
+    if (!connection || (this.clientState !== "live" && !(message.type === "snapshot_get" && this.clientState === "syncing"))) {
+      return Promise.reject(new RoomRequestError("NOT_CONNECTED", "The session room is not connected"))
+    }
+    this.requestCounter += 1
+    const requestId = `req_${this.requestCounter}`
+    return new Promise<ReplyOf<K>>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.requests.delete(requestId)
+        reject(new RoomRequestError("TIMEOUT", `The session room did not answer ${String(message.type)}`))
+      }, this.requestTimeoutMs)
+      this.requests.set(requestId, {
+        expected,
+        resolve: resolve as (reply: RequestReply) => void,
+        reject,
+        timer,
+        onReply: onReply as ((reply: RequestReply) => void) | undefined,
+      })
+      connection.send(JSON.stringify({ ...message, requestId }))
+    })
+  }
+
+  private settleRequest(reply: RequestReply): void {
+    const pending = reply.requestId ? this.requests.get(reply.requestId) : undefined
+    if (!pending || !reply.requestId) return
+    this.requests.delete(reply.requestId)
+    clearTimeout(pending.timer)
+    if (reply.type !== pending.expected) {
+      pending.reject(new RoomRequestError("BAD_REPLY", `Expected ${pending.expected}, got ${reply.type}`))
+      return
+    }
+    try {
+      pending.onReply?.(reply)
+    } catch (error) {
+      pending.reject(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
+    pending.resolve(reply)
+  }
+
+  private rejectRequest(requestId: string, error: Error): boolean {
+    const pending = this.requests.get(requestId)
+    if (!pending) return false
+    this.requests.delete(requestId)
+    clearTimeout(pending.timer)
+    pending.reject(error)
+    return true
+  }
+
+  private sendEligibility(): void {
+    if (this.autoGitEligible === null) return
+    this.connection?.send(JSON.stringify({ type: "autogit_eligibility", eligible: this.autoGitEligible }))
+  }
+
+  // ─── Connection ──────────────────────────────────────────────────────────────
 
   private async openConnection(): Promise<void> {
     this.setState("connecting")
@@ -205,9 +531,30 @@ export class SessionRoomClient {
     }
 
     switch (message.type) {
+      case "snapshot_required":
+        if (!Number.isSafeInteger(message.replayFloor) || message.replayFloor < 0) {
+          this.disconnect()
+          return
+        }
+        this.requiredSnapshotSeq = Math.max(this.requiredSnapshotSeq, message.replayFloor)
+        if (this.loadSnapshot && this.connection && !this.restoringSnapshot) {
+          this.setState("syncing")
+          this.restoringSnapshot = true
+          void this.bootstrapSnapshot(this.connection)
+        } else if (!this.loadSnapshot) {
+          this.lastError = { code: "SNAPSHOT_REQUIRED", message: "Update this client to restore compacted session history" }
+          this.disconnect()
+        }
+        return
       case "ready":
+        this.supportsSnapshots = message.snapshots === true
         this.setState("syncing")
-        this.requestSync(this.transport.lastAppliedSessionSeq)
+        if (this.supportsSnapshots && this.loadSnapshot && this.connection) {
+          this.restoringSnapshot = true
+          void this.bootstrapSnapshot(this.connection)
+        } else {
+          this.requestSync(this.transport.lastAppliedSessionSeq)
+        }
         return
       case "sync_delta":
         for (const batch of message.batches) this.applyWireBatch(batch)
@@ -224,12 +571,52 @@ export class SessionRoomClient {
         }
         return
       case "session_batch":
+        if (this.restoringSnapshot) {
+          this.snapshotBufferedChars += message.batch.encryptedPayload.length
+          if (this.snapshotBufferedChars > 32 * 1024 * 1024) {
+            this.lastError = { code: "SNAPSHOT_BACKLOG", message: "Snapshot download fell behind; reconnect to retry" }
+            this.disconnect()
+            return
+          }
+          this.snapshotBufferedBatches.push(message.batch)
+          return
+        }
         this.applyWireBatch(message.batch)
         return
+      case "integration_started":
+      case "integration_finished":
+      case "rebase_receipt_ack":
+      case "rebase_adoption_ack":
       case "barrier_ack":
-        this.barrierWaiters.shift()?.resolve(message.barrier)
+      case "lifecycle_ack":
+      case "snapshot_ack":
+      case "lease_ack":
+      case "checkpoint_ack":
+      case "checkpoint_clean_ack":
+      case "checkpoint_request_ack":
+      case "rebase_request_ack":
+        this.settleRequest(message)
+        return
+      case "autogit_state":
+        this.lastAutoGitState = {
+          lease: message.lease ?? null,
+          checkpoint: message.checkpoint ?? null,
+          rebaseAdoption: message.rebaseAdoption ?? null,
+          serverTime: message.serverTime,
+        }
+        this.onAutoGitState?.(this.lastAutoGitState)
+        return
+      case "checkpoint_requested":
+        this.onCheckpointRequested?.(message.requestedByPrincipalId ?? null)
+        return
+      case "rebase_requested":
+        this.onRebaseRequested?.(message.allowConflicts === true, message.requestedByPrincipalId ?? null)
         return
       case "error":
+        // A refused request belongs to its caller, not to the connection.
+        if (message.requestId && this.rejectRequest(message.requestId, new RoomRequestError(message.code, message.message))) {
+          return
+        }
         this.lastError = { code: message.code, message: message.message }
         if (!message.recoverable) {
           this.failWaiters(new Error(`${message.code}: ${message.message}`))
@@ -243,7 +630,32 @@ export class SessionRoomClient {
     for (const [batchId, encrypted] of this.pending) {
       this.sendBatch(batchId, encrypted)
     }
+    this.sendEligibility()
     for (const waiter of this.liveWaiters.splice(0)) waiter.resolve()
+  }
+
+  private async bootstrapSnapshot(connection: RoomConnection): Promise<void> {
+    try {
+      const record = await this.getSnapshot()
+      if (record && record.sessionSeq > this.transport.lastAppliedSessionSeq) {
+        const snapshot = await this.loadSnapshot!(record)
+        if (this.connection !== connection) return
+        this.transport.restoreCloudSnapshot(snapshot, record.sessionSeq)
+      }
+      if (this.connection !== connection) return
+      if (this.transport.lastAppliedSessionSeq < this.requiredSnapshotSeq) {
+        throw new Error("The room replay floor has no usable recovery snapshot")
+      }
+      this.restoringSnapshot = false
+      for (const batch of this.snapshotBufferedBatches) this.applyWireBatch(batch)
+      this.snapshotBufferedBatches = []
+      this.snapshotBufferedChars = 0
+      this.requestSync(this.transport.lastAppliedSessionSeq)
+    } catch (error) {
+      if (this.connection !== connection) return
+      this.lastError = { code: "SNAPSHOT_REJECTED", message: error instanceof Error ? error.message : "Snapshot recovery failed" }
+      this.disconnect()
+    }
   }
 
   private applyWireBatch(batch: WireBatch): void {
@@ -271,13 +683,20 @@ export class SessionRoomClient {
   private handleClose(connection: RoomConnection | null): void {
     if (!connection || connection !== this.connection) return
     this.connection = null
+    this.restoringSnapshot = false
+    this.snapshotBufferedBatches = []
+    this.snapshotBufferedChars = 0
     this.setState("disconnected")
     this.failWaiters(new Error("The session room connection closed"))
   }
 
   private failWaiters(error: Error): void {
     for (const waiter of this.liveWaiters.splice(0)) waiter.reject(error)
-    for (const waiter of this.barrierWaiters.splice(0)) waiter.reject(error)
+    for (const [requestId, pending] of this.requests) {
+      this.requests.delete(requestId)
+      clearTimeout(pending.timer)
+      pending.reject(new RoomRequestError("NOT_CONNECTED", error.message))
+    }
   }
 
   private setState(state: RoomClientState): void {

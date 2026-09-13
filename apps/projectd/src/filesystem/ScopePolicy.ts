@@ -5,12 +5,14 @@
  * Invariants:
  * - C38: .git is not replicated project content.
  * - C39: Tracked files are shared regardless of folder name (vendor, dist, build).
- * - C40: Ignored local state stays local by default.
+ * - C40: Ignored local state stays local by default. A session that shares env files
+ *   admits them anyway (environmentFiles.ts); AutoGit still never commits them.
  * - C41: Shared file membership is sticky once admitted.
  */
 
 import path from "node:path"
 import type { GitService } from "../git/GitService"
+import { isSharedEnvironmentFile } from "./environmentFiles"
 
 export const TRANSIENT_EDITOR_PATTERNS = [
   /\.DS_Store$/,
@@ -30,11 +32,14 @@ export const TRANSIENT_EDITOR_PATTERNS = [
 export class ScopePolicy {
   readonly workspaceRoot: string
   readonly gitService?: GitService
+  /** Whether env files join the session even though Git ignores them. */
+  readonly shareEnvironmentFiles: boolean
   private readonly admittedFiles = new Set<string>()
 
-  constructor(workspaceRoot: string, gitService?: GitService) {
+  constructor(workspaceRoot: string, gitService?: GitService, options: { shareEnvironmentFiles?: boolean } = {}) {
     this.workspaceRoot = path.resolve(workspaceRoot)
     this.gitService = gitService
+    this.shareEnvironmentFiles = options.shareEnvironmentFiles === true
   }
 
   isAdmitted(relativePath: string): boolean {
@@ -89,7 +94,8 @@ export class ScopePolicy {
    * Rules:
    * 1. If always ignored (.git, transients) -> false.
    * 2. Invariant C41: If already admitted, membership is sticky -> true.
-   * 3. Invariant C39 & C40: Query GitService for ignore rules. If tracked or not ignored -> true.
+   * 3. Env files, when the session shares them -> true.
+   * 4. Invariant C39 & C40: Query GitService for ignore rules. If tracked or not ignored -> true.
    */
   async isInScope(relativePath: string, isTrackedHint = false): Promise<boolean> {
     const norm = this.normalizeRelativePath(relativePath)
@@ -106,6 +112,10 @@ export class ScopePolicy {
     // Invariant C39: Tracked files are ALWAYS in scope regardless of directory name
     if (isTrackedHint) {
       this.admittedFiles.add(norm)
+      return true
+    }
+
+    if (this.shareEnvironmentFiles && isSharedEnvironmentFile(norm)) {
       return true
     }
 
@@ -136,7 +146,7 @@ export class ScopePolicy {
       if (this.isAlwaysIgnored(norm)) {
         continue
       }
-      if (this.admittedFiles.has(norm)) {
+      if (this.admittedFiles.has(norm) || (this.shareEnvironmentFiles && isSharedEnvironmentFile(norm))) {
         inScope.push(norm)
         continue
       }

@@ -117,7 +117,7 @@ describe("ProviderStatusBanner", () => {
     expect(markup).toContain("The installed provider version did not change.");
     expect(markup).toContain("Update details");
     expect(markup).toContain("Already up-to-date.");
-    expect(markup).toContain("Codex 0.150.1 is behind 0.151.0.");
+    expect(markup).toContain("0.151.0 available.");
     expect(markup).not.toContain("Provider connection is healthy.");
   });
 

@@ -32,6 +32,10 @@ interface DurableObjectStorage {
   delete(key: string): Promise<boolean>
   list<T>(options?: DurableObjectListOptions): Promise<Map<string, T>>
   transaction<T>(closure: (transaction: DurableObjectStorage) => Promise<T>): Promise<T>
+  /** Calls the object's alarm() at that time; setting it again moves the one alarm. */
+  setAlarm(scheduledTime: number | Date): Promise<void>
+  getAlarm(): Promise<number | null>
+  deleteAlarm(): Promise<void>
 }
 
 /** WebSocket Hibernation: per-socket state that survives eviction of the object. */
@@ -68,10 +72,12 @@ interface R2ObjectBody {
 }
 
 interface R2Bucket {
+  head(key: string): Promise<{ size: number } | null>
   put(
     key: string,
     value: ReadableStream<Uint8Array> | ArrayBuffer | Uint8Array,
     options?: {
+      onlyIf?: Headers
       sha256?: ArrayBuffer | Uint8Array
       httpMetadata?: { contentType?: string }
       customMetadata?: Record<string, string>

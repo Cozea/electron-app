@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { asBranchName } from "@shared/collaboration"
 import { GitService } from "../../apps/projectd/src/git/GitService"
 import { MergeCoordinator } from "../../apps/projectd/src/autogit/MergeCoordinator"
+import { useTestGitIdentity } from "../helpers/gitIdentity"
+
+useTestGitIdentity()
 
 describe("P22 Merge/PR controls", () => {
   const tmpDir = "/tmp"

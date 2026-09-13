@@ -20,7 +20,24 @@ describe("P23 collaboration gate", () => {
     ).toEqual({ enabled: false, reason: "private-branch" })
   })
 
-  it("lets an active or dormant session turn collaboration on for its branch", () => {
+  it("leaves a session's branch to the daemon, on the shared branch too", () => {
+    for (const lifecycle of ["ACTIVE", "DORMANT", "PAUSED"]) {
+      expect(
+        resolveCollaborationGate({
+          activeBranch: "main",
+          sharedBranch: "main",
+          sessions: [{ branchName: "main", lifecycle }],
+          sessionsUseDaemon: true,
+        }),
+      ).toEqual({ enabled: false, reason: "session-daemon" })
+    }
+    // Branches without a session keep the in-app behaviour.
+    expect(
+      resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions: [], sessionsUseDaemon: true }),
+    ).toEqual({ enabled: true, reason: "shared-branch" })
+  })
+
+  it("with daemon sessions off, lets an active or dormant session turn collaboration on for its branch", () => {
     for (const lifecycle of ["ACTIVE", "DORMANT"]) {
       expect(
         resolveCollaborationGate({

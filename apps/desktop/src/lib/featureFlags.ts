@@ -17,11 +17,11 @@ const DEFINITIONS = {
    */
   paletteEnabled: { key: 'VITE_FF_COZEA_PALETTE_ENABLED', defaultValue: true },
   /**
-   * Live sessions sync through the cozea-projectd daemon instead of the in-app Yjs
-   * engine. Off until the daemon runs for every user; turning it on needs a running
-   * daemon, and the in-app engine takes over again whenever the daemon is unreachable.
+   * Live sessions sync through the cozea-projectd daemon, which the app starts, and
+   * the in-app Yjs engine leaves session branches alone. `VITE_FF_DAEMON_COLLABORATION=0`
+   * hands session branches back to the in-app engine.
    */
-  daemonCollaboration: { key: 'VITE_FF_DAEMON_COLLABORATION', defaultValue: false },
+  daemonCollaboration: { key: 'VITE_FF_DAEMON_COLLABORATION', defaultValue: true },
 } satisfies Record<string, FeatureFlagDefinition>
 
 function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean {

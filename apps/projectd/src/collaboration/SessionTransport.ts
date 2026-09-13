@@ -6,7 +6,7 @@
 
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto"
 
-import type { CollaborationBatch, SessionReplica } from "./SessionReplica"
+import type { CollaborationBatch, SessionReplica, ReplicaSnapshot } from "./SessionReplica"
 import type { OutboundBatchQueue } from "./OutboundBatchQueue"
 
 const ROOM_KEY_BYTES = 32
@@ -15,6 +15,10 @@ export interface SessionTransportOptions {
   sessionId: string
   roomUrl?: string
   roomKey: Buffer | Uint8Array // The session's 32-byte AES-256-GCM key (Section 26.2)
+  /** Current content-key generation. Version 1 is the pre-rotation wire format. */
+  roomKeyVersion?: number
+  /** Older keys retained only for authorized members so persisted room history can replay. */
+  previousRoomKeys?: Readonly<Record<number, Buffer | Uint8Array>>
   queue?: OutboundBatchQueue
   replica: SessionReplica
 }
@@ -24,9 +28,8 @@ export class SessionTransport {
   readonly roomUrl?: string
   readonly replica: SessionReplica
   readonly queue?: OutboundBatchQueue
-  private readonly roomKey: Buffer
-  // Binds every ciphertext to this session, so a batch cannot be replayed into another.
-  private readonly associatedData: Buffer
+  private readonly roomKeys = new Map<number, Buffer>()
+  private readonly activeKeyVersion: number
 
   /** Every sessionSeq up to and including this one has been applied or acknowledged. */
   public lastAppliedSessionSeq = 0
@@ -43,25 +46,46 @@ export class SessionTransport {
       throw new Error(`Session room key must be ${ROOM_KEY_BYTES} bytes, got ${roomKey.length}`)
     }
 
+    const roomKeyVersion = Math.max(1, Math.floor(options.roomKeyVersion ?? 1))
     this.sessionId = options.sessionId
     this.roomUrl = options.roomUrl
     this.replica = options.replica
     this.queue = options.queue
-    this.roomKey = roomKey
-    this.associatedData = Buffer.from(`cozea-session-batch:v1:${options.sessionId}`, "utf8")
+    this.activeKeyVersion = roomKeyVersion
+    this.roomKeys.set(roomKeyVersion, roomKey)
+    for (const [versionText, keyBytes] of Object.entries(options.previousRoomKeys ?? {})) {
+      const version = Number(versionText)
+      const key = Buffer.from(keyBytes)
+      if (!Number.isSafeInteger(version) || version < 1 || version >= roomKeyVersion || key.length !== ROOM_KEY_BYTES) continue
+      this.roomKeys.set(version, key)
+    }
   }
 
   get connected(): boolean {
     return this.isConnected
   }
 
+  restoreCloudSnapshot(snapshot: ReplicaSnapshot, sequence: number): void {
+    if (!Number.isSafeInteger(sequence) || sequence < this.lastAppliedSessionSeq || this.replica.hasUnexportedChanges()) {
+      throw new Error("Cannot replace the replay baseline with this snapshot")
+    }
+    this.replica.restoreSnapshot(snapshot)
+    this.lastAppliedSessionSeq = sequence
+    for (const applied of this.appliedAboveWatermark) {
+      if (applied <= sequence) this.appliedAboveWatermark.delete(applied)
+    }
+    while (this.appliedAboveWatermark.delete(this.lastAppliedSessionSeq + 1)) this.lastAppliedSessionSeq++
+    this.lastDurableSessionSeq = Math.max(this.lastDurableSessionSeq, this.lastAppliedSessionSeq)
+  }
+
   /**
    * Section 13.5: Encrypts collaboration batch payload client-side with AES-256-GCM.
    */
   encryptBatch(batch: CollaborationBatch): string {
+    const roomKey = this.requireKey(this.activeKeyVersion)
     const iv = randomBytes(12)
-    const cipher = createCipheriv("aes-256-gcm", this.roomKey, iv)
-    cipher.setAAD(this.associatedData)
+    const cipher = createCipheriv("aes-256-gcm", roomKey, iv)
+    cipher.setAAD(this.associatedData(this.activeKeyVersion))
 
     // Base64 serialize Uint8Arrays
     const plaintext = JSON.stringify(batch, (_, val) => {
@@ -76,20 +100,25 @@ export class SessionTransport {
 
     // Envelope: iv (12 bytes) + tag (16 bytes) + ciphertext
     const combined = Buffer.concat([iv, tag, encrypted])
-    return combined.toString("base64")
+    const encoded = combined.toString("base64")
+    // Version 1 was originally an unprefixed base64 payload. New writes use an
+    // explicit prefix while the decoder still accepts persisted legacy v1 batches.
+    return `v1:${this.activeKeyVersion}:${encoded}`
   }
 
   /**
    * Decrypts collaboration batch payload client-side.
    */
   decryptBatch(encryptedBase64: string): CollaborationBatch {
-    const combined = Buffer.from(encryptedBase64, "base64")
+    const envelope = parseKeyedEnvelope(encryptedBase64)
+    const roomKey = this.requireKey(envelope.keyVersion)
+    const combined = Buffer.from(envelope.payload, "base64")
     const iv = combined.subarray(0, 12)
     const tag = combined.subarray(12, 28)
     const ciphertext = combined.subarray(28)
 
-    const decipher = createDecipheriv("aes-256-gcm", this.roomKey, iv)
-    decipher.setAAD(this.associatedData)
+    const decipher = createDecipheriv("aes-256-gcm", roomKey, iv)
+    decipher.setAAD(this.associatedData(envelope.keyVersion))
     decipher.setAuthTag(tag)
 
     const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()])
@@ -106,6 +135,17 @@ export class SessionTransport {
       throw new Error(`Batch ${batch.batchId} belongs to session ${batch.sessionId}, not ${this.sessionId}`)
     }
     return batch
+  }
+
+  private requireKey(keyVersion: number): Buffer {
+    const key = this.roomKeys.get(keyVersion)
+    if (!key) throw new Error(`Session ${this.sessionId} has no key for generation ${keyVersion}`)
+    return key
+  }
+
+  private associatedData(keyVersion: number): Buffer {
+    const suffix = keyVersion === 1 ? "" : `:key:${keyVersion}`
+    return Buffer.from(`cozea-session-batch:v1:${this.sessionId}${suffix}`, "utf8")
   }
 
   /**
@@ -147,6 +187,14 @@ export class SessionTransport {
     }
     this.lastDurableSessionSeq = Math.max(this.lastDurableSessionSeq, sessionSeq)
   }
+}
+
+function parseKeyedEnvelope(value: string): { keyVersion: number; payload: string } {
+  const match = /^v1:(\d+):(.+)$/.exec(value)
+  if (!match) return { keyVersion: 1, payload: value }
+  const keyVersion = Number(match[1])
+  if (!Number.isSafeInteger(keyVersion) || keyVersion < 1) throw new Error("Invalid session key generation")
+  return { keyVersion, payload: match[2] }
 }
 
 function assertSessionSeq(sessionSeq: number): void {

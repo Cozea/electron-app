@@ -824,6 +824,7 @@ const en = {
   "inbox.declined": "Invitation declined",
   "inbox.invitedBy": "Invited by",
   "inbox.deviceInvitations": "Device invitations",
+  "inbox.liveSessions": "Live sessions",
   "assistant.questions.label": "Questions from the agent",
   "assistant.questions.hint": "The agent can keep working while you answer.",
   "assistant.questions.answerLabel": "Answer",

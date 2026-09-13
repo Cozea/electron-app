@@ -18,7 +18,6 @@ import type {
   GitSyncRestoreResult,
   GitSyncStatusResult,
 } from '../../../../shared/electronApiTypes'
-import { buildGitAuthorizationHeader, resolveRepositoryAccessToken } from './gitAuth'
 import {
   commitAndPush as runCommitAndPushWorkflow,
   fetchMain as runFetchMainWorkflow,
@@ -50,7 +49,6 @@ import { pushWithSafety } from '../substrate/vcs/collabPush'
 
 interface GitCommandOptions {
   cwd: string
-  extraHeader?: string
   timeoutMs?: number
 }
 
@@ -63,7 +61,8 @@ interface GitCommandOptions {
  * `branch <name>` and `--set-upstream-to` all write refs). Keeping that form
  * read-only is load-bearing: getRepoMetadata() runs it while computing, and
  * invalidating mid-computation would evict the entry the same call just
- * published, disabling the cache entirely.
+ * published, disabling the cache entirely. `config` likewise only qualifies in
+ * its `--get` form.
  */
 const READ_ONLY_GIT_COMMANDS = new Set([
   'cat-file',
@@ -81,19 +80,18 @@ function isReadOnlyGitInvocation(args: readonly string[]): boolean {
   const subcommand = args.find((arg) => !arg.startsWith('-'))
   if (!subcommand) return false
   if (subcommand === 'branch') return args.includes('--show-current')
+  if (subcommand === 'config') return args.includes('--get')
   return READ_ONLY_GIT_COMMANDS.has(subcommand)
-}
-
-interface GitAuthOptions {
-  provider?: string
-  accessToken?: string
-  encryptedCredentials?: string
-  keyId?: string
-  debug?: boolean
 }
 
 export class GitSyncService {
   private static instance: GitSyncService
+
+  /**
+   * Cozea's identity for commits in repositories whose Git config names nobody, by
+   * project path. It reaches Git through the environment, never the repository's config.
+   */
+  private readonly fallbackIdentity = new Map<string, Record<string, string>>()
 
   static getInstance(): GitSyncService {
     if (!GitSyncService.instance) {
@@ -193,11 +191,6 @@ export class GitSyncService {
     projectPath: string
     repoUrl: string
     branch?: string
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
     debug?: boolean
   }): Promise<GitSyncCloneResult> {
     const branch = normalizeGitBranch(options.branch)
@@ -237,15 +230,11 @@ export class GitSyncService {
       fs.mkdirSync(parentDir, { recursive: true })
       const cloneArgs = ['clone', '--branch', branch, '--single-branch', normalizeGitRemoteUrl(options.repoUrl), projectPath]
       let clone = await this.runGit(cloneArgs, {
-        cwd: parentDir,
-        extraHeader: this.resolveExtraHeader(options),
-        timeoutMs: 120_000,
+        cwd: parentDir,        timeoutMs: 120_000,
       })
       if (!clone.success && isMissingRemoteBranchError(clone.error)) {
         clone = await this.runGit(['clone', normalizeGitRemoteUrl(options.repoUrl), projectPath], {
-          cwd: parentDir,
-          extraHeader: this.resolveExtraHeader(options),
-          timeoutMs: 120_000,
+          cwd: parentDir,          timeoutMs: 120_000,
         })
       }
       if (!clone.success) {
@@ -289,19 +278,12 @@ export class GitSyncService {
     remote?: string
     branch?: string
     repoUrl?: string
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
     debug?: boolean
   }): Promise<GitSyncFetchResult> {
     return runFetchMainWorkflow(options, {
       debug: this.debug.bind(this),
       getRepoMetadata: this.getRepoMetadata.bind(this),
-      setRemoteUrl: this.setRemoteUrl.bind(this),
-      resolveExtraHeader: this.resolveExtraHeader.bind(this),
-      runGit: this.runGit.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),      runGit: this.runGit.bind(this),
       getRevision: this.getRevision.bind(this),
       getCurrentBranch: this.getCurrentBranch.bind(this),
       getStatus: this.getStatus.bind(this),
@@ -430,19 +412,12 @@ export class GitSyncService {
     repoUrl?: string
     strategy?: 'merge' | 'ff-only'
     allowUnrelatedHistories?: boolean
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
     debug?: boolean
   }): Promise<GitSyncPullResult> {
     return runPullMainWorkflow(options, {
       debug: this.debug.bind(this),
       getRepoMetadata: this.getRepoMetadata.bind(this),
-      setRemoteUrl: this.setRemoteUrl.bind(this),
-      resolveExtraHeader: this.resolveExtraHeader.bind(this),
-      runGit: this.runGit.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),      runGit: this.runGit.bind(this),
       getRevision: this.getRevision.bind(this),
       getCurrentBranch: this.getCurrentBranch.bind(this),
       getStatus: this.getStatus.bind(this),
@@ -457,11 +432,6 @@ export class GitSyncService {
     remote?: string
     branch?: string
     repoUrl?: string
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
     debug?: boolean
   }): Promise<GitSyncReplayResult> {
     const remote = normalizeGitRemote(options.remote)
@@ -827,11 +797,6 @@ export class GitSyncService {
     projectPath: string
     repoUrl: string
     branch?: string
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
     debug?: boolean
   }): Promise<GitSyncSalvageResult> {
     const projectPath = path.resolve(options.projectPath)
@@ -853,11 +818,6 @@ export class GitSyncService {
       projectPath,
       repoUrl: options.repoUrl,
       branch: options.branch,
-      extraHeader: this.resolveExtraHeader(options),
-      provider: options.provider,
-      accessToken: options.accessToken,
-      encryptedCredentials: options.encryptedCredentials,
-      keyId: options.keyId,
       debug: options.debug,
     })
     if (!cloneResult.success) {
@@ -1042,11 +1002,6 @@ export class GitSyncService {
     remote?: string
     branch?: string
     repoUrl?: string
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
     debug?: boolean
   }): Promise<GitSyncRestoreResult> {
     const remote = normalizeGitRemote(options.remote)
@@ -1099,7 +1054,6 @@ export class GitSyncService {
 
     const checkout = await this.runGit(['checkout', '-B', branch, `${remote}/${branch}`], {
       cwd: projectPath,
-      extraHeader: this.resolveExtraHeader(options),
       timeoutMs: 120_000,
     })
     if (!checkout.success) {
@@ -1305,11 +1259,6 @@ export class GitSyncService {
     remote?: string
     branch?: string
     repoUrl?: string
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
     debug?: boolean
   }): Promise<GitSyncPushResult> {
     if (isSubstrateVcsEnabled()) {
@@ -1335,15 +1284,10 @@ export class GitSyncService {
         }
       }
 
-      const extraHeader = this.resolveExtraHeader(options)
       const runner = {
-        runGit: async (
-          args: string[],
-          runOptions: { cwd: string; extraHeader?: string; timeoutMs?: number },
-        ) =>
+        runGit: async (args: string[], runOptions: { cwd: string; timeoutMs?: number }) =>
           this.runGit(args, {
             cwd: runOptions.cwd,
-            extraHeader: runOptions.extraHeader,
             timeoutMs: runOptions.timeoutMs,
           }),
         getCurrentBranch: (cwd: string) => this.getCurrentBranch(cwd),
@@ -1362,7 +1306,6 @@ export class GitSyncService {
         projectPath,
         remote,
         branch,
-        extraHeader,
         runner,
       })
 
@@ -1383,7 +1326,6 @@ export class GitSyncService {
             projectPath,
             remote,
             branch,
-            extraHeader,
             runner,
           })
         }
@@ -1401,9 +1343,7 @@ export class GitSyncService {
     return runPushMainWorkflow(options, {
       debug: this.debug.bind(this),
       getRepoMetadata: this.getRepoMetadata.bind(this),
-      setRemoteUrl: this.setRemoteUrl.bind(this),
-      resolveExtraHeader: this.resolveExtraHeader.bind(this),
-      runGit: this.runGit.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),      runGit: this.runGit.bind(this),
       getRevision: this.getRevision.bind(this),
       getCurrentBranch: this.getCurrentBranch.bind(this),
       getStatus: this.getStatus.bind(this),
@@ -1420,18 +1360,11 @@ export class GitSyncService {
     branch?: string
     repoUrl?: string
     addAll?: boolean
-    extraHeader?: string
-    provider?: string
-    accessToken?: string
-    encryptedCredentials?: string
-    keyId?: string
   }): Promise<GitSyncCommitPushResult> {
     return runCommitAndPushWorkflow(options, {
       debug: this.debug.bind(this),
       getRepoMetadata: this.getRepoMetadata.bind(this),
-      setRemoteUrl: this.setRemoteUrl.bind(this),
-      resolveExtraHeader: this.resolveExtraHeader.bind(this),
-      runGit: this.runGit.bind(this),
+      setRemoteUrl: this.setRemoteUrl.bind(this),      runGit: this.runGit.bind(this),
       getRevision: this.getRevision.bind(this),
       getCurrentBranch: this.getCurrentBranch.bind(this),
       getStatus: this.getStatus.bind(this),
@@ -1460,17 +1393,30 @@ export class GitSyncService {
     return init
   }
 
-  private async ensureCommitIdentity(projectPath: string) {
-    const name = await this.runGit(['config', 'user.name', DEFAULT_GIT_USER_NAME], {
-      cwd: projectPath,
-      timeoutMs: 10_000,
-    })
-    if (!name.success) return name
-
-    return this.runGit(['config', 'user.email', DEFAULT_GIT_USER_EMAIL], {
-      cwd: projectPath,
-      timeoutMs: 10_000,
-    })
+  /**
+   * Makes sure commits here have an author without rewriting the repository's config.
+   * The person's own `user.name` and `user.email` apply whenever Git has them; any that
+   * are missing are filled in with Cozea's, for Cozea's commands only.
+   */
+  private async ensureCommitIdentity(projectPath: string): Promise<{ success: boolean; error?: string }> {
+    const [name, email] = await Promise.all(
+      ['user.name', 'user.email'].map((key) =>
+        this.runGit(['config', '--get', key], { cwd: projectPath, timeoutMs: 10_000 }),
+      ),
+    )
+    const fallback: Record<string, string> = {}
+    if (!name?.stdout.trim()) {
+      fallback.GIT_AUTHOR_NAME = DEFAULT_GIT_USER_NAME
+      fallback.GIT_COMMITTER_NAME = DEFAULT_GIT_USER_NAME
+    }
+    if (!email?.stdout.trim()) {
+      fallback.GIT_AUTHOR_EMAIL = DEFAULT_GIT_USER_EMAIL
+      fallback.GIT_COMMITTER_EMAIL = DEFAULT_GIT_USER_EMAIL
+    }
+    const key = path.resolve(projectPath)
+    if (Object.keys(fallback).length > 0) this.fallbackIdentity.set(key, fallback)
+    else this.fallbackIdentity.delete(key)
+    return { success: true }
   }
 
   private async setRemoteUrl(projectPath: string, repoUrl: string) {
@@ -1654,28 +1600,6 @@ export class GitSyncService {
     return null
   }
 
-  private resolveExtraHeader(options: GitAuthOptions & { extraHeader?: string }): string | undefined {
-    const explicit = options.extraHeader?.trim()
-    if (explicit) {
-      return explicit
-    }
-
-    if (!options.provider) {
-      return undefined
-    }
-
-    const resolved = resolveRepositoryAccessToken({
-      provider: options.provider,
-      accessToken: options.accessToken,
-      encryptedCredentials: options.encryptedCredentials,
-      keyId: options.keyId,
-    })
-    if (resolved.error || !resolved.accessToken) {
-      return undefined
-    }
-    return buildGitAuthorizationHeader(options.provider, resolved.accessToken) ?? undefined
-  }
-
   private async listRevisions(projectPath: string, args: string[]): Promise<string[]> {
     const result = await this.runGit(args, {
       cwd: projectPath,
@@ -1774,17 +1698,13 @@ export class GitSyncService {
   }
 
   private async runGit(args: string[], options: GitCommandOptions) {
-    const prefixedArgs = options.extraHeader?.trim()
-      ? ['-c', `http.extraheader=${options.extraHeader.trim()}`, ...args]
-      : args
-
-    const result = await runGitCommand(prefixedArgs, {
+    const identity = this.fallbackIdentity.get(path.resolve(options.cwd))
+    const result = await runGitCommand(args, {
       cwd: options.cwd,
       timeoutMs: options.timeoutMs ?? 60_000,
+      ...(identity ? { env: identity } : {}),
     })
 
-    // Tested against the original args, not prefixedArgs: a leading
-    // `-c http.extraheader=...` would otherwise be mistaken for the subcommand.
     // Failures invalidate too — a checkout or cherry-pick that reports an error
     // can still have moved refs partway.
     if (!isReadOnlyGitInvocation(args)) {

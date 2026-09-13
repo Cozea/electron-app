@@ -199,8 +199,8 @@ describe("P08 snapshot-anchored filesystem -> CRDT adapter", () => {
   })
 
   it("enqueues and persists outbound batches with SQLite durability", () => {
-    const queue = new OutboundBatchQueue(db)
     const sessionId = "sess_queue_test"
+    const queue = new OutboundBatchQueue(db, { sessionId, roomKey: new Uint8Array(32).fill(7) })
 
     const batch = {
       batchId: "batch_1",

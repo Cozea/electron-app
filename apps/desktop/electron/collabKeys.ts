@@ -4,6 +4,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { createDeviceIdentityKey } from '@shared/deviceIdentity'
+import { NativeMacHelper } from '../../projectd/src/native/NativeMacHelper'
+import { getSharedProjectdClient } from './projectd/ProjectdClient'
 
 // node's webcrypto.subtle is runtime-compatible with the DOM SubtleCrypto interface; type it as
 // such so the JsonWebKey/CryptoKey/BufferSource annotations (from lib.dom) line up.
@@ -356,6 +358,23 @@ export function isCollabEncryptionAvailable(): boolean {
   return safeStorage.isEncryptionAvailable()
 }
 
+/** Main-only handoff into this profile's OS Keychain. Private keys never cross renderer IPC. */
+export async function authorizeBackgroundCollaborationIdentity(): Promise<void> {
+  const helper = new NativeMacHelper(
+    app.isPackaged ? path.join(process.resourcesPath, 'projectd/cozea-projectd-mac-helper') : undefined,
+  )
+  const identity = await loadStoredIdentityOrThrow()
+  const existing = await helper.loadIdentity()
+  if (existing) {
+    const saved = JSON.parse(existing) as StoredCollabDeviceIdentity
+    if (saved.identityKey !== identity.identityKey) {
+      throw new Error('Background identity differs from this Cozea profile; reset it explicitly before attaching')
+    }
+    return
+  }
+  await helper.saveIdentity(JSON.stringify(identity))
+}
+
 export async function ensureCollabDeviceIdentity(): Promise<CollabDeviceIdentity> {
   const identity = await loadStoredIdentityOrThrow()
   return toPublicIdentity(identity)
@@ -559,8 +578,16 @@ export async function unwrapRoomKeyFromRecoveryKit(args: {
   }
 }
 
-export function deleteCollabDeviceIdentity(): { success: boolean; error?: string } {
+export async function deleteCollabDeviceIdentity(): Promise<{ success: boolean; error?: string }> {
   try {
+    const helper = new NativeMacHelper(
+      app.isPackaged ? path.join(process.resourcesPath, 'projectd/cozea-projectd-mac-helper') : undefined,
+    )
+    if (helper.isAvailable && await helper.loadIdentity()) {
+      const daemon = getSharedProjectdClient()
+      await daemon.request("sessions.clear")
+      await helper.deleteIdentity()
+    }
     const filePath = getDeviceIdentityPath()
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)

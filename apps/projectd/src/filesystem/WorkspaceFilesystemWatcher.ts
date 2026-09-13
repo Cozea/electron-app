@@ -82,6 +82,9 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     this.stableReader = options.stableReader ?? new StableFileReader()
     this.scanner = new WorkspaceScanner(this.workspaceRoot, this.scopePolicy, this.stableReader)
     this.fseventsClient = options.fseventsClient ?? new FSEventsClient(this.workspaceRoot)
+    // Registered once, so a watcher stopped and started again reports each event once.
+    this.fseventsClient.on("events", (items) => this.handleRawEvents(items))
+    this.fseventsClient.on("dropped", (reason) => this.handleDropped(reason))
   }
 
   get state(): WatcherLifecycle {
@@ -97,9 +100,6 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
 
     // Step 2: Start FSEvents and buffer hints
     this.bufferedHints = []
-    this.fseventsClient.on("events", (items) => this.handleRawEvents(items))
-    this.fseventsClient.on("dropped", (reason) => this.handleDropped(reason))
-
     await this.fseventsClient.start()
 
     // Step 3: Mark replica 'reconciling'
@@ -109,7 +109,16 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     // Step 4 & 5: Full scan in-scope tree and compare against materialization index
     const diff = await this.scanner.diffAgainstIndex(this.sessionId, this.index)
 
-    // Step 6: Process genuine offline local changes
+    // Step 6: Process genuine offline local changes. Deletes go first, so a file that
+    // was renamed is known to be gone when its new name turns up.
+    for (const deleted of diff.deleted) {
+      this.emit("event", {
+        type: "delete",
+        relativePath: deleted.relativePath,
+        fileId: deleted.fileId,
+      } as NormalizedFileDelete)
+    }
+
     for (const created of diff.created) {
       if (created.contentHash) {
         this.emit("event", {
@@ -138,14 +147,6 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
       }
     }
 
-    for (const deleted of diff.deleted) {
-      this.emit("event", {
-        type: "delete",
-        relativePath: deleted.relativePath,
-        fileId: deleted.fileId,
-      } as NormalizedFileDelete)
-    }
-
     // Step 7: Replay buffered watcher hints
     const replayHints = [...this.bufferedHints]
     this.bufferedHints = []
@@ -160,6 +161,7 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
   }
 
   private handleRawEvents(items: NativeFSEventItem[]): void {
+    if (this.lifecycle === "stopped") return
     if (this.lifecycle === "starting" || this.lifecycle === "reconciling") {
       this.bufferedHints.push(...items)
       return
@@ -180,6 +182,14 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
 
   async rescan(): Promise<void> {
     const diff = await this.scanner.diffAgainstIndex(this.sessionId, this.index)
+    // Deletes first, as at startup, so renames pair up.
+    for (const d of diff.deleted) {
+      this.emit("event", {
+        type: "delete",
+        relativePath: d.relativePath,
+        fileId: d.fileId,
+      } as NormalizedFileDelete)
+    }
     for (const c of diff.created) {
       if (c.contentHash) {
         this.emit("event", {
@@ -206,16 +216,14 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
         } as NormalizedFileChange)
       }
     }
-    for (const d of diff.deleted) {
-      this.emit("event", {
-        type: "delete",
-        relativePath: d.relativePath,
-        fileId: d.fileId,
-      } as NormalizedFileDelete)
-    }
   }
 
   private async processEventItem(item: NativeFSEventItem): Promise<void> {
+    // A folder moved or removed arrives as one event for the folder; its files are found by scanning.
+    if (item.isDir) {
+      await this.rescan()
+      return
+    }
     const rel = this.scopePolicy.normalizeRelativePath(item.path)
 
     if (this.scopePolicy.isAlwaysIgnored(rel)) {
@@ -246,8 +254,9 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
       }
     }
 
-    // Read stable bytes
-    const stable = await this.stableReader.read(absPath)
+    // The watcher needs stable hash/metadata only. The host reads actual payload bytes
+    // once if this proves to be a genuine local modification.
+    const stable = await this.stableReader.readMetadata(absPath)
     if (!stable.exists || !stable.contentHash) {
       // File deleted during atomic-save transition
       this.emit("event", {
@@ -258,9 +267,12 @@ export class WorkspaceFilesystemWatcher extends EventEmitter {
     }
 
     // Invariant C14 / Section 12.7: Hash-based echo classification
-    const isEcho = this.index.isEcho(this.sessionId, rel, stable.contentHash)
+    const indexed = this.index.getByPath(this.sessionId, rel)
+    const mode = (stable.mode ?? 0o100644) & 0o111 ? 0o100755 : 0o100644
+    const sameKind = stable.isSymlink === (indexed?.kind === "symlink")
+    const isEcho = sameKind && this.index.isEcho(this.sessionId, rel, stable.contentHash) && (stable.isSymlink || indexed?.mode === mode)
     if (isEcho) {
-      // Echo suppression: Disk content matches exact materialized hash. No event emitted!
+      // Suppress only matching content and mode; chmod is a real shared edit.
       return
     }
 

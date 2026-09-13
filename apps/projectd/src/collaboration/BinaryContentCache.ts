@@ -4,7 +4,7 @@
  * Master Specification: Section 9.8, 11.4
  */
 
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
@@ -69,19 +69,61 @@ export class BinaryContentCache {
     const cachedPath = this.getCachePath(contentHash)
 
     await fs.writeFile(cachedPath, buffer)
-
-    if (this.db) {
-      const stmt = this.db.db.prepare(`
-        INSERT INTO binary_cache (content_hash, local_path, size, verified_at, ref_count)
-        VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT(content_hash) DO UPDATE SET
-          verified_at = excluded.verified_at,
-          ref_count = binary_cache.ref_count + 1
-      `)
-      stmt.run(contentHash, cachedPath, buffer.length, Date.now())
-    }
+    this.record(contentHash, cachedPath, buffer.length)
 
     return { contentHash, size: buffer.length, cachedPath }
+  }
+
+  /**
+   * Stores a known immutable revision from a bounded stream. The content-addressed
+   * cache path is replaced only after the exact size and SHA-256 are verified.
+   */
+  async putFrom(input: {
+    contentHash: string
+    size: number
+    stream: (write: (chunk: Buffer) => Promise<void>) => Promise<void>
+  }): Promise<{ contentHash: string; size: number; cachedPath: string }> {
+    if (!/^[a-f0-9]{64}$/.test(input.contentHash) || !Number.isSafeInteger(input.size) || input.size < 0) {
+      throw new Error("Invalid binary cache stream metadata")
+    }
+    await this.ensureDir()
+    const cachedPath = this.getCachePath(input.contentHash)
+    const tempPath = `${cachedPath}.tmp.${randomUUID().slice(0, 8)}`
+    const handle = await fs.open(tempPath, "w", 0o600)
+    const digest = createHash("sha256")
+    let size = 0
+    try {
+      await input.stream(async (chunk) => {
+        if (!Buffer.isBuffer(chunk) || chunk.length === 0) return
+        if (size + chunk.length > input.size) throw new Error("Streamed binary cache content exceeds its revision size")
+        digest.update(chunk)
+        let offset = 0
+        while (offset < chunk.length) {
+          const { bytesWritten } = await handle.write(chunk, offset, chunk.length - offset, null)
+          if (bytesWritten <= 0) throw new Error("Could not write streamed binary cache content")
+          offset += bytesWritten
+        }
+        size += chunk.length
+      })
+      await handle.sync()
+    } catch (error) {
+      await handle.close().catch(() => undefined)
+      await fs.rm(tempPath, { force: true }).catch(() => undefined)
+      throw error
+    }
+    await handle.close()
+    const contentHash = digest.digest("hex")
+    if (size !== input.size || contentHash !== input.contentHash) {
+      await fs.rm(tempPath, { force: true })
+      throw new Error("Streamed binary cache content failed verification")
+    }
+    try {
+      await fs.rename(tempPath, cachedPath)
+    } finally {
+      await fs.rm(tempPath, { force: true }).catch(() => undefined)
+    }
+    this.record(contentHash, cachedPath, size)
+    return { contentHash, size, cachedPath }
   }
 
   async get(contentHash: string): Promise<Buffer | null> {
@@ -96,6 +138,79 @@ export class BinaryContentCache {
       return bytes
     } catch {
       return null
+    }
+  }
+
+  /** Writes provisional chunks; false means the sink must be discarded or reset. */
+  async copyTo(contentHash: string, expectedSize: number, write: (chunk: Buffer) => Promise<void>): Promise<boolean> {
+    const handle = await fs.open(this.getCachePath(contentHash), "r").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null
+      throw error
+    })
+    if (!handle) return false
+    try {
+      if ((await handle.stat()).size !== expectedSize) return false
+      const hash = createHash("sha256")
+      let total = 0
+      while (total < expectedSize) {
+        const buffer = Buffer.allocUnsafe(Math.min(CHUNK_SIZE_BYTES, expectedSize - total))
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, total)
+        if (!bytesRead) return false
+        const chunk = buffer.subarray(0, bytesRead)
+        hash.update(chunk)
+        await write(chunk)
+        total += bytesRead
+      }
+      return hash.digest("hex") === contentHash
+    } finally { await handle.close() }
+  }
+
+  /**
+   * Validates the complete cache object before exposing any bytes to a sink that
+   * cannot be reset. This permits safe network fallback into the same atomic
+   * materialization stream when a cache file is missing or corrupt.
+   */
+  async copyVerifiedTo(contentHash: string, expectedSize: number, write: (chunk: Buffer) => Promise<void>): Promise<boolean> {
+    const cachePath = this.getCachePath(contentHash)
+    const verifyHandle = await fs.open(cachePath, "r").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null
+      throw error
+    })
+    if (!verifyHandle) return false
+    try {
+      if ((await verifyHandle.stat()).size !== expectedSize) return false
+      const digest = createHash("sha256")
+      let position = 0
+      while (position < expectedSize) {
+        const buffer = Buffer.allocUnsafe(Math.min(CHUNK_SIZE_BYTES, expectedSize - position))
+        const { bytesRead } = await verifyHandle.read(buffer, 0, buffer.length, position)
+        if (!bytesRead) return false
+        digest.update(buffer.subarray(0, bytesRead))
+        position += bytesRead
+      }
+      if (digest.digest("hex") !== contentHash) return false
+    } finally {
+      await verifyHandle.close()
+    }
+
+    const streamHandle = await fs.open(cachePath, "r").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null
+      throw error
+    })
+    if (!streamHandle) return false
+    try {
+      if ((await streamHandle.stat()).size !== expectedSize) return false
+      let position = 0
+      while (position < expectedSize) {
+        const buffer = Buffer.allocUnsafe(Math.min(CHUNK_SIZE_BYTES, expectedSize - position))
+        const { bytesRead } = await streamHandle.read(buffer, 0, buffer.length, position)
+        if (!bytesRead) return false
+        await write(buffer.subarray(0, bytesRead))
+        position += bytesRead
+      }
+      return position === expectedSize
+    } finally {
+      await streamHandle.close()
     }
   }
 
@@ -128,5 +243,17 @@ export class BinaryContentCache {
       chunkSize: CHUNK_SIZE_BYTES,
       chunks,
     }
+  }
+
+  private record(contentHash: string, cachedPath: string, size: number): void {
+    if (!this.db) return
+    const stmt = this.db.db.prepare(`
+      INSERT INTO binary_cache (content_hash, local_path, size, verified_at, ref_count)
+      VALUES (?, ?, ?, ?, 1)
+      ON CONFLICT(content_hash) DO UPDATE SET
+        verified_at = excluded.verified_at,
+        ref_count = binary_cache.ref_count + 1
+    `)
+    stmt.run(contentHash, cachedPath, size, Date.now())
   }
 }

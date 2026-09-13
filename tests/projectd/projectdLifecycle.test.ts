@@ -8,6 +8,7 @@ import {
   ProjectdClient,
 } from "@cozea/projectd-protocol"
 import { ProjectdServer } from "../../apps/projectd/src/server/ProjectdServer"
+import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 
 describe("P02 projectd daemon & client protocol lifecycle", () => {
   const testSocketDir = "/tmp"
@@ -242,6 +243,30 @@ describe("P02 projectd daemon & client protocol lifecycle", () => {
 
       client1.disconnect()
       client2.disconnect()
+    })
+
+    it("keeps its event subscriptions when the daemon restarts", async () => {
+      server = new ProjectdServer({ socketPath: testSocketPath, database: new ProjectdDatabase(":memory:") })
+      await server.start()
+      const client = new ProjectdClient({ socketPath: testSocketPath, clientName: "electron-main" })
+      const received: string[] = []
+      await client.subscribe("session:czs_test", (evt: any) => received.push(evt.event))
+
+      await server.stop()
+      for (let waited = 0; client.connected && waited < 1_000; waited += 25) {
+        await new Promise((r) => setTimeout(r, 25))
+      }
+      expect(client.connected).toBe(false)
+
+      // The daemon comes back on the same socket, as after a crash or an update.
+      server = new ProjectdServer({ socketPath: testSocketPath, database: new ProjectdDatabase(":memory:") })
+      await server.start()
+      await client.health()
+      server.broadcast("session:czs_test", "status", { state: "live" })
+      await new Promise((r) => setTimeout(r, 50))
+
+      expect(received).toEqual(["status"])
+      client.disconnect()
     })
 
     it("handles unreachable daemon gracefully without crashing", async () => {

@@ -36,7 +36,7 @@ public final class KeychainService: @unchecked Sendable {
 
     private init() {}
 
-    public func saveIdentity(jsonString: String) throws {
+    public func saveIdentity(jsonString: String, account: String? = nil) throws {
         guard let data = jsonString.data(using: .utf8) else {
             throw KeychainServiceError.invalidData
         }
@@ -45,7 +45,7 @@ public final class KeychainService: @unchecked Sendable {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: accountName
+            kSecAttrAccount as String: account ?? accountName
         ]
 
         let updateAttributes: [String: Any] = [
@@ -73,11 +73,11 @@ public final class KeychainService: @unchecked Sendable {
         }
     }
 
-    public func loadIdentity() throws -> String? {
+    public func loadIdentity(account: String? = nil) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: accountName,
+            kSecAttrAccount as String: account ?? accountName,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -95,11 +95,11 @@ public final class KeychainService: @unchecked Sendable {
         return str
     }
 
-    public func deleteIdentity() throws {
+    public func deleteIdentity(account: String? = nil) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: accountName
+            kSecAttrAccount as String: account ?? accountName
         ]
 
         let status = SecItemDelete(query as CFDictionary)

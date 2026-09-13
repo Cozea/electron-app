@@ -9,7 +9,11 @@ import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { appToast } from "@/lib/appToast"
+import { SessionInvitationCard, type SessionInvitationItem } from "@/features/inbox/components/SessionInvitationCard"
+import { describeInviteeCopy, ensureInviteeCopy, type InviteeCopyOutcome } from "@/features/inbox/sessionCopy"
+import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -46,6 +50,33 @@ function formatRole(role: string): string {
     .join(" ")
 }
 
+interface AcceptedInvitation {
+  projectId: string
+  projectName: string
+  workspaceId?: string | null
+  /** What happens next, when there is more to say than "Invitation accepted". */
+  detail: string | null
+  /** True while Cozea is still setting up a copy of the project on this Mac. */
+  settingUp?: boolean
+}
+
+const NO_SESSION_INVITATIONS: SessionInvitationItem[] = []
+
+/** A clone can take a while, so its result is also announced for anyone who left the Inbox. */
+function announceInviteeCopy(copy: InviteeCopyOutcome, projectName: string): void {
+  switch (copy.kind) {
+    case "ready":
+      appToast.success({ title: `${projectName} is ready`, description: "Your Session Workbench is ready to open." })
+      return
+    case "no_repository":
+      appToast.info({ title: `Link your copy of ${projectName}`, description: "The session hasn't recorded its Git remote." })
+      return
+    case "failed":
+      appToast.error({ title: `No copy of ${projectName} was set up`, description: copy.message })
+      return
+  }
+}
+
 export function InboxPage() {
   const { t } = useTranslation()
   const { principalId } = useAuth()
@@ -55,6 +86,9 @@ export function InboxPage() {
     api.projectDeviceEnrollments.listIncoming,
     principalId ? {} : "skip",
   )
+  const sessionInvitations: SessionInvitationItem[] =
+    useQuery(api.collaborationSessions.listIncomingInvitations, principalId ? {} : "skip") ??
+    NO_SESSION_INVITATIONS
   const resolveEnrollment = useMutation(api.projectDeviceEnrollments.resolve)
 
   const [activeAction, setActiveAction] = useState<{
@@ -62,11 +96,17 @@ export function InboxPage() {
     accept: boolean
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [recentlyAccepted, setRecentlyAccepted] = useState<
-    Map<string, { projectId: string; projectName: string }>
-  >(new Map())
+  const [recentlyAccepted, setRecentlyAccepted] = useState<Map<string, AcceptedInvitation>>(new Map())
 
   useProjectHeader(null, null, { hideShare: true })
+
+  const rememberAccepted = useCallback((key: string, accepted: AcceptedInvitation) => {
+    setRecentlyAccepted((prev) => {
+      const next = new Map(prev)
+      next.set(key, accepted)
+      return next
+    })
+  }, [])
 
   const handleResolve = useCallback(
     async (enrollmentId: Id<"projectDeviceEnrollments">, accept: boolean, projectName: string) => {
@@ -75,12 +115,7 @@ export function InboxPage() {
       try {
         const result = await resolveEnrollment({ enrollmentId, accept })
         if (accept && result?.accepted && result.projectId) {
-          const acceptedProjectId = String(result.projectId)
-          setRecentlyAccepted((prev) => {
-            const next = new Map(prev)
-            next.set(String(enrollmentId), { projectId: acceptedProjectId, projectName })
-            return next
-          })
+          rememberAccepted(String(enrollmentId), { projectId: String(result.projectId), projectName, detail: null })
           appToast.success({
             title: t("inbox.accepted"),
             description: `You now have access to ${projectName}.`,
@@ -102,17 +137,61 @@ export function InboxPage() {
         setActiveAction(null)
       }
     },
-    [resolveEnrollment, t],
+    [rememberAccepted, resolveEnrollment, t],
+  )
+
+  const handleSessionAccepted = useCallback(
+    (item: SessionInvitationItem, accepted: {
+      projectId: string
+      publicSessionId: string
+      branchName: string
+      repositoryUrl: string | null
+    }) => {
+      const key = `session:${String(item.invitationId)}`
+      const base = { projectId: accepted.projectId, projectName: item.projectName }
+      rememberAccepted(key, {
+        ...base,
+        detail: `You're in the live session on ${accepted.branchName}. Setting up ${item.projectName} on this Mac…`,
+        settingUp: true,
+      })
+      void ensureInviteeCopy(
+        {
+          projectId: accepted.projectId,
+          projectName: item.projectName,
+          publicSessionId: accepted.publicSessionId,
+          branchName: accepted.branchName,
+          repositoryUrl: accepted.repositoryUrl,
+        },
+        window.electronAPI.workspace,
+        window.electronAPI.projectd.workbenches,
+      )
+        .catch((error: unknown): InviteeCopyOutcome => ({ kind: "failed", message: cleanConvexError(error, "Setup failed.") }))
+        .then((copy) => {
+          if (copy.kind === "ready") invalidateProjectWorkspaceResolution(accepted.projectId)
+          rememberAccepted(key, {
+            ...base,
+            workspaceId: copy.kind === "ready" ? copy.workspaceId : null,
+            detail: describeInviteeCopy(copy, accepted.branchName),
+            settingUp: false,
+          })
+          announceInviteeCopy(copy, item.projectName)
+        })
+    },
+    [rememberAccepted],
   )
 
   const handleOpenProject = useCallback(
-    (projectId: string) => {
-      navigate(buildProjectPath(projectId, "workbench"))
+    (projectId: string, workspaceId?: string | null) => {
+      navigate(buildProjectPath(projectId, "workbench"), {
+        state: buildProjectRouteNavigationState({ projectId, preferredWorkspaceId: workspaceId ?? null }),
+      })
     },
     [navigate],
   )
 
   const isLoading = incoming === undefined
+  const isEmpty =
+    incoming !== undefined && incoming.length === 0 && sessionInvitations.length === 0 && recentlyAccepted.size === 0
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
@@ -163,7 +242,7 @@ export function InboxPage() {
                 </div>
               ))}
             </div>
-          ) : incoming.length === 0 && recentlyAccepted.size === 0 ? (
+          ) : isEmpty ? (
             <div className="flex flex-1 items-center justify-center pb-16">
               <Empty className="py-0">
                 <EmptyHeader>
@@ -176,100 +255,126 @@ export function InboxPage() {
               </Empty>
             </div>
           ) : (
-            <div className="space-y-3">
-              {/* Recently accepted items */}
-              {Array.from(recentlyAccepted.entries()).map(([id, info]) => (
-                <div
-                  key={`accepted-${id}`}
-                  className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                      <HugeiconsIcon icon={__CheckCircleHugeIcon} className="size-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{info.projectName}</p>
-                      <p className="text-xs text-muted-foreground">{t("inbox.accepted")}</p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="gap-1.5"
-                    onClick={() => handleOpenProject(info.projectId)}
-                  >
-                    <span>{t("inbox.openProject")}</span>
-                    <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5" />
-                  </Button>
-                </div>
-              ))}
-
-              {/* Pending invitations */}
-              {incoming.map((enrollment) => {
-                const isBusy = activeAction?.enrollmentId === enrollment._id
-                const isAccepting = isBusy && activeAction?.accept === true
-                const isDeclining = isBusy && activeAction?.accept === false
-
-                return (
-                  <div
-                    key={enrollment._id}
-                    className="group flex flex-col gap-3 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border/90 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex items-start gap-3 sm:items-center">
-                      <Avatar className="size-10 shrink-0 rounded-lg">
-                        <AvatarFallback className="rounded-lg text-xs font-medium">
-                          {initial(enrollment.projectName)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="truncate text-sm font-medium text-foreground">
-                            {enrollment.projectName}
-                          </h2>
-                          <Badge variant="secondary" shape="pill" size="sm">
-                            {formatRole(enrollment.role)}
-                          </Badge>
+            <div className="space-y-6">
+              {recentlyAccepted.size > 0 ? (
+                <div className="space-y-3">
+                  {Array.from(recentlyAccepted.entries()).map(([id, info]) => (
+                    <div
+                      key={`accepted-${id}`}
+                      className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                          <HugeiconsIcon icon={__CheckCircleHugeIcon} className="size-5" />
                         </div>
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                          <span>
-                            {t("inbox.invitedBy")} {enrollment.inviterName}
-                          </span>
-                          <span aria-hidden="true">·</span>
-                          <span className="inline-flex items-center gap-1">
-                            <HugeiconsIcon icon={__ClockHugeIcon} className="size-3 text-muted-foreground/75" />
-                            {formatExpiryDays(enrollment.expiresAt)}
-                          </span>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{info.projectName}</p>
+                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            {info.settingUp ? <Spinner size="xs" /> : null}
+                            <span>{info.detail ?? t("inbox.accepted")}</span>
+                          </p>
                         </div>
                       </div>
+                      <Button
+                        size="sm"
+                        className="gap-1.5"
+                        disabled={info.settingUp}
+                        onClick={() => handleOpenProject(info.projectId, info.workspaceId)}
+                      >
+                        <span>{t("inbox.openProject")}</span>
+                        <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5" />
+                      </Button>
                     </div>
+                  ))}
+                </div>
+              ) : null}
 
-                    <div className="flex items-center justify-end gap-2 shrink-0 pt-1 sm:pt-0">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={isBusy}
-                        className="h-8 text-xs font-normal"
-                        onClick={() =>
-                          void handleResolve(enrollment._id, false, enrollment.projectName)
-                        }
+              {sessionInvitations.length > 0 ? (
+                <section className="space-y-3" aria-label={t("inbox.liveSessions")}>
+                  <h2 className="text-xs font-medium text-muted-foreground">{t("inbox.liveSessions")}</h2>
+                  {sessionInvitations.map((item) => (
+                    <SessionInvitationCard
+                      key={String(item.invitationId)}
+                      item={item}
+                      onAccepted={(result) => handleSessionAccepted(item, result)}
+                    />
+                  ))}
+                </section>
+              ) : null}
+
+              {incoming && incoming.length > 0 ? (
+                <section className="space-y-3" aria-label={t("inbox.deviceInvitations")}>
+                  {sessionInvitations.length > 0 ? (
+                    <h2 className="text-xs font-medium text-muted-foreground">{t("inbox.deviceInvitations")}</h2>
+                  ) : null}
+                  {incoming.map((enrollment) => {
+                    const isBusy = activeAction?.enrollmentId === enrollment._id
+                    const isAccepting = isBusy && activeAction?.accept === true
+                    const isDeclining = isBusy && activeAction?.accept === false
+
+                    return (
+                      <div
+                        key={enrollment._id}
+                        className="group flex flex-col gap-3 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border/90 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        {isDeclining ? <Spinner size="xs" className="mr-1.5" /> : null}
-                        {t("inbox.decline")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={isBusy}
-                        className="h-8 text-xs font-medium"
-                        onClick={() =>
-                          void handleResolve(enrollment._id, true, enrollment.projectName)
-                        }
-                      >
-                        {isAccepting ? <Spinner size="xs" className="mr-1.5 text-primary-foreground" /> : null}
-                        {t("inbox.accept")}
-                      </Button>
-                    </div>
-                  </div>
-                )
-              })}
+                        <div className="flex items-start gap-3 sm:items-center">
+                          <Avatar className="size-10 shrink-0 rounded-lg">
+                            <AvatarFallback className="rounded-lg text-xs font-medium">
+                              {initial(enrollment.projectName)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="truncate text-sm font-medium text-foreground">
+                                {enrollment.projectName}
+                              </h3>
+                              <Badge variant="secondary" shape="pill" size="sm">
+                                {formatRole(enrollment.role)}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                              <span>
+                                {t("inbox.invitedBy")} {enrollment.inviterName}
+                              </span>
+                              <span aria-hidden="true">·</span>
+                              <span className="inline-flex items-center gap-1">
+                                <HugeiconsIcon icon={__ClockHugeIcon} className="size-3 text-muted-foreground/75" />
+                                {formatExpiryDays(enrollment.expiresAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 shrink-0 pt-1 sm:pt-0">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={isBusy}
+                            className="h-8 text-xs font-normal"
+                            onClick={() =>
+                              void handleResolve(enrollment._id, false, enrollment.projectName)
+                            }
+                          >
+                            {isDeclining ? <Spinner size="xs" className="mr-1.5" /> : null}
+                            {t("inbox.decline")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={isBusy}
+                            className="h-8 text-xs font-medium"
+                            onClick={() =>
+                              void handleResolve(enrollment._id, true, enrollment.projectName)
+                            }
+                          >
+                            {isAccepting ? <Spinner size="xs" className="mr-1.5 text-primary-foreground" /> : null}
+                            {t("inbox.accept")}
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </section>
+              ) : null}
             </div>
           )}
         </div>

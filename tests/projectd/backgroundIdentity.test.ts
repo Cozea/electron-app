@@ -160,7 +160,7 @@ describe.skipIf(!helperAvailable)("P03 macOS helper, Keychain identity, and clou
             headers: { "Content-Type": "application/json" },
           })
         }
-        if (url.endsWith("/auth/device/token")) {
+        if (url.endsWith("/auth/device/complete")) {
           const body = JSON.parse(init?.body as string)
           expect(body.identityKey).toBe(identity.identityKey)
           expect(body.challenge).toBe(testChallenge)
@@ -187,7 +187,7 @@ describe.skipIf(!helperAvailable)("P03 macOS helper, Keychain identity, and clou
 
           return new Response(
             JSON.stringify({
-              token: expectedToken,
+              accessToken: expectedToken,
               principalId: "principal_device_doc_id",
               expiresAt: Date.now() + 3600_000,
             }),
@@ -219,7 +219,7 @@ describe.skipIf(!helperAvailable)("P03 macOS helper, Keychain identity, and clou
             headers: { "Content-Type": "application/json" },
           })
         }
-        if (url.endsWith("/auth/device/token")) {
+        if (url.endsWith("/auth/device/complete")) {
           // Mock server rejecting revoked device
           return new Response("Device principal revoked or unauthorized", { status: 403 })
         }
@@ -232,7 +232,7 @@ describe.skipIf(!helperAvailable)("P03 macOS helper, Keychain identity, and clou
           mockFetchReject,
           identity,
         ),
-      ).rejects.toThrow(/Device principal revoked or unauthorized/)
+      ).rejects.toMatchObject({ code: "DEVICE_AUTH_REJECTED" })
     })
   })
 })

@@ -17,7 +17,8 @@ export function WorkspaceRepairScreen({
   project,
   onAction,
 }: WorkspaceRepairScreenProps) {
-  const projectLabel = project.name ?? project.slug ?? project._id
+  // A raw project ID means nothing to people; without a name the text reads without one.
+  const projectLabel = project.name ?? project.slug ?? null
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-6 p-8 text-center">
@@ -120,11 +121,12 @@ function headingFor(result: Exclude<ResolveProjectWorkspaceResult, { status: "re
 
 function descriptionFor(
   result: Exclude<ResolveProjectWorkspaceResult, { status: "ready" }>,
-  projectLabel: string,
+  projectLabel: string | null,
 ): string {
+  const project = projectLabel ? `"${projectLabel}"` : "This project"
   switch (result.status) {
     case "missing-binding":
-      return `"${projectLabel}" is not linked to a local folder on this device.`
+      return `${project} is not linked to a local folder on this device.`
     case "broken-binding":
       switch (result.reason) {
         case "missing":
@@ -137,7 +139,7 @@ function descriptionFor(
     case "ambiguous":
       return `Found ${result.candidates.length} possible folders. Choose one to link.`
     case "needs-clone":
-      return `"${projectLabel}" has a repository that hasn't been cloned to this device yet.`
+      return `${project} has a repository that hasn't been cloned to this device yet.`
     default:
       return "This workspace is not available."
   }

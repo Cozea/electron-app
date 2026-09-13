@@ -12,9 +12,23 @@ import {
   type ProjectdRequest,
   type ProjectdServerMessage,
   type ProjectdSessionAttachParams,
+  type ProjectdCheckpointResult,
+  type ProjectdClosePreflight,
+  type ProjectdCloseChoice,
   type ProjectdSessionStatus,
+  type ProjectdSessionRecoveryEntry,
+  type ProjectdRecoveryPreviewResult,
+  type ProjectdRecoveryExportResult,
   type ProjectdSessionTicket,
+  type ProjectdTargetStatus,
+  type ProjectdMergePreview,
+  type ProjectdMergeResult,
+  type ProjectdPullRequestResult,
+  type ProjectdMergeStrategy,
+  type ProjectdRebaseResult,
   type ProjectdShutdownResult,
+  type ProjectdEnsureSessionWorkbenchParams,
+  type ProjectdEnsureSessionWorkbenchResult,
 } from "./index"
 
 export interface ProjectdClientOptions {
@@ -65,10 +79,11 @@ export class ProjectdClient {
     return new Promise<void>((resolve, reject) => {
       const socket = net.createConnection(this.socketPath)
       this.socket = socket
+      this.decoder = new LineMessageDecoder()
 
       const timeoutTimer = setTimeout(() => {
         socket.destroy()
-        this.cleanup()
+        this.cleanup(socket)
         reject(new Error(`Connection to projectd timed out after ${this.defaultTimeoutMs}ms`))
       }, this.defaultTimeoutMs)
 
@@ -85,10 +100,11 @@ export class ProjectdClient {
 
           const response = await this.sendHandshake(socket, handshakeReq)
           clearTimeout(timeoutTimer)
+          if (this.socket !== socket) throw new Error("Connection was replaced during handshake")
 
           if (!response.success) {
             socket.destroy()
-            this.cleanup()
+            this.cleanup(socket)
             reject(
               new Error(
                 `projectd handshake failed: ${response.error?.message ?? "unknown error"}`,
@@ -99,16 +115,22 @@ export class ProjectdClient {
 
           this.isConnected = true
           this.isConnecting = false
+          // The daemon keeps subscriptions per connection, so after a reconnect, or a daemon
+          // restart, it holds none of this client's until they are sent again.
+          for (const topic of this.topicListeners.keys()) {
+            socket.write(encodeMessage({ type: "subscribe", id: `sub_${crypto.randomUUID()}`, topic }))
+          }
           resolve()
         } catch (err) {
           clearTimeout(timeoutTimer)
           socket.destroy()
-          this.cleanup()
+          this.cleanup(socket)
           reject(err)
         }
       })
 
       socket.on("data", (chunk) => {
+        if (this.socket !== socket) return
         const messages = this.decoder.push(chunk)
         for (const msg of messages) {
           this.handleIncomingMessage(msg as ProjectdServerMessage)
@@ -116,13 +138,14 @@ export class ProjectdClient {
       })
 
       socket.on("close", () => {
-        this.cleanup()
+        this.cleanup(socket)
       })
 
       socket.on("error", (err) => {
         clearTimeout(timeoutTimer)
+        if (this.socket !== socket) return
         const wasConnecting = this.isConnecting
-        this.cleanup()
+        this.cleanup(socket)
         if (wasConnecting) {
           reject(err)
         }
@@ -135,12 +158,13 @@ export class ProjectdClient {
     req: ProjectdHandshakeRequest,
   ): Promise<ProjectdHandshakeResponse> {
     return new Promise((resolve, reject) => {
+      const decoder = new LineMessageDecoder()
       const timeout = setTimeout(() => {
         reject(new Error("Handshake timed out waiting for server response"))
       }, this.defaultTimeoutMs)
 
       const onData = (chunk: Buffer) => {
-        const msgs = this.decoder.push(chunk)
+        const msgs = decoder.push(chunk)
         for (const msg of msgs) {
           if (msg.type === "handshake_ack" && msg.id === req.id) {
             clearTimeout(timeout)
@@ -276,6 +300,12 @@ export class ProjectdClient {
     return this.request<T[]>("workbenches.list", { projectId })
   }
 
+  async ensureSessionWorkbench(
+    params: ProjectdEnsureSessionWorkbenchParams,
+  ): Promise<ProjectdEnsureSessionWorkbenchResult> {
+    return this.request<ProjectdEnsureSessionWorkbenchResult>("workbenches.ensureSession", params, 180_000)
+  }
+
   async getWorkbench<T = any>(workbenchId: string): Promise<T | null> {
     return this.request<T | null>("workbenches.get", { workbenchId })
   }
@@ -336,15 +366,49 @@ export class ProjectdClient {
   }
 
   async detachSession(publicSessionId: string): Promise<{ detached: boolean }> {
-    return this.request<{ detached: boolean }>("sessions.detach", { publicSessionId })
+    return this.request<{ detached: boolean }>("sessions.detach", { publicSessionId }, 90_000)
+  }
+
+  async prepareSessionLeave(publicSessionId: string): Promise<{ pendingBatches: number; pendingBinaryVersions: number }> {
+    return this.request<{ pendingBatches: number; pendingBinaryVersions: number }>("sessions.prepareLeave", { publicSessionId }, 90_000)
+  }
+
+  async pauseSession(publicSessionId: string): Promise<{ gitLag: boolean }> {
+    return this.request<{ gitLag: boolean }>("sessions.pause", { publicSessionId }, 180_000)
+  }
+
+  async prepareSessionClose(publicSessionId: string): Promise<ProjectdClosePreflight> {
+    return this.request<ProjectdClosePreflight>("sessions.prepareClose", { publicSessionId }, 180_000)
+  }
+
+  async closeSession(publicSessionId: string, choice: ProjectdCloseChoice): Promise<{ gitLag: boolean }> {
+    return this.request<{ gitLag: boolean }>("sessions.close", { publicSessionId, choice }, 180_000)
   }
 
   async listSessions(): Promise<ProjectdSessionStatus[]> {
     return this.request<ProjectdSessionStatus[]>("sessions.list")
   }
 
+  async listSessionRecovery(): Promise<ProjectdSessionRecoveryEntry[]> {
+    return this.request<ProjectdSessionRecoveryEntry[]>("sessions.recovery.list")
+  }
+
+  async previewSessionRecovery(publicSessionId: string, afterCursor?: string, limit?: number): Promise<ProjectdRecoveryPreviewResult> {
+    return this.request<ProjectdRecoveryPreviewResult>("sessions.recovery.preview", { publicSessionId, afterCursor, limit })
+  }
+
+  async exportSessionRecovery(publicSessionId: string, destinationParent: string, source: "local" | "cloud" = "local",
+    cloudContext?: { projectId: string; background: { gatewayUrl: string; convexUrl: string } }): Promise<ProjectdRecoveryExportResult> {
+    return this.request<ProjectdRecoveryExportResult>("sessions.recovery.export", { publicSessionId, destinationParent, source, cloudContext }, 180_000)
+  }
+
   async getSessionStatus(publicSessionId: string): Promise<ProjectdSessionStatus | null> {
     return this.request<ProjectdSessionStatus | null>("sessions.status", { publicSessionId })
+  }
+
+  async shareSessionRecoveryKeys(publicSessionId: string,
+    context: { projectId: string; background: { gatewayUrl: string; convexUrl: string } }): Promise<{ shared: number }> {
+    return this.request<{ shared: number }>("sessions.recovery.shareKeys", { publicSessionId, context }, 180_000)
   }
 
   async updateSessionTicket(
@@ -354,6 +418,62 @@ export class ProjectdClient {
     return this.request<ProjectdSessionStatus>("sessions.updateTicket", { publicSessionId, ticket })
   }
 
+  /** Saves the session to its Git branch now, or asks the device that saves to. */
+  async checkpointSession(publicSessionId: string): Promise<ProjectdCheckpointResult> {
+    return this.request<ProjectdCheckpointResult>("sessions.checkpointNow", { publicSessionId }, 90_000)
+  }
+
+  /** Adds the session's env files that Git doesn't ignore to the folder's .gitignore. */
+  async ignoreSessionEnvironmentFiles(publicSessionId: string): Promise<{ paths: string[] }> {
+    return this.request<{ paths: string[] }>("sessions.ignoreEnvironmentFiles", { publicSessionId })
+  }
+
+  /** Fetches the session's target branch and measures it now. */
+  async checkSessionTarget(publicSessionId: string): Promise<ProjectdTargetStatus | null> {
+    return this.request<ProjectdTargetStatus | null>("sessions.checkTarget", { publicSessionId }, 90_000)
+  }
+
+  /** Hides the rebase recommendation for a while. */
+  async dismissSessionTarget(publicSessionId: string): Promise<ProjectdTargetStatus | null> {
+    return this.request<ProjectdTargetStatus | null>("sessions.dismissTarget", { publicSessionId })
+  }
+
+  /** Rebases the session onto its target on the Mac that saves it, or asks that Mac to. */
+  async manageRebaseRecovery(publicSessionId: string, request: import("./index").ProjectdRebaseRecoveryRequest): Promise<import("./index").ProjectdRebaseRecoveryResponse> {
+    return this.request("sessions.rebaseRecovery", { publicSessionId, request }, 300_000)
+  }
+
+  async manageBinaryConflicts(publicSessionId: string, request: import("./index").ProjectdBinaryConflictRequest): Promise<import("./index").ProjectdBinaryConflictResponse> {
+    return this.request("sessions.binaryConflicts", { publicSessionId, request }, 300_000)
+  }
+
+  async manageStructuralConflicts(publicSessionId: string, request: import("./index").ProjectdStructuralConflictRequest): Promise<import("./index").ProjectdStructuralConflictResponse> {
+    return this.request("sessions.structuralConflicts", { publicSessionId, request }, 300_000)
+  }
+
+  async rebaseSession(publicSessionId: string, allowConflicts: boolean): Promise<ProjectdRebaseResult> {
+    return this.request<ProjectdRebaseResult>("sessions.rebase", { publicSessionId, allowConflicts }, 300_000)
+  }
+
+  /** Previews merging the session's last save into its target branch. */
+  async previewSessionMerge(publicSessionId: string): Promise<ProjectdMergePreview> {
+    return this.request<ProjectdMergePreview>("sessions.previewMerge", { publicSessionId }, 90_000)
+  }
+
+  /** Merges the reviewed save into the target branch, or says why not. */
+  async mergeSession(
+    publicSessionId: string,
+    strategy: ProjectdMergeStrategy,
+    checkpointOid: string,
+    targetOid: string,
+  ): Promise<ProjectdMergeResult> {
+    return this.request<ProjectdMergeResult>("sessions.merge", { publicSessionId, strategy, checkpointOid, targetOid }, 120_000)
+  }
+
+  async createSessionPullRequest(publicSessionId: string, checkpointOid: string, targetOid: string): Promise<ProjectdPullRequestResult> {
+    return this.request<ProjectdPullRequestResult>("sessions.createPullRequest", { publicSessionId, checkpointOid, targetOid }, 180_000)
+  }
+
   disconnect(): void {
     if (this.socket) {
       this.socket.destroy()
@@ -361,7 +481,8 @@ export class ProjectdClient {
     this.cleanup()
   }
 
-  private cleanup(): void {
+  private cleanup(socket?: net.Socket): void {
+    if (socket && this.socket !== socket) return
     this.isConnected = false
     this.isConnecting = false
     this.socket = null

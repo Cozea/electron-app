@@ -39,6 +39,7 @@ export interface ReplicaSnapshot {
   sessionId: string
   treeUpdate: Uint8Array
   textUpdates: Record<string, Uint8Array>
+  binaryRevisions?: BinaryRevision[]
   timestamp: number
 }
 
@@ -64,6 +65,7 @@ export class SessionReplica {
   // doc's whole delete set, so a non-empty delta does not mean anything changed.
   private treeDirty = false
   private readonly dirtyTextDocs = new Set<string>()
+  private readonly dirtyBinaryRevisions: BinaryRevision[] = []
   private readonly remoteChangeListeners = new Set<RemoteChangeListener>()
 
   constructor(sessionId: string, clientId?: string) {
@@ -95,12 +97,14 @@ export class SessionReplica {
     kind: EntryKind
     content?: string | Buffer
     mode?: number
+    symlinkTarget?: string
     actor: ChangeActor
   }): ProjectEntryRecord {
     const record = this.tree.createEntry({
       path: params.path,
       kind: params.kind,
       mode: params.mode,
+      symlinkTarget: params.symlinkTarget,
       actor: params.actor,
     })
 
@@ -116,7 +120,7 @@ export class SessionReplica {
     return this.tree.renameEntry(fileId, newPath, actor)
   }
 
-  deleteFile(fileId: string, actor: ChangeActor): ProjectEntryRecord {
+  deleteFile(fileId: string, actor: ChangeActor, confirmDeleted = false): ProjectEntryRecord {
     const entry = this.tree.getEntry(fileId)
     // Record which text edits this delete had seen (Section 10.18).
     const textStateVector =
@@ -125,18 +129,41 @@ export class SessionReplica {
           ? stateVectorToRecord(this.textDocs.getStateVector(fileId))
           : {}
         : undefined
-    return this.tree.deleteEntry(fileId, actor, textStateVector)
+    const binaryRevisionIds = entry?.kind === "binary" ? this.binaryStore.getRevisions(fileId).map((revision) => revision.revisionId) : undefined
+    return this.tree.deleteEntry(fileId, actor, textStateVector, binaryRevisionIds, confirmDeleted)
   }
 
   updateTextContent(fileId: string, content: string): void {
     this.textDocs.setTextContent(fileId, content)
   }
 
+  /** Adds a locally-created binary revision and marks only its metadata for export. */
+  addBinaryRevision(revision: BinaryRevision): void {
+    this.binaryStore.addRevision(revision)
+    if (!this.dirtyBinaryRevisions.some((pending) => pending.revisionId === revision.revisionId)) {
+      this.dirtyBinaryRevisions.push(revision)
+    }
+  }
+
+  /** Journals resolution metadata through the same batch path as ordinary binary edits. */
+  resolveBinaryConflict(fileId: string, chosenRevisionId: string, reviewedRevisionIds: string[], actor: ChangeActor): BinaryRevision {
+    const revision = this.binaryStore.resolveConflict(fileId, chosenRevisionId, actor, reviewedRevisionIds)
+    this.addBinaryRevision(revision)
+    return revision
+  }
+
+  /** True while local edits wait for exportBatch. */
+  hasUnexportedChanges(): boolean {
+    return this.treeDirty || this.dirtyTextDocs.size > 0 || this.dirtyBinaryRevisions.length > 0
+  }
+
   /**
    * Captures any local uncommitted updates across tree and text docs into an outbound CollaborationBatch.
    */
-  exportBatch(): CollaborationBatch | null {
+  exportBatch(persist?: (batch: CollaborationBatch) => void): CollaborationBatch | null {
     const operations: BatchOperation[] = []
+    let treeVector: Uint8Array | null = null
+    const textVectors = new Map<string, Uint8Array>()
 
     // 1. Export TreeDoc delta
     if (this.treeDirty) {
@@ -144,8 +171,7 @@ export class SessionReplica {
         type: "tree-yjs",
         update: Y.encodeStateAsUpdate(this.tree.doc, this.lastTreeStateVector),
       })
-      this.lastTreeStateVector = Y.encodeStateVector(this.tree.doc)
-      this.treeDirty = false
+      treeVector = Y.encodeStateVector(this.tree.doc)
     }
 
     // 2. Export TextDoc deltas
@@ -156,21 +182,38 @@ export class SessionReplica {
         docId: fileId,
         update: this.textDocs.encodeStateAsUpdate(fileId, this.lastTextStateVectors.get(fileId)),
       })
-      this.lastTextStateVectors.set(fileId, this.textDocs.getStateVector(fileId))
+      textVectors.set(fileId, this.textDocs.getStateVector(fileId))
     }
-    this.dirtyTextDocs.clear()
+
+    // 3. Export binary revision metadata. Payload bytes stay in the encrypted
+    // object store and never enter the room's small collaboration batches.
+    for (const revision of this.dirtyBinaryRevisions) {
+      operations.push({ type: "binary-revision", revision })
+    }
 
     if (operations.length === 0) {
+      this.dirtyTextDocs.clear()
       return null
     }
 
-    return {
+    const batch: CollaborationBatch = {
       batchId: `batch_${crypto.randomUUID()}`,
       sessionId: this.sessionId,
       clientId: this.clientId,
       operations,
       createdAt: Date.now(),
     }
+    // The synchronous journal must accept the exact bytes before advancing any
+    // export watermark. A failed disk write leaves every delta available again.
+    persist?.(batch)
+    if (treeVector) {
+      this.lastTreeStateVector = treeVector
+      this.treeDirty = false
+    }
+    for (const [fileId, vector] of textVectors) this.lastTextStateVectors.set(fileId, vector)
+    this.dirtyTextDocs.clear()
+    this.dirtyBinaryRevisions.length = 0
+    return batch
   }
 
   /**
@@ -224,15 +267,18 @@ export class SessionReplica {
       sessionId: this.sessionId,
       treeUpdate: Y.encodeStateAsUpdate(this.tree.doc),
       textUpdates,
+      binaryRevisions: this.tree.listAllEntries().flatMap((entry) => this.binaryStore.getRevisions(entry.fileId)),
       timestamp: Date.now(),
     }
   }
 
   restoreSnapshot(snapshot: ReplicaSnapshot): void {
+    if (snapshot.sessionId !== this.sessionId) throw new Error("Replica snapshot session mismatch")
     Y.applyUpdate(this.tree.doc, snapshot.treeUpdate, PEER_ORIGIN)
     for (const [fileId, update] of Object.entries(snapshot.textUpdates)) {
       this.textDocs.applyUpdate(fileId, update, PEER_ORIGIN)
     }
+    for (const revision of snapshot.binaryRevisions ?? []) this.binaryStore.addRevision(revision)
 
     this.lastTreeStateVector = Y.encodeStateVector(this.tree.doc)
     for (const fileId of this.textDocs.listFileIds()) {
@@ -258,7 +304,7 @@ export class SessionReplica {
     const deleteModifyConflicts = ConflictEngine.detectDeleteModifyConflicts(
       allEntries,
       structuralOps,
-      (fileId, deleteOp) => this.hasTextEditsUnseenBy(fileId, deleteOp),
+      (fileId, deleteOp) => this.hasContentEditsUnseenBy(fileId, deleteOp),
     )
 
     const binaryConflicts: BinaryConflict[] = []
@@ -280,11 +326,14 @@ export class SessionReplica {
   }
 
   /**
-   * True when the file's text holds edits the delete had not seen: an edit concurrent
-   * with the delete, or one made after it. A delete recorded without a text state
-   * vector cannot prove either, so it never reports a conflict.
+   * True when binary revisions or text clocks include edits the delete had not
+   * seen. Older deletes without either basis cannot prove a content conflict.
    */
-  private hasTextEditsUnseenBy(fileId: string, deleteOp: StructuralOp): boolean {
+  private hasContentEditsUnseenBy(fileId: string, deleteOp: StructuralOp): boolean {
+    if (deleteOp.binaryRevisionIds) {
+      const seen = new Set(deleteOp.binaryRevisionIds)
+      return this.binaryStore.getRevisions(fileId).some((revision) => !seen.has(revision.revisionId))
+    }
     const seen = deleteOp.textStateVector
     if (!seen || !this.textDocs.has(fileId)) return false
 

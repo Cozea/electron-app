@@ -39,6 +39,14 @@ describe("P05 GitService consolidation foundation", () => {
     }
   })
 
+  it("reports an early Git rejection without an unhandled stdin broken pipe", async () => {
+    const result = await gitService.process.execute(["check-ignore", "--stdin"], {
+      cwd: testRepoDir, stdin: "path.txt\n".repeat(200_000), allowNonZeroExit: true,
+    })
+    expect(result.success).toBe(false)
+    expect(result.stderr).toMatch(/not a git repository/i)
+  })
+
   it("checks git health and qualifies Git + Git LFS", async () => {
     const health = await gitService.getHealth()
     expect(health.available).toBe(true)

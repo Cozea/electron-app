@@ -56,6 +56,15 @@ interface InternalBindExistingFolderRequest extends BindExistingFolderRequest {
   storageOwnership?: WorkspaceStorageOwnership
   managedRootId?: string | null
   markerPolicy?: WorkspaceMarkerPolicy
+  workspaceIdOverride?: string
+}
+
+export interface RegisterManagedSessionWorkspaceRequest {
+  projectId: string
+  workspaceId: string
+  folderPath: string
+  /** The session-specific directory that owns `folderPath` (normally its parent). */
+  managedRootPath: string
 }
 
 function newId(prefix: string): string {
@@ -266,6 +275,11 @@ export interface WorkspaceCatalogInterface {
   readonly cloneForProject: (
     req: CloneWorkspaceForProjectRequest,
   ) => Effect.Effect<CloneWorkspaceForProjectResult>
+
+  /** Main-process-only registration for a projectd-owned dedicated Session Workspace. */
+  readonly registerManagedSessionWorkspace: (
+    req: RegisterManagedSessionWorkspaceRequest,
+  ) => Effect.Effect<BindExistingFolderResult>
 
   readonly verify: (
     workspaceId: string,
@@ -966,6 +980,7 @@ export const WorkspaceCatalogLive = Layer.effect(
           storageOwnership = "attached",
           managedRootId = null,
           markerPolicy: requestedMarkerPolicy,
+          workspaceIdOverride,
         } = req
 
         if (storageOwnership === "managed" && !managedRootId) {
@@ -1082,7 +1097,7 @@ export const WorkspaceCatalogLive = Layer.effect(
         )
         const existingMarker = existingMarkerResult._tag === "Success" ? existingMarkerResult.success : null
 
-        let workspaceId: string | undefined = undefined
+        let workspaceId: string | undefined = workspaceIdOverride
 
         if (existingMarker) {
           const markerWorkspace = existingMarker.marker.workspaceId
@@ -1485,8 +1500,8 @@ export const WorkspaceCatalogLive = Layer.effect(
           catch: (e) => new Error(String(e)),
         })
 
-        const cloneArgs = ["clone", repoUrl, targetPath]
-        if (branch) cloneArgs.push("--branch", branch)
+        // Options go before `--`, so a URL that came from another device is never read as one.
+        const cloneArgs = ["clone", ...(branch ? ["--branch", branch] : []), "--", repoUrl, targetPath]
 
         yield* Effect.tryPromise({
           try: async () => {
@@ -1529,6 +1544,38 @@ export const WorkspaceCatalogLive = Layer.effect(
       }).pipe(
         Effect.catch((e) =>
           Effect.succeed({ success: false, error: formatWorkspaceCatalogError(e) }),
+        ),
+      )
+
+    const registerManagedSessionWorkspace = (
+      req: RegisterManagedSessionWorkspaceRequest,
+    ): Effect.Effect<BindExistingFolderResult> =>
+      Effect.gen(function* () {
+        if (!req.workspaceId.trim()) {
+          return { success: false, error: "Session workspaceId is required." }
+        }
+        const managedRoot = yield* resolveLocalRoot(undefined, req.managedRootPath)
+        const existingById = yield* queryWorkspaceById(req.workspaceId)
+        if (existingById) {
+          if (existingById.projectId !== req.projectId || path.resolve(existingById.projectRootPath) !== path.resolve(req.folderPath)) {
+            return { success: false, error: `Workspace '${req.workspaceId}' is already bound to another folder.` }
+          }
+          return { success: true, workspace: recordToDTO(existingById) }
+        }
+        return yield* bindExistingFolder({
+          projectId: req.projectId,
+          folderPath: req.folderPath,
+          writeMarker: true,
+          setActive: false,
+          source: "clone",
+          storageOwnership: "managed",
+          managedRootId: managedRoot.rootId,
+          markerPolicy: "required",
+          workspaceIdOverride: req.workspaceId,
+        })
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.succeed({ success: false, error: formatWorkspaceCatalogError(error) }),
         ),
       )
 
@@ -1748,6 +1795,7 @@ export const WorkspaceCatalogLive = Layer.effect(
       createForProject: (req) => createForProject(req).pipe(Effect.orDie),
       importExistingFolder: (req) => importExistingFolder(req).pipe(Effect.orDie),
       cloneForProject: (req) => cloneForProject(req).pipe(Effect.orDie),
+      registerManagedSessionWorkspace: (req) => registerManagedSessionWorkspace(req).pipe(Effect.orDie),
       verify: (workspaceId) => verify(workspaceId).pipe(Effect.orDie),
       forget: (workspaceId) => forget(workspaceId).pipe(Effect.orDie),
       listCandidates: (projectId, slug, roots, expectedRepo) =>

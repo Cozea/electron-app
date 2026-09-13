@@ -63,6 +63,10 @@
   ],
   "r2_buckets": [
     {
+      "binding": "COLLAB_BINARY_OBJECTS",
+      "bucket_name": "cozea-collaboration-binary-objects",
+    },
+    {
       "binding": "DEVAPP_BUILD_INPUTS",
       "bucket_name": "cozea-devapp-build-inputs",
     },

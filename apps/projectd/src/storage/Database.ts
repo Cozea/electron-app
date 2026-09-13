@@ -172,6 +172,14 @@ export class ProjectdDatabase {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY(session_id, file_id)
       );
+
+      -- The folder whose disk a session's file_materializations describe.
+      CREATE TABLE IF NOT EXISTS session_folders (
+        session_id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        root_path TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
     `)
   }
 

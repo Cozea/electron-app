@@ -1,7 +1,5 @@
+import { BackgroundIdentityError } from "./BackgroundIdentityError"
 import { createHash, webcrypto } from "node:crypto"
-import fs from "node:fs"
-import os from "node:os"
-import path from "node:path"
 
 import { NativeMacHelper } from "../native/NativeMacHelper"
 
@@ -48,82 +46,28 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 
 export class BackgroundDeviceIdentityManager {
   readonly helper: NativeMacHelper
-  private cachedIdentity: StoredDeviceIdentity | null = null
+  private readonly authCache = new Map<string, CloudAuthResult>()
 
   constructor(helper?: NativeMacHelper) {
     this.helper = helper ?? new NativeMacHelper()
   }
 
-  async getOrCreateIdentity(): Promise<StoredDeviceIdentity> {
-    if (this.cachedIdentity) {
-      return this.cachedIdentity
+  /** Runtime identity is the desktop's existing principal, never a newly generated fallback. */
+  async loadExistingIdentity(): Promise<StoredDeviceIdentity> {
+    let json: string | null
+    try { json = await this.helper.loadIdentity() } catch {
+      throw new BackgroundIdentityError("KEYCHAIN_UNAVAILABLE", "Cozea cannot read its saved device keys. Unlock this Mac and its login Keychain, then retry. If it persists, reopen Cozea.")
     }
-
-    // 1. Try to load from macOS Keychain via native helper
-    if (this.helper.isAvailable) {
-      try {
-        const json = await this.helper.loadIdentity()
-        if (json) {
-          const parsed = JSON.parse(json) as StoredDeviceIdentity
-          if (parsed.identityKey && parsed.signingPrivateKeyJwk && parsed.privateKeyJwk) {
-            this.cachedIdentity = parsed
-            return parsed
-          }
-        }
-      } catch (err) {
-        console.warn("[BackgroundDeviceIdentity] Failed to read from Keychain:", err)
-      }
+    if (!json) throw new BackgroundIdentityError("IDENTITY_NOT_AUTHORIZED", "Open Cozea to authorize this profile's existing background identity, then retry. Retained session data has been kept.")
+    let identity: StoredDeviceIdentity
+    try { identity = JSON.parse(json) as StoredDeviceIdentity } catch {
+      throw new BackgroundIdentityError("IDENTITY_INVALID", "The saved background identity cannot be read. Reopen Cozea to authorize its existing device identity. Retained session data has been kept.")
     }
-
-    // 2. Check fallback / existing local storage for migration
-    const migrated = this.tryReadLocalDevIdentity()
-    if (migrated) {
-      if (this.helper.isAvailable) {
-        try {
-          await this.helper.saveIdentity(JSON.stringify(migrated))
-          console.log("[BackgroundDeviceIdentity] Migrated existing identity to Keychain")
-        } catch (err) {
-          console.warn("[BackgroundDeviceIdentity] Could not persist migrated identity to Keychain:", err)
-        }
-      }
-      this.cachedIdentity = migrated
-      return migrated
+    if (!identity || identity.schemaVersion !== 3 || !/^czd_[a-f0-9]+$/.test(identity.identityKey) ||
+        !identity.signingPrivateKeyJwk?.d || !identity.privateKeyJwk?.d) {
+      throw new BackgroundIdentityError("IDENTITY_INVALID", "The saved background identity is invalid. Reopen Cozea to authorize its existing device identity. Retained session data has been kept.")
     }
-
-    // 3. Generate a new device identity
-    const newIdentity = await this.generateNewIdentity()
-    if (this.helper.isAvailable) {
-      try {
-        await this.helper.saveIdentity(JSON.stringify(newIdentity))
-      } catch (err) {
-        console.warn("[BackgroundDeviceIdentity] Could not save new identity to Keychain:", err)
-      }
-    }
-
-    this.cachedIdentity = newIdentity
-    return newIdentity
-  }
-
-  private tryReadLocalDevIdentity(): StoredDeviceIdentity | null {
-    const candidatePaths = [
-      path.join(os.homedir(), "Library/Application Support/Cozea/collab-keys/device-identity.insecure.json"),
-      path.join(os.homedir(), ".cozea/device-identity.json"),
-    ]
-
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        try {
-          const data = fs.readFileSync(p, "utf8")
-          const parsed = JSON.parse(data)
-          if (parsed?.identityKey && parsed?.signingPrivateKeyJwk) {
-            return parsed as StoredDeviceIdentity
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-    }
-    return null
+    return identity
   }
 
   async generateNewIdentity(): Promise<StoredDeviceIdentity> {
@@ -208,11 +152,16 @@ export class BackgroundDeviceIdentityManager {
     fetchFn: typeof fetch = fetch,
     targetIdentity?: StoredDeviceIdentity,
   ): Promise<CloudAuthResult> {
-    const identity = targetIdentity ?? (await this.getOrCreateIdentity())
+    const identity = targetIdentity ?? (await this.loadExistingIdentity())
+    const cacheKey = `${cloudBaseUrl}:${identity.identityKey}`
+    const cached = this.authCache.get(cacheKey)
+    if (cached && cached.expiresAt * 1000 > Date.now() + 60_000) return cached
 
     // 1. Request challenge from cloud
     const challengeRes = await fetchFn(`${cloudBaseUrl}/auth/device/challenge`, {
       method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         identityKey: identity.identityKey,
@@ -226,9 +175,11 @@ export class BackgroundDeviceIdentityManager {
       }),
     })
 
+    if (challengeRes.status === 401 || challengeRes.status === 403) {
+      throw new BackgroundIdentityError("DEVICE_AUTH_REJECTED", "The service rejected this device identity. Verify access online before reopening the session.")
+    }
     if (!challengeRes.ok) {
-      const text = await challengeRes.text()
-      throw new Error(`Cloud challenge request failed (${challengeRes.status}): ${text}`)
+      throw new Error(`Cloud challenge request failed (${challengeRes.status})`)
     }
 
     const { challenge } = (await challengeRes.json()) as { challenge: string }
@@ -237,8 +188,10 @@ export class BackgroundDeviceIdentityManager {
     const signature = await this.signChallenge(challenge, identity)
 
     // 3. Exchange signature for session token
-    const tokenRes = await fetchFn(`${cloudBaseUrl}/auth/device/token`, {
+    const tokenRes = await fetchFn(`${cloudBaseUrl}/auth/device/complete`, {
       method: "POST",
+      redirect: "error",
+      signal: AbortSignal.timeout(15_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         identityKey: identity.identityKey,
@@ -247,11 +200,19 @@ export class BackgroundDeviceIdentityManager {
       }),
     })
 
+    if (tokenRes.status === 401 || tokenRes.status === 403) {
+      throw new BackgroundIdentityError("DEVICE_AUTH_REJECTED", "The service rejected this device identity. Verify access online before reopening the session.")
+    }
     if (!tokenRes.ok) {
-      const text = await tokenRes.text()
-      throw new Error(`Cloud token exchange failed (${tokenRes.status}): ${text}`)
+      throw new Error(`Cloud token exchange failed (${tokenRes.status})`)
     }
 
-    return (await tokenRes.json()) as CloudAuthResult
+    const response = await tokenRes.json() as { accessToken: string; expiresAt: number; principalId: string }
+    if (!response.accessToken || !response.principalId || !Number.isFinite(response.expiresAt)) {
+      throw new Error("Device authentication returned an invalid session")
+    }
+    const result = { token: response.accessToken, expiresAt: response.expiresAt, principalId: response.principalId }
+    this.authCache.set(cacheKey, result)
+    return result
   }
 }

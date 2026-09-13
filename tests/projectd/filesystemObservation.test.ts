@@ -253,7 +253,7 @@ describe("P06 native FSEvents + scanner/materialization index", () => {
     expect(elapsedMs).toBeLessThan(5000) // Fast 500-file tree scan under 5 seconds
   })
 
-  it("orchestrates startup buffering and emits normalized events", async () => {
+  it.skipIf(process.platform !== "darwin")("orchestrates startup buffering and emits normalized events", async () => {
     // Write initial test file
     fs.writeFileSync(path.join(testWorkspaceDir, "hello.txt"), "hello world")
 

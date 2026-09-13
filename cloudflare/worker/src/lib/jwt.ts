@@ -124,6 +124,9 @@ export async function verifySessionToken(env: Env, token: string): Promise<Sessi
   }
   const payload = await verifyHmacCompact(env.COLLAB_JWT_SECRET, token, 'JWT') as unknown as SessionClaims
   const now = Math.floor(Date.now() / 1000)
+  if (payload.sessionAccess !== undefined && !['recovery', 'paused_close'].includes(payload.sessionAccess)) {
+    throw new Error('Invalid session access scope')
+  }
   if (payload.exp <= now) {
     throw new Error('Session token expired')
   }

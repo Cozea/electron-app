@@ -1,4 +1,3 @@
-import { app } from "electron"
 import { spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -87,22 +86,6 @@ let healthCacheAt = 0
 const HEALTH_CACHE_TTL_MS = 30_000
 const EXPLICIT_GIT_EXECUTABLE_ENV = "COZEA_GIT_EXECUTABLE"
 
-let dirsEnsured = false
-
-function ensureGitRuntimeConfigDirs(): string {
-  const baseDir = path.join(app.getPath("userData"), "git-runtime")
-  if (!dirsEnsured) {
-    const configDir = path.join(baseDir, "config")
-    const cacheDir = path.join(baseDir, "cache")
-    const homeDir = path.join(baseDir, "home")
-    fs.mkdirSync(configDir, { recursive: true })
-    fs.mkdirSync(cacheDir, { recursive: true })
-    fs.mkdirSync(homeDir, { recursive: true })
-    dirsEnsured = true
-  }
-  return baseDir
-}
-
 export function resolveGitExecutablePath(): { path: string | null; source: GitRuntimeSource } {
   const explicitExecutable = process.env[EXPLICIT_GIT_EXECUTABLE_ENV]?.trim()
   if (explicitExecutable) {
@@ -116,22 +99,17 @@ export function resolveGitExecutablePath(): { path: string | null; source: GitRu
   return { path: "git", source: "system" }
 }
 
+/**
+ * Git runs as it does in the person's own terminal, as projectd's GitProcess does: their
+ * config, credential helpers, SSH keys, identity and signing all apply. Only the terminal
+ * prompt is off, so a command that needs credentials Git doesn't have fails instead of
+ * waiting for input nobody can see.
+ */
 function createGitEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
-  const runtimeBase = ensureGitRuntimeConfigDirs()
-  const homeDir = path.join(runtimeBase, "home")
-  const configDir = path.join(runtimeBase, "config")
-  const cacheDir = path.join(runtimeBase, "cache")
-
   return {
     ...process.env,
     ...extra,
-    HOME: homeDir,
-    USERPROFILE: homeDir,
-    XDG_CONFIG_HOME: configDir,
-    XDG_CACHE_HOME: cacheDir,
     GIT_TERMINAL_PROMPT: "0",
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_ATTR_NOSYSTEM: "1",
   }
 }
 
@@ -689,15 +667,24 @@ export async function mergeTreeWithGit(
       }
     }
 
-    const configEmail = await runGitCommand(["config", "user.email", "sync@cozea.local"], {
-      cwd: tempDir,
-      timeoutMs: 10_000,
-    })
-    const configName = await runGitCommand(["config", "user.name", "Cozea Sync"], {
-      cwd: tempDir,
-      timeoutMs: 10_000,
-    })
-    if (!configEmail.success || !configName.success) {
+    // Git runs with the person's own config, so this scratch repository sets its own
+    // identity and turns off signing and hooks, which would prompt or run their code
+    // for a throwaway commit.
+    const scratchConfig: Array<[string, string]> = [
+      ["user.email", "sync@cozea.local"],
+      ["user.name", "Cozea Sync"],
+      ["commit.gpgsign", "false"],
+      ["core.hooksPath", path.join(tempDir, ".git", "no-hooks")],
+    ]
+    let configured = true
+    for (const [key, value] of scratchConfig) {
+      const result = await runGitCommand(["config", key, value], { cwd: tempDir, timeoutMs: 10_000 })
+      if (!result.success) {
+        configured = false
+        break
+      }
+    }
+    if (!configured) {
       return {
         success: false,
         clean: false,

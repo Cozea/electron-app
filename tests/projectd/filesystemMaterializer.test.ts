@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { FilesystemMaterializer } from "../../apps/projectd/src/filesystem/Materializer"
 import { MaterializationIndex } from "../../apps/projectd/src/filesystem/MaterializationIndex"
@@ -24,6 +24,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
   const sessionId = "sess_mat_test"
 
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] })
     const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`
     testWorkspaceDir = path.join(tmpDir, `test_mat_${id}`)
     testDbPath = path.join(tmpDir, `test_mat_db_${id}.sqlite`)
@@ -45,10 +46,12 @@ describe("P09 CRDT -> filesystem materializer", () => {
     })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     if (materializer) {
+      await materializer.flush()
       materializer.dispose()
     }
+    vi.useRealTimers()
     if (db) db.close()
     for (const p of [testWorkspaceDir, testDbPath, `${testDbPath}-wal`, `${testDbPath}-shm`]) {
       try {
@@ -57,6 +60,32 @@ describe("P09 CRDT -> filesystem materializer", () => {
         // Ignore
       }
     }
+  })
+
+  it("keeps materialized bytes until delete-versus-edit is explicitly resolved", async () => {
+    const entry = replica.createFile({ path: "file.txt", kind: "text", content: "base", actor: actorRemote })
+    await materializer.materializeFile(entry.fileId, Date.now())
+    replica.deleteFile(entry.fileId, actorRemote)
+    replica.textDocs.getOrCreate(entry.fileId).text.insert(4, " concurrent")
+    expect(replica.detectConflicts().deleteModifyConflicts).toHaveLength(1)
+    await materializer.materializeFile(entry.fileId, Date.now())
+    expect(fs.readFileSync(path.join(testWorkspaceDir, "file.txt"), "utf8")).toBe("base")
+    replica.deleteFile(entry.fileId, actorRemote, true)
+    await materializer.materializeFile(entry.fileId, Date.now())
+    expect(fs.existsSync(path.join(testWorkspaceDir, "file.txt"))).toBe(false)
+    expect(replica.textDocs.getTextContent(entry.fileId)).toBe("base concurrent")
+  })
+
+  it("does not follow a replacement symlink when deleting an indexed regular file", async () => {
+    const entry = replica.createFile({ path: "file", kind: "text", content: "same bytes", actor: actorRemote })
+    await materializer.materializeFile(entry.fileId, Date.now())
+    fs.writeFileSync(path.join(testWorkspaceDir, "target"), "same bytes")
+    fs.unlinkSync(path.join(testWorkspaceDir, "file"))
+    fs.symlinkSync("target", path.join(testWorkspaceDir, "file"))
+    replica.deleteFile(entry.fileId, actorRemote)
+    await materializer.materializeFile(entry.fileId, Date.now())
+    expect(fs.readlinkSync(path.join(testWorkspaceDir, "file"))).toBe("target")
+    expect(fs.readFileSync(path.join(testWorkspaceDir, "target"), "utf8")).toBe("same bytes")
   })
 
   it("materializes remote single-character edit with low latency", async () => {
@@ -68,7 +97,8 @@ describe("P09 CRDT -> filesystem materializer", () => {
     })
 
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 50))
+    await vi.advanceTimersByTimeAsync(10)
+    await materializer.flush()
 
     const absPath = path.join(testWorkspaceDir, "counter.ts")
     expect(fs.existsSync(absPath)).toBe(true)
@@ -80,7 +110,8 @@ describe("P09 CRDT -> filesystem materializer", () => {
 
     const start = Date.now()
     materializer.scheduleMaterialization(file.fileId)
-    await new Promise((r) => setTimeout(r, 50))
+    await vi.advanceTimersByTimeAsync(10)
+    await materializer.flush()
 
     expect(fs.readFileSync(absPath, "utf8")).toBe("const a = 10;")
     expect(Date.now() - start).toBeLessThan(150) // Fast low-latency materialization
@@ -88,6 +119,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
   })
 
   it("coalesces rapid 100 updates without overloading disk I/O", async () => {
+    const writes = vi.spyOn(materializer, "materializeFile")
     const file = replica.createFile({
       path: "stream.txt",
       kind: "text",
@@ -104,7 +136,8 @@ describe("P09 CRDT -> filesystem materializer", () => {
     }
 
     // Wait for coalesced writeback
-    await new Promise((r) => setTimeout(r, 60))
+    await vi.advanceTimersByTimeAsync(10)
+    await materializer.flush()
 
     const absPath = path.join(testWorkspaceDir, "stream.txt")
     expect(fs.existsSync(absPath)).toBe(true)
@@ -112,6 +145,7 @@ describe("P09 CRDT -> filesystem materializer", () => {
     const finalDiskContent = fs.readFileSync(absPath, "utf8")
     expect(finalDiskContent).toBe(doc.text.toString())
     expect(finalDiskContent).toContain(" 100")
+    expect(writes).toHaveBeenCalledTimes(1)
   })
 
   it("enforces divergent disk protection when local file has un-ingested changes", async () => {
@@ -174,7 +208,8 @@ describe("P09 CRDT -> filesystem materializer", () => {
     // Materializer must suppress destructive overwrite
     materializer.scheduleMaterialization(fileA.fileId)
     materializer.scheduleMaterialization(fileB.fileId)
-    await new Promise((r) => setTimeout(r, 25))
+    await vi.advanceTimersByTimeAsync(10)
+    await materializer.flush()
 
     const absPath = path.join(testWorkspaceDir, "conflict.txt")
     // Destructive overwrite was prevented

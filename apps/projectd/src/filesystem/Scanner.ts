@@ -130,8 +130,8 @@ export class WorkspaceScanner {
       const existing = indexedByPath.get(normPath)
 
       if (!existing) {
-        // Newly discovered file
-        const stable = await this.stableReader.read(item.absolutePath, { skipInitialDelay: true })
+        // Newly discovered file: scanner only needs stable metadata/hash, never payload bytes.
+        const stable = await this.stableReader.readMetadata(item.absolutePath, { skipInitialDelay: true })
         if (stable.exists && stable.contentHash) {
           created.push({
             ...item,
@@ -141,18 +141,21 @@ export class WorkspaceScanner {
       } else {
         seenIndexedPaths.add(normPath)
 
-        // Fast check: size and mtime
-        if (existing.diskSize === item.size && existing.diskMtimeMs === item.mtimeMs) {
+        // chmod changes ctime, not necessarily size or mtime.
+        const modeChanged = !item.isSymlink && existing.mode !== (item.mode & 0o111 ? 0o100755 : 0o100644)
+        const kindChanged = item.isSymlink !== (existing.kind === "symlink")
+        if (!kindChanged && !modeChanged && existing.diskSize === item.size && existing.diskMtimeMs === item.mtimeMs) {
           unmodifiedCount += 1
           continue
         }
 
-        // Potential modification: verify stable hash
-        const stable = await this.stableReader.read(item.absolutePath, { skipInitialDelay: true })
+        // Potential modification: verify stable hash without buffering the file.
+        const stable = await this.stableReader.readMetadata(item.absolutePath, { skipInitialDelay: true })
         if (stable.exists && stable.contentHash) {
-          if (stable.contentHash !== existing.diskHash) {
+          if (stable.isSymlink !== (existing.kind === "symlink") || stable.contentHash !== existing.diskHash || (!stable.isSymlink && existing.mode !== ((stable.mode ?? item.mode) & 0o111 ? 0o100755 : 0o100644))) {
             modified.push({
               ...item,
+              mode: stable.mode ?? item.mode,
               contentHash: stable.contentHash,
             })
           } else {

@@ -1,13 +1,10 @@
+/**
+ * Access tokens from a GitHub or GitLab integration, for those providers' APIs.
+ * Git never gets them: it authenticates with the person's own credentials.
+ */
+
 import * as integrationCrypto from '../integrationCrypto'
 import * as integrationKeys from '../integrationKeys'
-
-export function buildGitAuthorizationHeader(provider: string, accessToken?: string): string | null {
-  if (!accessToken?.trim()) return null
-
-  const username = provider === 'gitlab' ? 'oauth2' : 'x-access-token'
-  const encoded = Buffer.from(`${username}:${accessToken.trim()}`, 'utf8').toString('base64')
-  return `AUTHORIZATION: Basic ${encoded}`
-}
 
 function readIntegrationTokenValue(
   credentials: Record<string, unknown>,
