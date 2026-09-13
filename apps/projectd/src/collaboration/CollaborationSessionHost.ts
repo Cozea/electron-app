@@ -58,7 +58,7 @@ import { ConflictEngine } from "./ConflictEngine"
 import { BoundedDiff } from "./BoundedDiff"
 import { ExternalSnapshotAdapter } from "./ExternalSnapshotAdapter"
 import { OutboundBatchQueue } from "./OutboundBatchQueue"
-import { PendingBinaryStore } from "./PendingBinaryStore"
+import { PendingBinaryStore, type PendingBinaryRecord, type PendingBinarySource } from "./PendingBinaryStore"
 import { InvalidProjectPathError, normalizeProjectPath } from "./projectPath"
 import { SessionReplica } from "./SessionReplica"
 import type { ReplicaSnapshot } from "./SessionReplica"
@@ -1110,13 +1110,8 @@ export class CollaborationSessionHost {
       const alreadyPublished = this.replica.tree.listAllEntries().some((entry) =>
         this.replica.binaryStore.getRevisions(entry.fileId).some((revision) => revision.revisionId === staged.revisionId))
       if (!alreadyPublished) {
-        const bytes = this.pendingBinaryStore.readBytes(staged)
-        const manifest = await this.binaryObjects.upload(bytes)
-        if (manifest.contentHash !== staged.contentHash || manifest.size !== staged.size) {
-          throw new SessionHostError("BINARY_HASH_MISMATCH", "Retained binary upload did not match its captured version")
-        }
+        const manifest = await this.uploadStagedBinary(staged)
         if (!this.running || this.stopping || !this.canWrite || await this.pauseIfFolderLeftBranch()) return
-        await this.binaryCache.put(bytes)
         let entry = staged.fileId ? this.replica.tree.getEntry(staged.fileId) : null
         if (!entry || entry.kind !== "binary") {
           // An uncommitted create/type change cannot take ownership of an
@@ -1135,6 +1130,31 @@ export class CollaborationSessionHost {
       this.persistSnapshot()
       this.pendingBinaryStore.remove(staged.revisionId)
     }
+  }
+
+  /** Uploads the exact durable capture; live-disk bytes are never reread here. */
+  private async uploadStagedBinary(staged: PendingBinaryRecord) {
+    const source = this.pendingBinaryStore.asSource(staged)
+    let bufferedFallback: Buffer | null = null
+    const manifest = this.binaryObjects.uploadFrom
+      ? await this.binaryObjects.uploadFrom(source)
+      : await this.binaryObjects.upload((bufferedFallback = this.pendingBinaryStore.readBytes(staged)))
+    if (manifest.contentHash !== staged.contentHash || manifest.size !== staged.size) {
+      throw new SessionHostError("BINARY_HASH_MISMATCH", "Retained binary upload did not match its captured version")
+    }
+    if (bufferedFallback) {
+      const cached = await this.binaryCache.put(bufferedFallback)
+      if (cached.contentHash !== staged.contentHash || cached.size !== staged.size) {
+        throw new SessionHostError("BINARY_HASH_MISMATCH", "Retained binary cache did not match its captured version")
+      }
+    } else {
+      await this.binaryCache.putFrom({
+        contentHash: staged.contentHash,
+        size: staged.size,
+        stream: (write) => this.pendingBinaryStore.writeTo(staged, write),
+      })
+    }
+    return manifest
   }
 
   /** Runs the first sync on the queue, unless it already ran. */
@@ -1418,30 +1438,71 @@ export class CollaborationSessionHost {
       return
     }
     if (!stat?.isFile()) return
-    const bytes = await fs.readFile(absolutePath).catch(() => null)
-    if (!bytes) return
 
-    const diskHash = sha256(bytes)
+    const metadata = await this.watcher.scanner.stableReader.readMetadata(absolutePath, { skipInitialDelay: true })
+    if (!metadata.exists || metadata.isSymlink || metadata.contentHash === undefined || metadata.size === undefined ||
+      metadata.mtimeMs === undefined || metadata.mode === undefined) return
+
+    let diskHash = metadata.contentHash
+    let diskStat = { mode: metadata.mode, size: metadata.size, mtimeMs: metadata.mtimeMs }
+    let bytes: Buffer | null = null
+    if (metadata.size <= this.maxTextFileBytes) {
+      const complete = await this.watcher.scanner.stableReader.read(absolutePath, { skipInitialDelay: true })
+      if (!complete.exists || complete.isSymlink || !complete.bytes || complete.contentHash === undefined || complete.size === undefined ||
+        complete.mtimeMs === undefined || complete.mode === undefined) return
+      bytes = complete.bytes
+      diskHash = complete.contentHash
+      diskStat = { mode: complete.mode, size: complete.size, mtimeMs: complete.mtimeMs }
+    }
+
     // Read while Git switched branches, these bytes may belong to the other branch.
     if (await this.pauseIfFolderLeftBranch()) return
     const indexed = this.index.getByPath(this.publicSessionId, filePath)
     if (indexed?.kind !== "symlink" && indexed?.diskHash === diskHash) {
       const entry = this.findLiveEntry(filePath)
-      if (entry && indexed.mode !== fileMode(stat.mode)) {
-        const updated = this.replica.tree.chmodEntry(entry.fileId, fileMode(stat.mode), this.actor)
-        this.recordDiskState(updated, diskHash, stat)
+      if (entry && indexed.mode !== fileMode(diskStat.mode)) {
+        const updated = this.replica.tree.chmodEntry(entry.fileId, fileMode(diskStat.mode), this.actor)
+        this.recordDiskState(updated, diskHash, diskStat)
         this.flushSubmit()
       }
       return
     }
 
-    const kind = stat.size > this.maxTextFileBytes || TextDocRegistry.classifyContent(bytes) !== "text" ? "binary" : "text"
+    const kind = diskStat.size > this.maxTextFileBytes || !bytes || TextDocRegistry.classifyContent(bytes) !== "text" ? "binary" : "text"
     if (kind === "binary") {
-      await this.ingestBinary(filePath, bytes, stat, diskHash)
+      if (bytes) {
+        await this.ingestBinary(filePath, {
+          contentHash: diskHash,
+          size: bytes.length,
+          read: async (offset, length) => bytes!.subarray(offset, offset + length),
+        }, diskStat)
+        return
+      }
+      const handle = await fs.open(absolutePath, "r").catch(() => null)
+      if (!handle) return
+      try {
+        const source: PendingBinarySource = {
+          contentHash: diskHash,
+          size: diskStat.size,
+          read: async (offset, length) => {
+            const chunk = Buffer.allocUnsafe(length)
+            let total = 0
+            while (total < length) {
+              const { bytesRead } = await handle.read(chunk, total, length - total, offset + total)
+              if (!bytesRead) break
+              total += bytesRead
+            }
+            return total === length ? chunk : chunk.subarray(0, total)
+          },
+        }
+        await this.ingestBinary(filePath, source, diskStat)
+      } finally {
+        await handle.close()
+      }
       return
     }
 
-    const text = bytes.toString("utf8")
+    const text = bytes!.toString("utf8")
     let entry = this.findLiveEntry(filePath)
     if (entry && entry.kind !== "text") {
       this.replica.deleteFile(entry.fileId, this.actor)
@@ -1459,17 +1520,17 @@ export class CollaborationSessionHost {
           path: filePath,
           kind: "text",
           content: text,
-          mode: fileMode(stat.mode),
+          mode: fileMode(diskStat.mode),
           actor: this.actor,
         })
         this.adapter.initializeBaseline(entry.fileId, text)
       }
     }
-    entry = this.replica.tree.chmodEntry(entry.fileId, fileMode(stat.mode), this.actor)
+    entry = this.replica.tree.chmodEntry(entry.fileId, fileMode(diskStat.mode), this.actor)
     this.skippedPaths.delete(filePath)
-    this.recordDiskState(entry, diskHash, stat)
+    this.recordDiskState(entry, diskHash, diskStat)
 
-    this.unsentBytes += bytes.length
+    this.unsentBytes += bytes!.length
     if (this.unsentBytes >= SUBMIT_CHUNK_BYTES) this.flushSubmit()
     else this.scheduleSubmit()
 
@@ -1481,33 +1542,29 @@ export class CollaborationSessionHost {
 
   private async ingestBinary(
     filePath: string,
-    bytes: Buffer,
+    source: PendingBinarySource,
     stat: { mode: number; size: number; mtimeMs: number },
-    diskHash: string,
   ): Promise<void> {
+    const diskHash = source.contentHash
     // A startup scan may see bytes already captured before the outage. Replaying
     // that original intent preserves its base even if the room advanced meanwhile.
     const retained = this.pendingBinaryStore.list().find((version) =>
       version.path === filePath && version.contentHash === diskHash && version.mode === fileMode(stat.mode))
     if (retained) {
-      this.pendingBinaryStore.readBytes(retained)
+      await this.pendingBinaryStore.writeTo(retained, async () => undefined)
       this.scheduleBinaryReplay()
       return
     }
     const prior = this.findLiveEntry(filePath)
-    const staged = this.pendingBinaryStore.stage({ path: filePath, fileId: prior?.fileId ?? null,
+    const staged = await this.pendingBinaryStore.stageFrom({ path: filePath, fileId: prior?.fileId ?? null,
       baseRevisionId: prior ? this.replica.binaryStore.getHeadRevision(prior.fileId)?.revisionId ?? null : null,
-      mode: fileMode(stat.mode) }, bytes)
+      mode: fileMode(stat.mode) }, source)
     this.scheduleBinaryReplay()
     if (this.offlineObservation) {
       this.emitStatusSoon()
       return
     }
-    const cached = await this.binaryCache.put(bytes)
-    const manifest = await this.binaryObjects.upload(bytes)
-    if (cached.contentHash !== manifest.contentHash || cached.contentHash !== diskHash) {
-      throw new SessionHostError("BINARY_HASH_MISMATCH", `Binary hashing disagreed while ingesting ${filePath}`)
-    }
+    const manifest = await this.uploadStagedBinary(staged)
 
     let entry = this.findLiveEntry(filePath)
     if (entry && entry.kind !== "binary") {
