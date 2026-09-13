@@ -1123,9 +1123,15 @@ export class CollaborationSessionHost {
     if (!this.running || this.stopping || this.binaryReplayTimer) return
     this.binaryReplayTimer = setTimeout(() => {
       this.binaryReplayTimer = null
-      void this.enqueue(() => this.replayPendingBinaries()).then(() => {
+      void this.enqueue(async () => {
+        if (!this.running || this.stopping) return
+        await this.replayPendingBinaries()
+        if (!this.running || this.stopping) return
         if (this.pendingBinaryStore.count() > 0) this.scheduleBinaryReplay()
-      }).catch((error) => this.recordError("BINARY_RECOVERY_FAILED", error))
+      }).catch((error) => {
+        if (!this.running || this.stopping) return
+        this.recordError("BINARY_RECOVERY_FAILED", error)
+      })
     }, 5_000)
   }
 

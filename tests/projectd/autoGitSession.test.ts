@@ -85,6 +85,8 @@ interface Peer {
   remove(relativePath: string): Promise<void>
   symlink(relativePath: string, target: string): Promise<void>
   read(relativePath: string): Promise<string | null>
+  /** Reports an externally-made filesystem change, as the OS watcher would. */
+  reportExternalChange(relativePath: string): void
 }
 
 async function tempFolder(name: string): Promise<string> {
@@ -253,6 +255,9 @@ async function createPeer(
       events.report(options.root, relativePath)
     },
     read: (relativePath) => fs.readFile(path.join(options.root, relativePath), "utf8").catch(() => null),
+    reportExternalChange: (relativePath) => {
+      events.report(options.root, relativePath)
+    },
   }
 }
 
@@ -449,6 +454,90 @@ describe("AutoGit in projectd", () => {
     firstChunk[0] ^= 1
     await expect(store.download(snapshot!)).rejects.toThrow(/authenticated/)
   }, 30_000)
+
+  it("reconciles a lost push response without duplicating the checkpoint", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\n" })
+    const { creator } = await startPair(room, repos, ON_REQUEST)
+    await creator.write("notes.md", "one\ntwo\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo\n", "the edit to land")
+
+    // The push lands on the remote, but its answer never comes back.
+    const originalExecute = GitProcess.prototype.execute
+    let sabotaged = false
+    const execute = vi.spyOn(GitProcess.prototype, "execute").mockImplementation(async function (
+      this: GitProcess,
+      args: string[],
+      options: Parameters<GitProcess["execute"]>[1],
+    ) {
+      const result = await originalExecute.call(this, args, options)
+      if (args[0] === "push" && !sabotaged) {
+        sabotaged = true
+        throw new Error("simulated lost push response")
+      }
+      return result
+    })
+    try {
+      const result = await creator.host.checkpointNow()
+      expect(result).toMatchObject({ outcome: "saved" })
+    } finally {
+      execute.mockRestore()
+    }
+    // Reconciled via ls-remote: exactly one new commit, nothing duplicated.
+    const saved = remoteHead(repos.remote)
+    expect(saved).not.toBe(repos.initial)
+    expect(git(repos.remote, "rev-list", "--count", `${repos.initial}..${saved}`)).toBe("1")
+    // Checkpoint text normalizes the trailing newline, matching existing saves.
+    expect(git(repos.remote, "show", `${saved}:notes.md`)).toBe("one\ntwo")
+  })
+
+  it("adopts a terminal reset --hard as ordinary state without breaking the session", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
+    await creator.write("notes.md", "base\nsession edit\n")
+    await waitFor(async () => (await joiner.read("notes.md")) === "base\nsession edit\n", "the edit to reach the joiner")
+
+    // The person reverts the folder in the terminal; the session follows the
+    // bytes as an ordinary edit instead of failing or mass-deleting state.
+    git(creator.root, "reset", "-q", "--hard", "HEAD")
+    creator.reportExternalChange("notes.md")
+    await waitFor(async () => (await joiner.read("notes.md")) === "base\n", "the reset bytes to converge")
+    expect(await creator.read("notes.md")).toBe("base\n")
+    expect(creator.host.status().state).not.toBe("failed")
+    expect(creator.host.status().lastError).toBeNull()
+    // The session itself is intact: new edits still flow afterwards.
+    await creator.write("notes.md", "base\nrecovered\n")
+    await waitFor(async () => (await joiner.read("notes.md")) === "base\nrecovered\n", "post-reset edits to flow")
+  })
+
+  it("leaves terminal-staged and terminal-committed work alone while saving", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
+    await creator.write("notes.md", "base\nsession edit\n")
+    await waitFor(async () => (await joiner.read("notes.md")) === "base\nsession edit\n", "the edit to reach the joiner")
+
+    // Staging alone changes no worktree bytes, so the session has nothing new.
+    const batchesBefore = room.storage.batchCount()
+    git(creator.root, "add", "-A")
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(room.storage.batchCount()).toBe(batchesBefore)
+
+    // A terminal commit stays in local history across an explicit save.
+    git(creator.root, "commit", "-q", "-m", "terminal snapshot")
+    const localCommit = git(creator.root, "rev-parse", "HEAD")
+    const result = await creator.host.checkpointNow()
+    expect(result).toMatchObject({ outcome: "saved" })
+    // The terminal commit already holds the session bytes, so the checkpoint
+    // is a content no-op: nothing new is pushed, and the local commit stays
+    // reachable exactly where the person left it.
+    expect(remoteHead(repos.remote)).toBe(repos.initial)
+    expect(git(creator.root, "cat-file", "-e", localCommit)).toBe("")
+    expect(git(creator.root, "rev-parse", "HEAD")).toBe(localCommit)
+    expect(await creator.read("notes.md")).toBe("base\nsession edit\n")
+    expect(await joiner.read("notes.md")).toBe("base\nsession edit\n")
+  })
 
   it("saves the session to its branch from the leader and moves every member's Git with it", async () => {
     const room = newRoom()
@@ -1555,5 +1644,63 @@ describe("AutoGit in projectd", () => {
 
     expect(remoteHead(repos.remote)).toBe(outside)
     expect(git(repos.remote, "show", `${outside}:outside.md`)).toBe("keep me")
+  })
+
+  it("refuses a reviewed rebase apply when the target branch moves", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\ntwo\n" })
+    await createTargetBranch(repos.remote, repos.creatorRoot, { "notes.md": "one\ntwo from main\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+
+    await joiner.write("notes.md", "one\ntwo from session\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "one\ntwo from session\n", "the creator to get the session edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    const rebasing = await creator.host.rebase(true)
+    expect(rebasing.outcome).toBe("conflicts")
+    const recoveryId = rebasing.recoveryId!
+    const { review } = await creator.host.manageRebaseRecovery({ action: "review", recoveryId })
+    await creator.host.manageRebaseRecovery({ action: "resolve", recoveryId, fingerprint: review!.fingerprint,
+      choices: [{ path: "notes.md", kind: "content", text: "resolved\n", executable: false }] })
+    // Main advances after the review: the computed result is stale.
+    const mainClone = await tempFolder("main-advance")
+    git(mainClone, "clone", "-q", "-b", "main", repos.remote, ".")
+    await writeFiles(mainClone, { "notes.md": "one\ntwo from main\nv2\n" })
+    git(mainClone, "add", "-A")
+    git(mainClone, "commit", "-q", "-m", "Advance main")
+    git(mainClone, "push", "-q", "origin", "main")
+    await expect(creator.host.manageRebaseRecovery({ action: "apply", recoveryId })).rejects.toMatchObject({ code: "TARGET_CHANGED" })
+
+    // Nothing was pushed or adopted from the stale computation.
+    expect(await creator.read("notes.md")).toBe("one\ntwo from session\n")
+  })
+
+  it("rewrites the session branch only through force-with-lease", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n" })
+    const target = await createTargetBranch(repos.remote, repos.creatorRoot, { "from-main.md": "main\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+
+    await joiner.write("notes.md", "base\nsession\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "base\nsession\n", "the creator to get the session edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+    const pushes: string[][] = []
+    const execute = vi.spyOn(GitProcess.prototype, "execute")
+    try {
+      const result = await creator.host.rebase(false)
+      expect(result).toMatchObject({ outcome: "rebased" })
+      for (const [args] of execute.mock.calls) {
+        if (args[0] === "push") pushes.push(args)
+      }
+    } finally {
+      execute.mockRestore()
+    }
+    expect(pushes.length).toBeGreaterThan(0)
+    for (const args of pushes) {
+      expect(args.some((entry) => entry.startsWith("--force-with-lease="))).toBe(true)
+      expect(args).not.toContain("--force")
+    }
+    const rebased = remoteHead(repos.remote)
+    expect(git(repos.remote, "show", `${rebased}:notes.md`)).toBe("base\nsession")
+    expect(git(repos.remote, "rev-parse", `${rebased}^`)).toBe(target.head)
   })
 })

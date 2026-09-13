@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **3 — P16–P22 AutoGit/Git program**
-- Current checkpoint: **3B — P17 checkpoint barrier**
-- Blocking gate: A/C/G/R/M rows green against a real remote
-- Next authorized work: 3B only — immutable barrier + deterministic commit + failover reproduction
-- Branch: `feat/collab-step3-session-ui` · 3A closed (see ledger 2026-09-13 3A entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); 3A (leader lease A01/A04/A06)
+- Current phase: **4 — P23 Electron cutover**
+- Current checkpoint: **4A — Session UI address sessions by Session/Workbench identity**
+- Blocking gate: closing renderer does not stop live CRDT/session
+- Next authorized work: Phase 4 only
+- Branch: `feat/collab-step3-session-ui` · Phase 3 closed (see ledger 2026-09-13 Phase 3 entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 — 3A–3F (A/C/G/R/M matrices green against real Git remotes; full suite 450 files / 3,213 passed)
 
 ## How this file is used
 
@@ -181,22 +181,22 @@ required before P27; nothing here is unit-test-only.
 - [x] **3A — P16 leader lease:** 3 eligible Macs elect one; leave/offline/
   stale-generation/no-lease/no-eligible-leader behavior; CRDT unaffected when
   leaderless.
-- [ ] **3B — P17 checkpoint barrier:** commit contains exactly N with N+1
+- [x] **3B — P17 checkpoint barrier:** commit contains exactly N with N+1
   retained live; lost-push-response resolution; leader-dies-after-commit
   reproduction by successor; remote-advance refusal; `.gitignore`/
   `.gitattributes`/modes/symlinks/binaries/LFS; no-op checkpoint.
-- [ ] **3C — P18 baseline adoption:** refs/index advance to checkpoint without
+- [x] **3C — P18 baseline adoption:** refs/index advance to checkpoint without
   `git pull` of CRDT-delivered bytes and without overwriting newer
   working-tree bytes (master-plan example: HEAD C40/live seq 18570 →
   checkpoint C41/seq 18500 → HEAD C41, tree still 18570).
-- [ ] **3D — P19 external Git:** G01–G10 with real Git — add/commit/checkout/
+- [x] **3D — P19 external Git:** G01–G10 with real Git — add/commit/checkout/
   reset/rebase protections, Adopt Git result, Sync from GitHub, divergence
   states. Terminal Git must never read as a giant collaborator edit.
-- [ ] **3E — P20/P21 target + rebase:** recommendation correctness, no
+- [x] **3E — P20/P21 target + rebase:** recommendation correctness, no
   automatic rebase; all P21 mandatory tests (decline no-op, conflicts, edits
   during compute, target/session-branch moves, force-with-lease refusal,
   leader death, restart recovery, post-barrier edit survival).
-- [ ] **3F — P22 merge/PR:** dirty-session forces fresh checkpoint; reviewed
+- [x] **3F — P22 merge/PR:** dirty-session forces fresh checkpoint; reviewed
   immutable commit used; clean/conflicted/stale-review cases; protected
   branch → PR path with persisted PR status + refresh; provider/grant
   capability discovery; post-merge continue/close + branch retention policy.

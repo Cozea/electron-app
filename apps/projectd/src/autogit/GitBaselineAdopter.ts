@@ -96,8 +96,10 @@ export class GitBaselineAdopter {
     }
 
     if (!(await this.hasCommit(cwd, checkpointOid)) && remote) {
+      // Into FETCH_HEAD, never a constructed ref: remote may be a name, a URL
+      // or a local path, and only branch heads are fetched here.
       await this.gitService.process.execute(
-        ["fetch", "--no-tags", remote, `+refs/heads/${branchName}:refs/remotes/${remote}/${branchName}`],
+        ["fetch", "--no-tags", remote, `refs/heads/${branchName}`],
         { cwd, allowNonZeroExit: true, timeoutMs: FETCH_TIMEOUT_MS },
       )
     }

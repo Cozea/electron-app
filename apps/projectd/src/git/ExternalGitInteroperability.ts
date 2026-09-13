@@ -181,12 +181,19 @@ export class ExternalGitInteroperability {
     )
 
     if (mergeBase === localOid) {
-      // Remote is fast-forward ahead: adopt checkpoint baseline safely
-      await this.baselineAdopter.advanceBaseline({
+      // Remote is fast-forward ahead: adopt checkpoint baseline safely.
+      // The adopter fetches the missing objects into this folder itself; a
+      // skip (conflicts, wrong branch, unfetchable object) must not report
+      // success, or callers believe a sync happened that never did.
+      const adopted = await this.baselineAdopter.advanceBaseline({
         cwd,
         branchName: sessionBranch,
         checkpointOid: remoteOid,
+        remote: remoteUrl,
       })
+      if (!adopted.success) {
+        throw new Error(`Controlled sync cannot adopt ${remoteOid.slice(0, 7)} here: ${adopted.reason ?? adopted.error ?? "unknown"}`)
+      }
       return { status: "fast_forward_adopted" }
     }
 
