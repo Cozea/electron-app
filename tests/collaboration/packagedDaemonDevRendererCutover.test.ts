@@ -1,16 +1,13 @@
-import { spawn, type ChildProcess } from "node:child_process"
+import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import { createServer } from "node:http"
 import os from "node:os"
 import path from "node:path"
+import { promisify } from "node:util"
 import { WebSocketServer, WebSocket as WsClient } from "ws"
 import { beforeAll, describe, expect, it } from "vitest"
 
-import {
-  PROJECTD_PROTOCOL_VERSION,
-  ProjectdClient,
-} from "@cozea/projectd-protocol"
 import {
   RoomHost,
   TEST_PUBLIC_SESSION_ID,
@@ -21,24 +18,31 @@ import {
   type SessionRoomWorker,
 } from "../helpers/sessionRoomHarness"
 
+const execute = promisify(execFile)
+
 /**
  * P23 Advance Condition & Matrix Gate:
  * "gate demonstrated with packaged daemon + dev renderer."
  *
  * Runs the compiled projectd.mjs artifact in an independent child process
- * (matching the packaged LaunchAgent execution mode), connects a dev-renderer
- * client, closes the renderer, proves two-way synchronization continues
- * headlessly, and re-connects a replacement renderer.
+ * (matching the packaged LaunchAgent execution mode), launches the real Electron
+ * application with a native BrowserWindow as the dev renderer, closes Electron,
+ * proves two-way synchronization continues headlessly while Electron is completely
+ * stopped, and relaunches Electron to confirm seamless live reconnection.
  */
 describe("P23 packaged daemon + dev renderer cutover", () => {
   let worker: SessionRoomWorker
   const projectdDist = path.resolve(__dirname, "../../apps/projectd/dist/projectd.mjs")
+  const electronBinary = path.resolve(
+    __dirname,
+    "../../node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+  )
 
   beforeAll(async () => {
     worker = await loadSessionRoomWorker()
   })
 
-  it("closing dev renderer does not stop live CRDT/session on compiled projectd daemon", async () => {
+  it.runIf(process.platform === "darwin")("closing dev renderer does not stop live CRDT/session on compiled projectd daemon", async () => {
     // 1. Setup isolated directories and sockets
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-p23-packaged-"))
     const socketPath = path.join(tmp, "projectd.sock")
@@ -70,8 +74,8 @@ describe("P23 packaged daemon + dev renderer cutover", () => {
         close: (code = 1000, reason = "") => {
           ws.close(code, reason)
         },
-      };
-      (room as any).room.acceptSocket(fakeSocket as any, TEST_ROOM_ID)
+      }
+      ;(room as any).room.acceptSocket(fakeSocket as any, TEST_ROOM_ID)
 
       ws.on("message", (data) => {
         void (room as any).deliver(async (r: any) => {
@@ -117,31 +121,64 @@ describe("P23 packaged daemon + dev renderer cutover", () => {
       // Wait for daemon socket to appear
       await waitFor(() => fs.access(socketPath).then(() => true, () => false), "packaged daemon socket to appear", 10_000)
 
-      const rendererClient = new ProjectdClient({ socketPath, clientName: "dev-renderer-window-1" })
-      await rendererClient.connect()
-      const health = await rendererClient.health()
-      expect(health.status).toBe("healthy")
-      expect(health.protocolVersion).toBe(PROJECTD_PROTOCOL_VERSION)
+      // Bundle client for Electron to require in main
+      const clientBundlePath = path.join(tmp, "client.cjs")
+      await execute("bun", [
+        "build",
+        path.resolve(__dirname, "../../packages/projectd-protocol/src/client.ts"),
+        "--target=node",
+        "--format=cjs",
+        `--outfile=${clientBundlePath}`,
+      ])
 
+      const electronEnv = { ...process.env }
+      delete electronEnv.ELECTRON_RUN_AS_NODE
+
+      // 4. Launch REAL Electron.app (Dev Renderer 1): attaches session from a native BrowserWindow
       const roomKey = randomBytes(32)
       const token = await sessionTokenFor(worker, "principal_packaged_daemon", { sessionRole: "developer" })()
-      const attached = await rendererClient.attachSession({
-        publicSessionId: TEST_PUBLIC_SESSION_ID,
-        workspaceId: `ws_collab_${TEST_PUBLIC_SESSION_ID}`,
-        projectId: "proj_packaged_gate",
-        rootPath: workspaceRoot,
-        roomKeyBase64: roomKey.toString("base64"),
-        ticket: { wsUrl, token, role: "developer" },
-        actor: { principalId: "principal_packaged_daemon" },
-      })
-      expect(attached).toMatchObject({ publicSessionId: TEST_PUBLIC_SESSION_ID, rootPath: workspaceRoot })
+      const main1Path = path.join(tmp, "main1.cjs")
+      await fs.writeFile(main1Path, `
+        const { app, BrowserWindow } = require('electron');
+        const { ProjectdClient } = require(${JSON.stringify(clientBundlePath)});
+        app.setPath('userData', ${JSON.stringify(path.join(tmp, "profile1"))});
+        app.whenReady().then(async () => {
+          const client = new ProjectdClient({ socketPath: ${JSON.stringify(socketPath)}, clientName: 'dev-renderer-1' });
+          await client.connect();
+          const win = new BrowserWindow({ show: false, width: 800, height: 600 });
+          try {
+            const attached = await client.attachSession(${JSON.stringify({
+              publicSessionId: TEST_PUBLIC_SESSION_ID,
+              workspaceId: `ws_collab_${TEST_PUBLIC_SESSION_ID}`,
+              projectId: "proj_packaged_gate",
+              rootPath: workspaceRoot,
+              roomKeyBase64: roomKey.toString("base64"),
+              ticket: { wsUrl, token, role: "developer" },
+              actor: { principalId: "principal_packaged_daemon" },
+            })});
+            for (let i = 0; i < 60; i++) {
+              const status = await client.getSessionStatus(${JSON.stringify(TEST_PUBLIC_SESSION_ID)});
+              if (status && status.state === 'live') {
+                console.log('GUI_ATTACH_OK');
+                win.close();
+                app.exit(0);
+                return;
+              }
+              await new Promise((r) => setTimeout(r, 100));
+            }
+            console.error('TIMED_OUT_WAITING_FOR_LIVE');
+            app.exit(1);
+          } catch (err) {
+            console.error('ATTACH_ERROR:', err);
+            app.exit(1);
+          }
+        });
+      `)
 
-      await waitFor(
-        async () => (await rendererClient.getSessionStatus(TEST_PUBLIC_SESSION_ID))?.state === "live",
-        "session to reach live state on packaged daemon",
-        10_000,
-      )
+      const { stdout: stdout1 } = await execute(electronBinary, [main1Path], { env: electronEnv, timeout: 20_000 })
+      expect(stdout1).toContain("GUI_ATTACH_OK")
 
+      // 5. Connect a remote peer client via network WebSocket
       const { SessionReplica } = await import("../../apps/projectd/src/collaboration/SessionReplica")
       const { SessionTransport } = await import("../../apps/projectd/src/collaboration/SessionTransport")
       const { SessionRoomClient } = await import("../../apps/projectd/src/collaboration/SessionRoomClient")
@@ -167,16 +204,15 @@ describe("P23 packaged daemon + dev renderer cutover", () => {
       await peerClient.connect()
       await waitFor(() => peerClient.state === "live", "peer to go live")
 
-      // Master Plan invariant: Closing renderer does not stop live CRDT/session!
-      rendererClient.disconnect()
-
-      // Verify packaged daemon process is still running independently
+      // 6. Dev renderer process is COMPLETELY CLOSED
+      // Invariant: closing renderer must NOT kill the daemon or stop synchronization!
       expect(daemonProc.exitCode).toBeNull()
 
+      // 7. While Electron is closed, peer writes a file edit to the room over network WebSocket
       peerReplica.createFile({
         path: "from_peer_headless.txt",
         kind: "text",
-        content: "written by peer while renderer was closed\n",
+        content: "written by peer while Electron was closed\n",
         actor: { actorType: "user" },
       })
       peerClient.submitLocalChanges()
@@ -185,13 +221,13 @@ describe("P23 packaged daemon + dev renderer cutover", () => {
       await waitFor(
         async () =>
           (await fs.readFile(path.join(workspaceRoot, "from_peer_headless.txt"), "utf8").catch(() => null)) ===
-          "written by peer while renderer was closed\n",
-        "packaged daemon to materialize peer file with renderer closed",
+          "written by peer while Electron was closed\n",
+        "packaged daemon to materialize peer file with Electron closed",
         15_000,
       )
 
-      // While renderer is closed, an external local tool edits a file on disk
-      await fs.writeFile(path.join(workspaceRoot, "notes.md"), "initial content\nexternal terminal edit while closed\n")
+      // 8. While Electron is closed, an external local tool edits a file on disk
+      await fs.writeFile(path.join(workspaceRoot, "notes.md"), "initial content\nexternal terminal edit while Electron closed\n")
 
       // Packaged daemon rescans, ingests, and sends batch to room; peer receives it over WebSocket!
       await waitFor(
@@ -199,19 +235,41 @@ describe("P23 packaged daemon + dev renderer cutover", () => {
           peerReplica.tree.listLiveEntries().some((e) => e.path === "notes.md") &&
           peerReplica.textDocs.getTextContent(
             peerReplica.tree.listLiveEntries().find((e) => e.path === "notes.md")!.fileId,
-          ) === "initial content\nexternal terminal edit while closed\n",
+          ) === "initial content\nexternal terminal edit while Electron closed\n",
         "peer to receive external edit published by headless daemon",
         15_000,
       )
 
-      // Reopen dev renderer: new ProjectdClient connects to the running daemon
-      const reopenedRenderer = new ProjectdClient({ socketPath, clientName: "dev-renderer-window-2" })
-      await reopenedRenderer.connect()
-      const status = await reopenedRenderer.getSessionStatus(TEST_PUBLIC_SESSION_ID)
-      expect(status?.state).toBe("live")
-      expect(status?.fileCount).toBeGreaterThanOrEqual(2)
+      // 9. Reopen dev renderer: launch REAL Electron.app a second time
+      const main2Path = path.join(tmp, "main2.cjs")
+      await fs.writeFile(main2Path, `
+        const { app, BrowserWindow } = require('electron');
+        const { ProjectdClient } = require(${JSON.stringify(clientBundlePath)});
+        app.setPath('userData', ${JSON.stringify(path.join(tmp, "profile2"))});
+        app.whenReady().then(async () => {
+          const client = new ProjectdClient({ socketPath: ${JSON.stringify(socketPath)}, clientName: 'dev-renderer-2' });
+          await client.connect();
+          const win = new BrowserWindow({ show: false, width: 800, height: 600 });
+          try {
+            const status = await client.getSessionStatus(${JSON.stringify(TEST_PUBLIC_SESSION_ID)});
+            if (status && status.state === 'live' && status.fileCount >= 2) {
+              console.log('GUI_REOPEN_OK');
+              win.close();
+              app.exit(0);
+              return;
+            }
+            console.error('INVALID_STATUS:', JSON.stringify(status));
+            app.exit(1);
+          } catch (err) {
+            console.error('REOPEN_ERROR:', err);
+            app.exit(1);
+          }
+        });
+      `)
 
-      reopenedRenderer.disconnect()
+      const { stdout: stdout2 } = await execute(electronBinary, [main2Path], { env: electronEnv, timeout: 20_000 })
+      expect(stdout2).toContain("GUI_REOPEN_OK")
+
       peerClient.disconnect()
     } finally {
       await killDaemon()
