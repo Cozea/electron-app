@@ -67,6 +67,7 @@ export function LiveSessionShareSection({
     activeSession ? { sessionId: activeSession._id } : "skip",
   )
   const invite = useMutation(api.collaborationSessions.inviteParticipant)
+  const joinSession = useMutation(api.collaborationSessions.join)
 
   const [identityKey, setIdentityKey] = useState("")
   const [busy, setBusy] = useState<string | null>(null)
@@ -121,6 +122,9 @@ export function LiveSessionShareSection({
 
   const openSessionWorkbench = (candidate: NonNullable<typeof sessions>[number]) => {
     void run(`switch:${candidate.branchName}`, async () => {
+      if (candidate.viewerMembership !== "active") {
+        await joinSession({ sessionId: candidate._id })
+      }
       const result = await window.electronAPI.projectd.workbenches.ensureSession({
         projectId: String(projectId),
         publicSessionId: candidate.publicSessionId,

@@ -63,7 +63,7 @@ export class BackgroundDeviceIdentityManager {
     try { identity = JSON.parse(json) as StoredDeviceIdentity } catch {
       throw new BackgroundIdentityError("IDENTITY_INVALID", "The saved background identity cannot be read. Reopen Cozea to authorize its existing device identity. Retained session data has been kept.")
     }
-    if (!identity || identity.schemaVersion !== 3 || !/^czd_[a-f0-9]+$/.test(identity.identityKey) ||
+    if (!identity || identity.schemaVersion !== 3 || !/^czd_[a-z0-9]+$/.test(identity.identityKey) ||
         !identity.signingPrivateKeyJwk?.d || !identity.privateKeyJwk?.d) {
       throw new BackgroundIdentityError("IDENTITY_INVALID", "The saved background identity is invalid. Reopen Cozea to authorize its existing device identity. Retained session data has been kept.")
     }

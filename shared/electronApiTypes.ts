@@ -2231,6 +2231,12 @@ export interface ElectronAPI {
       newBranch?: string
       path?: string | null
     }) => Promise<ProjectGitCreateWorktreeResult>
+    applyThreadWorktree: (options: {
+      workspaceId?: string
+      workspaceRoot?: string
+      worktreePath: string
+      relativePaths?: string[]
+    }) => Promise<{ success: boolean; appliedFiles: string[]; error?: string }>
     mergeLaneIntoCollab: (options: {
       collabProjectPath: string
       collabBranch: string

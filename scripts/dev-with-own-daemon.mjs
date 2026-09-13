@@ -40,6 +40,8 @@ const env = {
   COZEA_GIT_MIRRORS_DIR: path.join(stateRoot, 'git-mirrors'),
   COZEA_BINARY_CACHE_DIR: path.join(stateRoot, 'binary-cache'),
   COZEA_COLLAB_REPOS_DIR: path.join(stateRoot, 'collaboration'),
+  COZEA_SUBSTRATE_SHADOW_PORT: name === 'dev' ? '4783' : '4784',
+  COZEA_T3_SERVER_PORT: name === 'dev' ? '13773' : '13774',
 }
 
 const stagedHelper = path.join(repositoryRoot, 'build', 'projectd-helper', 'cozea-projectd-mac-helper')

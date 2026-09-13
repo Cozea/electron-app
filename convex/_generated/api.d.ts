@@ -27,6 +27,7 @@ import type * as lib_projectAccess from "../lib/projectAccess.js";
 import type * as lib_projectGitMetadata from "../lib/projectGitMetadata.js";
 import type * as lib_projectPagination from "../lib/projectPagination.js";
 import type * as lib_projectSharing from "../lib/projectSharing.js";
+import type * as lib_sessionLifecycle from "../lib/sessionLifecycle.js";
 import type * as lib_storageHash from "../lib/storageHash.js";
 import type * as lib_usagePeriods from "../lib/usagePeriods.js";
 import type * as lib_workspaceLimits from "../lib/workspaceLimits.js";
@@ -41,6 +42,7 @@ import type * as projectMembers from "../projectMembers.js";
 import type * as projectPresence from "../projectPresence.js";
 import type * as projectTasks from "../projectTasks.js";
 import type * as projects from "../projects.js";
+import type * as sessionRepositoryCredentials from "../sessionRepositoryCredentials.js";
 import type * as yjs from "../yjs.js";
 import type * as yjsAwareness from "../yjsAwareness.js";
 
@@ -70,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   "lib/projectGitMetadata": typeof lib_projectGitMetadata;
   "lib/projectPagination": typeof lib_projectPagination;
   "lib/projectSharing": typeof lib_projectSharing;
+  "lib/sessionLifecycle": typeof lib_sessionLifecycle;
   "lib/storageHash": typeof lib_storageHash;
   "lib/usagePeriods": typeof lib_usagePeriods;
   "lib/workspaceLimits": typeof lib_workspaceLimits;
@@ -84,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   projectPresence: typeof projectPresence;
   projectTasks: typeof projectTasks;
   projects: typeof projects;
+  sessionRepositoryCredentials: typeof sessionRepositoryCredentials;
   yjs: typeof yjs;
   yjsAwareness: typeof yjsAwareness;
 }>;

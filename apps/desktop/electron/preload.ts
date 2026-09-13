@@ -731,6 +731,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('project:checkoutGitBranch', options),
     createGitWorktree: (options: { workspaceId: string; branch: string; newBranch?: string; path?: string | null }) =>
       ipcRenderer.invoke('project:createGitWorktree', options),
+    applyThreadWorktree: (options: { workspaceId?: string; workspaceRoot?: string; worktreePath: string; relativePaths?: string[] }) =>
+      ipcRenderer.invoke('project:applyThreadWorktree', options),
     mergeLaneIntoCollab: (options: { collabProjectPath: string; collabBranch: string; sourceBranch: string }) =>
       ipcRenderer.invoke('project:mergeLaneIntoCollab', options),
     openFolder: (options: { workspaceId: string }) => ipcRenderer.invoke('project:openFolder', options),

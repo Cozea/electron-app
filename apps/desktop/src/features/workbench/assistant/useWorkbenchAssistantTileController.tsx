@@ -183,6 +183,7 @@ interface WorkbenchAssistantTileControllerResult {
    * the previous binary.
    */
   stopAgentSession: () => Promise<void>;
+  applyThreadWorktree: (relativePaths?: string[]) => Promise<{ success: boolean; appliedFiles: string[]; error?: string }>;
   surfaceProps: ComponentProps<typeof CozeaChatSurface>;
 }
 
@@ -1645,6 +1646,23 @@ export function useWorkbenchAssistantTileController(
         const resolvedInteractionMode = threadDraft?.interactionMode ?? selectedInteractionMode;
         const createdAt = new Date().toISOString();
 
+        const laneBinding = input.tile.laneBinding ?? "sessionWorkspace";
+        let resolvedWorktreePath: string | null = null;
+        if (laneBinding === "threadWorktree" && input.workspaceId) {
+          try {
+            const wtResult = await window.electronAPI?.project?.createGitWorktree?.({
+              workspaceId: input.workspaceId,
+              branch: verifiedBranchRef.current || "main",
+              newBranch: `thread-${threadId.slice(0, 8)}`,
+            });
+            if (wtResult?.success && wtResult.worktree) {
+              resolvedWorktreePath = wtResult.worktree.path;
+            }
+          } catch (wtErr) {
+            console.warn("[AssistantTileController] Failed to create private thread worktree:", wtErr);
+          }
+        }
+
         await getOrchestration().dispatchCommand({
           type: "thread.create",
           commandId: newCommandId(),
@@ -1655,7 +1673,7 @@ export function useWorkbenchAssistantTileController(
           runtimeMode: resolvedRuntimeMode,
           interactionMode: resolvedInteractionMode,
           branch: verifiedBranchRef.current,
-          worktreePath: null,
+          worktreePath: resolvedWorktreePath,
           createdAt,
         });
 
@@ -1707,7 +1725,7 @@ export function useWorkbenchAssistantTileController(
           session: null,
           latestTurn: null,
           branch: null,
-          worktreePath: null,
+          worktreePath: resolvedWorktreePath,
           createdAt,
           updatedAt: createdAt,
           deletedAt: null,
@@ -2195,12 +2213,26 @@ export function useWorkbenchAssistantTileController(
     onRemediationResolved: () => setSendError(null),
   });
 
+  const handleApplyThreadWorktree = async (relativePaths?: string[]): Promise<{ success: boolean; appliedFiles: string[]; error?: string }> => {
+    const wtPath = thread?.worktreePath;
+    if (!wtPath) {
+      return { success: false, appliedFiles: [], error: "No private thread worktree found for this thread." };
+    }
+    return await window.electronAPI.project.applyThreadWorktree({
+      workspaceId: input.workspaceId ?? undefined,
+      workspaceRoot: input.projectRootPath ?? undefined,
+      worktreePath: wtPath,
+      relativePaths,
+    });
+  };
+
   return {
     chatTitle,
     showTitleSpinner,
     diffDialog,
     closeDiffDialog,
     handleDeleteThread,
+    applyThreadWorktree: handleApplyThreadWorktree,
     historyBusy:
       shellNeedsAttention ||
       threadOperationCount > 0 ||

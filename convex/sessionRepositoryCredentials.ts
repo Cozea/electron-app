@@ -4,6 +4,12 @@ import { sign } from "node:crypto"
 import { ConvexError, v } from "convex/values"
 import { action, type ActionCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
+import type { Id } from "./_generated/dataModel"
+
+interface CredentialScope {
+  projectId: Id<"projects">
+  repositoryUrl: string
+}
 
 interface RepositoryGrant { projectId: string; repositoryUrl: string; installationId: number; repositoryId: number; allowGitWrite?: boolean }
 
@@ -50,15 +56,18 @@ export async function issueRepositoryInstallationToken(grant: RepositoryGrant, a
 }
 
 function issueForSession(purpose: "pull_request" | "git_write") {
-  return async (ctx: ActionCtx, args: { publicSessionId: string }) => {
-    const before = await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)
+  return async (
+    ctx: ActionCtx,
+    args: { publicSessionId: string },
+  ): Promise<{ token: string; expiresAt: number; repositoryUrl: string; projectId: Id<"projects"> }> => {
+    const before = (await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)) as CredentialScope
     try {
       const grant = repositoryGrant(process.env.COZEA_GITHUB_REPOSITORY_GRANTS ?? "[]", before.projectId, before.repositoryUrl)
       const appId = process.env.COZEA_GITHUB_APP_ID
       const privateKey = process.env.COZEA_GITHUB_APP_PRIVATE_KEY
       if (!appId || !privateKey) throw new Error("Not configured")
       const issued = await issueRepositoryInstallationToken(grant, appId, privateKey, fetch, purpose)
-      const after = await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)
+      const after = (await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)) as CredentialScope
       if (after.projectId !== before.projectId || after.repositoryUrl !== before.repositoryUrl) throw new Error("Repository binding changed")
       return { ...issued, repositoryUrl: before.repositoryUrl, projectId: before.projectId }
     } catch { throw new ConvexError("Background repository authorization is unavailable. Ask a project operator to verify its GitHub App binding.") }
@@ -81,8 +90,11 @@ const capabilityResult = v.object({
 export const capabilities = action({
   args: { publicSessionId: v.string() },
   returns: capabilityResult,
-  handler: async (ctx, args) => {
-    const before = await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ repositoryUrl: string; projectId: Id<"projects">; pullRequest: boolean; gitWrite: boolean }> => {
+    const before = (await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)) as CredentialScope
     let pullRequest = false
     let gitWrite = false
     try {
@@ -94,7 +106,7 @@ export const capabilities = action({
       // An authorized session may learn only that this exact canonical repository is
       // not provisioned. Installation ids, repository ids and app secrets stay server-side.
     }
-    const after = await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)
+    const after = (await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)) as CredentialScope
     if (after.projectId !== before.projectId || after.repositoryUrl !== before.repositoryUrl) {
       throw new ConvexError("Repository binding changed while checking capabilities.")
     }

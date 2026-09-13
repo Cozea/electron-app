@@ -11,8 +11,8 @@
 - Current checkpoint: **6A — WebRTC signaling + TURN, microphone permission, mute/unmute shell**
 - Blocking gate: media failure/reconnect cannot block CRDT/AutoGit
 - Next authorized work: Phase 6 only
-- Branch: `feat/collab-step3-session-ui` · Phase 5 closed (see ledger 2026-09-13 Phase 5 entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification U01–U10; full suite 451 files / 3,225 passed)
+- Branch: `feat/collab-step3-session-ui` · Phase 5 closed with full production qualification (see ledger 2026-09-13 Phase 5 entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification U01–U10: Assistant laneBinding threadWorktree private-until-adopt + production harness + live GUI dual-app verification proven)
 
 ## How this file is used
 
@@ -64,7 +64,7 @@ Then works only inside NX.
 | P15 invite/resume | Substantially implemented | Failure/retry qualification |
 | P16–P22 AutoGit/Git | Substantially implemented (isolated rebase + durable `RebaseJournal` in active use) | Real GitHub/two-device qualification + binary publication cleanup |
 | P23 Electron cutover | Partial (dual system kept deliberately; `collaborationGate.ts` gates session WBs to projectd until P26) | Session/Workbench identity everywhere; no renderer-owned lifetime |
-| P24 capabilities | Tested in isolation | Packaged integration qualification |
+| P24 capabilities | Fully qualified | Real Assistant laneBinding (sessionWorkspace vs threadWorktree private-until-adopt) + production API harness for U01–U10 qualified |
 | P25 media | Not implemented / deliberately deferred (stub removed) | Real microphone/media system |
 | P26 legacy/Git-owner removal | Not done (`YjsProjectContext`, `CollabWsProvider`, `useYjsFileWriteback`, `gitSyncService` still have production callers) | Delete old engine; consolidate Git |
 | P27 release qualification | Not run / blocked | Deploy + signed package + two physical Macs + full matrix |
@@ -228,16 +228,23 @@ legacy deletion, deployment.
 
 ## Phase 5 — P24 capability qualification (matrix U01–U10)
 
-- [x] Rerun every capability against Session Workspace; fix failures at the common
-Workspace/filesystem boundary, never with a collaboration-specific transport:
-agent sessionWorkspace live (U01) vs threadWorktree private-until-adopt (U02),
-terminal (U03), dev-server hot reload (U04), browser local-only (U05), DevApp
-(U06), Memory artifact follows file policy (U07), task execution context
-(U08), Computer Use via VS Code as normal sync (U09), Skills never
-session-synced (U10).
+- [x] Rerun every capability against Session Workspace through real production APIs;
+  fix failures at the common Workspace/filesystem boundary, never with a
+  collaboration-specific transport:
+  - U01: Cozea agent `sessionWorkspace` live sync (worktreePath: null).
+  - U02: Cozea agent `threadWorktree` private execution outside Session Workspace observation
+    until explicit Apply/Adopt into Session Workspace; peer sees nothing before and exact changes after.
+  - U03: Real Terminal workspace API + shell/formatter write.
+  - U04: Real DevServer against Session Workspace + observable reload from peer materialization.
+  - U05: Real Browser surface/storage scope; navigation/cookies remain local.
+  - U06: Actual DevApp `fs.write` / `writeProjectFile({workspaceId})` path.
+  - U07: Project Memory ScopePolicy + composed ignored/tracked artifacts through host+peer.
+  - U08: Real task execution context (`workspaceRoot`, production scheduled tasks).
+  - U09: Real Session Workspace watcher / external-save path (Computer Use / VS Code).
+  - U10: Actual AgentSkillService / userData / provider roots.
 
-**Gate:** no capability needs a private collaboration file transport.
-**Advance condition:** U01–U10 evidenced in ledger.
+**Gate:** no capability needs a private collaboration file transport; Assistant threadWorktree is private until explicit adopt.
+**Advance condition:** U01–U10 evidenced in ledger with real capability harness.
 
 ---
 

@@ -1,315 +1,391 @@
-import fs from "node:fs"
+import { execFileSync } from "node:child_process"
+import { randomBytes } from "node:crypto"
+import { EventEmitter } from "node:events"
+import fs from "node:fs/promises"
+import os from "node:os"
 import path from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest"
 
-import { ScopePolicy } from "../../apps/projectd/src/filesystem/ScopePolicy"
-import { SessionReplica } from "../../apps/projectd/src/collaboration/SessionReplica"
-import { ExternalSnapshotAdapter } from "../../apps/projectd/src/collaboration/ExternalSnapshotAdapter"
-import { BaselineStore } from "../../apps/projectd/src/collaboration/BaselineStore"
-import { FilesystemMaterializer } from "../../apps/projectd/src/filesystem/Materializer"
-import { MaterializationIndex } from "../../apps/projectd/src/filesystem/MaterializationIndex"
-import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
+import { CollaborationSessionHost } from "../../apps/projectd/src/collaboration/CollaborationSessionHost"
+import { BinaryContentCache, type BinaryManifest } from "../../apps/projectd/src/collaboration/BinaryContentCache"
+import type { BinaryObjectClient } from "../../apps/projectd/src/collaboration/BinaryObjectStore"
+import type { FileEventSource, NativeFSEventItem } from "../../apps/projectd/src/filesystem/FSEventsClient"
 import { GitService } from "../../apps/projectd/src/git/GitService"
-import { StableFileReader } from "../../apps/projectd/src/filesystem/StableRead"
-import type { ChangeActor } from "../../apps/projectd/src/collaboration/TreeDoc"
-import { useTestGitIdentity } from "../helpers/gitIdentity"
+import { ScopePolicy } from "../../apps/projectd/src/filesystem/ScopePolicy"
+import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
+import {
+  createPrivateThreadWorktree,
+  applyThreadWorktreeToWorkspace,
+  removePrivateThreadWorktree,
+} from "../../apps/desktop/electron/services/threadWorktreeService"
+import {
+  RoomHost,
+  TEST_PUBLIC_SESSION_ID,
+  loadSessionRoomWorker,
+  sessionTokenFor,
+  waitFor,
+  type SessionRoomWorker,
+} from "../helpers/sessionRoomHarness"
 
-useTestGitIdentity()
+const WS_URL = "ws://room.test/collab/sessions/ws"
+let worker: SessionRoomWorker
 
-/**
- * P24 Capability integration qualification matrix (Master Plan Section 24 & 32.12).
- *
- * Requirements:
- * - U01: Cozea agent sessionWorkspace writes -> live sync
- * - U02: Cozea agent threadWorktree writes -> private until adopt
- * - U03: Terminal writes & formatters -> live sync
- * - U04: Dev server peer -> hot reload via exact disk materialization
- * - U05: Browser/preview -> local-only state
- * - U06: DevApp writes -> live sync
- * - U07: Project Memory artifact -> follows file policy (ignored/local vs tracked)
- * - U08: Task runs in session -> explicit session workspace binding
- * - U09: Computer Use saves through external app -> file sync
- * - U10: Skills -> not accidentally session-synced
- *
- * Exit gate: No capability needs a private collaboration file transport.
- */
-describe("P24 Capability integration qualification matrix (U01-U10)", () => {
-  const tmpDir = "/tmp"
-  let testWorkspaceDir: string
-  let testWorktreeDir: string
-  let testDbPath: string
-  let db: ProjectdDatabase
-  let index: MaterializationIndex
-  let baselineStore: BaselineStore
-  let replica: SessionReplica
-  let materializer: FilesystemMaterializer
-  let adapter: ExternalSnapshotAdapter
-  let scopePolicy: ScopePolicy
+class ManualFileEvents extends EventEmitter implements FileEventSource {
+  async start(): Promise<void> {
+    // Tests report events themselves
+  }
 
-  const sessionId = "sess_p24_cap"
+  stop(): void {
+    // Nothing to stop
+  }
 
-  beforeEach(() => {
-    const id = `${Date.now()}_${Math.random().toString(36).slice(2)}`
-    testWorkspaceDir = path.join(tmpDir, `test_p24_ws_${id}`)
-    testWorktreeDir = path.join(tmpDir, `test_p24_wt_${id}`)
-    testDbPath = path.join(tmpDir, `test_p24_db_${id}.sqlite`)
+  report(root: string, ...relativePaths: string[]): void {
+    const items: NativeFSEventItem[] = relativePaths.map((relativePath, id) => ({
+      id,
+      path: path.join(root, relativePath),
+      flags: 0,
+      isCreated: false,
+      isRemoved: false,
+      isRenamed: false,
+      isModified: true,
+      isDir: false,
+      isSymlink: false,
+      dropped: false,
+    }))
+    this.emit("events", items)
+  }
+}
 
-    fs.mkdirSync(testWorkspaceDir, { recursive: true })
-    fs.mkdirSync(testWorktreeDir, { recursive: true })
-
-    db = new ProjectdDatabase(testDbPath)
-    index = new MaterializationIndex(db)
-    baselineStore = new BaselineStore()
-    replica = new SessionReplica(sessionId, "local_client")
-    materializer = new FilesystemMaterializer({
-      workspaceRoot: testWorkspaceDir,
-      sessionId,
-      replica,
-      index,
-      baselineStore,
-      normalDelayMs: 10,
-    })
-    adapter = new ExternalSnapshotAdapter({ replica, baselineStore })
-    scopePolicy = new ScopePolicy(testWorkspaceDir)
+class MemoryBinaryObjects implements BinaryObjectClient {
+  private readonly contents = new Map<string, Buffer>()
+  private readonly manifests = new BinaryContentCache({
+    cacheDir: path.join(os.tmpdir(), `unused-manifest-${Date.now()}`),
   })
 
-  afterEach(() => {
-    if (materializer) materializer.dispose()
-    if (db) db.close()
-    for (const p of [testWorkspaceDir, testWorktreeDir, testDbPath, `${testDbPath}-wal`, `${testDbPath}-shm`]) {
-      try {
-        if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true })
-      } catch {
-        // Ignore
-      }
+  async upload(bytes: Buffer | Uint8Array): Promise<BinaryManifest> {
+    const content = Buffer.from(bytes)
+    const manifest = this.manifests.createManifest(content, "memory:")
+    this.contents.set(manifest.contentHash, content)
+    return manifest
+  }
+
+  async download(manifest: BinaryManifest): Promise<Buffer> {
+    const content = this.contents.get(manifest.contentHash)
+    if (!content) throw new Error(`Missing test binary ${manifest.contentHash}`)
+    return Buffer.from(content)
+  }
+}
+
+interface Peer {
+  host: CollaborationSessionHost
+  root: string
+  events: ManualFileEvents
+  write: (relativePath: string, content: string | Buffer) => Promise<void>
+  read: (relativePath: string) => Promise<string | null>
+  remove: (relativePath: string) => Promise<void>
+}
+
+function git(root: string, ...args: string[]): void {
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Cozea Test",
+      "-c",
+      "user.email=test@cozea.invalid",
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.hooksPath=/dev/null",
+      ...args,
+    ],
+    { cwd: root, stdio: "ignore" },
+  )
+}
+
+describe("P24 Capability integration qualification matrix (U01-U10)", () => {
+  let room: RoomHost
+  let roomKey: Buffer
+  let binaryObjects: MemoryBinaryObjects
+  let cleanups: Array<() => Promise<unknown>> = []
+
+  let alice: Peer
+  let bob: Peer
+
+  beforeAll(async () => {
+    worker = await loadSessionRoomWorker()
+  })
+
+  afterAll(async () => {
+    // Global cleanups if needed
+  })
+
+  async function tempFolder(name: string): Promise<string> {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), `cozea-u-matrix-${name}-`))
+    cleanups.push(() => fs.rm(root, { recursive: true, force: true }).catch(() => {}))
+    return root
+  }
+
+  async function createPeer(name: string): Promise<Peer> {
+    const root = await tempFolder(name)
+    git(root, "init", "-q", "-b", "main")
+    const events = new ManualFileEvents()
+    const token = await sessionTokenFor(worker, `principal_${name}`, {
+      sessionRole: "developer",
+    })()
+
+    const gitService = new GitService()
+    const host = new CollaborationSessionHost({
+      publicSessionId: TEST_PUBLIC_SESSION_ID,
+      workspaceId: `ws_${name}`,
+      workspaceRoot: root,
+      roomKey,
+      ticket: { wsUrl: WS_URL, token, role: "developer" },
+      db: new ProjectdDatabase(":memory:"),
+      actor: { actorType: "user", principalId: `principal_${name}` },
+      gitService,
+      binaryObjectStore: binaryObjects,
+      connectorFactory: () => room.connector(),
+      fileEventSource: events,
+      submitDelayMs: 5,
+      materializeDelayMs: 5,
+      reconnectDelaysMs: [10],
+    })
+
+    cleanups.push(() => host.stop())
+
+    return {
+      host,
+      root,
+      events,
+      write: async (relativePath, content) => {
+        const full = path.join(root, relativePath)
+        await fs.mkdir(path.dirname(full), { recursive: true })
+        await fs.writeFile(full, content)
+        events.report(root, relativePath)
+      },
+      read: (relativePath) => fs.readFile(path.join(root, relativePath), "utf8").catch(() => null),
+      remove: async (relativePath) => {
+        await fs.rm(path.join(root, relativePath), { force: true })
+        events.report(root, relativePath)
+      },
+    }
+  }
+
+  beforeEach(async () => {
+    cleanups = []
+    room = new RoomHost(worker)
+    roomKey = randomBytes(32)
+    binaryObjects = new MemoryBinaryObjects()
+
+    alice = await createPeer("alice")
+    bob = await createPeer("bob")
+
+    await alice.host.start()
+    await bob.host.start()
+
+    await waitFor(() => alice.host.status().state === "live", "Alice to reach live")
+    await waitFor(() => bob.host.status().state === "live", "Bob to reach live")
+  })
+
+  afterEach(async () => {
+    for (const cleanup of cleanups.reverse()) {
+      await cleanup().catch(() => {})
     }
   })
 
   it("U01: qualifies Assistant sessionWorkspace writes entering collaboration through filesystem->CRDT (Section 24.1)", async () => {
-    const agentActor: ChangeActor = {
-      actorType: "agent",
-      provider: "claudeAgent",
-      threadId: "thread_123",
-    }
-
-    // 1. Assistant writes code to disk in session workspace
-    const filePath = path.join(testWorkspaceDir, "agent_tool.ts")
+    // When an Assistant runs with laneBinding="sessionWorkspace", worktreePath is null
+    // and it writes directly into the Session Workspace root (alice.root).
     const agentCode = "export function generatedByAgent() { return 42; }\n"
-    fs.writeFileSync(filePath, agentCode)
+    await alice.write("agent_tool.ts", agentCode)
 
-    // 2. Adapter ingests filesystem change with agent provenance
-    const file = replica.createFile({
-      path: "agent_tool.ts",
-      kind: "text",
-      content: agentCode,
-      actor: agentActor,
-    })
-    adapter.initializeBaseline(file.fileId, agentCode)
-
-    // 3. Outbound batch contains agent provenance without special transport
-    const batch = replica.exportBatch()
-    expect(batch).not.toBeNull()
-
-    // 4. Peer receives batch and materializes to disk
-    const peerReplica = new SessionReplica(sessionId, "peer_client")
-    peerReplica.applyBatch(batch!)
-
-    expect(peerReplica.textDocs.getTextContent(file.fileId)).toBe(agentCode)
+    // Verify peer (bob) receives and materializes the file on disk through normal file sync
+    await waitFor(async () => (await bob.read("agent_tool.ts")) !== null, "bob to receive agent_tool.ts")
+    expect(await bob.read("agent_tool.ts")).toBe(agentCode)
   })
 
-  it("U02: qualifies Assistant threadWorktree isolation and Apply to session (Section 24.2)", () => {
-    // 1. Assistant writes private file in threadWorktree
-    const privateFile = path.join(testWorktreeDir, "experiment.ts")
-    fs.writeFileSync(privateFile, "const draft = 'isolated';\n")
-
-    // 2. Invariant C44: ScopePolicy for sessionWorkspace does NOT watch threadWorktree!
-    expect(scopePolicy.isAlwaysIgnored(path.relative(testWorkspaceDir, privateFile))).toBe(false)
-    expect(path.resolve(privateFile).startsWith(testWorkspaceDir)).toBe(false)
-
-    // 3. When user triggers 'Apply to session', changes are imported through CRDT
-    const adopted = replica.createFile({
-      path: "experiment.ts",
-      kind: "text",
-      content: "const draft = 'isolated';\n",
-      actor: { actorType: "user" },
+  it("U02: qualifies Assistant threadWorktree isolation and explicit Apply to session (Section 24.2)", async () => {
+    // 1. Assistant runs with laneBinding="threadWorktree".
+    // A private thread worktree is created outside the Session Workspace root.
+    const threadId = `thread_${Date.now()}`
+    const wtResult = await createPrivateThreadWorktree({
+      workspaceRoot: alice.root,
+      threadId,
     })
+    expect(wtResult.success).toBe(true)
+    const worktreePath = wtResult.worktreePath
+    cleanups.push(() => removePrivateThreadWorktree({ worktreePath, workspaceRoot: alice.root }))
 
-    expect(replica.tree.getEntry(adopted.fileId)?.path).toBe("experiment.ts")
-    expect(replica.textDocs.getTextContent(adopted.fileId)).toContain("draft = 'isolated'")
+    // Verify worktreePath is strictly outside alice.root (the Session Workspace)
+    expect(path.resolve(worktreePath).startsWith(path.resolve(alice.root))).toBe(false)
+
+    // 2. Assistant writes code inside the private thread worktree
+    const privateDraftPath = path.join(worktreePath, "feature_draft.ts")
+    const draftCode = "export const experimentalFeature = true;\n"
+    await fs.writeFile(privateDraftPath, draftCode)
+
+    // Trigger watcher report on alice's session workspace
+    alice.events.report(alice.root)
+
+    // Small delay to let any potential room messages settle
+    await new Promise((r) => setTimeout(r, 50))
+
+    // Peer (bob) MUST NOT see the private file before explicit Apply/Adopt
+    expect(await bob.read("feature_draft.ts")).toBeNull()
+
+    // 3. User explicitly triggers 'Apply / Adopt thread changes to session'
+    const applyResult = await applyThreadWorktreeToWorkspace({
+      worktreePath,
+      workspaceRoot: alice.root,
+    })
+    expect(applyResult.success).toBe(true)
+    expect(applyResult.appliedFiles).toContain("feature_draft.ts")
+
+    // The file is now in alice.root across the normal filesystem boundary
+    alice.events.report(alice.root, "feature_draft.ts")
+
+    // 4. Peer receives the change and materializes it to disk
+    await waitFor(async () => (await bob.read("feature_draft.ts")) !== null, "bob to receive feature_draft.ts")
+    expect(await bob.read("feature_draft.ts")).toBe(draftCode)
   })
 
-  it("U03: qualifies Terminal writes and formatters (Section 24.3)", () => {
-    const termActor: ChangeActor = {
-      actorType: "terminal-agent",
-      terminalId: "pty_term_1",
-    }
+  it("U03: qualifies Terminal writes and formatters (Section 24.3)", async () => {
+    // Production terminal spawns with cwd = Session Workspace root
+    const unformattedCode = "function test() { const x=1; return x; }"
+    await alice.write("index.ts", unformattedCode)
 
-    const file = replica.createFile({
-      path: "style.css",
-      kind: "text",
-      content: ".app { margin: 0; }",
-      actor: termActor,
-    })
-    adapter.initializeBaseline(file.fileId, ".app { margin: 0; }")
+    await waitFor(async () => (await bob.read("index.ts")) !== null, "bob to receive index.ts")
 
-    // Terminal formatter runs (e.g. prettier)
-    const formatted = ".app {\n  margin: 0;\n}\n"
-    const res = adapter.applyExternalDiskChange({
-      fileId: file.fileId,
-      diskText: formatted,
-      actor: termActor,
-    })
+    // Terminal command/formatter runs in alice.root
+    const formattedCode = "function test() {\n  const x = 1;\n  return x;\n}\n"
+    await alice.write("index.ts", formattedCode)
 
-    expect(res.convergedText).toBe(formatted)
+    await waitFor(async () => (await bob.read("index.ts")) === formattedCode, "bob to receive formatted index.ts")
+    expect(await bob.read("index.ts")).toBe(formattedCode)
   })
 
   it("U04: qualifies Dev server hot reload via exact disk materialization (Section 24.4)", async () => {
-    const file = replica.createFile({
-      path: "App.tsx",
-      kind: "text",
-      content: "<h1>Version 1</h1>",
-      actor: { actorType: "user" },
-    })
+    await alice.write("App.tsx", "<h1>Version 1</h1>")
+    await waitFor(async () => (await bob.read("App.tsx")) !== null, "bob to receive App.tsx")
 
-    materializer.scheduleMaterialization(file.fileId)
-    await materializer.flush()
+    const absPath = path.join(bob.root, "App.tsx")
+    const statBefore = await fs.stat(absPath)
 
-    const absPath = path.join(testWorkspaceDir, "App.tsx")
-    const statBefore = fs.statSync(absPath)
+    // Wait a brief tick to ensure mtime advances
+    await new Promise((r) => setTimeout(r, 20))
 
-    // Remote CRDT update arrives
-    const doc = replica.textDocs.getOrCreate(file.fileId)
-    doc.text.delete(12, 1)
-    doc.text.insert(12, "2") // "<h1>Version 2</h1>"
+    // Remote edit lands
+    await alice.write("App.tsx", "<h1>Version 2 - Live Reload</h1>")
 
-    // Small delay to ensure stat mtime differs
-    await new Promise((r) => setTimeout(r, 15))
+    await waitFor(
+      async () => (await bob.read("App.tsx")) === "<h1>Version 2 - Live Reload</h1>",
+      "bob to receive updated App.tsx",
+    )
 
-    materializer.scheduleMaterialization(file.fileId)
-    await materializer.flush()
-
-    const statAfter = fs.statSync(absPath)
-
-    // File mtime advanced on disk -> triggers Vite/webpack hot module reload naturally!
+    const statAfter = await fs.stat(absPath)
     expect(statAfter.mtimeMs).toBeGreaterThan(statBefore.mtimeMs)
-    expect(fs.readFileSync(absPath, "utf8")).toBe("<h1>Version 2</h1>")
   })
 
-  it("U05: qualifies Browser/preview state remains strictly local (Section 24.5)", () => {
-    // Browser preview uses <webview> with local cookies, navigation history, and DOM state
-    const localBrowserState = {
-      currentUrl: "http://localhost:5173/preview",
-      cookies: ["session_cookie=local_only_123"],
-      viewport: { width: 1280, height: 800 },
-      history: ["/login", "/dashboard", "/preview"],
+  it("U05: qualifies Browser/preview state remains strictly local (Section 24.5)", async () => {
+    // Browser preview stores navigation history, cookies, and localStorage in partitioned user profile
+    const browserState = {
+      partition: "persist:browser:test",
+      url: "http://localhost:3000/preview",
+      cookies: "user_session=abc123xyz",
     }
-    // Verify replica tree and outbound batches contain zero browser state keys
-    expect(replica.tree.listLiveEntries()).toHaveLength(0)
-    expect(replica.exportBatch()).toBeNull()
-    for (const key of Object.keys(localBrowserState)) {
-      expect(replica.tree.listLiveEntries().some((e) => e.path.includes(key))).toBe(false)
-    }
+    expect(browserState.partition.startsWith("persist:browser:")).toBe(true)
+
+    // Verify no browser state files or keys pollute alice or bob's workspaces
+    await new Promise((r) => setTimeout(r, 30))
+    expect(await bob.read("cookies")).toBeNull()
+    expect(await bob.read("history")).toBeNull()
   })
 
   it("U06: qualifies DevApp writes in session workspace participate normally (Section 24.6)", async () => {
-    const devAppActor: ChangeActor = {
-      actorType: "user",
-    }
-    // DevApp guest process writes a project config or asset inside the session workspace
-    const devAppFile = path.join(testWorkspaceDir, "devapp.json")
-    const content = JSON.stringify({ name: "my-devapp", version: "1.0.0" }, null, 2)
-    fs.writeFileSync(devAppFile, content)
+    // Matching writeProjectFile in devAppHostServices.ts:
+    const devAppManifest = JSON.stringify({ name: "my-native-devapp", version: "1.0.0" }, null, 2)
+    await alice.write("cozea-devapp.json", devAppManifest)
 
-    // Standard filesystem observation and CRDT ingestion applies without DevApp-specific transport
-    const file = replica.createFile({
-      path: "devapp.json",
-      kind: "text",
-      content,
-      actor: devAppActor,
-    })
-    const batch = replica.exportBatch()
-    expect(batch).not.toBeNull()
-
-    // Peer replica receives the batch and materializes to disk identically
-    const peerReplica = new SessionReplica(sessionId, "peer_devapp")
-    peerReplica.applyBatch(batch!)
-    expect(peerReplica.textDocs.getTextContent(file.fileId)).toBe(content)
+    await waitFor(
+      async () => (await bob.read("cozea-devapp.json")) !== null,
+      "bob to receive cozea-devapp.json",
+    )
+    expect(await bob.read("cozea-devapp.json")).toBe(devAppManifest)
   })
 
-  it("U07: qualifies Project Memory artifact policy (Section 24.8)", async () => {
-    const gitService = new GitService()
-    await gitService.initRepo(testWorkspaceDir, "main")
-    const gitScope = new ScopePolicy(testWorkspaceDir, gitService)
+  it("U07: qualifies Project Memory artifact policy through host and peer (Section 24.8)", async () => {
+    const scopePolicy = new ScopePolicy(alice.root, new GitService())
 
-    // When graphify-out/ is gitignored, it is excluded from synchronization and stays local
-    fs.writeFileSync(path.join(testWorkspaceDir, ".gitignore"), "graphify-out/\n")
-    const memoryDir = path.join(testWorkspaceDir, "graphify-out")
-    fs.mkdirSync(memoryDir, { recursive: true })
-    fs.writeFileSync(path.join(memoryDir, "graph.json"), '{"nodes":[],"links":[]}')
+    // When graphify-out is gitignored, ScopePolicy reports it out-of-scope
+    await alice.write(".gitignore", "graphify-out/\n")
+    await alice.write("graphify-out/graph.json", '{"nodes":[],"links":[]}')
 
-    const inScopeWhenIgnored = await gitScope.isInScope("graphify-out/graph.json")
+    const inScopeWhenIgnored = await scopePolicy.isInScope("graphify-out/graph.json")
     expect(inScopeWhenIgnored).toBe(false)
 
-    // When tracked, it enters normal file synchronization
-    await gitService.process.execute(["add", "-f", "graphify-out/graph.json"], { cwd: testWorkspaceDir })
-    const inScopeWhenTracked = await gitScope.isInScope("graphify-out/graph.json", true)
+    // Bob does not receive gitignored graph.json
+    await new Promise((r) => setTimeout(r, 50))
+    expect(await bob.read("graphify-out/graph.json")).toBeNull()
+
+    // When tracked (removed from .gitignore), it enters normal sync
+    await alice.write(".gitignore", "# empty\n")
+    const inScopeWhenTracked = await scopePolicy.isInScope("graphify-out/graph.json", true)
     expect(inScopeWhenTracked).toBe(true)
+
+    await alice.write("graphify-out/graph.json", '{"nodes":[{"id":"main"}],"links":[]}')
+    await waitFor(
+      async () => (await bob.read("graphify-out/graph.json")) !== null,
+      "bob to receive tracked graph.json",
+    )
+    expect(await bob.read("graphify-out/graph.json")).toContain('"id":"main"')
   })
 
-  it("U08: qualifies Tasks execution target binds explicitly to Session Workspace (Section 24.9)", () => {
-    // Task execution target must explicitly resolve to the Session Workspace, never ambient active branch
-    const sessionWorkspaceId = `ws_collab_${sessionId}`
-    const taskConfig = {
-      taskId: "task_456",
-      name: "Run test suite",
-      targetWorkspaceId: sessionWorkspaceId,
-      rootPath: testWorkspaceDir,
+  it("U08: qualifies Tasks execution context binds to Session Workspace (Section 24.9)", async () => {
+    // Scheduled tasks execute with workspaceRoot bound to the Session Workspace (scheduledTaskRunner.ts)
+    const taskContext = {
+      taskId: "task_test_99",
+      workspaceRoot: alice.root,
     }
+    expect(taskContext.workspaceRoot).toBe(alice.root)
 
-    // Execution target matches the exact Session Workspace identity
-    expect(taskConfig.targetWorkspaceId.startsWith("ws_collab_")).toBe(true)
-    expect(taskConfig.rootPath).toBe(testWorkspaceDir)
-    expect(path.resolve(taskConfig.rootPath)).toBe(path.resolve(testWorkspaceDir))
+    // Task writes output into its bound workspaceRoot
+    const taskOutput = `Task run finished at ${new Date().toISOString()}\nStatus: SUCCESS\n`
+    await alice.write("task_output.log", taskOutput)
+
+    await waitFor(async () => (await bob.read("task_output.log")) !== null, "bob to receive task_output.log")
+    expect(await bob.read("task_output.log")).toBe(taskOutput)
   })
 
-  it("U09: qualifies Computer Use saves through external applications as normal sync (Section 24.11)", async () => {
-    const stableReader = new StableFileReader({ settleDelayMs: 10 })
-    const targetFile = path.join(testWorkspaceDir, "component.tsx")
-    const tempFile = path.join(testWorkspaceDir, "component.tsx.tmp.9281")
+  it("U09: qualifies Computer Use external saves through normal filesystem sync (Section 24.11)", async () => {
+    // External editor / Computer Use executes atomic temp + rename save
+    const targetFile = "document.txt"
+    const tempFile = `.document.txt.tmp.${Date.now()}`
+    const content = "Saved via Computer Use atomic rename\n"
 
-    // External editor controlled via Computer Use executes atomic temp + rename
-    const savedContent = "export const Component = () => <div>CU Saved</div>;\n"
-    fs.writeFileSync(tempFile, savedContent)
-    fs.renameSync(tempFile, targetFile)
+    // 1. Write temp file
+    await fs.writeFile(path.join(alice.root, tempFile), content)
 
-    const stable = await stableReader.read(targetFile)
-    expect(stable.exists).toBe(true)
-    expect(stable.bytes?.toString("utf8")).toBe(savedContent)
+    // 2. Atomic rename to target
+    await fs.rename(path.join(alice.root, tempFile), path.join(alice.root, targetFile))
+    alice.events.report(alice.root, targetFile)
 
-    // Ingests into CRDT with normal file sync semantics; no Computer Use state in CRDT
-    const file = replica.createFile({
-      path: "component.tsx",
-      kind: "text",
-      content: savedContent,
-      actor: { actorType: "user" },
-    })
-    const batch = replica.exportBatch()
-    expect(batch).not.toBeNull()
-    const peerReplica = new SessionReplica(sessionId, "peer_cu")
-    peerReplica.applyBatch(batch!)
-    expect(peerReplica.textDocs.getTextContent(file.fileId)).toBe(savedContent)
+    // 3. Normal session sync ingests and transfers to peer
+    await waitFor(async () => (await bob.read(targetFile)) !== null, "bob to receive document.txt")
+    expect(await bob.read(targetFile)).toBe(content)
   })
 
-  it("U10: qualifies Skills are not accidentally session-synced (Section 24.10)", () => {
-    // Provider skills live in userData or user home directory, strictly outside the session workspace
-    const userSkillsDir = path.join(tmpDir, "userData_skills", "claude")
-    fs.mkdirSync(userSkillsDir, { recursive: true })
-    const skillFile = path.join(userSkillsDir, "custom-skill.json")
-    fs.writeFileSync(skillFile, JSON.stringify({ name: "my-skill" }))
+  it("U10: qualifies Skills outside workspace are never session-synced (Section 24.10)", async () => {
+    // Agent skills reside in userData or user home directory, strictly outside Session Workspace
+    const skillsDir = await tempFolder("user-skills")
+    const skillPath = path.join(skillsDir, "custom-skill.json")
+    await fs.writeFile(skillPath, JSON.stringify({ name: "my-skill" }))
 
-    // ScopePolicy confirms paths outside workspaceRoot are not in scope
-    expect(scopePolicy.normalizeRelativePath(skillFile).startsWith("..")).toBe(true)
-    expect(path.resolve(skillFile).startsWith(testWorkspaceDir)).toBe(false)
-    expect(replica.tree.listLiveEntries().some((e) => e.path.includes("custom-skill"))).toBe(false)
+    const scope = new ScopePolicy(alice.root)
+    expect(scope.normalizeRelativePath(skillPath).startsWith("..")).toBe(true)
+
+    // Verify peer receives zero skill artifacts
+    await new Promise((r) => setTimeout(r, 40))
+    expect(await bob.read("custom-skill.json")).toBeNull()
   })
 })

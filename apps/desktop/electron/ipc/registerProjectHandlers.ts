@@ -29,6 +29,7 @@ import {
   createProjectGitWorktree,
   listProjectGitBranches,
 } from '../services/projectGitDesktopService'
+import { applyThreadWorktreeToWorkspace } from '../services/threadWorktreeService'
 import {
   shouldExcludeGeneratedDirectory,
   shouldExcludeGeneratedFile,
@@ -217,6 +218,32 @@ export function registerProjectHandlers(
         branch: options.branch,
         newBranch: options.newBranch,
         path: options.path,
+      })
+    },
+  )
+
+  ipcMain.handle(
+    'project:applyThreadWorktree',
+    async (
+      _event,
+      options: { workspaceId?: string; workspaceRoot?: string; worktreePath: string; relativePaths?: string[] }
+    ) => {
+      let targetRoot = options.workspaceRoot
+      if (!targetRoot && options.workspaceId) {
+        try {
+          const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'write-file' })
+          targetRoot = access.projectRootPath
+        } catch (e) {
+          return { success: false, appliedFiles: [], error: String(e) }
+        }
+      }
+      if (!targetRoot) {
+        return { success: false, appliedFiles: [], error: "Target workspace root is required." }
+      }
+      return await applyThreadWorktreeToWorkspace({
+        worktreePath: options.worktreePath,
+        workspaceRoot: targetRoot,
+        relativePaths: options.relativePaths,
       })
     },
   )

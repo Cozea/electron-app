@@ -4,6 +4,7 @@ import type {
   WorkspaceCatalogSnapshot,
   WorkspaceCatalogSnapshotEntry,
 } from "@shared/workspaceTypes"
+import { invalidateProjectWorkspaceResolution } from "@/app/resources/workspaceResources"
 
 /**
  * Renderer mirror of the pushed catalog snapshot: one IPC fetch at first use,
@@ -35,6 +36,9 @@ function applySnapshot(next: WorkspaceCatalogSnapshot): void {
     return
   }
   snapshot = next
+  for (const entry of Object.values(next.entries)) {
+    invalidateProjectWorkspaceResolution(entry.projectId)
+  }
   emit()
 }
 

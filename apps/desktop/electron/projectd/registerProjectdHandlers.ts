@@ -182,6 +182,7 @@ export function registerProjectdHandlers(): void {
 
       return { success: true, ...ensured, workspace: registered.workspace }
     } catch (err) {
+      console.error("[registerProjectdHandlers] ensureSession failed:", err)
       return toFailure(err)
     }
   })
