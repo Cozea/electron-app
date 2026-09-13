@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process"
-import { createHash } from "node:crypto"
+import { createHash, randomBytes } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 import { GitService } from "../../apps/projectd/src/git/GitService"
+import { GitLfs } from "../../apps/projectd/src/git/GitLfs"
 import { SessionReplica } from "../../apps/projectd/src/collaboration/SessionReplica"
 import { BarrierCapture, type BarrierDescriptor } from "../../apps/projectd/src/autogit/BarrierCapture"
 import { CheckpointBuilder } from "../../apps/projectd/src/autogit/CheckpointBuilder"
@@ -244,6 +245,78 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
       if (Date.now() >= deadline) expect(leftovers).toEqual([])
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
+  })
+
+  const gitLfsAvailable = (() => {
+    try {
+      execFileSync("git", ["lfs", "version"], { stdio: "ignore" })
+      return true
+    } catch {
+      return false
+    }
+  })()
+
+  ;(gitLfsAvailable ? it : it.skip)("B05: checkpoints a binary through real git-lfs with pointer and object proof", async () => {
+    execFileSync("git", ["lfs", "install", "--local"], { cwd: testRepoDir })
+    fs.writeFileSync(path.join(testRepoDir, ".gitattributes"), "asset.bin filter=lfs diff=lfs merge=lfs -text\n")
+    await gitService.process.execute(["add", "-A"], { cwd: testRepoDir })
+    await gitService.createCommit(testRepoDir, "track lfs", {
+      author: { name: "Tester", email: "test@example.com" },
+    })
+    // 1 MiB exercises the file-fed clean path without turning the gate test
+    // into a throughput benchmark; the 100 MiB streaming bound is proven by B02.
+    const bytes = randomBytes(1024 * 1024)
+    const contentHash = createHash("sha256").update(bytes).digest("hex")
+    const replica = new SessionReplica(sessionId, "leader_lfs")
+    replica.createFile({ path: ".gitattributes", kind: "text", content: "asset.bin filter=lfs diff=lfs merge=lfs -text\n", actor })
+    const entry = replica.createFile({ path: "asset.bin", kind: "binary", actor })
+    replica.addBinaryRevision({
+      revisionId: "rev_lfs",
+      fileId: entry.fileId,
+      baseRevisionId: null,
+      contentHash,
+      manifest: {
+        contentHash,
+        size: bytes.length,
+        chunkSize: 4 * 1024 * 1024,
+        chunks: [{ index: 0, hash: contentHash, size: bytes.length, encryptedRef: `memory:${contentHash}` }],
+      },
+      encryptedManifestRef: `inline:v1:${contentHash}`,
+      size: bytes.length,
+      actor,
+      createdAt: 1,
+    })
+    const snapshot = BarrierCapture.captureSnapshot(
+      { barrierId: "barrier_lfs_test", sessionSeq: 11, serverTime: 1726000060000 },
+      replica,
+    )
+    // Real GitLfs: no test double anywhere on this path.
+    const builder = new CheckpointBuilder(gitService, {
+      resolveBinaryStream: async (_revision, write) => {
+        for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
+          await write(bytes.subarray(offset, offset + 64 * 1024))
+        }
+        return { size: bytes.length, contentHash }
+      },
+    })
+    const result = await builder.buildCheckpointCommit({
+      repoPath: testRepoDir,
+      sessionId,
+      parentOid: null,
+      leaseGeneration: 1,
+      snapshot,
+    })
+
+    // Pointer proof through plumbing (no smudge involved): the stored blob is
+    // an LFS pointer naming the exact content hash and size.
+    const tree = await gitService.process.execute(["ls-tree", result.commitOid, "asset.bin"], { cwd: testRepoDir })
+    const blobOid = tree.stdout.trim().split(/\s+/)[2]
+    const pointerRaw = await gitService.process.execute(["cat-file", "-p", blobOid], { cwd: testRepoDir })
+    const pointer = GitLfs.parsePointer(pointerRaw.stdoutBuffer)
+    expect(pointer).toMatchObject({ oid: `sha256:${contentHash}`, size: bytes.length })
+    // Object proof: the local LFS object reconstructs the original bytes.
+    const objectPath = path.join(testRepoDir, ".git", "lfs", "objects", contentHash.slice(0, 2), contentHash.slice(2, 4), contentHash)
+    expect(fs.readFileSync(objectPath).equals(bytes)).toBe(true)
   })
 
   const listTree = async (treeish: string, cwd = testRepoDir) =>

@@ -471,6 +471,10 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
     try {
       reported = await this.resolveBinaryStream(revision, async (chunk) => {
         if (!Buffer.isBuffer(chunk) || chunk.length === 0) return
+        // Reject over-size streams before their excess reaches disk.
+        if (size + chunk.length > expectedSize) {
+          throw new Error(`Checkpoint binary ${displayPath} exceeds its barrier size`)
+        }
         digest.update(chunk)
         let offset = 0
         while (offset < chunk.length) {
@@ -485,7 +489,11 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
       await handle.close().catch(() => undefined)
       await fail(error instanceof Error ? error.message : `Checkpoint cannot stage binary ${displayPath}`)
     }
-    await handle.close()
+    try {
+      await handle.close()
+    } catch {
+      await fail(`Checkpoint cannot stage binary ${displayPath}`)
+    }
     if (!reported || reported.size !== expectedSize || reported.contentHash !== expectedHash ||
       size !== expectedSize || digest.digest("hex") !== expectedHash) {
       await fail(`Checkpoint binary ${displayPath} does not match its barrier revision`)
