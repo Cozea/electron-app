@@ -31,8 +31,6 @@ export interface CollaborationGate {
   readonly reason: CollaborationGateReason
 }
 
-const COLLABORATING_SESSION_LIFECYCLES = new Set(["ACTIVE", "DORMANT"])
-
 /** Workspace id prefix for dedicated Session Workbenches: the session, not the branch, owns the Workbench. */
 export const SESSION_WORKSPACE_PREFIX = "ws_collab_"
 
@@ -90,10 +88,10 @@ export function resolveCollaborationGate(input: {
   const session = findBranchSession(input.sessions, input.activeBranch)
 
   if (session) {
-    if (input.sessionsUseDaemon) return { enabled: false, reason: "session-daemon" }
-    return COLLABORATING_SESSION_LIFECYCLES.has(session.lifecycle)
-      ? { enabled: true, reason: "session-active" }
-      : { enabled: false, reason: "session-inactive" }
+    // Session branches sync through projectd exclusively (Section 4.1, 23.2).
+    // The fallback flag path that previously handed session branches to the
+    // legacy in-app engine has been removed.
+    return { enabled: false, reason: "session-daemon" }
   }
 
   return input.activeBranch === input.sharedBranch

@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **4 — P23 Electron cutover**
-- Current checkpoint: **4A — Session UI addresses sessions by Session/Workbench identity everywhere**
-- Blocking gate: closing renderer does not stop live CRDT/session
-- Next authorized work: Phase 4 only
-- Branch: `feat/collab-step3-session-ui` · Phase 3 closed (see ledger 2026-09-13 Phase 3 closure entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 — 3A–3F (A/C/G/R/M matrices green against real Git remotes; G10 consecutive fast-forwards proven; full suite 450 files / 3,218 passed)
+- Current phase: **5 — P24 capability qualification (matrix U01–U10)**
+- Current checkpoint: **5A — Rerun capability matrix against Session Workspace**
+- Blocking gate: no capability needs a private collaboration file transport
+- Next authorized work: Phase 5 only
+- Branch: `feat/collab-step3-session-ui` · Phase 4 closed (see ledger 2026-09-13 Phase 4 entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: closing renderer does not stop live CRDT/session; full suite 450 files / 3,218 passed)
 
 ## How this file is used
 
@@ -211,13 +211,13 @@ legacy deletion, deployment.
 
 ## Phase 4 — P23 Electron cutover
 
-- [ ] All Session UI addresses sessions by Session/Workbench identity (finish
+- [x] All Session UI addresses sessions by Session/Workbench identity (finish
   2B everywhere).
-- [ ] Renderer attach/detach never owns global session lifetime; closing or
+- [x] Renderer attach/detach never owns global session lifetime; closing or
   routing away from a Session WB changes presentation only.
-- [ ] No renderer-only token/connection state required for the daemon to
+- [x] No renderer-only token/connection state required for the daemon to
   continue; daemon restart and renderer restart recover independently.
-- [ ] Remove the fallback flag path handing session branches to the old
+- [x] Remove the fallback flag path handing session branches to the old
   engine (mechanics; the old engine itself dies in Phase 7).
 
 **Gate (master plan):** closing renderer does not stop live CRDT/session.
