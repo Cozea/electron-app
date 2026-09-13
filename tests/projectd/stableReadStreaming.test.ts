@@ -39,6 +39,23 @@ describe("StableFileReader metadata streaming", () => {
     expect(complete.contentHash).toBe(metadata.contentHash)
   })
 
+  it("refuses a bounded whole read past maxBytes without allocating", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-stable-bound-"))
+    roots.push(root)
+    const file = path.join(root, "grown.bin")
+    await fs.writeFile(file, Buffer.alloc(4096, 0xa5))
+
+    const reader = new StableFileReader({ settleDelayMs: 0 })
+    const bounded = await reader.read(file, { skipInitialDelay: true, maxBytes: 1024 })
+    expect(bounded.exists).toBe(true)
+    expect(bounded.exceedsMaxBytes).toBe(true)
+    expect(bounded.bytes).toBeUndefined()
+
+    const allowed = await reader.read(file, { skipInitialDelay: true, maxBytes: 8192 })
+    expect(allowed.exceedsMaxBytes).toBeUndefined()
+    expect(allowed.bytes?.length).toBe(4096)
+  })
+
   it("preserves literal symlink metadata without reading the target", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-stable-link-"))
     roots.push(root)

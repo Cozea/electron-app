@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
 
 import { CollaborationSessionHost } from "../../apps/projectd/src/collaboration/CollaborationSessionHost"
 import { CHUNK_SIZE_BYTES, type BinaryManifest } from "../../apps/projectd/src/collaboration/BinaryContentCache"
@@ -81,10 +81,6 @@ describe("CollaborationSessionHost streaming materialization", () => {
 
   beforeAll(async () => {
     worker = await loadSessionRoomWorker()
-  })
-
-  afterAll(() => {
-    // RoomHost instances are disposed per test; nothing global remains.
   })
 
   it("materializes a peer binary through streaming without buffered download", async () => {

@@ -28,6 +28,8 @@ export interface StableReadResult {
   inode?: number
   isSymlink: boolean
   symlinkTarget?: string
+  /** Set when the caller bounded the read and the file exceeds that bound. No bytes are returned. */
+  exceedsMaxBytes?: boolean
 }
 
 export interface StableReadOptions {
@@ -48,7 +50,7 @@ export class StableFileReader {
   }
 
   /** Stable read for callers that genuinely need complete file bytes. */
-  read(absolutePath: string, options?: { skipInitialDelay?: boolean }): Promise<StableReadResult> {
+  read(absolutePath: string, options?: { skipInitialDelay?: boolean; maxBytes?: number }): Promise<StableReadResult> {
     return this.readInternal(absolutePath, true, options)
   }
 
@@ -63,7 +65,7 @@ export class StableFileReader {
   private async readInternal(
     absolutePath: string,
     includeBytes: boolean,
-    options?: { skipInitialDelay?: boolean },
+    options?: { skipInitialDelay?: boolean; maxBytes?: number },
   ): Promise<StableReadResult> {
     if (!options?.skipInitialDelay && this.defaultSettleMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, this.defaultSettleMs))
@@ -73,7 +75,7 @@ export class StableFileReader {
     for (let attempt = 0; attempt < this.maxRetries; attempt++) {
       try {
         const stat1 = await fs.lstat(absolutePath)
-        const read = await this.readWithStat(absolutePath, stat1, includeBytes)
+        const read = await this.readWithStat(absolutePath, stat1, includeBytes, options?.maxBytes)
         if (read) return read
 
         await new Promise((resolve) => setTimeout(resolve, delay))
@@ -96,6 +98,9 @@ export class StableFileReader {
       const stat = await fs.lstat(absolutePath)
       if (stat.isSymbolicLink()) return this.symlinkResult(absolutePath, stat, includeBytes)
       if (!stat.isFile()) return this.specialResult(absolutePath, stat)
+      if (includeBytes && options?.maxBytes !== undefined && stat.size > options.maxBytes) {
+        return { path: absolutePath, exists: true, isSymlink: false, exceedsMaxBytes: true }
+      }
       if (includeBytes) {
         const bytes = await fs.readFile(absolutePath)
         return {
@@ -131,9 +136,13 @@ export class StableFileReader {
     absolutePath: string,
     stat1: Stats,
     includeBytes: boolean,
+    maxBytes?: number,
   ): Promise<StableReadResult | null> {
     if (stat1.isSymbolicLink()) return this.symlinkResult(absolutePath, stat1, includeBytes)
     if (!stat1.isFile()) return this.specialResult(absolutePath, stat1)
+    if (includeBytes && maxBytes !== undefined && stat1.size > maxBytes) {
+      return { path: absolutePath, exists: true, isSymlink: false, exceedsMaxBytes: true }
+    }
 
     let bytes: Buffer | undefined
     let contentHash: string

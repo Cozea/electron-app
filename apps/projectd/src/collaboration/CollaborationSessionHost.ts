@@ -1358,7 +1358,7 @@ export class CollaborationSessionHost {
           differing.push(entry)
           continue
         }
-        matching.push({ entry, diskHash: sha256(target), size: target.length, mtimeMs: stat.mtimeMs })
+        matching.push({ entry, diskHash: sha256(target), size: stat.size, mtimeMs: stat.mtimeMs })
         continue
       }
       if (!stat.isFile() || entry.kind !== "text") {
@@ -1375,15 +1375,28 @@ export class CollaborationSessionHost {
       }
       let textMatches: boolean
       if (textMetadata.size <= this.maxTextFileBytes) {
-        const complete = await this.watcher.scanner.stableReader.read(absolutePath, { skipInitialDelay: true })
-        if (!complete.exists || complete.isSymlink || !complete.bytes) {
+        // The bound travels into the read: a file that grows past the ceiling
+        // between observations reports exceedsMaxBytes instead of allocating.
+        const complete = await this.watcher.scanner.stableReader.read(absolutePath, {
+          skipInitialDelay: true, maxBytes: this.maxTextFileBytes,
+        })
+        if (!complete.exists || complete.isSymlink || complete.exceedsMaxBytes || !complete.bytes ||
+          complete.contentHash === undefined || complete.size === undefined ||
+          complete.mtimeMs === undefined || complete.mode === undefined ||
+          complete.size !== textMetadata.size || complete.contentHash !== textMetadata.contentHash) {
           differing.push(entry)
           continue
         }
+        // One stable observation describes the accepted bytes throughout.
         textMatches = complete.bytes.toString("utf8") === this.replica.textDocs.getTextContent(entry.fileId)
-      } else {
-        textMatches = textMetadata.contentHash === sha256(this.replica.textDocs.getTextContent(entry.fileId))
+        if (!textMatches || fileMode(complete.mode) !== entry.mode) {
+          differing.push(entry)
+          continue
+        }
+        matching.push({ entry, diskHash: complete.contentHash, size: complete.size, mtimeMs: complete.mtimeMs })
+        continue
       }
+      textMatches = textMetadata.contentHash === sha256(this.replica.textDocs.getTextContent(entry.fileId))
       if (!textMatches || fileMode(textMetadata.mode) !== entry.mode) {
         differing.push(entry)
         continue
