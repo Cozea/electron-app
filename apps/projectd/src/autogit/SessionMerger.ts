@@ -204,6 +204,13 @@ export class SessionMerger {
     const { branchName, targetBranch } = this.options
     const preview = await this.preview(input)
     const base = { pullRequestUrl: preview.pullRequestUrl }
+    if (input.unsavedChanges > 0) {
+      return {
+        ...base,
+        outcome: "moved",
+        message: "The session has unsaved changes. Save the session and review the merge again before proceeding.",
+      }
+    }
     if (preview.checkpointOid !== input.reviewedCheckpointOid || preview.targetOid !== input.reviewedTargetOid) {
       return {
         ...base,

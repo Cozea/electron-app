@@ -119,24 +119,99 @@ export class ExternalGitInteroperability {
       if (file.isIgnored) continue
 
       const absPath = path.join(cwd, file.path)
+      let entry = replica.tree.listLiveEntries().find((e) => e.path === file.path)
+
       try {
-        if (fs.existsSync(absPath)) {
-          const content = fs.readFileSync(absPath, "utf8")
-          let entry = replica.tree.listLiveEntries().find((e) => e.path === file.path)
+        const lstat = fs.lstatSync(absPath)
+        const mode = lstat.mode & 0o111 ? 0o100755 : 0o100644
+        if (lstat.isSymbolicLink()) {
+          const target = fs.readlinkSync(absPath)
           if (!entry) {
+            replica.createFile({
+              path: file.path,
+              kind: "symlink",
+              symlinkTarget: target,
+              mode: 0o120000,
+              actor,
+            })
+          } else {
+            if (entry.kind !== "symlink") {
+              replica.deleteFile(entry.fileId, actor)
+              replica.createFile({
+                path: file.path,
+                kind: "symlink",
+                symlinkTarget: target,
+                mode: 0o120000,
+                actor,
+              })
+            } else {
+              replica.tree.setSymlinkTarget(entry.fileId, target, actor)
+            }
+          }
+          importedCount++
+          continue
+        }
+
+        const bytes = fs.readFileSync(absPath)
+        const isBinary = bytes.includes(0) || bytes.length > 512 * 1024
+        if (isBinary) {
+          if (!entry || entry.kind !== "binary") {
+            if (entry) replica.deleteFile(entry.fileId, actor)
+            entry = replica.createFile({
+              path: file.path,
+              kind: "binary",
+              mode,
+              actor,
+            })
+          }
+          const { createHash } = await import("node:crypto")
+          const contentHash = createHash("sha256").update(bytes).digest("hex")
+          replica.addBinaryRevision({
+            revisionId: `rev_${crypto.randomUUID().slice(0, 8)}`,
+            fileId: entry.fileId,
+            baseRevisionId: null,
+            contentHash,
+            encryptedManifestRef: `local:${contentHash}`,
+            size: bytes.length,
+            actor,
+            createdAt: Date.now(),
+          })
+          replica.tree.chmodEntry(entry.fileId, mode, actor)
+          importedCount++
+          continue
+        }
+
+        const content = bytes.toString("utf8")
+        if (!entry) {
+          entry = replica.createFile({
+            path: file.path,
+            kind: "text",
+            content,
+            mode,
+            actor,
+          })
+        } else {
+          if (entry.kind !== "text") {
+            replica.deleteFile(entry.fileId, actor)
             entry = replica.createFile({
               path: file.path,
               kind: "text",
               content,
+              mode,
               actor,
             })
           } else {
             replica.updateTextContent(entry.fileId, content)
+            replica.tree.chmodEntry(entry.fileId, mode, actor)
           }
+        }
+        importedCount++
+      } catch {
+        // File is deleted on disk
+        if (entry) {
+          replica.deleteFile(entry.fileId, actor)
           importedCount++
         }
-      } catch {
-        // File may be deleted
       }
     }
 

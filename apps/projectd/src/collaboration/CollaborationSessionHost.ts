@@ -815,15 +815,70 @@ export class CollaborationSessionHost {
   async createPullRequest(reviewedCheckpointOid: string, reviewedTargetOid: string) {
     if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Viewers can't create session pull requests.")
     if (!this.running || !this.workspaceReady || this.reconciling) throw new SessionHostError("NOT_READY", "Wait for the session to finish syncing.")
+    if (!this.autoGit) throw new SessionHostError("AUTOGIT_OFF", "This session isn't saved to a Git branch.")
     await this.rescan()
     await this.flush()
     if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Session write access changed.")
-    return this.requireMerger().createPullRequest({ ...this.mergeInput(), reviewedCheckpointOid, reviewedTargetOid })
+    const checkpoint = await this.autoGit.freshCheckpoint()
+    return this.requireMerger().createPullRequest({ ...this.mergeInput(), checkpointOid: checkpoint.commitOid, reviewedCheckpointOid, reviewedTargetOid })
   }
 
-  merge(strategy: ProjectdMergeStrategy, reviewedCheckpointOid: string, reviewedTargetOid: string): Promise<ProjectdMergeResult> {
+  async merge(strategy: ProjectdMergeStrategy, reviewedCheckpointOid: string, reviewedTargetOid: string): Promise<ProjectdMergeResult> {
     if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Viewers can't merge the session.")
-    return this.requireMerger().merge({ ...this.mergeInput(), strategy, reviewedCheckpointOid, reviewedTargetOid })
+    if (!this.running || !this.workspaceReady || this.reconciling) throw new SessionHostError("NOT_READY", "Wait for the session to finish syncing before merging.")
+    if (!this.autoGit) throw new SessionHostError("AUTOGIT_OFF", "This session isn't saved to a Git branch.")
+    // M01: At merge execution, rescan/flush/settle and obtain the current fresh checkpoint.
+    await this.rescan()
+    await this.flush()
+    if (!this.canWrite) throw new SessionHostError("FORBIDDEN", "Session write access changed.")
+    const checkpoint = await this.autoGit.freshCheckpoint()
+    return this.requireMerger().merge({
+      ...this.mergeInput(),
+      checkpointOid: checkpoint.commitOid,
+      strategy,
+      reviewedCheckpointOid,
+      reviewedTargetOid,
+    })
+  }
+
+  /**
+   * Adopts external local Git changes into the live session across all file types
+   * (Section 18.6): text, binary (staged/uploaded), symlinks, modes, renames, deletes.
+   */
+  async adoptGitResult(): Promise<{ imported: boolean; status: ProjectdSessionStatus }> {
+    if (!this.running || this.stopping) {
+      throw new SessionHostError("SESSION_NOT_READY", "This session is not running.")
+    }
+    await this.checkGit()
+    if (this.gitPause) {
+      throw new SessionHostError("GIT_PAUSED", this.gitPause)
+    }
+    if (!this.canWrite) {
+      throw new SessionHostError("FORBIDDEN", "Viewers cannot adopt local changes into the session.")
+    }
+    await this.exclusive(async () => {
+      await this.watcher.rescan()
+      await this.commitPendingDeletes()
+      this.flushSubmit()
+      this.persistSnapshot()
+    })
+    await this.flushAndAwaitAcks()
+    return { imported: true, status: this.status() }
+  }
+
+  /**
+   * Controlled sync from GitHub (Section 19): pulls remote session-branch commits
+   * into CRDT and updates the local Git baseline safely.
+   */
+  async syncFromGitHub(): Promise<{
+    status: "up_to_date" | "fast_forward_integrated" | "local_ahead" | "remote_diverged"
+    remoteOid?: string
+    localOid?: string
+  }> {
+    if (!this.autoGit) {
+      throw new SessionHostError("AUTOGIT_OFF", "No Git repository bound to this session.")
+    }
+    return this.autoGit.syncFromGitHub()
   }
 
   /** Rebases the session onto its target on the Mac that saves it (P21); only ever when someone asked. */

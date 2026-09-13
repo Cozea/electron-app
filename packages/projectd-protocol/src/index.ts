@@ -451,6 +451,17 @@ export interface ProjectdCloseChoice {
   allowUnresolvedConflicts: boolean
 }
 
+export interface ProjectdAdoptGitResult {
+  imported: boolean
+  status: ProjectdSessionStatus
+}
+
+export interface ProjectdSyncFromGitHubResult {
+  status: "up_to_date" | "fast_forward_integrated" | "local_ahead" | "remote_diverged"
+  remoteOid?: string
+  localOid?: string
+}
+
 /** Merging the session's last save into its target, before anything is pushed (Section 22.1). */
 export interface ProjectdMergePreview {
   canCreatePullRequest?: boolean

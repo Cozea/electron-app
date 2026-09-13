@@ -519,6 +519,41 @@ export class AutoGitAgent {
     throw new AutoGitError("CHECKPOINT_PENDING", "Waiting for the device saving this session. Try the merge preview again once it is connected.")
   }
 
+  /**
+   * Controlled sync from GitHub (Section 19): pulls remote session-branch commits
+   * into the CRDT session and updates the local Git baseline safely.
+   */
+  async syncFromGitHub(): Promise<{
+    status: "up_to_date" | "fast_forward_integrated" | "local_ahead" | "remote_diverged"
+    remoteOid?: string
+    localOid?: string
+  }> {
+    await this.start()
+    const repo = this.requireRepo()
+    await this.fetchBranch()
+    const remoteHead = await this.lsRemote()
+    const localHead = await this.options.gitService.getCommitOid(repo.root, `refs/heads/${this.options.branchName}`)
+    const known = this.checkpoint?.commitOid ?? this.integratedHead ?? localHead
+    if (!remoteHead || known === remoteHead) {
+      return { status: "up_to_date" }
+    }
+    if (!known) {
+      this.setNotice("Remote session branch diverged from local session history.", "REMOTE_DIVERGED")
+      return { status: "remote_diverged" }
+    }
+    if (await this.isAncestor(known, remoteHead)) {
+      await this.integrateExternalCommits(known, remoteHead)
+      this.integratedHead = remoteHead
+      await this.adoptBaseline(repo, { commitOid: remoteHead } as any)
+      return { status: "fast_forward_integrated", remoteOid: remoteHead }
+    }
+    if (await this.isAncestor(remoteHead, known)) {
+      return { status: "local_ahead", localOid: known }
+    }
+    this.setNotice("Remote session branch diverged from local session history.", "REMOTE_DIVERGED")
+    return { status: "remote_diverged" }
+  }
+
   status(): ProjectdAutoGitStatus | null {
     if (!this.repo) return null
     const leaderNotice = !this.leading && this.lease?.leaderClientId ? (this.lease.notice ?? null) : null

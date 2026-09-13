@@ -474,6 +474,16 @@ export class ProjectdClient {
     return this.request<ProjectdPullRequestResult>("sessions.createPullRequest", { publicSessionId, checkpointOid, targetOid }, 180_000)
   }
 
+  /** Adopts external local Git changes into the live session across all file types (Section 18.6). */
+  async adoptGitResult(publicSessionId: string): Promise<import("./index").ProjectdAdoptGitResult> {
+    return this.request<import("./index").ProjectdAdoptGitResult>("sessions.adoptGitResult", { publicSessionId }, 120_000)
+  }
+
+  /** Pulls and integrates remote session-branch commits into CRDT and local Git (Section 19). */
+  async syncFromGitHub(publicSessionId: string): Promise<import("./index").ProjectdSyncFromGitHubResult> {
+    return this.request<import("./index").ProjectdSyncFromGitHubResult>("sessions.syncFromGitHub", { publicSessionId }, 120_000)
+  }
+
   disconnect(): void {
     if (this.socket) {
       this.socket.destroy()

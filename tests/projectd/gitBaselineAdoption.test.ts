@@ -1,6 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { GitService } from "../../apps/projectd/src/git/GitService"
 import { GitBaselineAdopter } from "../../apps/projectd/src/autogit/GitBaselineAdopter"
@@ -105,5 +105,87 @@ describe("P18 Local Git baseline advancement after AutoGit checkpoint", () => {
     expect(res.success).toBe(false)
     // Working tree was never touched
     expect(fs.readFileSync(filePath, "utf8")).toBe("content 1")
+  })
+
+  it("preserves a concurrent terminal commit landing between ref CAS and index sync", async () => {
+    const filePath = path.join(testRepoDir, "app.ts")
+    fs.writeFileSync(filePath, "const base = 'C40';\n")
+    await gitService.process.execute(["add", "."], { cwd: testRepoDir })
+    const c40Oid = await gitService.createCommit(testRepoDir, "commit C40", {
+      author: { name: "AutoGit", email: "autogit@cozea.local" },
+    })
+
+    fs.writeFileSync(filePath, "const base = 'C41';\n")
+    await gitService.process.execute(["add", "."], { cwd: testRepoDir })
+    const c41Oid = await gitService.createCommit(testRepoDir, "commit C41", {
+      author: { name: "AutoGit", email: "autogit@cozea.local" },
+    })
+
+    await gitService.process.execute(["reset", "--hard", c40Oid], { cwd: testRepoDir })
+
+    let userCommitOid = ""
+    const originalExecute = gitService.process.execute.bind(gitService.process)
+    vi.spyOn(gitService.process, "execute").mockImplementation(async (args, options) => {
+      const res = await originalExecute(args, options)
+      // Inject terminal commit immediately after update-ref moves the branch
+      if (args[0] === "update-ref" && !userCommitOid) {
+        fs.writeFileSync(path.join(testRepoDir, "terminal.txt"), "user work\n")
+        await originalExecute(["add", "."], { cwd: testRepoDir })
+        userCommitOid = (await originalExecute(["commit", "-m", "user commit"], { cwd: testRepoDir })).stdout.trim()
+        userCommitOid = (await originalExecute(["rev-parse", "HEAD"], { cwd: testRepoDir })).stdout.trim()
+      }
+      return res
+    })
+
+    const result = await adopter.advanceBaseline({
+      cwd: testRepoDir,
+      branchName: "feature/collab",
+      checkpointOid: c41Oid,
+    })
+
+    expect(result.success).toBe(true)
+    expect(result.newHeadOid).toBe(userCommitOid)
+    const statusAfter = await gitService.getStatus(testRepoDir)
+    // The user's commit is still HEAD: never erased by a mixed reset
+    expect(statusAfter.headOid).toBe(userCommitOid)
+    expect(fs.readFileSync(path.join(testRepoDir, "terminal.txt"), "utf8")).toBe("user work\n")
+  })
+
+  it("accurately reports branch moved when post-CAS index synchronization fails", async () => {
+    const filePath = path.join(testRepoDir, "app.ts")
+    fs.writeFileSync(filePath, "const base = 'C40';\n")
+    await gitService.process.execute(["add", "."], { cwd: testRepoDir })
+    const c40Oid = await gitService.createCommit(testRepoDir, "commit C40", {
+      author: { name: "AutoGit", email: "autogit@cozea.local" },
+    })
+
+    fs.writeFileSync(filePath, "const base = 'C41';\n")
+    await gitService.process.execute(["add", "."], { cwd: testRepoDir })
+    const c41Oid = await gitService.createCommit(testRepoDir, "commit C41", {
+      author: { name: "AutoGit", email: "autogit@cozea.local" },
+    })
+
+    await gitService.process.execute(["reset", "--hard", c40Oid], { cwd: testRepoDir })
+
+    const originalExecute = gitService.process.execute.bind(gitService.process)
+    vi.spyOn(gitService.process, "execute").mockImplementation(async (args, options) => {
+      if (args[0] === "read-tree") {
+        throw new Error("simulated index lock failure")
+      }
+      return originalExecute(args, options)
+    })
+
+    const result = await adopter.advanceBaseline({
+      cwd: testRepoDir,
+      branchName: "feature/collab",
+      checkpointOid: c41Oid,
+    })
+
+    expect(result.success).toBe(false)
+    // Does NOT claim the branch is still at oldHeadOid; accurately reports c41Oid
+    expect(result.newHeadOid).toBe(c41Oid)
+    expect(result.reason).toContain("index synchronization failed")
+    const status = await gitService.getStatus(testRepoDir)
+    expect(status.headOid).toBe(c41Oid)
   })
 })

@@ -1180,6 +1180,12 @@ export class ProjectdServer {
             : host.merge(strategy, params.checkpointOid, params.targetOid)
         })
         break
+      case "sessions.adoptGitResult":
+        this.reply(state, req.id, () => this.requireSessionHost(req.params).adoptGitResult())
+        break
+      case "sessions.syncFromGitHub":
+        this.reply(state, req.id, () => this.requireSessionHost(req.params).syncFromGitHub())
+        break
       default: {
         this.sendError(state, req.id, {
           code: "METHOD_NOT_FOUND",

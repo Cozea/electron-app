@@ -236,18 +236,22 @@ export function MergeSessionDialog({
   }
 
   const merge = async () => {
-    if (!preview || pendingAction.current) return
+    if (!preview || preview.unsavedChanges > 0 || pendingAction.current) return
     pendingAction.current = true
     setMerging(true)
     try {
       const response = await sessions.merge(publicSessionId, strategy, preview.checkpointOid, preview.targetOid)
       if (!response.success) throw new Error(response.error)
       setResult(response.result)
+      if (response.result.outcome === "moved") {
+        setPreview(null)
+      }
       if (response.result.pullRequest) setPullRequest(response.result.pullRequest)
       if (response.result.outcome === "merged") {
         appToast.success({ title: `Merged into ${targetBranch}`, description: response.result.message })
       }
     } catch (mergeError) {
+      setPreview(null)
       setError(mergeError instanceof Error ? mergeError.message : String(mergeError))
     } finally {
       pendingAction.current = false
@@ -275,7 +279,9 @@ export function MergeSessionDialog({
 
   const pullRequestUrl = pullRequest?.url ?? result?.pullRequestUrl ?? preview?.pullRequestUrl ?? null
   const merged = result?.outcome === "merged"
-  const canMerge = Boolean(preview && preview.clean && preview.ahead > 0 && !result && !loading && !merging)
+  const canMerge = Boolean(
+    preview && preview.clean && preview.ahead > 0 && preview.unsavedChanges === 0 && !result && !loading && !merging,
+  )
   const close = () => onOpenChange(false)
 
   return (

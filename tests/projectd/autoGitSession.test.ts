@@ -1703,4 +1703,79 @@ describe("AutoGit in projectd", () => {
     expect(git(repos.remote, "show", `${rebased}:notes.md`)).toBe("base\nsession")
     expect(git(repos.remote, "rev-parse", `${rebased}^`)).toBe(target.head)
   })
+
+  it("adopts external Git result through the production host with full filesystem semantics", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n", "remove.txt": "delete me\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
+
+    // Simulate external terminal Git operations: edit text, add binary, add symlink, chmod +x, delete file
+    await fs.writeFile(path.join(creator.root, "notes.md"), "base\nterminal edit\n")
+    const binPayload = Buffer.from([0, 1, 2, 3, 4, 255])
+    await fs.writeFile(path.join(creator.root, "added.bin"), binPayload)
+    await fs.symlink("notes.md", path.join(creator.root, "link.lnk"))
+    await fs.chmod(path.join(creator.root, "notes.md"), 0o755)
+    await fs.rm(path.join(creator.root, "remove.txt"))
+
+    const res = await creator.host.adoptGitResult()
+    expect(res.imported).toBe(true)
+
+    // Joiner peer converges to all adopted changes across kinds
+    await waitFor(async () => (await joiner.read("notes.md")) === "base\nterminal edit\n", "text adopted")
+    await waitFor(async () => (await fs.readFile(path.join(joiner.root, "added.bin")).catch(() => null))?.equals(binPayload) ?? false, "binary adopted")
+    await waitFor(async () => (await fs.readlink(path.join(joiner.root, "link.lnk")).catch(() => null)) === "notes.md", "symlink adopted")
+    await waitFor(async () => ((await fs.stat(path.join(joiner.root, "notes.md"))).mode & 0o111) === 0o111, "chmod adopted")
+    await waitFor(async () => (await joiner.read("remove.txt")) === null, "deletion adopted")
+  })
+
+  it("synchronizes external fast-forward commits from GitHub through the production host", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST)
+    const outside = await pushFromOutside(repos.remote, { "from_github.txt": "external commit\n" })
+
+    const res = await creator.host.syncFromGitHub()
+    expect(res.status).toBe("fast_forward_integrated")
+    expect(res.remoteOid).toBe(outside)
+
+    await waitFor(async () => (await creator.read("from_github.txt")) === "external commit\n", "creator integrated")
+    await waitFor(async () => (await joiner.read("from_github.txt")) === "external commit\n", "joiner integrated")
+  })
+
+  it("invalidates merge review when a peer edits after preview and requires fresh re-preview", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n" })
+    const target = await createTargetBranch(repos.remote, repos.creatorRoot, { "from-main.md": "main\n" })
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+
+    await creator.write("notes.md", "base\nsession\n")
+    await waitFor(async () => (await joiner.read("notes.md")) === "base\nsession\n", "joiner gets edit")
+    expect(await creator.host.checkpointNow()).toMatchObject({ outcome: "saved" })
+
+    // Step 1: preview
+    const preview1 = await creator.host.previewMerge()
+    expect(preview1).toMatchObject({ clean: true, unsavedChanges: 0, targetOid: target.head })
+
+    // Step 2: peer edits afterward
+    await joiner.write("notes.md", "base\nsession\npeer edit\n")
+    await waitFor(async () => (await creator.read("notes.md")) === "base\nsession\npeer edit\n", "creator gets peer edit")
+
+    // Step 3: attempt merge with old reviewed checkpoint
+    const staleMerge = await creator.host.merge("merge", preview1.checkpointOid, preview1.targetOid)
+    expect(staleMerge.outcome).toBe("moved")
+    // Target is NOT mutated
+    expect(git(repos.remote, "rev-parse", "main")).toBe(target.head)
+
+    // Step 4: re-preview
+    const preview2 = await creator.host.previewMerge()
+    expect(preview2.checkpointOid).not.toBe(preview1.checkpointOid)
+    expect(preview2).toMatchObject({ clean: true, unsavedChanges: 0, targetOid: target.head })
+
+    // Step 5: merge with fresh checkpoint
+    const mergeResult = await creator.host.merge("merge", preview2.checkpointOid, preview2.targetOid)
+    expect(mergeResult).toMatchObject({ outcome: "merged" })
+
+    // Step 6: assert new edit is present in target branch
+    expect(git(repos.remote, "show", "main:notes.md")).toBe("base\nsession\npeer edit")
+  })
 })

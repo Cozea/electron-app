@@ -120,13 +120,36 @@ export class GitBaselineAdopter {
       }
     }
 
+    let refUpdated = false
     try {
       // Compare and swap: a commit made since the checks above leaves the branch alone.
       const updateArgs = ["update-ref", "-m", "cozea: adopt session checkpoint", `refs/heads/${branchName}`, checkpointOid]
       if (oldHeadOid) updateArgs.push(oldHeadOid)
-      await this.gitService.process.execute(updateArgs, { cwd })
-      // The index follows; the working tree does not (a mixed reset).
-      await this.gitService.process.execute(["reset", "-q", "--mixed", checkpointOid], { cwd })
+      const updateRes = await this.gitService.process.execute(updateArgs, { cwd })
+      if (!updateRes.success) {
+        return skip(`Git could not move ${branchName} to the checkpoint: ${updateRes.stderr.trim()}`)
+      }
+      refUpdated = true
+
+      // Recheck HEAD: if a terminal commit landed immediately after CAS, HEAD
+      // has already moved forward on top of checkpointOid. Preserve the user's commit
+      // and do not clobber it with index synchronization.
+      const currentHead = await this.gitService.getCommitOid(cwd, `refs/heads/${branchName}`)
+      if (currentHead && currentHead !== checkpointOid) {
+        const updatedStatus = await this.gitService.getStatus(cwd)
+        return {
+          success: true,
+          state: "adopted",
+          oldHeadOid,
+          newHeadOid: currentHead,
+          dirtyCountAfter: countDirty(updatedStatus.files),
+          reason: "Concurrent local commit preserved after checkpoint ref update.",
+        }
+      }
+
+      // Synchronize index using read-tree: sets index to match the checkpoint tree
+      // without moving the branch ref or touching working-tree files.
+      await this.gitService.process.execute(["read-tree", `${checkpointOid}^{tree}`], { cwd })
 
       const updatedStatus = await this.gitService.getStatus(cwd)
       return {
@@ -140,6 +163,18 @@ export class GitBaselineAdopter {
       // Section 16.2: never hard-reset the live folder; leave Git where it was.
       const message = err instanceof Error ? err.message : String(err)
       console.warn("[GitBaselineAdopter] Baseline advancement failed, leaving Git metadata behind:", message)
+      if (refUpdated) {
+        const actualHead = (await this.gitService.getCommitOid(cwd, `refs/heads/${branchName}`).catch(() => null)) ?? checkpointOid
+        return {
+          success: false,
+          state: "skipped",
+          oldHeadOid,
+          newHeadOid: actualHead,
+          dirtyCountAfter: -1,
+          reason: `Git branch moved to ${actualHead.slice(0, 7)}, but index synchronization failed: ${message}`,
+          error: message,
+        }
+      }
       return { ...skip(`Git could not move ${branchName} to the checkpoint.`), error: message }
     }
   }
