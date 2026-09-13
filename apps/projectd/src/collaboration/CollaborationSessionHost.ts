@@ -331,6 +331,29 @@ export class CollaborationSessionHost {
       index: this.index,
       baselineStore: this.baselines,
       resolveBinary: (revision) => this.resolveBinaryRevision(revision),
+      streamBinary: async (revision, write) => {
+        if (await this.binaryCache.copyVerifiedTo(revision.contentHash, revision.size, write)) return
+        if (!revision.manifest) {
+          throw new SessionHostError(
+            "BINARY_MANIFEST_MISSING",
+            `Binary revision ${revision.revisionId} has no chunk manifest and is not in the local cache`,
+          )
+        }
+        if (!this.binaryObjects.downloadTo) {
+          await write(await this.resolveBinaryRevision(revision))
+          return
+        }
+        await this.binaryCache.putFrom({
+          contentHash: revision.contentHash,
+          size: revision.size,
+          stream: async (cacheWrite) => {
+            await this.binaryObjects.downloadTo!(revision.manifest!, async (chunk) => {
+              await cacheWrite(chunk)
+              await write(chunk)
+            })
+          },
+        })
+      },
     })
     this.watcher = new WorkspaceFilesystemWatcher({
       workspaceRoot: this.workspaceRoot,
