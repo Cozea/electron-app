@@ -43,6 +43,16 @@ function binaryRevision(fileId: string, bytes: Buffer, revisionId = "rev-asset")
   }
 }
 
+/** Bounded streaming supplier: 64 KiB pieces, never the whole payload at once. */
+function streamBytes(bytes: Buffer) {
+  return async (_revision: BinaryRevision, write: (chunk: Buffer) => Promise<void>) => {
+    for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
+      await write(bytes.subarray(offset, offset + 64 * 1024))
+    }
+    return { size: bytes.length, contentHash: createHash("sha256").update(bytes).digest("hex") }
+  }
+}
+
 function snapshot(files: BarrierSnapshot["files"], hash = "a".repeat(64)): BarrierSnapshot {
   return {
     barrierId: "bar_filter",
@@ -86,6 +96,18 @@ class FakeLfs implements GitLfsCleaner {
     if (this.failClean) throw new Error("fixture clean failure")
     const hash = createHash("sha256").update(contents).digest("hex")
     return Buffer.from(GitLfs.createPointer(hash, contents.length), "utf8")
+  }
+
+  async cleanFileToPointer(
+    cwd: string,
+    filePath: string,
+    stagedPath: string,
+    expected: { size: number; contentHash: string },
+  ): Promise<Buffer> {
+    const contents = await fs.readFile(stagedPath)
+    expect(contents.length).toBe(expected.size)
+    expect(createHash("sha256").update(contents).digest("hex")).toBe(expected.contentHash)
+    return this.cleanToPointer(cwd, filePath, contents)
   }
 }
 
@@ -132,7 +154,11 @@ describe("AutoGit checkpoint filter policy", () => {
     const fakeLfs = new FakeLfs(true)
     const builder = new CheckpointBuilder(git, {
       lfs: fakeLfs,
-      resolveBinary: async (requested) => requested.revisionId === revision.revisionId ? bytes : Buffer.alloc(0),
+      resolveBinaryStream: async (requested, write) => {
+        const payload = requested.revisionId === revision.revisionId ? bytes : Buffer.alloc(0)
+        await write(payload)
+        return { size: payload.length, contentHash: createHash("sha256").update(payload).digest("hex") }
+      },
     })
 
     const result = await builder.buildCheckpointCommit({
@@ -173,7 +199,7 @@ describe("AutoGit checkpoint filter policy", () => {
     const pointerBytes = Buffer.from(GitLfs.createPointer(objectHash, 9_999_999), "utf8")
     const revision = binaryRevision("file-pointer", pointerBytes, "rev-pointer")
     const fakeLfs = new FakeLfs(false)
-    const builder = new CheckpointBuilder(git, { lfs: fakeLfs, resolveBinary: async () => pointerBytes })
+    const builder = new CheckpointBuilder(git, { lfs: fakeLfs, resolveBinaryStream: streamBytes(pointerBytes) })
 
     const result = await builder.buildCheckpointCommit({
       repoPath: root,
@@ -207,7 +233,7 @@ describe("AutoGit checkpoint filter policy", () => {
     const bytes = Buffer.from("materialized payload")
     const revision = binaryRevision("file-asset", bytes)
     const fakeLfs = new FakeLfs(false)
-    const builder = new CheckpointBuilder(git, { lfs: fakeLfs, resolveBinary: async () => bytes })
+    const builder = new CheckpointBuilder(git, { lfs: fakeLfs, resolveBinaryStream: streamBytes(bytes) })
 
     await expect(builder.buildCheckpointCommit({
       repoPath: root,

@@ -169,8 +169,11 @@ export interface AutoGitAgentOptions {
   applySessionChanges: (changes: SessionFileChange[], integration?: { adoptionId: string; generation: number }) => Promise<string[]>
   recoverIntegration?: (adoptionId: string, generation: number) => Promise<boolean>
   completeIntegration?: (adoptionId: string) => void
-  /** Resolves verified bytes for binary revisions captured at a barrier. */
-  resolveBinaryContent?: (revision: BinaryRevision) => Promise<Buffer>
+  /** Streams verified bytes for binary revisions captured at a barrier, in bounded chunks. */
+  resolveBinaryStreamContent?: (
+    revision: BinaryRevision,
+    write: (chunk: Buffer) => Promise<void>,
+  ) => Promise<{ size: number; contentHash: string }>
   /** The branch the session's work merges into, which an explicit rebase builds on (Section 21). */
   targetBranch?: string | null
   onChange: () => void
@@ -286,7 +289,7 @@ export class AutoGitAgent {
   constructor(options: AutoGitAgentOptions) {
     this.options = options
     this.timing = { ...DEFAULT_AUTOGIT_TIMING, ...options.timing }
-    this.builder = new CheckpointBuilder(options.gitService, { resolveBinary: options.resolveBinaryContent })
+    this.builder = new CheckpointBuilder(options.gitService, { resolveBinaryStream: options.resolveBinaryStreamContent })
     this.adopter = new GitBaselineAdopter(options.gitService)
   }
 

@@ -18,6 +18,8 @@ export interface GitExecuteOptions {
   cwd: string
   env?: Record<string, string>
   stdin?: string | Buffer
+  /** Reads command stdin from a file instead of buffering it. Mutually exclusive with stdin. */
+  stdinFile?: string
   timeoutMs?: number
   maxBuffer?: number
   allowNonZeroExit?: boolean
@@ -191,10 +193,20 @@ export class GitProcess {
         ...options.env,
       }
 
+      if (options.stdin && options.stdinFile) {
+        throw new Error("Git execute accepts stdin or stdinFile, not both")
+      }
+      let stdinFd: number | null = null
+      const closeStdinFile = (): void => {
+        if (stdinFd !== null) {
+          try { fs.closeSync(stdinFd) } catch { /* already closed */ }
+          stdinFd = null
+        }
+      }
       const proc = spawn(execPath, args, {
         cwd: options.cwd,
         env: gitEnv,
-        stdio: [options.stdin ? "pipe" : "ignore", "pipe", "pipe"],
+        stdio: [options.stdin ? "pipe" : options.stdinFile ? (stdinFd = fs.openSync(options.stdinFile, "r")) : "ignore", "pipe", "pipe"],
       })
 
       const stdoutChunks: Buffer[] = []
@@ -212,6 +224,7 @@ export class GitProcess {
       let timer: NodeJS.Timeout | null = setTimeout(() => {
         timer = null
         proc.kill("SIGKILL")
+        closeStdinFile()
         reject(new Error(`Git command 'git ${args.join(" ")}' timed out after ${timeout}ms`))
       }, timeout)
 
@@ -220,6 +233,7 @@ export class GitProcess {
         if (totalBytes > maxBuffer && !killedForMaxBuffer) {
           killedForMaxBuffer = true
           proc.kill("SIGKILL")
+          closeStdinFile()
           reject(new Error(`Git command output exceeded maxBuffer of ${maxBuffer} bytes`))
           return
         }
@@ -232,11 +246,13 @@ export class GitProcess {
 
       proc.on("error", (err) => {
         if (timer) clearTimeout(timer)
+        closeStdinFile()
         reject(err)
       })
 
       proc.on("close", (code) => {
         if (timer) clearTimeout(timer)
+        closeStdinFile()
         if (killedForMaxBuffer) return
 
         const stdoutBuffer = Buffer.concat(stdoutChunks)

@@ -99,10 +99,23 @@ type GitRunner = (
   options?: { env?: Record<string, string>; stdin?: string | Buffer; allowNonZeroExit?: boolean; maxBuffer?: number },
 ) => ReturnType<GitService["process"]["execute"]>
 
-export type BinaryContentResolver = (revision: BinaryRevision) => Promise<Buffer>
+/**
+ * Streams verified binary bytes in bounded chunks. The returned size and hash
+ * describe exactly what was written; the builder verifies both against the
+ * barrier revision before the bytes reach any Git object.
+ */
+export type BinaryContentStreamer = (
+  revision: BinaryRevision,
+  write: (chunk: Buffer) => Promise<void>,
+) => Promise<{ size: number; contentHash: string }>
 
 export interface CheckpointBuilderOptions {
-  resolveBinary?: BinaryContentResolver
+  /**
+   * Streams barrier binary revisions in bounded chunks. Whole-buffer resolvers
+   * are intentionally unsupported: a 100 MB asset must never need a 100 MB
+   * contiguous buffer to enter a checkpoint.
+   */
+  resolveBinaryStream?: BinaryContentStreamer
   /** Tests can inject a deterministic LFS cleaner without requiring git-lfs on the runner. */
   lfs?: GitLfsCleaner
 }
@@ -127,14 +140,14 @@ function isGitAttributesPath(repoFilePath: string): boolean {
 
 export class CheckpointBuilder {
   readonly gitService: GitService
-  private readonly resolveBinary?: BinaryContentResolver
+  private readonly resolveBinaryStream?: BinaryContentStreamer
   private readonly filterPolicy: CheckpointFilterPolicy
   // Blob id → whether the session would carry that content as text. Blobs never change.
   private readonly syncableBlobs = new Map<string, boolean>()
 
   constructor(gitService: GitService, options: CheckpointBuilderOptions = {}) {
     this.gitService = gitService
-    this.resolveBinary = options.resolveBinary
+    this.resolveBinaryStream = options.resolveBinaryStream
     this.filterPolicy = new CheckpointFilterPolicy(options.lfs ?? new GitLfs(gitService.process))
   }
 
@@ -250,14 +263,15 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
             if (!parent) throw new Error(`Checkpoint has no Git blob for binary ${file.path}: no binary revision is present at this barrier`)
             continue
           }
-          if (!this.resolveBinary) throw new Error(`Checkpoint cannot resolve bytes for binary ${file.path}`)
-          const bytes = await this.resolveBinary(file.binaryRevision)
-          if (bytes.length !== file.binaryRevision.size || createHash("sha256").update(bytes).digest("hex") !== file.contentHash) {
-            throw new Error(`Checkpoint binary ${file.path} does not match its barrier revision`)
+          if (!this.resolveBinaryStream) throw new Error(`Checkpoint cannot resolve bytes for binary ${file.path}`)
+          const staged = await this.stageBinaryRevision(file.binaryRevision, file.path, file.binaryRevision.size, file.contentHash)
+          try {
+            const mode = file.mode === 0o100755 ? "100755" : "100644"
+            const oid = await this.binaryBlob(git, repoFilePath, staged)
+            if (parent?.oid !== oid || parent.mode !== mode) attributeUpdates.push(`${mode} ${oid}\t${repoFilePath}`)
+          } finally {
+            await fs.rm(path.dirname(staged), { recursive: true, force: true })
           }
-          const mode = file.mode === 0o100755 ? "100755" : "100644"
-          const oid = await this.binaryBlob(git, repoFilePath, bytes)
-          if (parent?.oid !== oid || parent.mode !== mode) attributeUpdates.push(`${mode} ${oid}\t${repoFilePath}`)
         }
       }
       if (attributeRemovals.length > 0) {
@@ -317,27 +331,28 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
             }
             continue
           }
-          if (!this.resolveBinary) {
+          if (!this.resolveBinaryStream) {
             throw new Error(`Checkpoint cannot resolve bytes for binary ${file.path}`)
           }
-          const bytes = await this.resolveBinary(file.binaryRevision)
-          if (bytes.length !== file.binaryRevision.size || createHash("sha256").update(bytes).digest("hex") !== file.contentHash) {
-            throw new Error(`Checkpoint binary ${file.path} does not match its barrier revision`)
+          const staged = await this.stageBinaryRevision(file.binaryRevision, file.path, file.binaryRevision.size, file.contentHash)
+          try {
+            const mode = file.mode === 0o100755 ? "100755" : "100644"
+            const oid = filterDriver === "lfs"
+              ? await this.filterPolicy.lfsBlob({
+                  git,
+                  root,
+                  objectFormat,
+                  repoFilePath,
+                  staged: { path: staged, size: file.binaryRevision.size, contentHash: file.contentHash },
+                  parentOid: parent?.oid,
+                  indexEnv,
+                  availability: lfsAvailability,
+                })
+              : await this.binaryBlob(git, repoFilePath, staged)
+            if (parent?.oid !== oid || parent.mode !== mode) updates.push(`${mode} ${oid}\t${repoFilePath}`)
+          } finally {
+            await fs.rm(path.dirname(staged), { recursive: true, force: true })
           }
-          const mode = file.mode === 0o100755 ? "100755" : "100644"
-          const oid = filterDriver === "lfs"
-            ? await this.filterPolicy.lfsBlob({
-                git,
-                root,
-                objectFormat,
-                repoFilePath,
-                bytes,
-                parentOid: parent?.oid,
-                indexEnv,
-                availability: lfsAvailability,
-              })
-            : await this.binaryBlob(git, repoFilePath, bytes)
-          if (parent?.oid !== oid || parent.mode !== mode) updates.push(`${mode} ${oid}\t${repoFilePath}`)
         }
       }
 
@@ -425,9 +440,57 @@ Cozea-Lease-Generation: ${params.leaseGeneration}
   }
 
   /** Writes verified binary bytes through Git's non-filter attribute rules for this path. */
-  private async binaryBlob(git: GitRunner, repoFilePath: string, bytes: Buffer): Promise<string> {
+  private async binaryBlob(git: GitRunner, repoFilePath: string, stagedPath: string): Promise<string> {
     // Callers have already proved that no arbitrary `filter` driver applies here.
-    return (await git(["hash-object", "-w", "--stdin", `--path=${repoFilePath}`], { stdin: bytes })).stdout.trim()
+    // The staged file keeps payload bytes on disk: git streams the object itself.
+    return (await git(["hash-object", "-w", `--path=${repoFilePath}`, stagedPath])).stdout.trim()
+  }
+
+  /**
+   * Streams one barrier revision into a verified staging file. The supplier
+   * decides chunk sizes; only one chunk plus file handles are ever retained.
+   * The caller deletes the staging directory when the Git object exists.
+   */
+  private async stageBinaryRevision(
+    revision: BinaryRevision,
+    displayPath: string,
+    expectedSize: number,
+    expectedHash: string,
+  ): Promise<string> {
+    if (!this.resolveBinaryStream) throw new Error(`Checkpoint cannot resolve bytes for binary ${displayPath}`)
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-checkpoint-"))
+    const stagePath = path.join(dir, "payload")
+    const fail = async (message: string): Promise<never> => {
+      await fs.rm(dir, { recursive: true, force: true })
+      throw new Error(message)
+    }
+    const handle = await fs.open(stagePath, "w", 0o600).catch(async () => fail(`Checkpoint cannot stage binary ${displayPath}`))
+    const digest = createHash("sha256")
+    let size = 0
+    let reported: { size: number; contentHash: string } | null = null
+    try {
+      reported = await this.resolveBinaryStream(revision, async (chunk) => {
+        if (!Buffer.isBuffer(chunk) || chunk.length === 0) return
+        digest.update(chunk)
+        let offset = 0
+        while (offset < chunk.length) {
+          const { bytesWritten } = await handle.write(chunk, offset, chunk.length - offset, null)
+          if (!bytesWritten) throw new Error(`Checkpoint cannot stage binary ${displayPath}`)
+          offset += bytesWritten
+        }
+        size += chunk.length
+      })
+      await handle.sync()
+    } catch (error) {
+      await handle.close().catch(() => undefined)
+      await fail(error instanceof Error ? error.message : `Checkpoint cannot stage binary ${displayPath}`)
+    }
+    await handle.close()
+    if (!reported || reported.size !== expectedSize || reported.contentHash !== expectedHash ||
+      size !== expectedSize || digest.digest("hex") !== expectedHash) {
+      await fail(`Checkpoint binary ${displayPath} does not match its barrier revision`)
+    }
+    return stagePath
   }
 
   /**

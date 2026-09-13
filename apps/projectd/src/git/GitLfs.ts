@@ -8,7 +8,7 @@ import { createHash } from "node:crypto"
 import type { GitProcess } from "./GitProcess"
 
 export const LFS_POINTER_HEADER = "version https://git-lfs.github.com/spec/v1"
-const MAX_LFS_POINTER_BYTES = 1024 * 1024
+export const MAX_LFS_POINTER_BYTES = 1024 * 1024
 
 type GitProcessRunner = Pick<GitProcess, "execute">
 
@@ -20,6 +20,14 @@ export interface LfsPointer {
 export interface GitLfsCleaner {
   isAvailable(cwd: string): Promise<boolean>
   cleanToPointer(cwd: string, filePath: string, contents: Buffer, env?: Record<string, string>): Promise<Buffer>
+  /** File-backed clean for payloads that must never be buffered. Optional for test doubles. */
+  cleanFileToPointer?(
+    cwd: string,
+    filePath: string,
+    stagedPath: string,
+    expected: { size: number; contentHash: string },
+    env?: Record<string, string>,
+  ): Promise<Buffer>
 }
 
 export class GitLfs implements GitLfsCleaner {
@@ -87,6 +95,37 @@ export class GitLfs implements GitLfsCleaner {
     const parsed = GitLfs.parsePointer(pointer)
     const expectedOid = `sha256:${createHash("sha256").update(contents).digest("hex")}`
     if (!parsed || parsed.oid !== expectedOid || parsed.size !== contents.length) {
+      throw new Error(`Git LFS returned an invalid pointer for ${filePath}`)
+    }
+    return pointer
+  }
+
+  /**
+   * File-backed clean: the staged payload streams from disk into
+   * `git lfs clean` and is verified against the expected hash and size.
+   * Only the small pointer is ever buffered.
+   */
+  async cleanFileToPointer(
+    cwd: string,
+    filePath: string,
+    stagedPath: string,
+    expected: { size: number; contentHash: string },
+    env?: Record<string, string>,
+  ): Promise<Buffer> {
+    if (!this.git) throw new Error("Git LFS is not configured")
+    const result = await this.git.execute(["lfs", "clean", "--", filePath], {
+      cwd,
+      env,
+      stdinFile: stagedPath,
+      allowNonZeroExit: true,
+      maxBuffer: MAX_LFS_POINTER_BYTES,
+    })
+    if (!result.success) {
+      throw new Error(`Git LFS could not clean ${filePath}: ${result.stderr.trim() || `exit ${result.exitCode}`}`)
+    }
+    const pointer = Buffer.from(result.stdoutBuffer)
+    const parsed = GitLfs.parsePointer(pointer)
+    if (!parsed || parsed.oid !== `sha256:${expected.contentHash}` || parsed.size !== expected.size) {
       throw new Error(`Git LFS returned an invalid pointer for ${filePath}`)
     }
     return pointer

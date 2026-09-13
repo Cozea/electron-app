@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **1 — P11 binary closure**
-- Current checkpoint: **1E — Bounded AutoGit checkpoint publication**
-- Blocking gate: B01–B05 executable + memory gate
-- Next authorized work: 1E only
-- Branch: `feat/collab-step3-session-ui` · 1D closed (see ledger 2026-09-13 1D entry)
-- Closed: Phase 0 (baseline green); 1A (upload chain + restart replay); 1B (streaming proof incl. forced remote fetch); 1C (bounded first-attach incl. text ceiling, sealed); 1D (descriptor adoption incl. deletion fix + single-pass staging; full suite 447 files / 3,180 passed)
+- Current phase: **2 — P12–P15 Session/Workbench lifecycle**
+- Current checkpoint: **2A — P12 control plane verification**
+- Blocking gate: W01–W07 + S01–S10 green; no session resolved by branch
+- Next authorized work: 2A only
+- Branch: `feat/collab-step3-session-ui` · Phase 1 closed (see ledger 2026-09-13 1E entry)
+- Closed: Phase 0 (baseline green); Phase 1 — 1A (upload chain), 1B (streaming proof), 1C (bounded first-attach, sealed), 1D (descriptor adoption), 1E (bounded checkpoint publication; full suite 447 files / 3,180 passed)
 
 ## How this file is used
 
@@ -124,7 +124,7 @@ resume-by-verify-on-retry stay.
   `SessionFileChange.binary.bytes: Buffer | null` with an immutable
   descriptor/source (revision/hash/size + bounded reader or staged object) so
   Git-originated adoption never moves whole payloads through AutoGit memory.
-- [ ] **1E — Bounded AutoGit checkpoint publication.** `CheckpointBuilder`'s
+- [x] **1E — Bounded AutoGit checkpoint publication.** `CheckpointBuilder`'s
   `BinaryRevision → Promise<Buffer>` resolver plus whole-byte Git/LFS
   handling must become a bounded pipeline
   (`BinaryRevision → verified local object/temp file → Git object/LFS clean

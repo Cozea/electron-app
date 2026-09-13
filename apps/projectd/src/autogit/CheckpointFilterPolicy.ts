@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
+import fs from "node:fs/promises"
 
-import { GitLfs, type GitLfsCleaner } from "../git/GitLfs"
+import { GitLfs, MAX_LFS_POINTER_BYTES, type GitLfsCleaner } from "../git/GitLfs"
 import type { GitProcessResult } from "../git/GitProcess"
 
 export interface CheckpointGitOptions {
@@ -119,30 +120,59 @@ export class CheckpointFilterPolicy {
     root: string
     objectFormat: string
     repoFilePath: string
-    bytes: Buffer
+    /** Small buffered payload (text path). Mutually exclusive with staged. */
+    bytes?: Buffer
+    /** Verified staging file for payloads that must never be buffered. */
+    staged?: { path: string; size: number; contentHash: string }
     parentOid?: string
     indexEnv: Record<string, string>
     availability: LfsAvailabilityState
   }): Promise<string> {
-    let pointer = input.bytes
+    if ((input.bytes && input.staged) || (!input.bytes && !input.staged)) {
+      throw new Error(`LFS checkpoint for ${input.repoFilePath} needs bytes or a staged file, not both`)
+    }
     // A non-materialized checkout may expose the pointer itself. Preserve it as
     // Git content; do not create an LFS object whose payload is another pointer.
-    if (!GitLfs.parsePointer(pointer)) {
+    // Staged payloads reach the pointer check only when small enough to read
+    // whole within the pointer format bound; anything larger cannot be one.
+    let pointer: Buffer | null = null
+    if (input.bytes) {
+      if (GitLfs.parsePointer(input.bytes)) pointer = input.bytes
+    } else if (input.staged && input.staged.size <= MAX_LFS_POINTER_BYTES) {
+      const candidate = await fs.readFile(input.staged.path)
+      if (GitLfs.parsePointer(candidate)) pointer = candidate
+    }
+    if (!pointer) {
+      if (input.staged && !this.lfs.cleanFileToPointer) {
+        throw new Error(`LFS cleaner for ${input.repoFilePath} does not support staged payloads`)
+      }
       if (!input.availability.checked) {
         input.availability.available = await this.lfs.isAvailable(input.root)
         input.availability.checked = true
       }
       if (!input.availability.available) throw new GitLfsUnavailableError(input.repoFilePath)
       try {
-        pointer = await this.lfs.cleanToPointer(input.root, input.repoFilePath, input.bytes, input.indexEnv)
+        pointer = input.staged
+          ? await this.lfs.cleanFileToPointer!(
+              input.root, input.repoFilePath, input.staged.path,
+              { size: input.staged.size, contentHash: input.staged.contentHash }, input.indexEnv,
+            )
+          : await this.lfs.cleanToPointer(input.root, input.repoFilePath, input.bytes!, input.indexEnv)
       } catch (error) {
+        if (error instanceof GitLfsCleanError || error instanceof GitLfsUnavailableError) throw error
         throw new GitLfsCleanError(input.repoFilePath, error)
       }
     }
+    return this.storePointer(input, pointer)
+  }
 
+  private async storePointer(
+    input: { git: CheckpointGitRunner; objectFormat: string; repoFilePath: string; parentOid?: string },
+    pointer: Buffer,
+  ): Promise<string> {
     const oid = blobOidBytes(pointer, input.objectFormat)
     if (oid !== input.parentOid) {
-      const written = await input.git(["hash-object", "-w", "--stdin"], { stdin: pointer })
+      const written = await input.git(['hash-object', '-w', '--stdin'], { stdin: pointer })
       if (written.stdout.trim() !== oid) throw new Error(`Git wrote an unexpected LFS pointer object for ${input.repoFilePath}`)
     }
     return oid

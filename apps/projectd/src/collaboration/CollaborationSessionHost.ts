@@ -391,7 +391,34 @@ export class CollaborationSessionHost {
             completeIntegration: (adoptionId) => {
               for (const queued of this.queue.getIntegrationBatches(this.publicSessionId)) if (queued.integration?.adoptionId === adoptionId) this.queue.removeIntegration(queued.batchId)
             },
-            resolveBinaryContent: (revision) => this.resolveBinaryRevision(revision),
+            resolveBinaryStreamContent: async (revision, write) => {
+              if (await this.binaryCache.copyVerifiedTo(revision.contentHash, revision.size, write)) {
+                return { size: revision.size, contentHash: revision.contentHash }
+              }
+              if (!revision.manifest) {
+                throw new SessionHostError(
+                  "BINARY_MANIFEST_MISSING",
+                  `Binary revision ${revision.revisionId} has no chunk manifest and is not in the local cache`,
+                )
+              }
+              if (!this.binaryObjects.downloadTo) {
+                throw new SessionHostError(
+                  "STREAMING_UNAVAILABLE",
+                  `Binary revision ${revision.revisionId} needs a streaming object source for checkpoints.`,
+                )
+              }
+              await this.binaryCache.putFrom({
+                contentHash: revision.contentHash,
+                size: revision.size,
+                stream: async (cacheWrite) => {
+                  await this.binaryObjects.downloadTo!(revision.manifest!, async (chunk) => {
+                    await cacheWrite(chunk)
+                    await write(chunk)
+                  })
+                },
+              })
+              return { size: revision.size, contentHash: revision.contentHash }
+            },
             targetBranch: options.targetBranch?.trim() || null,
             onChange: () => this.emitStatusSoon(),
             timing: options.autoGitTiming,

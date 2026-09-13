@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
@@ -187,7 +188,9 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
   })
 
   it("writes a new binary revision into the immutable checkpoint tree", async () => {
-    const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3, 4, 5])
+    // Multi-chunk payload: the builder must stream it through a staging file,
+    // never assemble it, and leave no staging directory behind.
+    const bytes = Buffer.alloc(4 * 1024 * 1024 + 512, 0x5a)
     const contentHash = createHash("sha256").update(bytes).digest("hex")
     const replica = new SessionReplica(sessionId, "leader_binary")
     const entry = replica.createFile({ path: "assets/logo.png", kind: "binary", actor })
@@ -211,7 +214,15 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
       { barrierId: "barrier_binary_test", sessionSeq: 9, serverTime: 1726000060000 },
       replica,
     )
-    const builder = new CheckpointBuilder(gitService, { resolveBinary: async () => bytes })
+    const stagedBefore = new Set(fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith("cozea-checkpoint-")))
+    const builder = new CheckpointBuilder(gitService, {
+      resolveBinaryStream: async (_revision, write) => {
+        for (let offset = 0; offset < bytes.length; offset += 64 * 1024) {
+          await write(bytes.subarray(offset, offset + 64 * 1024))
+        }
+        return { size: bytes.length, contentHash }
+      },
+    })
     const result = await builder.buildCheckpointCommit({
       repoPath: testRepoDir,
       sessionId,
@@ -220,9 +231,19 @@ describe("P17 AutoGit barriers, deterministic checkpoint commit, periodic push",
       snapshot,
     })
 
-    const shown = await gitService.process.execute(["show", `${result.commitOid}:assets/logo.png`], { cwd: testRepoDir })
-    expect(shown.stdoutBuffer).toEqual(bytes)
+    const shown = await gitService.process.execute(["show", `${result.commitOid}:assets/logo.png`], { cwd: testRepoDir, maxBuffer: 16 * 1024 * 1024 })
+    expect(shown.stdoutBuffer.length).toBe(bytes.length)
+    expect(shown.stdoutBuffer.equals(bytes)).toBe(true)
     expect(fs.existsSync(path.join(testRepoDir, "assets/logo.png"))).toBe(false)
+    // Staging directories are removed in a finally; poll briefly because
+    // parallel suites share the tmpdir and may transiently overlap.
+    const deadline = Date.now() + 5_000
+    for (;;) {
+      const leftovers = fs.readdirSync(os.tmpdir()).filter((name) => name.startsWith("cozea-checkpoint-") && !stagedBefore.has(name))
+      if (leftovers.length === 0) break
+      if (Date.now() >= deadline) expect(leftovers).toEqual([])
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
   })
 
   const listTree = async (treeish: string, cwd = testRepoDir) =>
