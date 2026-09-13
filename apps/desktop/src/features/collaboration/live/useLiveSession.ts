@@ -130,7 +130,6 @@ async function checkSessionTarget(publicSessionId: string): Promise<void> {
 
 export function useLiveSession(input: {
   enabled: boolean
-  daemonEnabled: boolean
   sessions: readonly LiveSessionRecord[] | undefined
   projectId: string | null
   projectName?: string | null
@@ -139,7 +138,7 @@ export function useLiveSession(input: {
   principalId: string | null
 }): LiveSessionController {
   const navigate = useViewTransitionNavigate()
-  const { enabled, daemonEnabled, sessions, workspaceId } = input
+  const { enabled, sessions, workspaceId } = input
   const session = enabled ? findWorkspaceSession(sessions, workspaceId) : null
   const sessionId = session?._id ?? null
 
@@ -156,7 +155,7 @@ export function useLiveSession(input: {
   const sessionWorkspaceId = session ? `ws_collab_${session.publicSessionId}` : null
   const isSessionWorkspace = Boolean(sessionWorkspaceId && workspaceId === sessionWorkspaceId)
   const daemon = useDaemonCollaborationSession({
-    enabled: daemonEnabled && membership === "active" && isSessionWorkspace,
+    enabled: membership === "active" && isSessionWorkspace,
     session,
     projectId: input.projectId,
     workspaceId,
@@ -259,7 +258,7 @@ export function useLiveSession(input: {
       )
     : []
 
-  const daemonStatus = daemonEnabled && daemon.phase === "attached" ? daemon.status : null
+  const daemonStatus = daemon.phase === "attached" ? daemon.status : null
   const leaderName =
     members.find((member) => member.principalId === daemonStatus?.autoGit?.leaderPrincipalId)?.displayName ?? null
 
@@ -273,7 +272,6 @@ export function useLiveSession(input: {
       ? describeLiveSessionSync({
           lifecycle: session.lifecycle,
           membership,
-          daemonEnabled,
           phase: daemon.phase,
           status: daemon.status,
           error: daemon.error,

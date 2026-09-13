@@ -311,13 +311,12 @@ export function ProjectLayout({
     activeBranch,
     sharedBranch: collabBranch,
     sessions: collaborationSessionsQuery.data,
-    sessionsUseDaemon: featureFlags.daemonCollaboration,
+    workspaceId: runtimeWorkspaceId,
   });
   // The daemon syncs this folder with the branch's live session while this device
   // is in it; the in-app engine leaves session branches alone.
   const liveSession = useLiveSession({
     enabled: Boolean(project?._id) && isConvexAuthReady,
-    daemonEnabled: featureFlags.daemonCollaboration,
     sessions: collaborationSessionsQuery.data,
     projectId: project?._id ? String(project._id) : null,
     workspaceId: runtimeWorkspaceId,

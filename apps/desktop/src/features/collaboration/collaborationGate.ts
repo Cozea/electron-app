@@ -82,9 +82,15 @@ export function resolveCollaborationGate(input: {
   activeBranch: string
   sharedBranch: string
   sessions: readonly CollaborationSessionSummary[] | undefined
-  /** Sessions sync through the daemon, so the in-app engine leaves their branches alone. */
-  sessionsUseDaemon?: boolean
+  workspaceId?: string | null
 }): CollaborationGate {
+  if (input.workspaceId && input.workspaceId.startsWith(SESSION_WORKSPACE_PREFIX)) {
+    // Session Workbenches sync through projectd exclusively (Section 4.1, 23.2).
+    // The legacy in-app engine must never take over a Session Workbench, even
+    // while the cloud sessions query is still loading.
+    return { enabled: false, reason: "session-daemon" }
+  }
+
   const session = findBranchSession(input.sessions, input.activeBranch)
 
   if (session) {

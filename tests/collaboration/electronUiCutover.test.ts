@@ -42,6 +42,29 @@ describe("P23 collaboration gate", () => {
     ).toEqual({ enabled: false, reason: "private-branch" })
   })
 
+  it("disables legacy collaboration for Session Workbenches even while sessions query is loading", () => {
+    // Regression: a Session Workbench on the shared branch must never mount the
+    // legacy in-app engine during the loading window before sessions arrive.
+    expect(
+      resolveCollaborationGate({
+        activeBranch: "main",
+        sharedBranch: "main",
+        sessions: undefined,
+        workspaceId: "ws_collab_czs_1234567890abcdef",
+      }),
+    ).toEqual({ enabled: false, reason: "session-daemon" })
+
+    // Ordinary workspaces retain the shared-branch fallback during loading until P26.
+    expect(
+      resolveCollaborationGate({
+        activeBranch: "main",
+        sharedBranch: "main",
+        sessions: undefined,
+        workspaceId: "ws_ordinary_main",
+      }),
+    ).toEqual({ enabled: true, reason: "shared-branch" })
+  })
+
   it("leaves a session's branch to the daemon, on the shared branch too", () => {
     for (const lifecycle of ["ACTIVE", "DORMANT", "PAUSED"]) {
       expect(
@@ -49,13 +72,12 @@ describe("P23 collaboration gate", () => {
           activeBranch: "main",
           sharedBranch: "main",
           sessions: [{ branchName: "main", lifecycle }],
-          sessionsUseDaemon: true,
         }),
       ).toEqual({ enabled: false, reason: "session-daemon" })
     }
     // Branches without a session keep the in-app behaviour.
     expect(
-      resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions: [], sessionsUseDaemon: true }),
+      resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions: [] }),
     ).toEqual({ enabled: true, reason: "shared-branch" })
   })
 

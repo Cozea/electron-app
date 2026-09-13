@@ -99,8 +99,6 @@ function describeDaemonStatus(status: ProjectdSessionStatus | null): LiveSession
 export function describeLiveSessionSync(input: {
   lifecycle: string
   membership: SessionMembership
-  /** False when VITE_FF_DAEMON_COLLABORATION=0 hands sessions to the in-app engine. */
-  daemonEnabled: boolean
   phase: DaemonSessionPhase
   status: ProjectdSessionStatus | null
   error: string | null
@@ -129,8 +127,6 @@ export function describeLiveSessionSync(input: {
     case "none":
       return { tone: "idle", label: "Not joined", detail: "Join to sync this folder with the session." }
   }
-
-  if (!input.daemonEnabled) return { tone: "live", label: "Live", detail: null }
 
   switch (input.phase) {
     case "off":

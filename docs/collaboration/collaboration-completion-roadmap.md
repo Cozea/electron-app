@@ -11,8 +11,8 @@
 - Current checkpoint: **5A — Rerun capability matrix against Session Workspace**
 - Blocking gate: no capability needs a private collaboration file transport
 - Next authorized work: Phase 5 only
-- Branch: `feat/collab-step3-session-ui` · Phase 4 closed (see ledger 2026-09-13 Phase 4 entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: closing renderer does not stop live CRDT/session; full suite 450 files / 3,218 passed)
+- Branch: `feat/collab-step3-session-ui` · Phase 4 accepted with packaged daemon proof (see ledger 2026-09-13 entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: no daemonEnabled fallback, workspaceId-aware gate, packaged daemon + dev renderer gate proven; full suite 451 files / 3,220 passed)
 
 ## How this file is used
 

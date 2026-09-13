@@ -31,7 +31,6 @@ function daemonStatus(overrides: Partial<ProjectdSessionStatus> = {}): ProjectdS
 const ATTACHED = {
   lifecycle: "ACTIVE",
   membership: "active" as const,
-  daemonEnabled: true,
   phase: "attached" as const,
   status: daemonStatus(),
   error: null,
@@ -111,9 +110,6 @@ describe("how the session bar describes syncing", () => {
     expect(describeLiveSessionSync({ ...ATTACHED, phase: "waiting_for_key", status: null })).toMatchObject({
       tone: "working",
       label: "Waiting for access",
-    })
-    expect(describeLiveSessionSync({ ...ATTACHED, daemonEnabled: false, phase: "off", status: null })).toMatchObject({
-      tone: "live",
     })
   })
 })

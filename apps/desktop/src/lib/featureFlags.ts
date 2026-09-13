@@ -16,12 +16,6 @@ const DEFINITIONS = {
    * Override with `VITE_FF_COZEA_PALETTE_ENABLED=0` to disable.
    */
   paletteEnabled: { key: 'VITE_FF_COZEA_PALETTE_ENABLED', defaultValue: true },
-  /**
-   * Live sessions sync through the cozea-projectd daemon, which the app starts, and
-   * the in-app Yjs engine leaves session branches alone. `VITE_FF_DAEMON_COLLABORATION=0`
-   * hands session branches back to the in-app engine.
-   */
-  daemonCollaboration: { key: 'VITE_FF_DAEMON_COLLABORATION', defaultValue: true },
 } satisfies Record<string, FeatureFlagDefinition>
 
 function parseBoolean(rawValue: string | undefined, fallback: boolean): boolean {
@@ -69,9 +63,5 @@ export const featureFlags = {
   paletteEnabled: parseBoolean(
     import.meta.env[DEFINITIONS.paletteEnabled.key],
     DEFINITIONS.paletteEnabled.defaultValue
-  ),
-  daemonCollaboration: parseBoolean(
-    import.meta.env[DEFINITIONS.daemonCollaboration.key],
-    DEFINITIONS.daemonCollaboration.defaultValue
   ),
 } as const
