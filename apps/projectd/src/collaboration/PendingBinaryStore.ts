@@ -152,6 +152,19 @@ export class PendingBinaryStore {
     return rows.map((row) => this.readRecord(row.revision_id)!)
   }
 
+  /**
+   * Presents an encrypted retained version as a bounded immutable range source.
+   * Uploaders request at most one 4 MiB range at a time; unaligned bounded reads
+   * may span two stored chunks but never assemble the complete file.
+   */
+  asSource(record: PendingBinaryRecord): PendingBinarySource {
+    return {
+      contentHash: record.contentHash,
+      size: record.size,
+      read: async (offset, length) => this.readRange(record, offset, length),
+    }
+  }
+
   /** Streams a retained version in fixed-size chunks and verifies the whole revision. */
   async writeTo(record: PendingBinaryRecord, write: (chunk: Buffer) => Promise<void>): Promise<void> {
     const digest = createHash("sha256")
@@ -225,6 +238,32 @@ export class PendingBinaryStore {
       db.prepare("DELETE FROM pending_binary_versions WHERE session_id=? AND revision_id=?").run(this.cipher.sessionId, revisionId)
       db.exec("COMMIT")
     } catch (error) { db.exec("ROLLBACK"); throw error }
+  }
+
+  private readRange(record: PendingBinaryRecord, offset: number, length: number): Buffer {
+    if (!Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(length) || length < 0 ||
+      length > CHUNK_SIZE_BYTES || offset + length > record.size) {
+      throw new Error("Invalid retained binary read range")
+    }
+    if (length === 0) return Buffer.alloc(0)
+
+    const firstIndex = Math.floor(offset / CHUNK_SIZE_BYTES)
+    const lastIndex = Math.floor((offset + length - 1) / CHUNK_SIZE_BYTES)
+    const parts: Buffer[] = []
+    let remaining = length
+    let cursor = offset
+    for (let index = firstIndex; index <= lastIndex; index++) {
+      const chunkStart = index * CHUNK_SIZE_BYTES
+      const chunk = this.readChunk(record, index, chunkStart)
+      const localStart = Math.max(0, cursor - chunkStart)
+      const take = Math.min(remaining, chunk.length - localStart)
+      parts.push(chunk.subarray(localStart, localStart + take))
+      cursor += take
+      remaining -= take
+    }
+    const result = parts.length === 1 ? parts[0]! : Buffer.concat(parts, length)
+    if (remaining !== 0 || result.length !== length) throw new Error("Retained binary range is incomplete")
+    return result
   }
 
   private verifyRecord(record: PendingBinaryRecord): void {
