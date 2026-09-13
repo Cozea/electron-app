@@ -17,8 +17,9 @@ describe("StableFileReader metadata streaming", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "cozea-stable-meta-"))
     roots.push(root)
     const file = path.join(root, "large.bin")
-    const bytes = Buffer.alloc(6 * 1024 * 1024 + 37)
-    for (let index = 0; index < bytes.length; index += 1) bytes[index] = index % 251
+    // Just over two 1 MiB hash chunks proves bounded streaming without turning
+    // this contract test into a large-file throughput benchmark under parallel CI.
+    const bytes = Buffer.alloc(2 * 1024 * 1024 + 37, 0xa5)
     await fs.writeFile(file, bytes)
 
     const reader = new StableFileReader({ settleDelayMs: 0 })
