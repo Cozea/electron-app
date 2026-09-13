@@ -77,10 +77,13 @@ function writableWithin(root: string, relativePath: string): string {
   return candidate
 }
 
-export function createNodeDevAppHostServices(): DevAppHostServices {
+export function createNodeDevAppHostServices(
+  resolveRootFn: (workspaceId: string, operation: "read-file" | "write-file" | "list-files") => Promise<string> = rootFor,
+): DevAppHostServices {
+  const getRoot = resolveRootFn
   return {
     readProjectFile: async ({ workspaceId, filePath }) => {
-      const full = existingWithinOrNull(await rootFor(workspaceId, "read-file"), filePath)
+      const full = existingWithinOrNull(await getRoot(workspaceId, "read-file"), filePath)
       if (!full) return null
       const stat = fs.statSync(full, { throwIfNoEntry: false })
       if (!stat?.isFile()) return null
@@ -96,7 +99,7 @@ export function createNodeDevAppHostServices(): DevAppHostServices {
       if (Buffer.byteLength(content, "utf8") > MAX_WRITE_BYTES) {
         throw new Error("That file is too large to write.")
       }
-      const root = await rootFor(workspaceId, "write-file")
+      const root = await getRoot(workspaceId, "write-file")
       const full = writableWithin(root, filePath)
       fs.mkdirSync(path.dirname(full), { recursive: true })
       // Re-check after directory creation so a pre-existing symlinked parent cannot be
@@ -106,7 +109,7 @@ export function createNodeDevAppHostServices(): DevAppHostServices {
     },
 
     listProjectDirectory: async ({ workspaceId, directory }) => {
-      const full = existingWithin(await rootFor(workspaceId, "list-files"), directory)
+      const full = existingWithin(await getRoot(workspaceId, "list-files"), directory)
       const entries = fs.readdirSync(full, { withFileTypes: true })
       if (entries.length > MAX_DIRECTORY_ENTRIES) {
         throw new Error("That directory has too many entries to list.")

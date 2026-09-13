@@ -98,14 +98,19 @@ async function resolveAssistantProjectId(
   }
 }
 
+export function resolveScheduledTaskWorkspaceRoot(task: ScheduledTask, standaloneWorkspaceRoot?: string): string {
+  const workspaceRoot = task.project?.workspaceRoot ?? standaloneWorkspaceRoot
+  if (!workspaceRoot) throw new Error("No working directory for this task.")
+  return workspaceRoot
+}
+
 /** Start one scheduled task as a normal visible conversation with main-owned CU authorization. */
 export async function runScheduledTask(
   task: ScheduledTask,
   standaloneWorkspaceRoot: string,
   nativeApi: NativeApi | undefined = readAvailableNativeApi(),
 ): Promise<string> {
-  const workspaceRoot = task.project?.workspaceRoot ?? standaloneWorkspaceRoot
-  if (!workspaceRoot) throw new Error("No working directory for this task.")
+  const workspaceRoot = resolveScheduledTaskWorkspaceRoot(task, standaloneWorkspaceRoot)
   if (!nativeApi) {
     throw new ScheduledTaskRuntimeUnavailableError()
   }

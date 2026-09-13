@@ -17,7 +17,11 @@ import {
   createPrivateThreadWorktree,
   applyThreadWorktreeToWorkspace,
   removePrivateThreadWorktree,
+  sanitizeSafeRelativePath,
 } from "../../apps/desktop/electron/services/threadWorktreeService"
+import { createNodeDevAppHostServices } from "../../apps/desktop/electron/services/devAppHostServices"
+import { resolveScheduledTaskWorkspaceRoot } from "../../apps/desktop/src/features/projects/model/scheduledTaskRunner"
+import type { ScheduledTask } from "../../shared/scheduledTasks"
 import {
   RoomHost,
   TEST_PUBLIC_SESSION_ID,
@@ -205,10 +209,15 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
     expect(await bob.read("agent_tool.ts")).toBe(agentCode)
   })
 
-  it("U02: qualifies Assistant threadWorktree isolation, full delta Apply, and fail-closed security (Section 24.2)", async () => {
-    // 1. Initial baseline file exists in Session Workspace
+  it("U02: qualifies Assistant threadWorktree isolation, B/R/L delta Apply, and fail-closed security (Section 24.2)", async () => {
+    // 1. Initial baseline files exist in Session Workspace and are committed
+    await alice.write("a.ts", "export const a = 'base';\n")
+    await alice.write("b.ts", "export const b = 'base';\n")
     await alice.write("delete_target.ts", "export const toBeDeleted = true;\n")
-    await waitFor(async () => (await bob.read("delete_target.ts")) !== null, "bob to receive initial file")
+    git(alice.root, "add", "-A")
+    git(alice.root, "commit", "-q", "-m", "baseline-files")
+
+    await waitFor(async () => (await bob.read("delete_target.ts")) !== null, "bob to receive initial files")
 
     // 2. Assistant runs with laneBinding="threadWorktree".
     // A private thread worktree is created outside the Session Workspace root.
@@ -224,23 +233,34 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
     // Verify worktreePath is strictly outside alice.root (the Session Workspace)
     expect(path.resolve(worktreePath).startsWith(path.resolve(alice.root))).toBe(false)
 
-    // 3. Assistant writes a new file and deletes an existing file inside the private worktree
+    // 3. Concurrent live edits by peer in Session Workspace (L) after worktree branched from B:
+    // Peer adds peer.ts
+    await bob.write("peer.ts", "export const peerAdded = true;\n")
+    // Peer edits unrelated b.ts
+    await bob.write("b.ts", "export const b = 'peer_modified';\n")
+
+    await waitFor(async () => (await alice.read("peer.ts")) !== null, "alice to receive peer.ts")
+    await waitFor(async () => (await alice.read("b.ts")) === "export const b = 'peer_modified';\n", "alice to receive peer edit on b.ts")
+
+    // 4. Assistant performs private work in worktree (R):
+    // Agent adds feature_draft.ts
     const privateDraftPath = path.join(worktreePath, "feature_draft.ts")
     const draftCode = "export const experimentalFeature = true;\n"
     await fs.writeFile(privateDraftPath, draftCode)
 
-    // Agent deletes delete_target.ts in the private worktree
+    // Agent deletes delete_target.ts
     await fs.rm(path.join(worktreePath, "delete_target.ts"), { force: true })
 
-    // Trigger watcher report on alice's session workspace
-    alice.events.report(alice.root)
+    // Agent modifies a.ts
+    await fs.writeFile(path.join(worktreePath, "a.ts"), "export const a = 'agent_modified';\n")
 
-    // Peer (bob) MUST NOT see the private addition and MUST NOT see the deletion before explicit Apply/Adopt
+    // Peer (bob) MUST NOT see the private addition or deletion before explicit Apply/Adopt
+    alice.events.report(alice.root)
     await new Promise((r) => setTimeout(r, 50))
     expect(await bob.read("feature_draft.ts")).toBeNull()
     expect(await bob.read("delete_target.ts")).not.toBeNull()
 
-    // 4. User explicitly triggers 'Apply / Adopt thread changes to session'
+    // 5. User explicitly triggers 'Apply to session' (B/R/L three-way merge Δ(B -> R) onto L)
     const applyResult = await applyThreadWorktreeToWorkspace({
       worktreePath,
       workspaceRoot: alice.root,
@@ -248,32 +268,82 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
     expect(applyResult.success).toBe(true)
     expect(applyResult.appliedFiles).toContain("feature_draft.ts")
     expect(applyResult.appliedFiles).toContain("delete_target.ts")
+    expect(applyResult.appliedFiles).toContain("a.ts")
 
-    // The files in alice.root now reflect the full delta (addition + deletion)
-    alice.events.report(alice.root, "feature_draft.ts", "delete_target.ts")
+    // Invariant: Peer additions (peer.ts) and unrelated edits (b.ts) MUST BE PRESERVED in L!
+    expect(await alice.read("peer.ts")).toBe("export const peerAdded = true;\n")
+    expect(await alice.read("b.ts")).toBe("export const b = 'peer_modified';\n")
 
-    // 5. Peer receives the addition and observes the deletion
+    // Notify watcher of applied changes
+    alice.events.report(alice.root, "feature_draft.ts", "delete_target.ts", "a.ts")
+
+    // 6. Peer receives agent's applied changes without losing peer's own concurrent work
     await waitFor(async () => (await bob.read("feature_draft.ts")) !== null, "bob to receive feature_draft.ts")
     expect(await bob.read("feature_draft.ts")).toBe(draftCode)
-    await waitFor(async () => (await bob.read("delete_target.ts")) === null, "bob to observe deletion of delete_target.ts")
+    await waitFor(async () => (await bob.read("delete_target.ts")) === null, "bob to observe deletion")
     expect(await bob.read("delete_target.ts")).toBeNull()
+    await waitFor(async () => (await bob.read("a.ts")) === "export const a = 'agent_modified';\n", "bob to receive a.ts")
+    expect(await bob.read("peer.ts")).toBe("export const peerAdded = true;\n")
+    expect(await bob.read("b.ts")).toBe("export const b = 'peer_modified';\n")
 
-    // 6. Fail-closed security validation:
-    // If worktree creation attempts to target a directory inside the Session Workspace, it fails closed
-    const invalidResult = await createPrivateThreadWorktree({
+    // 7. Regression: Concurrent edit conflict protection on same file
+    // If peer edits a.ts in L and agent edits a.ts in R to a different value:
+    await bob.write("a.ts", "export const a = 'peer_edit_2';\n")
+    await waitFor(async () => (await alice.read("a.ts")) === "export const a = 'peer_edit_2';\n", "alice to receive peer edit")
+    // Agent in worktree has different edit:
+    await fs.writeFile(path.join(worktreePath, "a.ts"), "export const a = 'agent_divergent';\n")
+
+    const conflictResult = await applyThreadWorktreeToWorkspace({
+      worktreePath,
       workspaceRoot: alice.root,
-      threadId: "invalid_sub_dir",
-      customWorktreePath: path.join(alice.root, "sub_worktree"),
     })
-    expect(invalidResult.success).toBe(false)
-    expect(invalidResult.error).toContain("Private thread worktree path must be outside")
+    expect(conflictResult.success).toBe(false)
+    expect(conflictResult.conflicts).toBeDefined()
+    expect(conflictResult.conflicts?.some((c) => c.path === "a.ts" && c.kind === "modify_conflict")).toBe(true)
+    // Peer edit in L was preserved, not blindly overwritten!
+    expect(await alice.read("a.ts")).toBe("export const a = 'peer_edit_2';\n")
 
-    // Provenance validation rejects arbitrary / escaping worktree paths
+    // 8. Regression: Delete-vs-modify conflict protection
+    // Recreate a file, peer modifies it, agent deletes it:
+    await alice.write("conflict_del.ts", "base content\n")
+    git(alice.root, "add", "conflict_del.ts")
+    git(alice.root, "commit", "-m", "add conflict_del")
+    await waitFor(async () => (await bob.read("conflict_del.ts")) !== null, "bob to receive initial conflict_del.ts")
+
+    const wt2 = await createPrivateThreadWorktree({ workspaceRoot: alice.root, threadId: `wt2_${Date.now()}` })
+    cleanups.push(() => removePrivateThreadWorktree({ worktreePath: wt2.worktreePath, workspaceRoot: alice.root }))
+
+    // Peer modifies conflict_del.ts in L
+    await bob.write("conflict_del.ts", "peer modified before delete\n")
+    await waitFor(async () => (await alice.read("conflict_del.ts")) === "peer modified before delete\n", "alice gets peer edit")
+
+    // Agent deletes conflict_del.ts in worktree
+    await fs.rm(path.join(wt2.worktreePath, "conflict_del.ts"), { force: true })
+
+    const delConflictResult = await applyThreadWorktreeToWorkspace({
+      worktreePath: wt2.worktreePath,
+      workspaceRoot: alice.root,
+    })
+    expect(delConflictResult.success).toBe(false)
+    expect(delConflictResult.conflicts?.some((c) => c.path === "conflict_del.ts" && c.kind === "delete_conflict")).toBe(true)
+    // Peer's modified file was NOT deleted blindly!
+    expect(await alice.read("conflict_del.ts")).toBe("peer modified before delete\n")
+
+    // 9. Fail-closed security validation:
+    // Path traversal rejection (.. must be rejected, not reinterpreted)
+    expect(sanitizeSafeRelativePath("../../escape.ts", alice.root)).toBeNull()
+    expect(sanitizeSafeRelativePath("../escape.ts", alice.root)).toBeNull()
+    expect(sanitizeSafeRelativePath("foo/../../escape.ts", alice.root)).toBeNull()
+    expect(sanitizeSafeRelativePath("/etc/passwd", alice.root)).toBeNull()
+
+    // Provenance validation rejects arbitrary / unregistered outside directories
+    const arbitraryOutsideDir = await tempFolder("arbitrary-outside")
     const unprovenApply = await applyThreadWorktreeToWorkspace({
-      worktreePath: path.join(alice.root, "not_outside"),
+      worktreePath: arbitraryOutsideDir,
       workspaceRoot: alice.root,
     })
     expect(unprovenApply.success).toBe(false)
+    expect(unprovenApply.error).toContain("is not a registered worktree")
   })
 
   it("U03: qualifies Terminal writes and formatters (Section 24.3)", async () => {
@@ -338,12 +408,19 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
   })
 
   it("U06: qualifies DevApp writes in session workspace participate normally (Section 24.6)", async () => {
-    // Production DevApp writeProjectFile path:
+    // Invoke the actual production DevApp host service writeProjectFile route
+    const devAppHost = createNodeDevAppHostServices(async (workspaceId) => {
+      expect(workspaceId).toBe(alice.host.workspaceId)
+      return alice.root
+    })
+
     const devAppManifest = JSON.stringify({ name: "my-native-devapp", version: "1.0.0" }, null, 2)
     const filePath = "cozea-devapp.json"
-    const fullPath = path.resolve(alice.root, filePath)
-    await fs.mkdir(path.dirname(fullPath), { recursive: true })
-    await fs.writeFile(fullPath, devAppManifest, "utf8")
+    await devAppHost.writeProjectFile({
+      workspaceId: alice.host.workspaceId,
+      filePath,
+      content: devAppManifest,
+    })
     alice.events.report(alice.root, filePath)
 
     await waitFor(
@@ -381,17 +458,21 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
   })
 
   it("U08: qualifies Tasks execution context binds to Session Workspace (Section 24.9)", async () => {
-    // Production scheduled task execution path: task binds explicitly to task.project.workspaceRoot
-    // (scheduledTaskRunner.ts: const workspaceRoot = task.project?.workspaceRoot ?? standaloneWorkspaceRoot)
-    const task = {
-      id: "task_test_99",
+    // Invoke actual production scheduled-task workspaceRoot resolution (scheduledTaskRunner.ts)
+    const task: ScheduledTask = {
+      _id: "task_test_99" as any,
+      _creationTime: Date.now(),
       title: "Scheduled Build",
+      prompt: "build and test",
+      cron: "0 0 * * *",
+      status: "active",
+      provider: "claude",
       project: {
         workspaceRoot: alice.root,
         name: "Test Session Project",
       },
     }
-    const executionRoot = task.project.workspaceRoot
+    const executionRoot = resolveScheduledTaskWorkspaceRoot(task, alice.root)
     expect(executionRoot).toBe(alice.root)
 
     // Task writes output into its bound executionRoot
