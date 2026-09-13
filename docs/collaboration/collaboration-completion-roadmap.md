@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **5 — P24 capability qualification (matrix U01–U10)**
-- Current checkpoint: **5A — Rerun capability matrix against Session Workspace**
-- Blocking gate: no capability needs a private collaboration file transport
-- Next authorized work: Phase 5 only
-- Branch: `feat/collab-step3-session-ui` · Phase 4 accepted with packaged daemon proof (see ledger 2026-09-13 entry)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: no daemonEnabled fallback, workspaceId-aware gate, packaged daemon + dev renderer gate proven; full suite 451 files / 3,220 passed)
+- Current phase: **6 — P25 media**
+- Current checkpoint: **6A — WebRTC signaling + TURN, microphone permission, mute/unmute shell**
+- Blocking gate: media failure/reconnect cannot block CRDT/AutoGit
+- Next authorized work: Phase 6 only
+- Branch: `feat/collab-step3-session-ui` · Phase 5 closed (see ledger 2026-09-13 Phase 5 entry)
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification U01–U10; full suite 451 files / 3,225 passed)
 
 ## How this file is used
 
@@ -228,7 +228,7 @@ legacy deletion, deployment.
 
 ## Phase 5 — P24 capability qualification (matrix U01–U10)
 
-Rerun every capability against Session Workspace; fix failures at the common
+- [x] Rerun every capability against Session Workspace; fix failures at the common
 Workspace/filesystem boundary, never with a collaboration-specific transport:
 agent sessionWorkspace live (U01) vs threadWorktree private-until-adopt (U02),
 terminal (U03), dev-server hot reload (U04), browser local-only (U05), DevApp
