@@ -1286,6 +1286,8 @@ describe("AutoGit in projectd", () => {
     await creator.host.checkpointNow()
     const blobReads: string[][] = []
     const execute = vi.spyOn(GitProcess.prototype, "execute")
+    const streams: unknown[][] = []
+    const streamBlob = vi.spyOn(GitProcess.prototype, "streamBlob")
     try {
       const result = await creator.host.rebase(false)
       expect(result).toMatchObject({ outcome: "rebased" })
@@ -1293,14 +1295,42 @@ describe("AutoGit in projectd", () => {
         if (args[0] === "cat-file" && args[1] === "blob") blobReads.push(args)
       }
       expect(blobReads).toHaveLength(0)
+      // Exactly two blob streams for the whole adoption: one hash pass plus
+      // one single-pass staging stream. Per-chunk cat-file emulation would
+      // show one spawn per retained 4 MiB chunk plus the hash pass.
+      for (const call of streamBlob.mock.calls) streams.push(call)
+      expect(streams).toHaveLength(2)
     } finally {
       execute.mockRestore()
+      streamBlob.mockRestore()
     }
     for (const peer of [creator, joiner]) {
       await waitFor(async () => (await fs.readFile(path.join(peer.root, "big.bin")).catch(() => Buffer.alloc(0))).equals(big), "rebased large binary bytes")
     }
     const saved = remoteHead(repos.remote)
     expect(execFileSync("git", ["show", `${saved}:big.bin`], { cwd: repos.remote, maxBuffer: 16 * 1024 * 1024 }).equals(big)).toBe(true)
+  })
+
+  it("adopts an external binary deletion without GIT_UNREADABLE", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "base\n", "asset.bin": Buffer.from([0, 1, 255]) })
+    git(repos.creatorRoot, "push", "-q", "origin", `${BRANCH}:refs/heads/main`)
+    const targetParent = await tempFolder("target-main")
+    const targetRoot = path.join(targetParent, "checkout")
+    git(targetParent, "clone", "-q", "-b", "main", repos.remote, targetRoot)
+    await fs.rm(path.join(targetRoot, "asset.bin"))
+    git(targetRoot, "add", "-A")
+    git(targetRoot, "commit", "-q", "-m", "Delete asset")
+    git(targetRoot, "push", "-q", "origin", "main")
+    const { creator, joiner } = await startPair(room, repos, ON_REQUEST, "main")
+    await creator.host.checkpointNow()
+    const result = await creator.host.rebase(false)
+    expect(result).toMatchObject({ outcome: "rebased" })
+    for (const peer of [creator, joiner]) {
+      await waitFor(async () => await peer.read("asset.bin") === null, "adopted binary deletion")
+      expect(peer.host.replica.tree.listLiveEntries().some((entry) => entry.path === "asset.bin")).toBe(false)
+      expect(fs.access(path.join(peer.root, "asset.bin")).then(() => false, () => true)).resolves.toBe(true)
+    }
   })
 
   it("rebases the live session onto its target only when explicitly requested", async () => {

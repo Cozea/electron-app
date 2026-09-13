@@ -155,6 +155,87 @@ export class PendingBinaryStore {
       .get(this.cipher.sessionId) as { count: number }).count
   }
 
+  /**
+   * Captures one sequential stream into encrypted fixed-size chunk rows in a
+   * single pass: no random access, no retained whole payload, no re-reads.
+   * Chunk rows are written first and the version row is the commit marker; a
+   * crash before that final row leaves only invisible orphan chunks, which the
+   * next staging deletes before starting again. Total intake is bounded by the
+   * declared size: anything more or less fails verification and is removed.
+   */
+  async stageFromStream(
+    intent: PendingBinaryIntent,
+    source: { size: number; contentHash: string; stream: (write: (chunk: Buffer) => Promise<void>) => Promise<void> },
+  ): Promise<PendingBinaryRecord> {
+    if (!/^[a-f0-9]{64}$/.test(source.contentHash) || !Number.isSafeInteger(source.size) || source.size < 0) {
+      throw new Error("Invalid retained binary source metadata")
+    }
+    const revisionId = stagedRevisionId(intent, source.contentHash)
+    const existing = this.readRecord(revisionId)
+    if (existing) {
+      if (existing.size !== source.size || existing.contentHash !== source.contentHash) {
+        throw new Error("Retained binary retry metadata changed")
+      }
+      this.verifyRecord(existing)
+      return existing
+    }
+    const record: PendingBinaryRecord = {
+      ...intent,
+      revisionId,
+      contentHash: source.contentHash,
+      size: source.size,
+      createdAt: Date.now(),
+      chunks: Math.ceil(source.size / CHUNK_SIZE_BYTES),
+    }
+    const db = this.database.db
+    db.prepare("DELETE FROM pending_binary_chunks WHERE session_id=? AND revision_id=?")
+      .run(this.cipher.sessionId, revisionId)
+    const insert = db.prepare("INSERT INTO pending_binary_chunks VALUES (?, ?, ?, ?)")
+    const digest = createHash("sha256")
+    let pending: Buffer = Buffer.alloc(0)
+    let index = 0
+    let offset = 0
+    const flushChunk = (): void => {
+      const piece = pending.subarray(0, CHUNK_SIZE_BYTES)
+      pending = pending.subarray(CHUNK_SIZE_BYTES)
+      digest.update(piece)
+      insert.run(
+        this.cipher.sessionId,
+        revisionId,
+        index,
+        this.cipher.seal(piece.toString("base64"), `binary-chunk:${revisionId}:${index}`),
+      )
+      index += 1
+      offset += piece.length
+    }
+    try {
+      await source.stream(async (chunk) => {
+        if (!Buffer.isBuffer(chunk) || chunk.length === 0) return
+        pending = pending.length === 0 ? chunk : Buffer.concat([pending, chunk])
+        while (pending.length >= CHUNK_SIZE_BYTES) flushChunk()
+        if (offset + pending.length > source.size) {
+          throw new Error("Retained binary source exceeded its declared size")
+        }
+      })
+      if (pending.length > 0) flushChunk()
+      if (offset !== record.size || digest.digest("hex") !== record.contentHash) {
+        throw new Error("Retained binary source changed while it was being captured")
+      }
+      db.prepare("INSERT INTO pending_binary_versions VALUES (?, ?, ?)").run(
+        this.cipher.sessionId,
+        revisionId,
+        this.cipher.seal(JSON.stringify(record), `binary-intent:${revisionId}`),
+      )
+      return record
+    } catch (error) {
+      db.prepare("DELETE FROM pending_binary_versions WHERE session_id=? AND revision_id=?")
+        .run(this.cipher.sessionId, revisionId)
+      db.prepare("DELETE FROM pending_binary_chunks WHERE session_id=? AND revision_id=?")
+        .run(this.cipher.sessionId, revisionId)
+      throw error
+    }
+  }
+
   list(): PendingBinaryRecord[] {
     const rows = this.database.db.prepare("SELECT revision_id FROM pending_binary_versions WHERE session_id=? ORDER BY rowid")
       .all(this.cipher.sessionId) as Array<{ revision_id: string }>

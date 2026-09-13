@@ -1197,7 +1197,10 @@ export class AutoGitAgent {
     } : null
     if (theirsSize === null && entry && entry.mode !== file.baseMode) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Deletion overlaps a file-mode change in ${file.sessionPath}.`)
     if (ours !== baseHash) throw new AutoGitError("REBASE_LIVE_CONFLICT", `Git and live edits both changed ${file.sessionPath}. Both versions have been retained; resolve this binary change before adoption.`)
-    if (theirsSize === null || theirsHash === null) throw new AutoGitError("GIT_UNREADABLE", `Git lost the binary object for ${file.sessionPath} during the merge.`)
+    if (theirsSize === null) {
+      return { change: { path: file.sessionPath, expected: null, text: null, mode, binary: { blob: null, fingerprint } }, conflicted: false }
+    }
+    if (theirsHash === null) throw new AutoGitError("GIT_UNREADABLE", `Git lost the binary object for ${file.sessionPath} during the merge.`)
     return {
       change: {
         path: file.sessionPath, expected: null, text: null, mode,

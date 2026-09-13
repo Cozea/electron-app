@@ -116,6 +116,18 @@ export class GitService {
   }
 
   /**
+   * Streams a blob's bytes without buffering the object. One process per
+   * call; chunks arrive in object order for single-pass consumers.
+   */
+  async streamBlob(
+    repoPath: string,
+    oid: string,
+    write: (chunk: Buffer) => Promise<void>,
+  ): Promise<void> {
+    await this.process.streamBlob({ cwd: repoPath, oid }, write)
+  }
+
+  /**
    * Streams a blob's SHA-256 without buffering the object. The blob is
    * re-hashed from the object store, never trusted from a recorded size.
    */

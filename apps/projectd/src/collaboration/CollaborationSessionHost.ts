@@ -1797,7 +1797,8 @@ export class CollaborationSessionHost {
     // Upload every payload before any replica mutation. A failed upload leaves the
     // complete live change set untouched; successful objects are immutable.
     // Git-originated binaries arrive as immutable blob descriptors and stream
-    // through the durable capture; no whole payload crosses this boundary.
+    // once from the repository object store into the durable capture; no whole
+    // payload crosses this boundary and no range is read twice.
     const binaries = new Map<SessionFileChange, Awaited<ReturnType<SessionBinaryObjectStore["upload"]>>>()
     for (const change of changes) {
       const blob = change.binary?.blob
@@ -1807,19 +1808,18 @@ export class CollaborationSessionHost {
         }
         const gitService = this.gitService
         const live = this.findLiveEntry(change.path)
-        const source = {
-          contentHash: blob.contentHash,
-          size: blob.size,
-          read: (offset: number, length: number) => gitService.readBlobRange(blob.repoPath, blob.blobOid, offset, length),
-        }
-        const staged = await this.pendingBinaryStore.stageFrom({
+        const staged = await this.pendingBinaryStore.stageFromStream({
           path: change.path,
           fileId: live?.fileId ?? null,
           baseRevisionId: live && live.kind === "binary"
             ? this.replica.binaryStore.getHeadRevision(live.fileId)?.revisionId ?? null
             : null,
           mode: change.mode !== undefined ? fileMode(change.mode) : live?.mode ?? 0o100644,
-        }, source)
+        }, {
+          size: blob.size,
+          contentHash: blob.contentHash,
+          stream: (write) => gitService.streamBlob(blob.repoPath, blob.blobOid, write),
+        })
         try {
           binaries.set(change, await this.uploadStagedBinary(staged))
         } finally {
