@@ -33,13 +33,20 @@ describe("pinned T3 browser host foundation", () => {
       projectId: "project",
       laneId: "lane",
       workspaceId: "workspace",
-      workbenchSessionKey: null,
+      // Identity requires the canonical session key. The scoping helper still
+      // falls back to the workbench coordinates, but that fallback is not valid
+      // input for a browser identity -- see browserSurfaceIdentityBoundary.
+      workbenchSessionKey: "project::lane::workspace::v1",
       tileId: "browser-1",
       kind: "browser" as const,
     };
 
-    expect(resolveBrowserWorkbenchSessionKey(identity)).toBe("project::lane::workspace");
+    expect(
+      resolveBrowserWorkbenchSessionKey({ ...identity, workbenchSessionKey: null }),
+    ).toBe("project::lane::workspace");
+    expect(browserSurfaceRuntimeTabId({ ...identity, workbenchSessionKey: null })).toBeNull();
     const runtimeTabId = browserSurfaceRuntimeTabId(identity);
+    if (!runtimeTabId) throw new Error("a canonical session key must yield an identity");
     expect(runtimeTabId).toBe(browserSurfaceRuntimeTabId({ ...identity, runtimeGeneration: null }));
     expect(runtimeTabId.length).toBeLessThanOrEqual(128);
     expect(runtimeTabId).not.toContain(identity.projectId);
@@ -60,6 +67,10 @@ describe("pinned T3 browser host foundation", () => {
       runtimeGeneration: `generation-${"g".repeat(256)}`,
     });
 
+    // A canonical session key always yields an identity. Narrow it explicitly:
+    // the return type is nullable by design, because an unresolved session key
+    // must mint nothing.
+    if (runtimeTabId === null) throw new Error("a canonical session key must yield an identity");
     expect(runtimeTabId.length).toBeLessThanOrEqual(128);
     expect(runtimeTabId).toMatch(/^cozea-preview:devServer:/);
   });

@@ -56,8 +56,11 @@ describe("ported T3 Browser tile", () => {
   });
 
   it("mounts one hosted slot and keeps descriptor updates outside the guest lifetime effect", () => {
-    expect(browserTileSource).toContain("<BrowserSurfaceSlot");
-    expect(browserTileSource).toContain("useHostedBrowserSurface(descriptor)");
+    // The tile mounts exactly one slot and no longer picks the host itself;
+    // BrowserSurfaceBackendSlot resolves that from the migration ledger.
+    expect(browserTileSource).toContain("<BrowserSurfaceBackendSlot");
+    expect(browserTileSource.match(/<BrowserSurfaceBackendSlot/g)).toHaveLength(1);
+    expect(browserTileSource).not.toContain("useHostedBrowserSurface");
     expect(browserTileSource).not.toContain("<BrowserUnavailableSurface");
     expect(hostedWebviewSource).toContain("}, [preview, runtimeTabId]);");
     expect(hostedWebviewSource).not.toContain("[descriptor, preview, runtimeTabId]");

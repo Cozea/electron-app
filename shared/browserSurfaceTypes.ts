@@ -8,7 +8,8 @@ import type {
   DesktopPreviewTabState,
   DesktopPreviewWebviewConfig,
 } from "@cozea/contracts/t3/ipc";
-import type { BrowserStorageScope } from "./browserTileTypes";
+import type { BrowserStorageScope } from "./browserTileTypes"
+import type { BrowserSurfaceBounds } from "./browserSurfaceLayout";
 
 export type BrowserSurfaceKind =
   | "browser"
@@ -82,7 +83,34 @@ export interface BrowserFindInPageOptions {
   matchCase?: boolean;
 }
 
+/**
+ * A still of a native surface, shown in its DOM slot while application UI has
+ * taken the live view off screen (INV-009). Main owns the contents and takes
+ * the capture; the renderer only ever displays it.
+ */
+export interface BrowserSurfacePlaceholder {
+  readonly dataUrl: string;
+  readonly capturedAt: number;
+}
+
 export interface CozeaDesktopPreviewBridge extends Omit<DesktopPreviewBridge, "clearCookies" | "clearCache" | "listBrowserImportSources" | "importBrowserCookies"> {
+  /**
+   * Native surface layout. A surface is named only by its runtime tab id: the
+   * renderer never receives or supplies a WebContents id, so it cannot point
+   * main at contents main did not create.
+   */
+  ensureNativeSurface: (tabId: string) => Promise<void>
+  releaseNativeSurface: (tabId: string) => Promise<void>
+  layoutNativeSurface: (tabId: string, bounds: BrowserSurfaceBounds) => Promise<void>
+  setNativeSurfaceVisible: (tabId: string, visible: boolean) => Promise<void>
+  /** Occluding resolves with a fresh still of what the user was looking at. */
+  setNativeSurfaceOccluded: (
+    tabId: string,
+    occluded: boolean,
+  ) => Promise<BrowserSurfacePlaceholder | null>
+  captureNativeSurfacePlaceholder: (tabId: string) => Promise<BrowserSurfacePlaceholder | null>
+  setNativeSurfaceOrder: (orderedTabIds: ReadonlyArray<string>) => Promise<void>
+  focusNativeSurface: (tabId: string) => Promise<void>
   /** Cozea has one local host and owns partition scope in the main process. */
   clearCookies: () => Promise<void>;
   clearCache: () => Promise<void>;
@@ -104,6 +132,14 @@ export interface CozeaDesktopPreviewBridge extends Omit<DesktopPreviewBridge, "c
     listener: (runtimeTabId: string, state: CozeaBrowserSurfaceState) => void,
   ) => () => void;
   onPointerEvent: (listener: (event: DesktopPreviewPointerEvent) => void) => () => void;
+  /**
+   * Keyboard focus entering or leaving a native surface. Chromium moves focus
+   * between views on a click without any DOM event reaching the renderer, so
+   * main is the only party that can see it.
+   */
+  onNativeSurfaceFocusChange: (
+    listener: (runtimeTabId: string, focused: boolean) => void,
+  ) => () => void;
   recording: DesktopPreviewBridge["recording"] & {
     onFrame: (listener: (frame: DesktopPreviewRecordingFrame) => void) => () => void;
   };

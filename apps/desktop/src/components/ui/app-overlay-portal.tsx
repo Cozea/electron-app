@@ -79,6 +79,7 @@ export function AnchoredAppOverlayPortal({
         className={cn("fixed z-[var(--cozea-layer-dialog)]", className)}
         style={rect}
         data-app-anchored-overlay
+        data-cozea-overlay="dialog"
       >
         {children}
       </div>

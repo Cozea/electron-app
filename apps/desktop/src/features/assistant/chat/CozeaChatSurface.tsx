@@ -2358,6 +2358,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             role="dialog"
             aria-modal="true"
             aria-label="Expanded image preview"
+            data-cozea-overlay="dialog"
           >
             <button
               type="button"

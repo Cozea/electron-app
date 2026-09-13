@@ -9,7 +9,6 @@ import {
   type Event,
   type IpcMainInvokeEvent,
   type Session,
-  session,
   shell,
   webContents,
   type WebContents,
@@ -40,10 +39,15 @@ import type {
   BrowserHttpDiagnostic,
   BrowserSurfaceDescriptor,
   BrowserSurfaceInventoryEntry,
+  BrowserSurfacePlaceholder,
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
 } from "../../../../shared/browserSurfaceTypes";
 import { partitionForDescriptor } from "../../../../shared/browserSurfaceSessions";
+import { BrowserSurfaceSessionRegistry } from "./browser/BrowserSurfaceSessionRegistry";
+import { BrowserSurfaceNativeHost } from "./browser/BrowserSurfaceNativeHost";
+import type { BrowserSurfaceView } from "./browser/BrowserSurfaceView";
+import type { BrowserSurfaceBounds } from "../../../../shared/browserSurfaceLayout";
 import { browserHttpDiagnosticForResponse } from "../../../../shared/browserHttpDiagnostics";
 import {
   evaluateOrgDevAppNavigation,
@@ -170,7 +174,6 @@ function shouldOpenRestrictedSurfaceExternally(
 
 function validateOrgSurfaceDescriptor(descriptor: BrowserSurfaceDescriptor): void {
   if (descriptor.kind === "devAppPreview") {
-    // A preview is unreviewed code. It gets its own session and nothing else's.
     if (descriptor.storageScope !== "devAppPreview" || !descriptor.devSourceId) {
       throw new Error("A DevApp preview surface needs its own preview session.");
     }
@@ -223,7 +226,8 @@ function cloneFindState(state: BrowserFindState): BrowserFindState {
 export class T3BrowserSurfaceService {
   private readonly descriptors = new Map<string, BrowserSurfaceDescriptor>();
   private readonly partitionsByScope = new Map<string, string>();
-  private readonly sessionsByPartition = new Map<string, Session>();
+  private readonly sessionRegistry: BrowserSurfaceSessionRegistry;
+  private readonly nativeHost: BrowserSurfaceNativeHost;
   private readonly partitionOperations = new Map<string, Promise<void>>();
   private readonly stateByTabId = new Map<string, CozeaBrowserSurfaceState>();
   private readonly activeByTabId = new Map<string, boolean>();
@@ -240,6 +244,7 @@ export class T3BrowserSurfaceService {
     (frame: import("@cozea/contracts/t3/ipc").DesktopPreviewRecordingFrame) => void
   >();
   private readonly inventoryListeners = new Set<(workbenchSessionKey: string) => void>();
+  private readonly nativeFocusListeners = new Set<(tabId: string, focused: boolean) => void>();
   private readonly options: BrowserSurfaceServiceOptions;
   private readonly runtime;
   private readonly managerPromise: Promise<T3Manager>;
@@ -251,6 +256,52 @@ export class T3BrowserSurfaceService {
 
   constructor(options: BrowserSurfaceServiceOptions) {
     this.options = options;
+    this.sessionRegistry = new BrowserSurfaceSessionRegistry({
+      allowedPermissions: ALLOWED_PREVIEW_PERMISSIONS,
+      protocols: {
+        registerOrgDevAppProtocol: (browserSession, publicationId) =>
+          options.orgDevAppArtifactService.registerProtocolForSession(browserSession, publicationId),
+        registerDevAppPreviewProtocol: (browserSession, devSourceId) =>
+          options.devAppPreviewService.registerProtocolForSession(browserSession, devSourceId),
+      },
+    });
+    this.nativeHost = new BrowserSurfaceNativeHost({
+      sessions: this.sessionRegistry,
+      getWindow: () => options.getMainWindow() ?? null,
+      resolvePreload: (descriptor) => this.preloadPath(descriptor),
+      onSurfaceFocusChange: (tabId, focused) => {
+        for (const listener of this.nativeFocusListeners) listener(tabId, focused);
+      },
+      onRendererInvalidated: async () => {
+        // A full renderer document replacement invalidates the opaque runtime
+        // ids held by that renderer. Close logical T3 state and physical WCVs
+        // together so the next document cannot inherit orphaned surfaces.
+        const tabIds = Array.from(this.descriptors.keys());
+        const results = await Promise.allSettled(tabIds.map((tabId) => this.releaseSurface(tabId)));
+        const rejected = results.find(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+        if (rejected) throw rejected.reason;
+      },
+      automation: {
+        attach: async (tabId, webContentsId) => {
+          await this.run((manager) => manager.trustNativeBrowserContents(webContentsId));
+          try {
+            await this.run((manager) => manager.registerBrowserContents(tabId, webContentsId));
+          } catch (error) {
+            // Trust is a transaction with registration. A failed registration
+            // must not leave an id vouched after Chromium destroys/recycles it.
+            await this.run((manager) => manager.revokeNativeBrowserContents(webContentsId)).catch(
+              () => undefined,
+            );
+            throw error;
+          }
+        },
+        detach: async (webContentsId) => {
+          await this.run((manager) => manager.revokeNativeBrowserContents(webContentsId));
+        },
+      },
+    });
     this.removeDevAppWorkerStateListener = options.devAppPreviewService.onWorkerStateChange(
       (sourceId, state) => {
         for (const [tabId, descriptor] of this.descriptors) {
@@ -295,7 +346,7 @@ export class T3BrowserSurfaceService {
           }
           return partition;
         }),
-      isPartition: (partition: string) => this.sessionsByPartition.has(partition),
+      isPartition: (partition: string) => this.sessionRegistry.hasPartition(partition),
       getSession: (scope = "shared") =>
         T3Effect.sync(() => {
           const partition = this.partitionsByScope.get(scope);
@@ -307,7 +358,7 @@ export class T3BrowserSurfaceService {
       clearCookies: () =>
         T3Effect.promise(() =>
           Promise.all(
-            Array.from(this.sessionsByPartition.values(), (browserSession) =>
+            this.sessionRegistry.sessions().map((browserSession) =>
               browserSession.clearStorageData({
                 storages: ["cookies", "localstorage", "indexdb", "websql", "serviceworkers"],
               }),
@@ -317,9 +368,7 @@ export class T3BrowserSurfaceService {
       clearCache: () =>
         T3Effect.promise(() =>
           Promise.all(
-            Array.from(this.sessionsByPartition.values(), (browserSession) =>
-              browserSession.clearCache(),
-            ),
+            this.sessionRegistry.sessions().map((browserSession) => browserSession.clearCache()),
           ).then(() => undefined),
         ),
     });
@@ -359,35 +408,9 @@ export class T3BrowserSurfaceService {
   }
 
   private ensureSession(partition: string, descriptor: BrowserSurfaceDescriptor | null): Session {
-    const existing = this.sessionsByPartition.get(partition);
-    if (existing) return existing;
-
-    const browserSession = session.fromPartition(partition);
-    const userAgent = browserSession
-      .getUserAgent()
-      .replace(/Electron\/[\d.]+ /, "")
-      .replace(/\s*Cozea\/[\d.]+/, "");
-    browserSession.setUserAgent(userAgent);
-    browserSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-      callback(ALLOWED_PREVIEW_PERMISSIONS.has(permission));
-    });
-    browserSession.setPermissionCheckHandler((_webContents, permission) =>
-      ALLOWED_PREVIEW_PERMISSIONS.has(permission),
-    );
-    browserSession.on("will-download", (event) => event.preventDefault());
-    if (descriptor?.kind === "orgDevApp" && descriptor.publicationId) {
-      this.options.orgDevAppArtifactService.registerProtocolForSession(
-        browserSession,
-        descriptor.publicationId,
-      );
-    } else if (descriptor?.kind === "devAppPreview" && descriptor.devSourceId) {
-      this.options.devAppPreviewService.registerProtocolForSession(
-        browserSession,
-        descriptor.devSourceId,
-      );
-    }
-    this.sessionsByPartition.set(partition, browserSession);
-    return browserSession;
+    return descriptor
+      ? this.sessionRegistry.resolve(descriptor)
+      : this.sessionRegistry.resolvePartition(partition);
   }
 
   private async manager(): Promise<T3Manager> {
@@ -498,7 +521,7 @@ export class T3BrowserSurfaceService {
 
   canAttachWebview(webPreferences: WebPreferences, params: Record<string, unknown>): boolean {
     const partition = typeof params.partition === "string" ? params.partition : "";
-    if (!partition || !this.sessionsByPartition.has(partition)) return false;
+    if (!partition || !this.sessionRegistry.hasPartition(partition)) return false;
     const preparedDescriptors = Array.from(this.descriptors.entries())
       .filter(
         ([tabId, descriptor]) =>
@@ -542,6 +565,21 @@ export class T3BrowserSurfaceService {
       : this.options.pickPreloadPath;
   }
 
+  private preparedResult(
+    descriptor: BrowserSurfaceDescriptor,
+    partition: string,
+    state: CozeaBrowserSurfaceState,
+  ): PreparedBrowserSurface {
+    return {
+      config: {
+        partition,
+        webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
+        preloadUrl: pathToFileURL(this.preloadPath(descriptor)).href,
+      },
+      state,
+    };
+  }
+
   async prepareSurface(descriptor: BrowserSurfaceDescriptor): Promise<PreparedBrowserSurface> {
     if (!descriptor.runtimeTabId.trim() || !descriptor.tileId.trim()) {
       throw new Error("Browser surface identifiers must be non-empty.");
@@ -552,6 +590,34 @@ export class T3BrowserSurfaceService {
     }
 
     const partition = partitionForDescriptor(descriptor);
+    const existingDescriptor = this.descriptors.get(descriptor.runtimeTabId);
+    const existingState = this.stateByTabId.get(descriptor.runtimeTabId);
+    const existingPartition = this.partitionsByScope.get(descriptor.runtimeTabId);
+    const hasAnyExisting = Boolean(existingDescriptor || existingState || existingPartition);
+    if (hasAnyExisting) {
+      if (!existingDescriptor || !existingState || !existingPartition) {
+        throw new Error(`Browser surface ${descriptor.runtimeTabId} has inconsistent prepared state.`);
+      }
+      if (existingPartition !== partition) {
+        throw new Error(
+          `Browser surface ${descriptor.runtimeTabId} cannot change storage partition while live.`,
+        );
+      }
+
+      // Route/Dockview remount is an attach, not a second navigation. Refresh
+      // descriptor presentation metadata but keep the existing T3 tab and page.
+      const nextDescriptor = { ...descriptor };
+      const nextState: CozeaBrowserSurfaceState = {
+        ...existingState,
+        descriptor: nextDescriptor,
+      };
+      this.descriptors.set(descriptor.runtimeTabId, nextDescriptor);
+      this.ensureSession(partition, descriptor);
+      this.stateByTabId.set(descriptor.runtimeTabId, nextState);
+      this.emitState(descriptor.runtimeTabId, nextState);
+      return this.preparedResult(descriptor, partition, nextState);
+    }
+
     return await this.runPartitionOperation(partition, async () => {
       this.descriptors.set(descriptor.runtimeTabId, { ...descriptor });
       this.partitionsByScope.set(descriptor.runtimeTabId, partition);
@@ -572,7 +638,14 @@ export class T3BrowserSurfaceService {
           httpDiagnostic: null,
         });
         if (!isDirectNavigationSurface(descriptor)) {
-          await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+          try {
+            await this.run((manager) => manager.navigate(descriptor.runtimeTabId, initialUrl));
+          } catch (cause) {
+            console.warn(
+              `[T3BrowserSurfaceService] Initial navigation failed for ${descriptor.runtimeTabId}`,
+              cause,
+            );
+          }
         } else {
           this.pendingDirectNavigationByTabId.set(descriptor.runtimeTabId, initialUrl);
         }
@@ -581,14 +654,7 @@ export class T3BrowserSurfaceService {
       const preparedState = this.stateByTabId.get(descriptor.runtimeTabId);
       if (!preparedState) throw new Error("The browser surface did not initialize.");
       this.emitInventoryChange(descriptor.workbenchSessionKey);
-      return {
-        config: {
-          partition,
-          webPreferences: PREVIEW_WEBVIEW_PREFERENCES,
-          preloadUrl: pathToFileURL(this.preloadPath(descriptor)).href,
-        },
-        state: preparedState,
-      };
+      return this.preparedResult(descriptor, partition, preparedState);
     });
   }
 
@@ -597,7 +663,24 @@ export class T3BrowserSurfaceService {
     const partition = descriptor ? partitionForDescriptor(descriptor) : null;
     const release = async () => {
       this.detachCozeaListeners(tabId);
-      await this.run((manager) => manager.closeTab(tabId));
+
+      let t3Error: unknown = null;
+      let nativeError: unknown = null;
+      try {
+        // T3 owns recording/picker/debugger state; close that before destroying
+        // its WebContents so cleanup can run against the still-live attachment.
+        await this.run((manager) => manager.closeTab(tabId));
+      } catch (error) {
+        t3Error = error;
+      }
+      try {
+        // Always attempt native teardown even if T3 cleanup failed. A full
+        // close must never leave an orphan WCV painting above the workbench.
+        await this.nativeHost.releaseSurface(tabId);
+      } catch (error) {
+        nativeError = error;
+      }
+
       this.descriptors.delete(tabId);
       this.partitionsByScope.delete(tabId);
       this.stateByTabId.delete(tabId);
@@ -608,7 +691,7 @@ export class T3BrowserSurfaceService {
           (candidate) => partitionForDescriptor(candidate) === partition,
         );
         if (!stillUsed) {
-          const ephemeralSession = this.sessionsByPartition.get(partition);
+          const ephemeralSession = this.sessionRegistry.peek(partition);
           if (ephemeralSession) {
             await Promise.allSettled([
               ephemeralSession.clearStorageData({
@@ -617,10 +700,12 @@ export class T3BrowserSurfaceService {
               ephemeralSession.clearCache(),
             ]);
           }
-          this.sessionsByPartition.delete(partition);
+          this.sessionRegistry.forget(partition);
         }
       }
       if (descriptor) this.emitInventoryChange(descriptor.workbenchSessionKey);
+      if (t3Error) throw t3Error;
+      if (nativeError) throw nativeError;
     };
     if (partition) {
       await this.runPartitionOperation(partition, release);
@@ -647,6 +732,83 @@ export class T3BrowserSurfaceService {
     await this.releaseSurface(tabId);
   }
 
+  async ensureNativeSurface(tabId: string): Promise<void> {
+    const descriptor = this.descriptors.get(tabId);
+    if (!descriptor) throw new Error(`Unknown browser surface ${tabId}`);
+    const view = await this.nativeHost.ensureSurface(descriptor);
+    const contents = view.view.webContents;
+    if (!contents.isDestroyed()) {
+      this.attachCozeaListeners(tabId, contents, descriptor);
+      this.attachDevAppViewBridge(tabId, contents, descriptor);
+    }
+  }
+
+  /** Compatibility IPC during the canary: destructive release is always full release. */
+  async releaseNativeSurfaceForTab(tabId: string): Promise<void> {
+    await this.releaseSurface(tabId);
+  }
+
+  layoutNativeSurface(tabId: string, bounds: BrowserSurfaceBounds): void {
+    const mainWindow = this.options.getMainWindow();
+    const reported =
+      mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getZoomFactor() : 1;
+    const scale = reported > 0 ? reported : 1;
+    this.nativeHost.layoutSurface(
+      tabId,
+      {
+        x: Math.round(bounds.x * scale),
+        y: Math.round(bounds.y * scale),
+        width: Math.max(1, Math.round(bounds.width * scale)),
+        height: Math.max(1, Math.round(bounds.height * scale)),
+      },
+      Math.round(bounds.cornerRadius * scale),
+    );
+  }
+
+  setNativeSurfaceVisible(tabId: string, visible: boolean): void {
+    this.nativeHost.setSurfaceVisible(tabId, visible);
+  }
+
+  /** Occluding resolves with a still of the page for the renderer's placeholder. */
+  async setNativeSurfaceOccluded(
+    tabId: string,
+    occluded: boolean,
+  ): Promise<BrowserSurfacePlaceholder | null> {
+    return await this.nativeHost.setSurfaceOccluded(tabId, occluded);
+  }
+
+  async captureNativeSurfacePlaceholder(tabId: string): Promise<BrowserSurfacePlaceholder | null> {
+    return await this.nativeHost.captureSurfacePlaceholder(tabId);
+  }
+
+  /** Back-to-front order; the final id is front-most. */
+  setNativeSurfaceOrder(orderedTabIds: ReadonlyArray<string>): void {
+    this.nativeHost.setSurfaceOrder(orderedTabIds);
+  }
+
+  focusNativeSurface(tabId: string): void {
+    this.nativeHost.focusSurface(tabId);
+  }
+
+  async probeNativeSurface(descriptor: BrowserSurfaceDescriptor): Promise<BrowserSurfaceView> {
+    if (process.env.COZEA_BROWSER_NATIVE_SHADOW !== "1") {
+      throw new Error(
+        "Native browser surfaces are not enabled; set COZEA_BROWSER_NATIVE_SHADOW=1 to probe one.",
+      );
+    }
+    validateOrgSurfaceDescriptor(descriptor);
+    return await this.nativeHost.ensureSurface(descriptor);
+  }
+
+  /** Destructive native release is intentionally the same full lifecycle close. */
+  async releaseNativeSurface(runtimeTabId: string): Promise<void> {
+    await this.releaseSurface(runtimeTabId);
+  }
+
+  listNativeSurfaces(): ReadonlyArray<BrowserSurfaceView> {
+    return this.nativeHost.list();
+  }
+
   async registerWebview(
     event: IpcMainInvokeEvent,
     tabId: string,
@@ -666,7 +828,7 @@ export class T3BrowserSurfaceService {
       guest.getType() !== "webview" ||
       guest.hostWebContents !== event.sender ||
       !partition ||
-      guest.session !== this.sessionsByPartition.get(partition)
+      guest.session !== this.sessionRegistry.peek(partition)
     ) {
       throw new Error("The supplied WebContents is not the prepared Cozea browser guest.");
     }
@@ -1205,6 +1367,11 @@ export class T3BrowserSurfaceService {
   ): () => void {
     this.recordingFrameListeners.add(listener);
     return () => this.recordingFrameListeners.delete(listener);
+  }
+
+  onNativeSurfaceFocusChange(listener: (tabId: string, focused: boolean) => void): () => void {
+    this.nativeFocusListeners.add(listener);
+    return () => this.nativeFocusListeners.delete(listener);
   }
 
   async dispose(): Promise<void> {

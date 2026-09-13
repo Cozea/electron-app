@@ -1,0 +1,407 @@
+import type { BrowserSurfaceBounds } from "@shared/browserSurfaceLayout";
+import type {
+  BrowserSurfaceDescriptor,
+  BrowserSurfacePlaceholder,
+} from "@shared/browserSurfaceTypes";
+
+import { BrowserSurfaceLayoutScheduler } from "./browserSurfaceLayoutScheduler";
+
+/**
+ * Renderer-side handle on a main-owned browser surface.
+ *
+ * Identity is `runtimeTabId`, not the React tree (INV-002). The model is only
+ * a presentation proxy: losing every React/Dockview owner means the surface is
+ * no longer being presented, not that its main-owned Chromium lifetime ended.
+ * Workbench/session policy and explicit tile close own destruction.
+ */
+
+/** Just the main-process calls a model needs. Injected so tests need no IPC. */
+export interface NativeBrowserSurfaceBridge {
+  /**
+   * Register/reconcile the descriptor with main. This operation is required to
+   * be idempotent for an already-live warm surface: remounting its presentation
+   * must not navigate or recreate the browser.
+   */
+  prepareSurface: (descriptor: BrowserSurfaceDescriptor) => Promise<unknown>;
+  ensureNativeSurface: (tabId: string) => Promise<void>;
+  /** Full logical + native close. Presentation release must never call this. */
+  closeSurface: (tabId: string) => Promise<void>;
+  layoutNativeSurface: (tabId: string, bounds: BrowserSurfaceBounds) => Promise<void>;
+  setNativeSurfaceVisible: (tabId: string, visible: boolean) => Promise<void>;
+  /** Occluding resolves with a still of the page, taken as the view left the screen. */
+  setNativeSurfaceOccluded: (
+    tabId: string,
+    occluded: boolean,
+  ) => Promise<BrowserSurfacePlaceholder | null>;
+  captureNativeSurfacePlaceholder: (tabId: string) => Promise<BrowserSurfacePlaceholder | null>;
+  /** Ordered back-to-front; the final id is the front-most native surface. */
+  setNativeSurfaceOrder: (orderedTabIds: ReadonlyArray<string>) => Promise<void>;
+  focusNativeSurface: (tabId: string) => Promise<void>;
+}
+
+export class BrowserSurfaceModel {
+  readonly runtimeTabId: string;
+  private descriptor: BrowserSurfaceDescriptor;
+  private readonly bridge: NativeBrowserSurfaceBridge;
+  private readonly owners = new Set<symbol>();
+  private ensured: Promise<void> | null = null;
+  private reconciling: Promise<void> | null = null;
+  private ready = false;
+  private closed = false;
+  private visible = false;
+  private occluded = false;
+  private lastBounds: BrowserSurfaceBounds | null = null;
+
+  constructor(descriptor: BrowserSurfaceDescriptor, bridge: NativeBrowserSurfaceBridge) {
+    this.runtimeTabId = descriptor.runtimeTabId;
+    this.descriptor = descriptor;
+    this.bridge = bridge;
+  }
+
+  get ownerCount(): number {
+    return this.owners.size;
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
+  }
+
+  get currentDescriptor(): BrowserSurfaceDescriptor {
+    return this.descriptor;
+  }
+
+  /** Latest rectangle published by this presentation proxy. */
+  get publishedBounds(): BrowserSurfaceBounds | null {
+    return this.lastBounds;
+  }
+
+  /** Whether this proxy currently wants its surface drawn and main has it. */
+  get isVisible(): boolean {
+    return this.visible && this.ready && !this.closed;
+  }
+
+  /** Any attach/reconcile that an explicit close must still be able to cancel. */
+  get pendingEnsure(): Promise<void> | null {
+    return this.reconciling ?? (this.ready ? null : this.ensured);
+  }
+
+  addOwner(owner: symbol): void {
+    this.owners.add(owner);
+  }
+
+  removeOwner(owner: symbol): void {
+    this.owners.delete(owner);
+  }
+
+  updateDescriptor(descriptor: BrowserSurfaceDescriptor): void {
+    this.descriptor = descriptor;
+  }
+
+  /** Initial renderer attachment. Concurrent callers share one promise. */
+  ensure(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (this.ensured) return this.ensured;
+
+    const operation = (async () => {
+      await this.bridge.prepareSurface(this.descriptor);
+      if (this.closed) {
+        await this.bridge.closeSurface(this.runtimeTabId);
+        return;
+      }
+
+      await this.bridge.ensureNativeSurface(this.runtimeTabId);
+      if (this.closed) {
+        await this.bridge.closeSurface(this.runtimeTabId);
+        return;
+      }
+
+      this.ready = true;
+      this.flushDesiredState();
+    })().catch((error: unknown) => {
+      this.ready = false;
+      if (this.ensured === operation) this.ensured = null;
+      throw error;
+    });
+    this.ensured = operation;
+    return operation;
+  }
+
+  /**
+   * Reconcile renderer belief with main after a hidden/frozen interval.
+   *
+   * A hidden keep-alive React tree can survive while WorkbenchSessionManager
+   * legitimately evicts a backgroundFrozen WCV. Main's prepare/ensure pair is
+   * idempotent: a warm surface is returned unchanged; an evicted surface is
+   * recreated. Reconciliations are serialized so repeated UI signals cannot
+   * start competing attach transactions.
+   */
+  reconcile(): Promise<void> {
+    if (this.closed) return Promise.resolve();
+    if (!this.ready) return this.ensure();
+    if (this.reconciling) return this.reconciling;
+
+    const operation = (async () => {
+      await this.bridge.prepareSurface(this.descriptor);
+      if (this.closed) {
+        await this.bridge.closeSurface(this.runtimeTabId);
+        return;
+      }
+      await this.bridge.ensureNativeSurface(this.runtimeTabId);
+      if (this.closed) {
+        await this.bridge.closeSurface(this.runtimeTabId);
+        return;
+      }
+      this.ready = true;
+      this.flushDesiredState();
+    })()
+      .catch((error: unknown) => {
+        this.ready = false;
+        this.ensured = null;
+        throw error;
+      })
+      .finally(() => {
+        if (this.reconciling === operation) this.reconciling = null;
+      });
+    this.reconciling = operation;
+    return operation;
+  }
+
+  /**
+   * Publish a rectangle. Recorded before readiness because the slot measures
+   * synchronously while main creation is asynchronous; the settled rectangle
+   * is flushed exactly once after attach completes.
+   */
+  layout(bounds: BrowserSurfaceBounds): void {
+    if (this.closed) return;
+    this.lastBounds = bounds;
+    if (!this.ready) return;
+    void this.bridge.layoutNativeSurface(this.runtimeTabId, bounds);
+  }
+
+  setVisible(visible: boolean): void {
+    if (this.closed) return;
+    if (this.visible === visible) {
+      if (visible && !this.ready) {
+        void this.ensure().catch(() => undefined);
+      }
+      return;
+    }
+    this.visible = visible;
+    if (!this.ready) return;
+
+    // Fast path for a still-warm surface. If main evicted the native view while
+    // backgroundFrozen this is a harmless no-op; reconciliation recreates it
+    // and flushes the same desired visibility/bounds afterward.
+    void this.bridge.setNativeSurfaceVisible(this.runtimeTabId, visible);
+    if (visible) {
+      void this.reconcile().catch(() => {
+        // Main/T3 state carries the user-visible error; avoid an unhandled
+        // rejection from an effect-driven presentation reconciliation.
+      });
+    }
+  }
+
+  /** Presentation disappeared; keep runtime alive but take native pixels off screen. */
+  detachPresentation(): void {
+    this.setVisible(false);
+  }
+
+  /**
+   * Take the surface off screen for application UI, or give it back.
+   *
+   * Resolves with the still main captured as the view left the screen, or null
+   * when nothing was sent or there was nothing on screen to capture.
+   */
+  setOccluded(occluded: boolean): Promise<BrowserSurfacePlaceholder | null> {
+    if (this.closed || this.occluded === occluded) return Promise.resolve(null);
+    this.occluded = occluded;
+    if (!this.ready) return Promise.resolve(null);
+    return this.bridge.setNativeSurfaceOccluded(this.runtimeTabId, occluded).catch(() => null);
+  }
+
+  /** A still of the uncovered page, taken ahead of the next overlay. */
+  capturePlaceholder(): Promise<BrowserSurfacePlaceholder | null> {
+    if (this.closed || !this.ready) return Promise.resolve(null);
+    return this.bridge.captureNativeSurfacePlaceholder(this.runtimeTabId).catch(() => null);
+  }
+
+  /** Hand main only the latest state stated while creation was in flight. */
+  private flushDesiredState(): void {
+    if (this.closed || !this.ready) return;
+    if (this.lastBounds) {
+      void this.bridge.layoutNativeSurface(this.runtimeTabId, this.lastBounds);
+    }
+    if (this.visible) void this.bridge.setNativeSurfaceVisible(this.runtimeTabId, true);
+    if (this.occluded) void this.bridge.setNativeSurfaceOccluded(this.runtimeTabId, true);
+  }
+
+  focus(): void {
+    if (this.closed) return;
+    void this.bridge.focusNativeSurface(this.runtimeTabId);
+  }
+
+  /**
+   * Explicitly end the surface lifetime. This is used for a real tile/session
+   * close, never for a React unmount or route backgrounding.
+   */
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    this.ready = false;
+    this.visible = false;
+    this.occluded = false;
+    this.ensured = null;
+    this.reconciling = null;
+    await this.bridge.closeSurface(this.runtimeTabId);
+  }
+}
+
+/**
+ * Renderer presentation models keyed by stable runtime id.
+ *
+ * A last-owner release is deliberately non-destructive. One macrotask of grace
+ * distinguishes a Dockview move (same-tick reclaim) from a genuinely detached
+ * presentation. Only after the grace expires do we hide the WCV and evict the
+ * local proxy. An in-flight proxy stays indexed until its attach settles so an
+ * explicit tile close can still mark it closed and prevent late resurrection.
+ */
+export class BrowserSurfaceModelRegistry {
+  private readonly models = new Map<string, BrowserSurfaceModel>();
+  private readonly pendingEviction = new Map<string, ReturnType<typeof setTimeout>>();
+  private bridge: NativeBrowserSurfaceBridge;
+  private readonly defer: (callback: () => void) => ReturnType<typeof setTimeout>;
+  private readonly cancelDefer: (handle: ReturnType<typeof setTimeout>) => void;
+
+  constructor(
+    bridge: NativeBrowserSurfaceBridge,
+    schedule?: {
+      defer: (callback: () => void) => ReturnType<typeof setTimeout>;
+      cancel: (handle: ReturnType<typeof setTimeout>) => void;
+    },
+  ) {
+    this.bridge = bridge;
+    this.defer = schedule?.defer ?? ((callback) => setTimeout(callback, 0));
+    this.cancelDefer = schedule?.cancel ?? ((handle) => clearTimeout(handle));
+  }
+
+  setBridge(bridge: NativeBrowserSurfaceBridge): void {
+    this.bridge = bridge;
+  }
+
+  get(runtimeTabId: string): BrowserSurfaceModel | undefined {
+    return this.models.get(runtimeTabId);
+  }
+
+  size(): number {
+    return this.models.size;
+  }
+
+  /** Take a presentation reference, creating only the renderer proxy if needed. */
+  acquire(descriptor: BrowserSurfaceDescriptor, owner: symbol): BrowserSurfaceModel {
+    const pending = this.pendingEviction.get(descriptor.runtimeTabId);
+    if (pending !== undefined) {
+      this.cancelDefer(pending);
+      this.pendingEviction.delete(descriptor.runtimeTabId);
+    }
+
+    let model = this.models.get(descriptor.runtimeTabId);
+    if (!model || model.isClosed) {
+      model = new BrowserSurfaceModel(descriptor, this.bridge);
+      this.models.set(descriptor.runtimeTabId, model);
+    } else {
+      model.updateDescriptor(descriptor);
+    }
+    model.addOwner(owner);
+    return model;
+  }
+
+  /** Drop a presentation reference. No browser lifetime ends here. */
+  release(runtimeTabId: string, owner: symbol): void {
+    const model = this.models.get(runtimeTabId);
+    if (!model) return;
+    model.removeOwner(owner);
+    if (model.ownerCount > 0) return;
+
+    const handle = this.defer(() => {
+      this.pendingEviction.delete(runtimeTabId);
+      const candidate = this.models.get(runtimeTabId);
+      if (!candidate || candidate.ownerCount > 0) return;
+
+      candidate.detachPresentation();
+      const inFlight = candidate.pendingEnsure;
+      if (inFlight) {
+        void inFlight.finally(() => {
+          const settled = this.models.get(runtimeTabId);
+          if (settled !== candidate || candidate.ownerCount > 0 || candidate.isClosed) return;
+          this.models.delete(runtimeTabId);
+        });
+        return;
+      }
+      this.models.delete(runtimeTabId);
+    });
+    this.pendingEviction.set(runtimeTabId, handle);
+  }
+
+  /** Explicit tile/session close. This is the only destructive registry operation. */
+  async close(runtimeTabId: string): Promise<void> {
+    const pending = this.pendingEviction.get(runtimeTabId);
+    if (pending !== undefined) {
+      this.cancelDefer(pending);
+      this.pendingEviction.delete(runtimeTabId);
+    }
+    const model = this.models.get(runtimeTabId);
+    this.models.delete(runtimeTabId);
+    if (model) {
+      await model.close();
+      return;
+    }
+    // A presentation model may already have been evicted while the main-owned
+    // surface stayed warm. A later explicit close still has to reach main.
+    await this.bridge.closeSurface(runtimeTabId);
+  }
+
+  /** Apply one canonical back-to-front order to overlapping surfaces. */
+  setOrder(orderedRuntimeTabIds: ReadonlyArray<string>): void {
+    void this.bridge.setNativeSurfaceOrder(orderedRuntimeTabIds);
+  }
+
+  /** Explicit renderer shutdown helper; not used for route/background teardown. */
+  async destroyAll(): Promise<void> {
+    for (const handle of this.pendingEviction.values()) this.cancelDefer(handle);
+    this.pendingEviction.clear();
+    const models = Array.from(this.models.values());
+    this.models.clear();
+    await Promise.all(models.map((model) => model.close()));
+  }
+}
+
+/**
+ * Bridge backed by the preload API.
+ *
+ * Resolved per call rather than captured, because the bridge is absent when the
+ * renderer runs outside Electron (tests, storybook) and capturing it at module
+ * scope would throw on import. A missing bridge is a no-op: without a main
+ * process there is no native surface to place.
+ */
+const preloadBridge: NativeBrowserSurfaceBridge = {
+  prepareSurface: async (descriptor) => await window.desktopBridge?.preview?.prepareSurface(descriptor),
+  ensureNativeSurface: async (tabId) =>
+    await window.desktopBridge?.preview?.ensureNativeSurface(tabId),
+  closeSurface: async (tabId) => await window.desktopBridge?.preview?.releaseSurface(tabId),
+  layoutNativeSurface: async (tabId, bounds) =>
+    await window.desktopBridge?.preview?.layoutNativeSurface(tabId, bounds),
+  setNativeSurfaceVisible: async (tabId, visible) =>
+    await window.desktopBridge?.preview?.setNativeSurfaceVisible(tabId, visible),
+  setNativeSurfaceOccluded: async (tabId, occluded) =>
+    (await window.desktopBridge?.preview?.setNativeSurfaceOccluded(tabId, occluded)) ?? null,
+  captureNativeSurfacePlaceholder: async (tabId) =>
+    (await window.desktopBridge?.preview?.captureNativeSurfacePlaceholder(tabId)) ?? null,
+  setNativeSurfaceOrder: async (orderedTabIds) =>
+    await window.desktopBridge?.preview?.setNativeSurfaceOrder(orderedTabIds),
+  focusNativeSurface: async (tabId) =>
+    await window.desktopBridge?.preview?.focusNativeSurface(tabId),
+};
+
+export const browserSurfaceModels = new BrowserSurfaceModelRegistry(preloadBridge);
+
+export { BrowserSurfaceLayoutScheduler };

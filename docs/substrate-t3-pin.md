@@ -1,17 +1,22 @@
 # T3 substrate pin
 
-Date: 2026-09-06
+Date: 2026-09-10
 
 | Field | Value |
 | --- | --- |
 | Upstream | [Cozea/t3code](https://github.com/Cozea/t3code), based on [pingdotgg/t3code](https://github.com/pingdotgg/t3code) |
-| Required pin SHA | `be4668f7b439499f39a659055d0f6ec34ac666b2` (`be4668f7`) |
+| Required pin SHA | `50977ab641d9b43547275421530dba0383de7941` (`50977ab6`) |
 | Recorded by | Parent repository `vendor/t3code` gitlink |
 | Vendor strategy | Non-recursive Git submodule; `bun run prepare:t3-runtime` validates the gitlink and builds the pinned server |
 
 Update this file whenever the shadow-server pin moves. Keep the Electron runtime
 constant and parent gitlink synchronized. Generated contract banners record the
 revision they were generated from and change only when contracts are regenerated.
+
+This revision also carries the browser-surface changes the WebContentsView
+migration depends on: T3 accepts trusted main-created browser contents as well
+as renderer webviews, and recording on those native views selects its
+display-media requester by ownership (`cozea/preview-native-recording-requester`).
 
 This reviewed fork revision retains the provider-QA baseline and Cozea's managed
 Computer Use MCP toolkit. The toolkit exposes the upstream open-computer-use

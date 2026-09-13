@@ -7,18 +7,22 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
-import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot";
+import { BrowserSurfaceBackendSlot } from "@/features/browser/BrowserSurfaceBackendSlot";
 import { resolveBrowserPageError } from "@/features/browser/browserPageError";
+import { browserSurfaceModels } from "@/features/browser/browserSurfaceModel";
 import {
   browserSurfaceRuntimeTabId,
-  resolveBrowserWorkbenchSessionKey,
+  canonicalBrowserWorkbenchSessionKey,
 } from "@/features/browser/browserSurfaceIdentity";
+import { useBrowserSurfaceFocusStore } from "@/features/browser/browserSurfaceFocusStore";
 import { useBrowserSurfaceStateStore } from "@/features/browser/browserSurfaceStateStore";
-import { useHostedBrowserSurface } from "@/features/browser/browserSurfaceRegistry";
-import { useDockviewBrowserSurfacePresentation } from "@/features/browser/useDockviewBrowserSurfaceLayer";
+import {
+  resolveDockviewBrowserSurfaceNativeRadius,
+  useDockviewBrowserSurfacePresentation,
+} from "@/features/browser/useDockviewBrowserSurfaceLayer";
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
-import { useProjectWorkbenchStore } from "@/lib/workbenchStore";
+import { selectProjectWorkbench, useProjectWorkbenchStore } from "@/lib/workbenchStore";
 import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/lib/workbenchStore";
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
 
@@ -89,12 +93,10 @@ export function WorkbenchBrowserTile({
   const actions = useProjectWorkbenchStore((state) => state.actions);
   const panelActivity = useWorkbenchPanelActivityMode(panelApi);
   const surfacePresentation = useDockviewBrowserSurfacePresentation(panelApi, containerApi);
-  const resolvedSessionKey = resolveBrowserWorkbenchSessionKey({
-    projectId,
-    laneId,
-    workspaceId,
-    workbenchSessionKey,
-  });
+  // Null while the workbench session is still resolving its key. The tile shell
+  // renders anyway; only browser creation waits, because an identity minted from
+  // a provisional key is a second browser for the same tile (INV-002).
+  const canonicalSessionKey = canonicalBrowserWorkbenchSessionKey({ workbenchSessionKey });
   const runtimeTabId = browserSurfaceRuntimeTabId({
     projectId,
     laneId,
@@ -103,22 +105,25 @@ export function WorkbenchBrowserTile({
     tileId: tile.id,
     kind: "browser",
   });
-  const descriptor = useMemo<BrowserSurfaceDescriptor>(
-    () => ({
-      runtimeTabId,
-      tileId: tile.id,
-      workbenchSessionKey: resolvedSessionKey,
-      kind: "browser",
-      title: tile.title || "Browser",
-      initialUrl: tile.url.trim() || null,
-      storageScope: tile.storageScope ?? "workspace",
-      workspaceId,
-      laneId,
-      runtimeGeneration: null,
-    }),
+  const descriptor = useMemo<BrowserSurfaceDescriptor | null>(
+    () =>
+      runtimeTabId && canonicalSessionKey
+        ? {
+            runtimeTabId,
+            tileId: tile.id,
+            workbenchSessionKey: canonicalSessionKey,
+            kind: "browser",
+            title: tile.title || "Browser",
+            initialUrl: tile.url.trim() || null,
+            storageScope: tile.storageScope ?? "workspace",
+            workspaceId,
+            laneId,
+            runtimeGeneration: null,
+          }
+        : null,
     [
+      canonicalSessionKey,
       laneId,
-      resolvedSessionKey,
       runtimeTabId,
       tile.id,
       tile.storageScope,
@@ -127,9 +132,22 @@ export function WorkbenchBrowserTile({
       workspaceId,
     ],
   );
-  useHostedBrowserSurface(descriptor);
-  const state = useBrowserSurfaceStateStore((store) => store.byTabId[runtimeTabId]);
+  // Which host renders this surface is decided by the migration ledger, inside
+  // BrowserSurfaceBackendSlot, not here.
+  const state = useBrowserSurfaceStateStore((store) =>
+    runtimeTabId ? store.byTabId[runtimeTabId] : undefined,
+  );
   const preview = window.desktopBridge?.preview;
+
+  // A click into a native page moves focus inside Chromium without any DOM
+  // event reaching the renderer, so Dockview cannot see it the way it sees a
+  // click on DOM content. Main reports it, and the tile activates itself.
+  const nativeFocused = useBrowserSurfaceFocusStore(
+    (store) => runtimeTabId !== null && store.focusedRuntimeTabId === runtimeTabId,
+  );
+  useEffect(() => {
+    if (nativeFocused && !panelApi.isActive) panelApi.setActive();
+  }, [nativeFocused, panelApi]);
 
   useEffect(() => {
     if (!state || state.navStatus.kind !== "Success") return;
@@ -146,13 +164,36 @@ export function WorkbenchBrowserTile({
     );
   }, [actions, laneId, projectId, state, tile.favicon, tile.id, tile.title, workspaceId]);
 
+  useEffect(() => {
+    // Component unmount is presentation lifecycle, not browser lifecycle. A
+    // Dockview move, hidden keep-alive workbench, route switch, StrictMode
+    // replay or parent remount must preserve the main-owned page. Only close it
+    // when the persisted workbench model says the tile itself is really gone.
+    if (!runtimeTabId) return;
+    return () => {
+      const closingRuntimeTabId = runtimeTabId;
+      const closingTileId = tile.id;
+      window.setTimeout(() => {
+        const liveWorkbench = selectProjectWorkbench(
+          projectId,
+          laneId,
+          workspaceId,
+        )(useProjectWorkbenchStore.getState());
+        if (liveWorkbench?.tiles[closingTileId]?.type === "browser") return;
+        void browserSurfaceModels.close(closingRuntimeTabId).catch((error) => {
+          console.warn("[BrowserSurface] Failed to close removed browser tile", error);
+        });
+      }, 0);
+    };
+  }, [laneId, projectId, runtimeTabId, tile.id, workspaceId]);
+
   const navStatus = state?.navStatus;
   const showStartState = !tile.url.trim() && (!navStatus || navStatus.kind === "Idle");
   const pageError = resolveBrowserPageError(state);
   const surfaceVisible =
     workbenchSurfaceVisible && panelActivity.visible && !showStartState && !pageError;
   const reload = () => {
-    if (state?.webContentsId && preview) {
+    if (runtimeTabId && state?.webContentsId && preview) {
       void preview.refresh(runtimeTabId).catch(() => undefined);
     }
   };
@@ -167,14 +208,19 @@ export function WorkbenchBrowserTile({
         tileType="browser"
       >
         <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">
-          <BrowserSurfaceSlot
-            tabId={runtimeTabId}
+          {/* Withheld until identity is canonical: the shell renders, Chromium waits. */}
+          {descriptor ? (
+          <BrowserSurfaceBackendSlot
+            descriptor={descriptor}
             visible={surfaceVisible}
             borderRadius={surfacePresentation.borderRadius}
+            cornerRadius={resolveDockviewBrowserSurfaceNativeRadius(surfacePresentation.borderRadius)}
             stackingLayer={surfacePresentation.stackingLayer}
             subscribePositionChanges={surfacePresentation.subscribePositionChanges}
+            resolveLayoutAnchor={surfacePresentation.resolveLayoutAnchor}
             className="absolute inset-0 size-full"
           />
+          ) : null}
           {showStartState ? <BrowserStartState /> : null}
           {pageError?.kind === "transport" ? (
             <BrowserErrorState

@@ -5,6 +5,7 @@ import type {
   BrowserFindInPageOptions,
   BrowserSurfaceDescriptor,
 } from "../../../../shared/browserSurfaceTypes";
+import type { BrowserSurfaceBounds } from "../../../../shared/browserSurfaceLayout";
 import type {
   DesktopPreviewAnnotationTheme,
   DesktopPreviewColorScheme,
@@ -93,6 +94,41 @@ export function registerBrowserSurfaceHandlers(
     BROWSER_SURFACE_IPC.registerWebview,
     (event, payload: { tabId: string; webContentsId: number }) =>
       service.registerWebview(event, payload.tabId, payload.webContentsId),
+  );
+  // Native surface layout. The renderer names a surface by its runtime tab id
+  // and never supplies a WebContents id, so it cannot nominate contents main
+  // did not create.
+  handle(BROWSER_SURFACE_IPC.ensureNativeSurface, (_event, tabId: string) =>
+    service.ensureNativeSurface(tabId),
+  );
+  handle(BROWSER_SURFACE_IPC.releaseNativeSurface, (_event, tabId: string) =>
+    service.releaseNativeSurfaceForTab(tabId),
+  );
+  handle(
+    BROWSER_SURFACE_IPC.layoutNativeSurface,
+    (_event, payload: { tabId: string; bounds: BrowserSurfaceBounds }) =>
+      service.layoutNativeSurface(payload.tabId, payload.bounds),
+  );
+  handle(
+    BROWSER_SURFACE_IPC.setNativeSurfaceVisible,
+    (_event, payload: { tabId: string; visible: boolean }) =>
+      service.setNativeSurfaceVisible(payload.tabId, payload.visible),
+  );
+  handle(
+    BROWSER_SURFACE_IPC.setNativeSurfaceOccluded,
+    (_event, payload: { tabId: string; occluded: boolean }) =>
+      service.setNativeSurfaceOccluded(payload.tabId, payload.occluded),
+  );
+  handle(
+    BROWSER_SURFACE_IPC.setNativeSurfaceOrder,
+    (_event, payload: { orderedTabIds: ReadonlyArray<string> }) =>
+      service.setNativeSurfaceOrder(payload.orderedTabIds),
+  );
+  handle(BROWSER_SURFACE_IPC.focusNativeSurface, (_event, tabId: string) =>
+    service.focusNativeSurface(tabId),
+  );
+  handle(BROWSER_SURFACE_IPC.captureNativeSurfacePlaceholder, (_event, tabId: string) =>
+    service.captureNativeSurfacePlaceholder(tabId),
   );
   handle(BROWSER_SURFACE_IPC.navigate, (_event, payload: { tabId: string; url: string }) =>
     service.navigate(payload.tabId, payload.url),
@@ -208,10 +244,18 @@ export function registerBrowserSurfaceHandlers(
     }
   });
 
+  const removeFocusListener = service.onNativeSurfaceFocusChange((tabId, focused) => {
+    const window = options.getMainWindow();
+    if (window && !window.isDestroyed()) {
+      window.webContents.send(BROWSER_SURFACE_IPC.nativeSurfaceFocusChanged, tabId, focused);
+    }
+  });
+
   return () => {
     removeStateListener();
     removePointerListener();
     removeRecordingListener();
+    removeFocusListener();
     for (const [channel] of handles) ipcMain.removeHandler(channel);
   };
 }

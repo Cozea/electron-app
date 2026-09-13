@@ -257,7 +257,10 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
     cdp?.close()
     child.kill('SIGTERM')
     await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(3000)])
-    if (child.exitCode === null) child.kill('SIGKILL')
-    await fs.rm(profile, { recursive: true, force: true })
+    if (child.exitCode === null) {
+      child.kill('SIGKILL')
+      await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(3000)])
+    }
+    await fs.rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   }
 }

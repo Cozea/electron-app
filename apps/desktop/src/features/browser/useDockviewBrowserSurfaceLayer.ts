@@ -12,6 +12,12 @@ interface DockviewBrowserSurfaceVisualPresentation {
 
 export interface DockviewBrowserSurfacePresentation extends DockviewBrowserSurfaceVisualPresentation {
   readonly subscribePositionChanges: (listener: () => void) => () => void;
+  /**
+   * The panel's Dockview group element. Always-rendered panel content lives in
+   * an overlay layer outside the group, so this -- not the content's own DOM --
+   * is what says whether a panel is floating and at which level.
+   */
+  readonly resolveLayoutAnchor: () => HTMLElement | null;
 }
 
 export function resolveDockviewBrowserSurfaceLayer(
@@ -70,6 +76,27 @@ function readPanelPresentation(
  * ladder advances by two for each level, leaving the intervening layer free
  * for content hosted outside the Dockview DOM tree.
  */
+/**
+ * The single radius a native view can actually round by.
+ *
+ * `setBorderRadius` takes one number, so the four-corner CSS value a tile
+ * states cannot be expressed natively. The largest corner is used: rounding a
+ * corner that wanted a square one leaves a small notch against the tile chrome,
+ * while leaving the outer corners square leaves the page visibly overhanging
+ * the tile it sits in, which is the worse of the two.
+ *
+ * Reading only the first value would silently mean "no rounding at all" for
+ * every header position whose CSS happens to start with a zero.
+ */
+export function resolveDockviewBrowserSurfaceNativeRadius(borderRadius: string): number {
+  let largest = 0;
+  for (const corner of borderRadius.split(/\s+/)) {
+    const parsed = Number.parseFloat(corner);
+    if (Number.isFinite(parsed) && parsed > largest) largest = parsed;
+  }
+  return largest;
+}
+
 export function useDockviewBrowserSurfacePresentation(
   panelApi: DockviewPanelApi,
   containerApi: DockviewApi,
@@ -87,6 +114,8 @@ export function useDockviewBrowserSurfacePresentation(
     },
     [containerApi, panelApi],
   );
+
+  const resolveLayoutAnchor = useCallback(() => panelApi.group?.element ?? null, [panelApi]);
 
   useLayoutEffect(() => {
     const update = () => {
@@ -110,7 +139,7 @@ export function useDockviewBrowserSurfacePresentation(
   }, [containerApi, panelApi]);
 
   return useMemo(
-    () => ({ ...presentation, subscribePositionChanges }),
-    [presentation, subscribePositionChanges],
+    () => ({ ...presentation, subscribePositionChanges, resolveLayoutAnchor }),
+    [presentation, subscribePositionChanges, resolveLayoutAnchor],
   );
 }

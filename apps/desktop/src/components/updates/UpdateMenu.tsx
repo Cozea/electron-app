@@ -80,6 +80,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
       )}
       role="status"
       aria-live="polite"
+      data-cozea-overlay="notification"
     >
       <button
         type="button"

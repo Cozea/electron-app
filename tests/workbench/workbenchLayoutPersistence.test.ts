@@ -85,7 +85,6 @@ describe('workbench layout persistence', () => {
     const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
     expect(persistence.peekPersistedWorkbenchLayout('project-1::collab', 7)).toBeNull()
     await persistence.ensureWorkbenchLayoutPersistenceReady()
-    // The original envelope is recoverable; migration does not erase it.
     expect(localStorage.getItem('cozea:project-workbench')).not.toBeNull()
 
     expect(
@@ -109,6 +108,31 @@ describe('workbench layout persistence', () => {
     expect(
       persistence.peekPersistedWorkbenchLayout('project-1::collab', 9),
     ).toBeNull()
+  })
+
+  it('refuses an invalid teardown snapshot instead of overwriting the last good layout', async () => {
+    const localStorage = new MemoryStorage()
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage,
+      addEventListener: vi.fn(),
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const persistence = await import('@/features/workbench/model/workbenchLayoutPersistence')
+    const good = { grid: { root: 'root-grid' }, panels: { browser: { id: 'browser' } } } as never
+
+    persistence.writePersistedWorkbenchLayout('project-1::collab', 7, good)
+    persistence.writePersistedWorkbenchLayout(
+      'project-1::collab',
+      7,
+      { panels: {} } as never,
+    )
+
+    expect(persistence.peekPersistedWorkbenchLayout('project-1::collab', 7)).toEqual(good)
+    expect(warn).toHaveBeenCalledWith(
+      '[WorkbenchLayout] Refused to persist an invalid Dockview snapshot',
+      expect.objectContaining({ scopeKey: 'project-1::collab', layoutResetKey: 7 }),
+    )
+    warn.mockRestore()
   })
 
   it('preserves the source binding revision when cloning a layout', async () => {

@@ -23,9 +23,15 @@ export function runtimePreviewBrowserSurfaceGeneration(
   return tile.devAppReleaseId ?? tile.devAppReleaseVersion ?? null;
 }
 
+/**
+ * Null until the workbench session key resolves, so a Dev Server or project
+ * DevApp surface cannot be created against a provisional identity either. These
+ * families are still legacy-backed, but the identity boundary is shared and the
+ * bug would otherwise be waiting for them at migration time.
+ */
 export function runtimePreviewBrowserSurfaceTabId(
   identity: RuntimePreviewBrowserSurfaceIdentity,
-): string {
+): string | null {
   return browserSurfaceRuntimeTabId({
     projectId: identity.projectId,
     laneId: identity.laneId,

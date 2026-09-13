@@ -11,6 +11,16 @@ export const BROWSER_SURFACE_IPC = {
   createTab: `${PREFIX}-create-tab`,
   closeTab: `${PREFIX}-close-tab`,
   registerWebview: `${PREFIX}-register-webview`,
+  // Native surface layout. The renderer measures a DOM placeholder and tells
+  // main where to put the view; it never receives or reports a WebContents id.
+  ensureNativeSurface: `${PREFIX}-ensure-native-surface`,
+  releaseNativeSurface: `${PREFIX}-release-native-surface`,
+  layoutNativeSurface: `${PREFIX}-layout-native-surface`,
+  setNativeSurfaceVisible: `${PREFIX}-set-native-surface-visible`,
+  setNativeSurfaceOccluded: `${PREFIX}-set-native-surface-occluded`,
+  setNativeSurfaceOrder: `${PREFIX}-set-native-surface-order`,
+  focusNativeSurface: `${PREFIX}-focus-native-surface`,
+  captureNativeSurfacePlaceholder: `${PREFIX}-capture-native-surface-placeholder`,
   navigate: `${PREFIX}-navigate`,
   goBack: `${PREFIX}-go-back`,
   goForward: `${PREFIX}-go-forward`,
@@ -45,6 +55,7 @@ export const BROWSER_SURFACE_IPC = {
   automationEvaluate: `${PREFIX}-automation-evaluate`,
   automationWaitFor: `${PREFIX}-automation-wait-for`,
   stateChanged: `${PREFIX}-state-change`,
+  nativeSurfaceFocusChanged: `${PREFIX}-native-surface-focus-changed`,
   pointerEvent: `${PREFIX}-pointer-event`,
   recordingFrame: `${PREFIX}-recording-frame`,
 } as const;

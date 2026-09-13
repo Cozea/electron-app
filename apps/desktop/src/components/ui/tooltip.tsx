@@ -51,6 +51,7 @@ function TooltipContent({
         side={side}
         align={align}
         sideOffset={sideOffset}
+        data-cozea-overlay="tooltip"
         className="z-[var(--cozea-layer-tooltip)] max-w-(--available-width) transition-[top,left,right,bottom,transform] data-instant:transition-none"
       >
         <BaseTooltip.Popup
