@@ -577,6 +577,33 @@ export const inviteParticipant = mutation({
   },
 })
 
+export const updateMemberRole = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+    principalId: v.id("devicePrincipals"),
+    role: sessionRole,
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    if (isClosedOrClosing(session)) {
+      throw new ConvexError("Cannot update roles in a closed collaboration session")
+    }
+    await requireSessionManager(ctx, session, caller)
+
+    const targetMember = await getMembership(ctx, session._id, args.principalId)
+    if (!targetMember || targetMember.status !== "active") {
+      throw new ConvexError("Target member is not active in this session")
+    }
+
+    await ctx.db.patch(targetMember._id, {
+      role: args.role,
+    })
+
+    return { success: true, role: args.role }
+  },
+})
+
 export const join = mutation({
   args: {
     sessionId: v.id("collaborationSessions"),

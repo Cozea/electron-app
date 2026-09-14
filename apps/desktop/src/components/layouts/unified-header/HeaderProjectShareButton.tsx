@@ -44,6 +44,8 @@ import {
   Delete02Icon as __DeleteHugeIcon,
   MicOff01Icon,
 } from '@hugeicons/core-free-icons'
+import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
+import { SessionHubDialog } from "@/features/collaboration/ui/SessionHubDialog";
 
 type ProjectRole = "project_manager" | "developer" | "designer" | "viewer";
 
@@ -67,10 +69,12 @@ export function HeaderProjectShareButton({
   projectId,
   projectName,
   liveSessionMembers,
+  liveSession,
 }: {
   projectId: Id<"projects"> | null;
   projectName?: string | null;
   liveSessionMembers?: LiveSessionMember[];
+  liveSession?: LiveSessionContext | null;
 }) {
   const { principalId } = useAuth();
   const syncContext = useOptionalProjectSyncContext();
@@ -100,6 +104,7 @@ export function HeaderProjectShareButton({
   const removeMember = useMutation(api.projectMembers.removeMember);
 
   const [open, setOpen] = useState(false);
+  const [hubOpen, setHubOpen] = useState(false);
   const [startSessionOpen, setStartSessionOpen] = useState(false);
   // Read only while the Start dialog is open, to tell the creator what the session starts from.
   const dirtySnapshot = useGitDirtySnapshot(startSessionOpen ? syncContext?.workspaceId ?? null : null);
@@ -187,6 +192,149 @@ export function HeaderProjectShareButton({
   const MAX_AVATARS = 3;
   const visible = inSession.slice(0, MAX_AVATARS);
   const overflow = inSession.length - MAX_AVATARS;
+
+  const isSessionHub = Boolean(hasActiveSession && liveSession?.session && projectId);
+
+  if (isSessionHub && liveSession?.session && projectId) {
+    return (
+      <>
+        <Tooltip open={hubOpen ? false : undefined}>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              className="inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag cursor-pointer"
+              disabled={roleCheckPending || shareStatePending}
+              aria-label={`Live session with ${inSession.length} participant${inSession.length === 1 ? "" : "s"}. Click to open Session Hub.`}
+              onClick={() => {
+                headerOverflow?.dismiss();
+                setHubOpen(true);
+              }}
+            >
+              <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
+                {visible.map((member, index) => {
+                  const isSpeaking = member.microphoneState === "speaking";
+                  const isMuted = member.microphoneState === "muted";
+                  const color = getUserColor(member.principalId);
+
+                  return (
+                    <span
+                      key={member.principalId}
+                      className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20"
+                      style={{ zIndex: visible.length - index }}
+                    >
+                      <Avatar
+                        className={cn(
+                          "size-6 border-2 border-background rounded-full transition-all",
+                          isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
+                        )}
+                      >
+                        {member.avatarUrl ? (
+                          <AvatarImage src={member.avatarUrl} alt={member.displayName} />
+                        ) : null}
+                        <AvatarFallback
+                          className="text-[10px] font-medium"
+                          style={{ backgroundColor: color, color: "white" }}
+                        >
+                          {initials(member.displayName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      {isMuted ? (
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
+                          title="Microphone muted"
+                        >
+                          <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
+                        </span>
+                      ) : null}
+                    </span>
+                  );
+                })}
+                {overflow > 0 ? (
+                  <span
+                    className="relative inline-flex items-center"
+                    style={{ zIndex: 0 }}
+                  >
+                    <Avatar className="size-6 border-2 border-background rounded-full bg-muted">
+                      <AvatarFallback className="text-[10px] font-medium text-muted-foreground">
+                        +{overflow}
+                      </AvatarFallback>
+                    </Avatar>
+                  </span>
+                ) : null}
+              </div>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="end"
+            className="flex flex-col gap-1.5 p-2.5 min-w-48 text-xs"
+          >
+            <div className="flex items-center justify-between border-b border-border/40 pb-1.5">
+              <span className="font-semibold text-xs text-foreground">Live session</span>
+              <span className="text-2xs text-muted-foreground">{inSession.length} active</span>
+            </div>
+            <div className="flex flex-col gap-1 py-0.5">
+              {inSession.map((m) => {
+                const isSpeaking = m.microphoneState === "speaking";
+                const isMuted = m.microphoneState === "muted";
+                const color = getUserColor(m.principalId);
+                return (
+                  <div key={m.principalId} className="flex items-center gap-2 text-xs">
+                    <span
+                      className="size-2 rounded-full shrink-0"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="font-medium text-foreground truncate max-w-[130px]">
+                      {m.displayName} {m.isSelf ? <span className="text-muted-foreground font-normal">(you)</span> : ""}
+                    </span>
+                    <span className="text-muted-foreground text-2xs ml-auto">
+                      {isSpeaking ? (
+                        <span className="text-emerald-500 font-medium">Speaking</span>
+                      ) : isMuted ? (
+                        "Muted"
+                      ) : (
+                        m.role.replace(/_/g, " ")
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-2xs text-muted-foreground/80 pt-1.5 border-t border-border/40">
+              Click to open Session Hub & call dashboard
+            </div>
+          </TooltipContent>
+        </Tooltip>
+
+        <SessionHubDialog
+          open={hubOpen}
+          onOpenChange={setHubOpen}
+          session={liveSession.session}
+          liveSession={liveSession}
+          projectId={projectId}
+          projectName={projectName}
+          workspaceId={syncContext?.workspaceId}
+          canManage={canManage}
+          onStartSession={() => {
+            setHubOpen(false);
+            setStartSessionOpen(true);
+          }}
+        />
+
+        <StartCollaborationDialog
+          isOpen={startSessionOpen}
+          onOpenChange={setStartSessionOpen}
+          projectId={projectId}
+          projectName={projectName || "this project"}
+          currentBranch={syncContext?.activeBranch ?? null}
+          sourceWorkspaceId={syncContext?.workspaceId ?? null}
+          targetBranch={syncContext?.sharedBranch ?? "main"}
+          hasGitRepo={Boolean(syncContext?.gitCwd)}
+          uncommittedFileCount={dirtySnapshot?.changedFiles ?? 0}
+        />
+      </>
+    );
+  }
 
   return (
     <>

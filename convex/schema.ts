@@ -1015,6 +1015,58 @@ export default defineSchema({
     .index("by_session", ["sessionId"])
     .index("by_session_and_principal", ["sessionId", "principalId"]),
 
+  collaborationSessionMetrics: defineTable({
+    sessionId: v.id("collaborationSessions"),
+    publicSessionId: v.string(),
+    projectId: v.id("projects"),
+    totalOperations: v.number(),
+    totalCheckpoints: v.number(),
+    totalSessionDurationMs: v.number(),
+    activeGitLeader: v.optional(
+      v.object({
+        principalId: v.id("devicePrincipals"),
+        identityKey: v.string(),
+        displayName: v.string(),
+      }),
+    ),
+    pullRequest: v.optional(
+      v.object({
+        number: v.number(),
+        title: v.optional(v.string()),
+        url: v.string(),
+        state: v.union(v.literal("open"), v.literal("closed"), v.literal("merged")),
+        isDraft: v.optional(v.boolean()),
+        ahead: v.optional(v.number()),
+        behind: v.optional(v.number()),
+        checkedAt: v.number(),
+      }),
+    ),
+    memberContributions: v.array(
+      v.object({
+        principalId: v.id("devicePrincipals"),
+        displayName: v.string(),
+        role: v.union(v.literal("viewer"), v.literal("developer"), v.literal("project_manager")),
+        sessionTimeMs: v.number(),
+        operationsCount: v.number(),
+        linesAdded: v.optional(v.number()),
+        linesDeleted: v.optional(v.number()),
+        isCurrentGitCommitter: v.boolean(),
+        lastActiveAt: v.number(),
+      }),
+    ),
+    activityBuckets: v.array(
+      v.object({
+        bucketStart: v.number(),
+        operations: v.number(),
+        checkpoints: v.number(),
+      }),
+    ),
+    updatedAt: v.number(),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_public_session_id", ["publicSessionId"])
+    .index("by_project", ["projectId"]),
+
 
   // ============================================
   // REAL-TIME PRESENCE TABLES

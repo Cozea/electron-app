@@ -355,3 +355,5 @@ export function useLiveSession(input: {
     media,
   }
 }
+
+export type LiveSessionContext = ReturnType<typeof useLiveSession>

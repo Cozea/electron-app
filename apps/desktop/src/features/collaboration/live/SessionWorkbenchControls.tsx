@@ -218,6 +218,7 @@ export function SessionWorkbenchControls({
                       <TooltipTrigger asChild>
                         <button
                           type="button"
+                          aria-label={`${member.displayName}${member.isSelf ? " (this device)" : ""}, ${member.role.replace(/_/g, " ")}`}
                           className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20 cursor-default focus:outline-none"
                           style={{ zIndex: Math.min(inSession.length, MAX_AVATARS) - index }}
                         >

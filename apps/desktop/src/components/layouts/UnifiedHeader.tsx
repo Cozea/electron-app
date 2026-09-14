@@ -13,6 +13,7 @@ import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChange
 import { WorkbenchHeaderEditorControl } from "@/features/workbench/WorkbenchHeaderEditorControl";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 import type { LiveSessionMember } from "@/features/collaboration/live/liveSessionModel";
+import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
 
 import { ResponsiveHeaderRow, type HeaderActionGroup } from "./unified-header/ResponsiveHeaderRow";
 
@@ -37,6 +38,7 @@ interface UnifiedHeaderProps {
   preSearchAddon?: ReactNode;
   liveSessionControl?: ReactNode;
   liveSessionMembers?: LiveSessionMember[];
+  liveSession?: LiveSessionContext;
   rightAddon?: ReactNode;
   className?: string;
   /** `fixed` spans the viewport (legacy). `embedded` stays in layout flow (e.g. inside `SidebarInset`) so it clears the sidebar. */
@@ -60,6 +62,7 @@ export function UnifiedHeader({
   preSearchAddon,
   liveSessionControl,
   liveSessionMembers,
+  liveSession,
   rightAddon,
   className,
   layoutMode = "fixed",
@@ -142,6 +145,7 @@ export function UnifiedHeader({
               projectId={projectInviteContext.projectId}
               projectName={projectInviteContext.projectName}
               liveSessionMembers={liveSessionMembers}
+              liveSession={liveSession}
             />
           </Suspense>
         ),

@@ -4,6 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useProjectHeaderStore } from "@/lib/projectHeaderStore";
 import type { LiveSessionMember } from "@/features/collaboration/live/liveSessionModel";
+import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
 
 interface UseProjectChromeHeaderArgs {
   isSettingsModeRoute: boolean;
@@ -11,6 +12,7 @@ interface UseProjectChromeHeaderArgs {
   presencePreSearchAddon: ReactNode | null;
   liveSessionControl?: ReactNode | null;
   liveSessionMembers?: LiveSessionMember[];
+  liveSession?: LiveSessionContext | null;
   /** Current route project for the changes/share/inbox strip. */
   projectId: Id<"projects"> | null;
   projectName: string | null;
@@ -29,6 +31,7 @@ export function useProjectChromeHeader({
   presencePreSearchAddon,
   liveSessionControl,
   liveSessionMembers,
+  liveSession,
   projectId,
   projectName,
   editorProjectPath,
@@ -55,6 +58,7 @@ export function useProjectChromeHeader({
       preSearchAddon: isSettingsModeRoute ? undefined : (presencePreSearchAddon ?? undefined),
       liveSessionControl: isSettingsModeRoute ? undefined : (liveSessionControl ?? undefined),
       liveSessionMembers: isSettingsModeRoute ? undefined : liveSessionMembers,
+      liveSession: isSettingsModeRoute ? undefined : (liveSession ?? undefined),
       rightAddon: rightFromPage ?? undefined,
       hideShare: hideShare || isSettingsModeRoute || !isWorkbenchView || !projectId,
       contentInsetLeft: insetLeft,
@@ -78,6 +82,7 @@ export function useProjectChromeHeader({
     presencePreSearchAddon,
     liveSessionControl,
     liveSessionMembers,
+    liveSession,
     projectId,
     projectName,
   ]);

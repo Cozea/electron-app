@@ -7,6 +7,37 @@ Authoritative specification: [docs/collaboration/collaboration-autogit-master-pl
 
 ## Implementation continuation — 2026-09-14
 
+Phase 8 Coordinated Production Deployment closure (2026-09-14T08:52Z): Successfully coordinated, qualified, and deployed the complete multi-layer stack to production:
+(1) Quality Gates Re-run: Re-verified repository head across all test and type suites:
+  - All 5 TypeScript typecheck targets passed with 0 errors (`typecheck`, `typecheck:projectd`, `typecheck:electron`, `typecheck:tests`, `typecheck:cloudflare`).
+  - Linter (`bun run lint`) passed with 0 warnings and 0 errors on 1,517 files.
+  - Architecture test suites (`bun test tests/architecture/`) passed 12/12 suites (59 tests).
+  - Collaboration test suites (`bunx vitest run tests/collaboration/`) passed 26/26 files (164 tests).
+  - Canonical Git service test suite (`tests/git/gitServiceCanonical.test.ts`) passed 5/5 tests.
+  - IPC channel security suite (`tests/electron/ipcChannels.test.ts`) passed 1/1 test.
+  - End-to-end AutoGit integration suite (`tests/projectd/autoGitSession.test.ts`) passed 38/38 tests (56.2s).
+  - Standalone `cozea-projectd` production build (`bun run build:projectd`) produced `dist/projectd.mjs` (0.93 MB) and `dist/cozea-projectctl.mjs` (22.42 KB).
+  - Desktop production renderer and main bundles (`bun run build`) compiled cleanly in 14.28s.
+(2) Convex Production Deployment:
+  - Deployed via `bunx convex deploy` (never `convex dev`).
+  - Target: `https://knowing-finch-546.convex.cloud` (Dashboard: `https://dashboard.convex.dev/t/kelyan/cozea/knowing-finch-546`).
+  - Deployed schema and functions including `collaborationSessionMetrics`, `collaborationSessionMediaSignals`, `collaborationSessionPresence`, role management mutations (`updateMemberRole`), and member presence joins.
+(3) Cloudflare Worker Deployment:
+  - Deployed via `wrangler deploy --containers-rollout=none` in `cloudflare/worker`.
+  - Target: `https://cozea-collab.kelyan-engone.workers.dev` (Account ID: `c9081ef53a698d2ee92516a8a7752ebc`).
+  - Current Version ID: `49f6d994-d89b-4ab4-b706-d5b55f22d02d`.
+  - Verified endpoints: `GET /health` returns HTTP 200 `{"ok":true,"service":"cozea-collab-worker"}`; `GET /collab/capabilities` active; WebSockets `/collab/sessions/ws` mounted to `CollaborationSessionRoom` Durable Object.
+(4) Binary Object Routes & Schema Compatibility:
+  - Probed `GET /collab/sessions/binary/:publicSessionId/:ref` route on production worker.
+  - Confirmed route active and returning authenticated schema protocol response (`HTTP 403 SESSION_BINARY_REJECTED: Session authentication is required`), validating correct parameter regex extraction and R2 bucket binding integration.
+(5) Packaged Candidate Desktop Build:
+  - Packaged via `bun run dist:local` (with `predist` generating T3 portable runtime, runtime metadata, Cua Driver v0.28.1 native helper, Swift DevApp container runtime, and universal macOS projectd helper).
+  - Packaged artifacts in `dist/`:
+    - `dist/Cozea-0.2.3-beta.3-arm64.dmg` (300 MB)
+    - `dist/Cozea-0.2.3-beta.3-arm64-mac.zip` (303 MB)
+    - `dist/mac-arm64/Cozea.app` (includes universal `cozea-projectd-mac-helper` for arm64 & x86_64, `projectd.mjs`, and native helpers).
+**Gate satisfied: deployed revision IDs recorded and candidate packaged. Phase 8 closed; roadmap advances to Phase 9.**
+
 Phase 7 P26 Legacy Removal & Single Git Owner Consolidation closure (2026-09-14T04:40Z): Completely removed the obsolete legacy in-renderer Yjs collaboration engine and consolidated all product Git operations into the canonical `GitService` in `cozea-projectd`:
 (1) Canonical Git Service Routing: Retired and deleted `GitSyncService` (`apps/desktop/electron/services/gitSyncService.ts`), `projectGitDesktopService` (`apps/desktop/electron/services/projectGitDesktopService.ts`), substrate VCS mutation paths (`collabPush.ts`), sync journal store (`syncJournalStore.ts`), and git replay workspace state (`gitReplayWorkspaceState.ts`). All desktop git operations (`gitProjectBranches`, `gitCheckout`, `gitCreateWorktree`) now route strictly through `ProjectdClient` / `GitService`. Merge conflict file inspection and resolution IPC handlers (`workspaceSync:gitReadConflictFile`, `workspaceSync:gitResolveConflictFile`) implement real Git plumbing (`git show :1/:2/:3`) and porcelain (`git add`, `git diff --name-only --diff-filter=U`), with 15 dead IPC channels removed from `preload.ts` and `shared/electronApiTypes.ts`.
 (2) Eradication of Legacy Yjs & Project Collab Protocol: Removed renderer `YjsProjectProvider` path, deleted dummy `YjsProjectContextValue.tsx`, `YjsProjectContext.tsx`, `DeleteConflictDialog.tsx`, `useAgentFileSync.ts`, `useBinaryFileSync.ts`, `useReconnectionSync.ts`, `useYjsFileWriteback.ts`, `SyncCoordinator.ts`, `projectWatcher.ts`, `yjsNotify.ts`, and `registerYjsHandlers.ts`. Deleted obsolete `apps/desktop/src/lib/yjs` directory. Removed legacy project-only `/collab/session` protocol and `CollabRoom` Durable Object from Cloudflare Worker (`cloudflare/worker/src/routes/collabSession.ts`, `CollabRoom.ts`), registering `deleted_classes: ["CollabRoom"]` in `wrangler.jsonc`. Purged obsolete Yjs tables (`yjsUpdates`, `yjsDocuments`, `yjsAwareness`) from `convex/schema.ts` and `convex/projects.ts`. Removed branch-equality activation in `collaborationGate.ts` and `ProjectLayout.tsx`.

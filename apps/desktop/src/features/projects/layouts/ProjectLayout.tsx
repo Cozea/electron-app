@@ -398,6 +398,10 @@ export function ProjectLayout({
       liveSession.session && liveSession.membership === "active"
         ? liveSession.members
         : undefined,
+    liveSession:
+      liveSession.session && liveSession.membership === "active"
+        ? liveSession
+        : undefined,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,

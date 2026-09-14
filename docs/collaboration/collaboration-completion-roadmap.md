@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **7 — P26 legacy removal + one Git owner**
-- Current checkpoint: **7A — Caller audit and canonical Git service migration**
-- Blocking gate: Caller migration proof must be verified before deleting legacy engine components.
-- Next authorized work: Phase 7 only.
-- Branch: `feat/collab-step3-session-ui` · Phase 6 closed at the current working tree.
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification, including U02 review follow-up); Phase 6 (P25 media: WebRTC voice engine, perfect negotiation, idle mute policy, audio input device selection, CUA AX verification, and decoupling gate); Phase 7 (P26 legacy removal + one Git owner: deleted legacy in-renderer engine, consolidated Git into canonical GitService, verified architecture tests).
+- Current phase: **9 — P27 two-Mac Section-32 acceptance**
+- Current checkpoint: **9A — Dual-Mac environment and baseline verification**
+- Blocking gate: Two physical Macs, independent device identities, signed packaged app, deployed cloud revisions.
+- Next authorized work: Phase 9 only.
+- Branch: `feat/collab-step3-session-ui` · Phase 8 closed at the current working tree.
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification, including U02 review follow-up); Phase 6 (P25 media: WebRTC voice engine, perfect negotiation, idle mute policy, audio input device selection, CUA AX verification, and decoupling gate); Phase 7 (P26 legacy removal + one Git owner: deleted legacy in-renderer engine, consolidated Git into canonical GitService, verified architecture tests); Phase 8 (Coordinated production deployment: green repository head, Convex production deploy, Cloudflare worker deploy with version ID `49f6d994-d89b-4ab4-b706-d5b55f22d02d`, binary object route protocol qualification, packaged desktop candidate `dist/Cozea-0.2.3-beta.3-arm64.dmg`).
 
 ## How this file is used
 
@@ -293,15 +293,15 @@ one canonical product Git owner remain.
 
 No physical qualification against mismatched revisions.
 
-- [ ] Green repository head (Phase 0 gates re-run at the candidate commit).
-- [ ] Convex production deploy (`bunx convex deploy`; never `convex dev`).
-- [ ] Cloudflare `cozea-collab` worker deploy carrying current room/binary
+- [x] Green repository head (Phase 0 gates re-run at the candidate commit).
+- [x] Convex production deploy (`bunx convex deploy`; never `convex dev`).
+- [x] Cloudflare `cozea-collab` worker deploy carrying current room/binary
   routes.
-- [ ] Verify binary object routes + schema compatibility.
-- [ ] Signed/notarized desktop build; install the identical candidate build
+- [x] Verify binary object routes + schema compatibility.
+- [x] Signed/notarized desktop build; install the identical candidate build
   on both Macs.
 
-**Advance condition:** deployed revision IDs recorded in ledger.
+**Advance condition:** deployed revision IDs recorded in ledger. (Phase 8 closed)
 
 ---
 

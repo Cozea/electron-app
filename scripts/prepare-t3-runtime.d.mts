@@ -26,3 +26,8 @@ export function patchT3ServerBundleComputerUse(source: string): {
   source: string;
   changed: boolean;
 };
+export function prunePackagedRuntimeArtifacts(
+  runtimeRoot: string,
+  options?: { platform?: string; arch?: string },
+): string[];
+
