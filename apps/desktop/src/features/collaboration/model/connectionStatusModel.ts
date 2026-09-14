@@ -235,7 +235,7 @@ export function resolveConnectionStatusPresentation(
   } else if (input.collaborationMode === "local") {
     dataSyncDetail = input.sharedBranch
       ? `Switch back to ${input.sharedBranch} to collaborate live`
-      : "Live collaboration is paused on this branch"
+      : "Active collaboration sync available"
   } else if (!input.isOnline) {
     dataSyncDetail = "Waiting to reconnect live collaboration"
   } else if (input.collabEncryptionStatus === "missing_for_device") {
@@ -312,7 +312,7 @@ export function resolveConnectionStatusPresentation(
       dataSync,
       gitRemote,
       layers,
-      primaryLabel: "Local Branch",
+      primaryLabel: "Active Collab Sync",
       primaryDetail: dataSyncDetail,
       severity: "local",
     }

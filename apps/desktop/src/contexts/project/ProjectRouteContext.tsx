@@ -35,6 +35,7 @@ export interface ProjectRouteContextValue {
   collabLane: ProjectLaneDescriptor | null;
   collaborationEnabled: boolean;
   refreshLaneState?: () => Promise<void>;
+  hasActiveLiveSession?: boolean;
 }
 
 export const ProjectRouteContext = createContext<ProjectRouteContextValue | null>(null);

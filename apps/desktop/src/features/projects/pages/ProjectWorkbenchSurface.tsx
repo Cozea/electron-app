@@ -188,6 +188,8 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     );
   }, [bindWorkspaceSessionSnapshot, currentWorkspaceRuntimeId, workbenchSession]);
 
+  const hasActiveLiveSession = Boolean(projectRouteContext?.hasActiveLiveSession);
+
   const headerWorkbench = useMemo(
     () => (
       <div className="flex min-w-0 items-center gap-2">
@@ -197,27 +199,29 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
         >
           <span className="truncate">{projectName}</span>
         </div>
-        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-          <div className="inline-flex h-7 min-w-0 items-center rounded-md bg-secondary px-1 text-muted-foreground/85 transition-colors hover:bg-accent/80">
-            {/* Lane/branch state is read from context inside the control so
-                this element stays identity-stable while lanes settle. */}
-            <WorkbenchHeaderBranchControl
-              triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
-              trailing={
-                project?._id ? (
-                  <ProjectSyncIndicator
-                    variant="compact"
-                    inheritPillTextColor
-                    className="h-5 w-5 shrink-0 rounded-none bg-transparent shadow-none"
-                  />
-                ) : null
-              }
-            />
+        {!hasActiveLiveSession ? (
+          <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
+            <div className="inline-flex h-7 min-w-0 items-center rounded-md bg-secondary px-1 text-muted-foreground/85 transition-colors hover:bg-accent/80">
+              {/* Lane/branch state is read from context inside the control so
+                  this element stays identity-stable while lanes settle. */}
+              <WorkbenchHeaderBranchControl
+                triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
+                trailing={
+                  project?._id ? (
+                    <ProjectSyncIndicator
+                      variant="compact"
+                      inheritPillTextColor
+                      className="h-5 w-5 shrink-0 rounded-none bg-transparent shadow-none"
+                    />
+                  ) : null
+                }
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     ),
-    [project?._id, projectName],
+    [hasActiveLiveSession, project?._id, projectName],
   );
 
   useProjectHeader(visible ? headerWorkbench : null, null);

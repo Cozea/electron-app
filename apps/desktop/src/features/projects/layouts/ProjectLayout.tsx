@@ -628,6 +628,7 @@ export function ProjectLayout({
       collabLane,
       collaborationEnabled,
       refreshLaneState,
+      hasActiveLiveSession: Boolean(liveSession.session && liveSession.sync),
     }),
     [
       activeLane,
@@ -640,6 +641,8 @@ export function ProjectLayout({
       activeWorkspaceId,
       freshProjectBySlug,
       laneState,
+      liveSession.session,
+      liveSession.sync,
       project,
       projectBasePath,
       refreshLaneState,

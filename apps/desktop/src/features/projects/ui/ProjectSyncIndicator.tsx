@@ -71,12 +71,15 @@ function pickIcon(presentation: {
   if (presentation.transfer === "download") return MdCloudDownload
   if (
     presentation.severity === "unavailable" ||
-    presentation.severity === "local" ||
     presentation.primaryLabel === "Offline"
   ) {
     return MdCloudOff
   }
-  if (presentation.motion === "spin" || presentation.motion === "pulse") {
+  if (
+    presentation.severity === "local" ||
+    presentation.motion === "spin" ||
+    presentation.motion === "pulse"
+  ) {
     return MdCloudSync
   }
   return MdCloudDone
