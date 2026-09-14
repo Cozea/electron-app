@@ -7,24 +7,18 @@
  */
 
 import { useEffect, useState } from "react"
-import { ArrowDown01Icon, FloppyDiskIcon, MicOff01Icon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, MicOff01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MdCloud, MdCloudOff } from "react-icons/md"
 
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
+import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { Spinner } from "@/components/ui/spinner"
 import { cn } from "@/lib/utils"
 import { SoundWaveCandles } from "../media/SoundWaveCandles"
-import type { AudioInputDeviceInfo, SessionMediaController } from "../media/useSessionMedia"
+import type { SessionMediaController } from "../media/useSessionMedia"
 import { BinaryConflictDialog } from "../ui/BinaryConflictDialog"
 import { CloseSessionDialog } from "../ui/CloseSessionDialog"
 import { MergeSessionDialog } from "../ui/MergeSessionDialog"
@@ -49,7 +43,7 @@ function SessionStatusPill({
   canEdit,
   membership,
   busy,
-  busyAction,
+  busyAction: _busyAction,
   isSaving,
   onSaveNow,
   onRebase,
@@ -93,6 +87,128 @@ function SessionStatusPill({
       ? formatSaveAge(autoGit.lastSavedAt)
       : autoGit?.label ?? "not saved"
 
+  const handleOpenSessionMenu = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const position = {
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+    }
+
+    const items: ContextMenuItem<string>[] = []
+
+    if (membership === "active") {
+      items.push({
+        id: "save_now",
+        label: isSaving ? "Saving changes…" : "Save now",
+        enabled: !busy && Boolean(autoGit?.canSave) && !isSaving,
+        icon: getNativeMenuIcon("sync"),
+      })
+      items.push({ id: "sep-git", type: "separator" })
+    }
+
+    if (membership === "active" && canEdit && autoGit) {
+      items.push({
+        id: "rebase",
+        label: `Rebase on ${session.targetBranch}…`,
+        enabled: !busy,
+        icon: getNativeMenuIcon("git-fork"),
+      })
+      items.push({
+        id: "merge",
+        label: `Merge into ${session.targetBranch}…`,
+        enabled: !busy,
+        icon: getNativeMenuIcon("branch"),
+      })
+      items.push({ id: "sep-merge", type: "separator" })
+    }
+
+    if (membership === "active") {
+      items.push({
+        id: "file_conflicts",
+        label: "File version conflicts…",
+        enabled: !busy,
+      })
+      items.push({
+        id: "path_conflicts",
+        label: "Path conflicts…",
+        enabled: !busy,
+      })
+    }
+
+    if (canManage) {
+      if (paused) {
+        items.push({ id: "sep-lifecycle", type: "separator" })
+        items.push({
+          id: "resume",
+          label: "Resume session",
+          enabled: !busy,
+        })
+      } else {
+        items.push({ id: "sep-lifecycle", type: "separator" })
+        items.push({
+          id: "pause",
+          label: "Pause session",
+          enabled: !busy,
+        })
+      }
+
+      items.push({ id: "sep-end", type: "separator" })
+      items.push({
+        id: "end",
+        label: "End session for everyone",
+        destructive: true,
+        enabled: !busy,
+        icon: getNativeMenuIcon("delete"),
+      })
+    }
+
+    // Clean duplicate or leading/trailing separators
+    const cleanedItems: ContextMenuItem<string>[] = []
+    for (const item of items) {
+      if (item.type === "separator") {
+        if (cleanedItems.length === 0 || cleanedItems[cleanedItems.length - 1].type === "separator") {
+          continue
+        }
+      }
+      cleanedItems.push(item)
+    }
+    if (cleanedItems.length > 0 && cleanedItems[cleanedItems.length - 1].type === "separator") {
+      cleanedItems.pop()
+    }
+
+    const action = await showDesktopContextMenu(cleanedItems, position)
+    if (!action) return
+
+    switch (action) {
+      case "save_now":
+        onSaveNow()
+        break
+      case "rebase":
+        onRebase()
+        break
+      case "merge":
+        onMerge()
+        break
+      case "file_conflicts":
+        onBinaryConflicts()
+        break
+      case "path_conflicts":
+        onStructuralConflicts()
+        break
+      case "pause":
+        onPause()
+        break
+      case "resume":
+        onResume()
+        break
+      case "end":
+        onEnd()
+        break
+    }
+  }
+
   return (
     <div
       className="inline-flex h-7 items-center gap-1.5 text-sm font-medium text-foreground shrink-0 titlebar-no-drag"
@@ -105,141 +221,38 @@ function SessionStatusPill({
 
       <span className="text-muted-foreground/60 text-sm font-normal">·</span>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0"
-            aria-label="Collaboration sync and session options"
-            title={
-              autoGit?.lastSavedAt
-                ? `Automatic Git Checkpoint: Saved at ${formatSaveTime(autoGit.lastSavedAt)} (${formatSaveAge(autoGit.lastSavedAt)} ago). Click for session options.`
-                : `${autoGit?.label ?? "Collaboration sync active"}. Click for session options.`
-            }
-          >
-            {isActive ? (
-              <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
-            ) : (
-              <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0"
+        aria-label="Collaboration sync and session options"
+        aria-haspopup="menu"
+        onClick={handleOpenSessionMenu}
+        title={
+          autoGit?.lastSavedAt
+            ? `Automatic Git Checkpoint: Saved at ${formatSaveTime(autoGit.lastSavedAt)} (${formatSaveAge(autoGit.lastSavedAt)} ago). Click for session options.`
+            : `${autoGit?.label ?? "Collaboration sync active"}. Click for session options.`
+        }
+      >
+        {isActive ? (
+          <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+        ) : (
+          <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+        )}
+        {saveAgeLabel ? (
+          <span
+            className={cn(
+              "truncate text-sm font-medium",
+              autoGit?.tone === "attention"
+                ? "text-destructive"
+                : "text-foreground",
             )}
-            {saveAgeLabel ? (
-              <span
-                className={cn(
-                  "truncate text-sm font-medium",
-                  autoGit?.tone === "attention"
-                    ? "text-destructive"
-                    : "text-foreground",
-                )}
-              >
-                {saveAgeLabel}
-              </span>
-            ) : null}
-          </Button>
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent align="start" className="w-56 text-xs z-50">
-          <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground px-2 py-1">
-            Session Options
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-
-          {membership === "active" ? (
-            <>
-              <DropdownMenuItem
-                className="cursor-pointer text-xs"
-                disabled={busy || !autoGit?.canSave || isSaving}
-                onClick={onSaveNow}
-              >
-                {isSaving ? (
-                  <Spinner size="xs" className="mr-1.5" />
-                ) : (
-                  <HugeiconsIcon icon={FloppyDiskIcon} className="mr-1.5 size-3.5 text-muted-foreground" />
-                )}
-                {isSaving ? "Saving changes…" : "Save now"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          ) : null}
-
-          {membership === "active" && canEdit && autoGit ? (
-            <>
-              <DropdownMenuItem
-                className="cursor-pointer text-xs"
-                disabled={busy}
-                onClick={onRebase}
-              >
-                Rebase on {session.targetBranch}…
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer text-xs"
-                disabled={busy}
-                onClick={onMerge}
-              >
-                Merge into {session.targetBranch}…
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          ) : null}
-
-          {membership === "active" ? (
-            <>
-              <DropdownMenuItem
-                className="cursor-pointer text-xs"
-                disabled={busy}
-                onClick={onBinaryConflicts}
-              >
-                File version conflicts…
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer text-xs"
-                disabled={busy}
-                onClick={onStructuralConflicts}
-              >
-                Path conflicts…
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          ) : null}
-
-          {canManage ? (
-            paused ? (
-              <DropdownMenuItem
-                className="cursor-pointer text-xs"
-                disabled={busy}
-                onClick={onResume}
-              >
-                {busyAction === "resume" ? <Spinner size="xs" className="mr-1.5" /> : null}
-                Resume session
-              </DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem
-                className="cursor-pointer text-xs"
-                disabled={busy}
-                onClick={onPause}
-              >
-                {busyAction === "pause" ? <Spinner size="xs" className="mr-1.5" /> : null}
-                Pause session
-              </DropdownMenuItem>
-            )
-          ) : null}
-
-          {canManage ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-                disabled={busy}
-                onClick={onEnd}
-              >
-                {busyAction === "end" ? <Spinner size="xs" className="mr-1.5" /> : null}
-                End session for everyone
-              </DropdownMenuItem>
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          >
+            {saveAgeLabel}
+          </span>
+        ) : null}
+      </Button>
     </div>
   )
 }
@@ -250,6 +263,60 @@ function AudioControlPill({ media }: { media: SessionMediaController | null }) {
   const isDenied = media.permissionStatus === "denied"
   const isMuted = media.isMuted
   const isSpeaking = media.isSpeaking
+
+  const handleOpenAudioMenu = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const position = {
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+    }
+
+    const items: ContextMenuItem<string>[] = []
+    const devices = media.audioDevices ?? []
+
+    if (devices.length === 0) {
+      items.push({
+        id: "no-devices",
+        label: isDenied ? "Microphone permission denied" : "No microphones detected",
+        enabled: false,
+      })
+    } else {
+      for (const device of devices) {
+        const isSelected =
+          media.selectedDeviceId === device.deviceId ||
+          (!media.selectedDeviceId && device.deviceId === "default") ||
+          (!media.selectedDeviceId && devices[0]?.deviceId === device.deviceId)
+
+        items.push({
+          id: `device:${device.deviceId}`,
+          label: device.label || `Microphone (${device.deviceId.slice(0, 8)})`,
+          type: "checkbox",
+          checked: isSelected,
+        })
+      }
+    }
+
+    if (isDenied) {
+      items.push({ id: "sep-perm", type: "separator" })
+      items.push({
+        id: "request-perm",
+        label: "Request microphone permission…",
+        destructive: true,
+      })
+    }
+
+    const action = await showDesktopContextMenu(items, position)
+    if (!action) return
+
+    if (action === "request-perm") {
+      void media.requestMicrophonePermission()
+    } else if (action.startsWith("device:")) {
+      const deviceId = action.slice("device:".length)
+      void media.selectAudioDevice?.(deviceId)
+    }
+  }
 
   return (
     <div className="inline-flex items-center rounded-md border border-border/50 bg-background/60 shadow-xs shrink-0">
@@ -295,61 +362,18 @@ function AudioControlPill({ media }: { media: SessionMediaController | null }) {
         <span className="text-[11px] leading-none">{isDenied ? "Mic error" : isMuted ? "Muted" : "Voice"}</span>
       </Button>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-l border-border/40"
-            title="Audio settings"
-            aria-label="Select audio input device"
-          >
-            <HugeiconsIcon icon={ArrowDown01Icon} className="size-2.5" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60 text-xs z-50">
-          <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground px-2 py-1">
-            Microphone
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {(media.audioDevices ?? []).length === 0 ? (
-            <div className="px-2 py-1.5 text-[11px] text-muted-foreground italic">
-              {isDenied
-                ? "Microphone permission denied"
-                : "No microphones detected"}
-            </div>
-          ) : (
-            (media.audioDevices ?? []).map((device: AudioInputDeviceInfo) => {
-              const isSelected =
-                media.selectedDeviceId === device.deviceId ||
-                (!media.selectedDeviceId && device.deviceId === "default") ||
-                (!media.selectedDeviceId && (media.audioDevices ?? [])[0]?.deviceId === device.deviceId)
-              return (
-                <DropdownMenuCheckboxItem
-                  key={device.deviceId}
-                  checked={isSelected}
-                  className="cursor-pointer text-xs"
-                  onClick={() => void media.selectAudioDevice?.(device.deviceId)}
-                >
-                  <span className="truncate">{device.label}</span>
-                </DropdownMenuCheckboxItem>
-              )
-            })
-          )}
-          {isDenied ? (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-xs text-destructive cursor-pointer"
-                onClick={() => void media.requestMicrophonePermission()}
-              >
-                Request Microphone Permission
-              </DropdownMenuItem>
-            </>
-          ) : null}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-l border-border/40"
+        title="Audio settings"
+        aria-label="Select audio input device"
+        aria-haspopup="menu"
+        onClick={handleOpenAudioMenu}
+      >
+        <HugeiconsIcon icon={ArrowDown01Icon} className="size-2.5" />
+      </Button>
     </div>
   )
 }

@@ -27,15 +27,8 @@ import type {
   LiveSessionTargetView,
   SessionMembership,
 } from "@/features/collaboration/live/liveSessionModel"
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
+import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
+import type { ContextMenuItem } from "@cozea/assistant-contracts"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { ArrowDown01Icon, MicOff01Icon } from "@hugeicons/core-free-icons"
 import type { SessionMediaController } from "../media/useSessionMedia"
@@ -128,6 +121,62 @@ export function SessionWorkbenchControls({
   const canJoin = membership === "none" || membership === "left"
   const spinnerFor = (action: LiveSessionAction) =>
     busyAction === action ? <Spinner size="xs" className="mr-1" /> : null
+
+  const handleOpenAudioMenu = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!media) return
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const position = {
+      x: Math.round(rect.left),
+      y: Math.round(rect.bottom + 4),
+    }
+
+    const items: ContextMenuItem<string>[] = []
+    const devices = media.audioDevices ?? []
+    const isDenied = media.permissionStatus === "denied"
+
+    if (devices.length === 0) {
+      items.push({
+        id: "no-devices",
+        label: isDenied ? "Microphone permission denied" : "No microphones detected",
+        enabled: false,
+      })
+    } else {
+      for (const device of devices) {
+        const isSelected =
+          media.selectedDeviceId === device.deviceId ||
+          (!media.selectedDeviceId && device.deviceId === "default") ||
+          (!media.selectedDeviceId && devices[0]?.deviceId === device.deviceId)
+
+        items.push({
+          id: `device:${device.deviceId}`,
+          label: device.label || `Microphone (${device.deviceId.slice(0, 8)})`,
+          type: "checkbox",
+          checked: isSelected,
+        })
+      }
+    }
+
+    if (isDenied) {
+      items.push({ id: "sep-perm", type: "separator" })
+      items.push({
+        id: "request-perm",
+        label: "Request microphone permission…",
+        destructive: true,
+      })
+    }
+
+    const action = await showDesktopContextMenu(items, position)
+    if (!action) return
+
+    if (action === "request-perm") {
+      void media.requestMicrophonePermission()
+    } else if (action.startsWith("device:")) {
+      const deviceId = action.slice("device:".length)
+      void media.selectAudioDevice?.(deviceId)
+    }
+  }
 
   return (
     <div
@@ -277,61 +326,18 @@ export function SessionWorkbenchControls({
                 <span>{media.isMuted ? "Muted" : "Mic"}</span>
               </Button>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-5 w-4 p-0 text-muted-foreground hover:text-foreground rounded-sm"
-                    title="Audio input settings"
-                    aria-label="Select audio input device"
-                  >
-                    <HugeiconsIcon icon={ArrowDown01Icon} className="size-2.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-60 text-xs">
-                  <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground px-2 py-1">
-                    Microphone
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {(media.audioDevices ?? []).length === 0 ? (
-                    <div className="px-2 py-1.5 text-[11px] text-muted-foreground italic">
-                      {media.permissionStatus === "denied"
-                        ? "Microphone permission denied"
-                        : "No microphones detected"}
-                    </div>
-                  ) : (
-                    (media.audioDevices ?? []).map((device) => {
-                      const isSelected =
-                        media.selectedDeviceId === device.deviceId ||
-                        (!media.selectedDeviceId && device.deviceId === "default") ||
-                        (!media.selectedDeviceId && (media.audioDevices ?? [])[0]?.deviceId === device.deviceId)
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={device.deviceId}
-                          checked={isSelected}
-                          className="cursor-pointer text-xs"
-                          onClick={() => void media.selectAudioDevice?.(device.deviceId)}
-                        >
-                          <span className="truncate">{device.label}</span>
-                        </DropdownMenuCheckboxItem>
-                      )
-                    })
-                  )}
-                  {media.permissionStatus === "denied" ? (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-xs text-destructive cursor-pointer"
-                        onClick={() => void media.requestMicrophonePermission()}
-                      >
-                        Request Microphone Permission
-                      </DropdownMenuItem>
-                    </>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-5 w-4 p-0 text-muted-foreground hover:text-foreground rounded-sm"
+                title="Audio input settings"
+                aria-label="Select audio input device"
+                aria-haspopup="menu"
+                onClick={handleOpenAudioMenu}
+              >
+                <HugeiconsIcon icon={ArrowDown01Icon} className="size-2.5" />
+              </Button>
             </div>
           ) : null}
 
