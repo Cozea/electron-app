@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from "react"
-import { ArrowDown01Icon, MicOff01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
+import { ArrowDown01Icon, FloppyDiskIcon, MicOff01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MdCloud, MdCloudOff } from "react-icons/md"
 
@@ -60,21 +60,49 @@ function initials(name: string): string {
 function SessionStatusPill({
   sync,
   autoGit,
-  targetBranch,
-  branchName,
+  session,
+  canManage,
+  canEdit,
+  membership,
+  busy,
+  busyAction,
+  isSaving,
+  onSaveNow,
+  onRebase,
+  onMerge,
+  onBinaryConflicts,
+  onStructuralConflicts,
+  onPause,
+  onResume,
+  onEnd,
 }: {
   sync: LiveSessionSyncView
   autoGit: LiveSessionAutoGitView | null
-  targetBranch: string
-  branchName: string
+  session: LiveSessionRecord
+  canManage: boolean
+  canEdit: boolean
+  membership: SessionMembership
+  busy: boolean
+  busyAction: LiveSessionAction | null
+  isSaving: boolean
+  onSaveNow: () => void
+  onRebase: () => void
+  onMerge: () => void
+  onBinaryConflicts: () => void
+  onStructuralConflicts: () => void
+  onPause: () => void
+  onResume: () => void
+  onEnd: () => void
 }) {
   const [, setTick] = useState(0)
+
   useEffect(() => {
     const interval = window.setInterval(() => setTick((t) => t + 1), 30000)
     return () => window.clearInterval(interval)
   }, [])
 
   const isActive = sync.tone === "live" || sync.tone === "working"
+  const paused = session.lifecycle === "PAUSED" || session.lifecycle === "PAUSING"
   const saveAgeLabel = autoGit?.isSaving
     ? "Saving…"
     : autoGit?.lastSavedAt
@@ -83,74 +111,151 @@ function SessionStatusPill({
 
   return (
     <div
-      className="inline-flex h-7 items-center gap-1.5 text-sm font-medium text-foreground shrink-0"
-      aria-label={`Session on ${branchName} · merges into ${targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
+      className="inline-flex h-7 items-center gap-1.5 text-sm font-medium text-foreground shrink-0 titlebar-no-drag"
+      aria-label={`Session on ${session.branchName} · merges into ${session.targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
     >
       <WorkbenchHeaderBranchControl
         triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1 text-sm font-medium text-foreground shadow-none hover:bg-muted/60"
         trailing={null}
       />
 
-      {autoGit ? (
-        <>
-          <span className="text-muted-foreground/60 text-sm font-normal">·</span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="inline-flex items-center gap-1 cursor-default pr-0.5">
-                {isActive ? (
-                  <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
-                ) : (
-                  <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+      <span className="text-muted-foreground/60 text-sm font-normal">·</span>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0"
+            aria-label="Collaboration sync and session options"
+            title={
+              autoGit?.lastSavedAt
+                ? `Automatic Git Checkpoint: Saved at ${formatSaveTime(autoGit.lastSavedAt)} (${formatSaveAge(autoGit.lastSavedAt)} ago). Click for session options.`
+                : `${autoGit?.label ?? "Collaboration sync active"}. Click for session options.`
+            }
+          >
+            {isActive ? (
+              <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+            ) : (
+              <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+            )}
+            {saveAgeLabel ? (
+              <span
+                className={cn(
+                  "truncate text-sm font-medium",
+                  autoGit?.tone === "attention"
+                    ? "text-destructive"
+                    : "text-foreground",
                 )}
-                <span
-                  className={cn(
-                    "truncate text-sm font-medium",
-                    autoGit.tone === "attention"
-                      ? "text-destructive"
-                      : "text-foreground",
-                  )}
-                >
-                  {saveAgeLabel}
-                </span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs font-medium">Automatic Git Checkpoint</p>
-              <p className="text-2xs text-muted-foreground">
-                {autoGit.lastSavedAt
-                  ? `Saved to Git at ${formatSaveTime(autoGit.lastSavedAt)} (${formatSaveAge(autoGit.lastSavedAt)} ago).`
-                  : autoGit.label}
-              </p>
-              {autoGit.title ? (
-                <p className="text-2xs text-muted-foreground/80 mt-0.5">{autoGit.title}</p>
-              ) : null}
-              <p className="text-2xs text-muted-foreground/70 mt-1 border-t border-border/40 pt-1">
-                {sync.detail || `Live on ${branchName} · merges into ${targetBranch}`}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        </>
-      ) : (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="inline-flex items-center cursor-default">
-              {isActive ? (
-                <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
-              ) : (
-                <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
-              )}
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            <p className="text-xs font-medium">
-              {isActive ? "Live Collaboration Session" : "Collaboration Paused / Inactive"}
-            </p>
-            <p className="text-2xs text-muted-foreground">
-              {sync.detail || `Live on ${branchName} · merges into ${targetBranch}`}
-            </p>
-          </TooltipContent>
-        </Tooltip>
-      )}
+              >
+                {saveAgeLabel}
+              </span>
+            ) : null}
+          </Button>
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent align="start" className="w-56 text-xs z-50">
+          <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground px-2 py-1">
+            Session Options
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+
+          {membership === "active" ? (
+            <>
+              <DropdownMenuItem
+                className="cursor-pointer text-xs"
+                disabled={busy || !autoGit?.canSave || isSaving}
+                onClick={onSaveNow}
+              >
+                {isSaving ? (
+                  <Spinner size="xs" className="mr-1.5" />
+                ) : (
+                  <HugeiconsIcon icon={FloppyDiskIcon} className="mr-1.5 size-3.5 text-muted-foreground" />
+                )}
+                {isSaving ? "Saving changes…" : "Save now"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+
+          {membership === "active" && canEdit && autoGit ? (
+            <>
+              <DropdownMenuItem
+                className="cursor-pointer text-xs"
+                disabled={busy}
+                onClick={onRebase}
+              >
+                Rebase on {session.targetBranch}…
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer text-xs"
+                disabled={busy}
+                onClick={onMerge}
+              >
+                Merge into {session.targetBranch}…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+
+          {membership === "active" ? (
+            <>
+              <DropdownMenuItem
+                className="cursor-pointer text-xs"
+                disabled={busy}
+                onClick={onBinaryConflicts}
+              >
+                File version conflicts…
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer text-xs"
+                disabled={busy}
+                onClick={onStructuralConflicts}
+              >
+                Path conflicts…
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+
+          {canManage ? (
+            paused ? (
+              <DropdownMenuItem
+                className="cursor-pointer text-xs"
+                disabled={busy}
+                onClick={onResume}
+              >
+                {busyAction === "resume" ? <Spinner size="xs" className="mr-1.5" /> : null}
+                Resume session
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                className="cursor-pointer text-xs"
+                disabled={busy}
+                onClick={onPause}
+              >
+                {busyAction === "pause" ? <Spinner size="xs" className="mr-1.5" /> : null}
+                Pause session
+              </DropdownMenuItem>
+            )
+          ) : null}
+
+          {canManage ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
+                disabled={busy}
+                onClick={onEnd}
+              >
+                {busyAction === "end" ? <Spinner size="xs" className="mr-1.5" /> : null}
+                End session for everyone
+              </DropdownMenuItem>
+            </>
+          ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   )
 }
@@ -352,152 +457,6 @@ function AudioControlPill({ media }: { media: SessionMediaController | null }) {
   )
 }
 
-function SessionOptionsMenu({
-  session,
-  canManage,
-  canEdit,
-  autoGit,
-  membership,
-  busy,
-  busyAction,
-  onRebase,
-  onMerge,
-  onBinaryConflicts,
-  onStructuralConflicts,
-  onPause,
-  onResume,
-  onLeave,
-  onEnd,
-}: {
-  session: LiveSessionRecord
-  canManage: boolean
-  canEdit: boolean
-  autoGit: LiveSessionAutoGitView | null
-  membership: SessionMembership
-  busy: boolean
-  busyAction: LiveSessionAction | null
-  onRebase: () => void
-  onMerge: () => void
-  onBinaryConflicts: () => void
-  onStructuralConflicts: () => void
-  onPause: () => void
-  onResume: () => void
-  onLeave: () => void
-  onEnd: () => void
-}) {
-  const paused = session.lifecycle === "PAUSED" || session.lifecycle === "PAUSING"
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="h-7 w-7 text-muted-foreground hover:text-foreground rounded-md shrink-0"
-          title="Live session options"
-          aria-label="Live session options"
-        >
-          <HugeiconsIcon icon={MoreHorizontalIcon} className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 text-xs z-50">
-        <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground px-2 py-1">
-          Session Options
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        {membership === "active" && canEdit && autoGit ? (
-          <>
-            <DropdownMenuItem
-              className="cursor-pointer text-xs"
-              disabled={busy}
-              onClick={onRebase}
-            >
-              Rebase on {session.targetBranch}…
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="cursor-pointer text-xs"
-              disabled={busy}
-              onClick={onMerge}
-            >
-              Merge into {session.targetBranch}…
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-
-        {membership === "active" ? (
-          <>
-            <DropdownMenuItem
-              className="cursor-pointer text-xs"
-              disabled={busy}
-              onClick={onBinaryConflicts}
-            >
-              File version conflicts…
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="cursor-pointer text-xs"
-              disabled={busy}
-              onClick={onStructuralConflicts}
-            >
-              Path conflicts…
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        ) : null}
-
-        {canManage ? (
-          paused ? (
-            <DropdownMenuItem
-              className="cursor-pointer text-xs"
-              disabled={busy}
-              onClick={onResume}
-            >
-              {busyAction === "resume" ? <Spinner size="xs" className="mr-1.5" /> : null}
-              Resume session
-            </DropdownMenuItem>
-          ) : (
-            <DropdownMenuItem
-              className="cursor-pointer text-xs"
-              disabled={busy}
-              onClick={onPause}
-            >
-              {busyAction === "pause" ? <Spinner size="xs" className="mr-1.5" /> : null}
-              Pause session
-            </DropdownMenuItem>
-          )
-        ) : null}
-
-        {membership === "active" ? (
-          <DropdownMenuItem
-            className="cursor-pointer text-xs"
-            disabled={busy}
-            onClick={onLeave}
-          >
-            {busyAction === "leave" ? <Spinner size="xs" className="mr-1.5" /> : null}
-            Leave session
-          </DropdownMenuItem>
-        ) : null}
-
-        {canManage ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="cursor-pointer text-xs text-destructive focus:text-destructive focus:bg-destructive/10"
-              disabled={busy}
-              onClick={onEnd}
-            >
-              {busyAction === "end" ? <Spinner size="xs" className="mr-1.5" /> : null}
-              End session for everyone
-            </DropdownMenuItem>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  )
-}
-
 export function HeaderLiveSessionControl({ live }: { live: LiveSessionController }) {
   const [merging, setMerging] = useState(false)
   const [rebasing, setRebasing] = useState(false)
@@ -518,8 +477,21 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
         <SessionStatusPill
           sync={live.sync}
           autoGit={live.autoGit}
-          targetBranch={live.session.targetBranch}
-          branchName={live.session.branchName}
+          session={live.session}
+          canManage={live.canManage}
+          canEdit={live.canEdit}
+          membership={live.membership}
+          busy={busy}
+          busyAction={live.busyAction}
+          isSaving={isSaving}
+          onSaveNow={live.saveNow}
+          onRebase={() => setRebasing(true)}
+          onMerge={() => setMerging(true)}
+          onBinaryConflicts={() => setReviewingFiles(true)}
+          onStructuralConflicts={() => setReviewingPaths(true)}
+          onPause={live.pause}
+          onResume={live.resume}
+          onEnd={live.end}
         />
 
         <ParticipantAvatars members={live.members} />
@@ -538,41 +510,6 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
             {live.membership === "left" ? "Rejoin" : "Join session"}
           </Button>
         ) : null}
-
-        {live.membership === "active" && live.autoGit?.canSave ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-[11px] font-normal gap-1 rounded-md border-border/60 bg-background/50 hover:bg-accent/60 shrink-0"
-            disabled={busy}
-            onClick={live.saveNow}
-            title="Save changes to Git now"
-          >
-            {isSaving ? (
-              <Spinner size="xs" className="size-3" />
-            ) : null}
-            Save now
-          </Button>
-        ) : null}
-
-        <SessionOptionsMenu
-          session={live.session}
-          canManage={live.canManage}
-          canEdit={live.canEdit}
-          autoGit={live.autoGit}
-          membership={live.membership}
-          busy={busy}
-          busyAction={live.busyAction}
-          onRebase={() => setRebasing(true)}
-          onMerge={() => setMerging(true)}
-          onBinaryConflicts={() => setReviewingFiles(true)}
-          onStructuralConflicts={() => setReviewingPaths(true)}
-          onPause={live.pause}
-          onResume={live.resume}
-          onLeave={live.leave}
-          onEnd={live.end}
-        />
       </div>
 
       {reviewingFiles && (

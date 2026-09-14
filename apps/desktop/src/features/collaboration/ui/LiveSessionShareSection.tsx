@@ -22,6 +22,7 @@ import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
 import { cleanConvexError } from "@/lib/convexError"
+import { appToast } from "@/lib/appToast"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { findWorkspaceSession } from "../collaborationGate"
@@ -45,11 +46,13 @@ export function LiveSessionShareSection({
   projectMembers,
   canManageProject,
   onStartSession,
+  onLeaveSession,
 }: {
   projectId: Id<"projects">
   projectMembers: readonly ShareableProjectMember[] | undefined
   canManageProject: boolean
   onStartSession: () => void
+  onLeaveSession?: () => void
 }) {
   const { principalId } = useAuth()
   const navigate = useViewTransitionNavigate()
@@ -68,6 +71,7 @@ export function LiveSessionShareSection({
   )
   const invite = useMutation(api.collaborationSessions.inviteParticipant)
   const joinSession = useMutation(api.collaborationSessions.join)
+  const leaveSessionMutation = useMutation(api.collaborationSessions.leave)
 
   const [identityKey, setIdentityKey] = useState("")
   const [busy, setBusy] = useState<string | null>(null)
@@ -149,6 +153,47 @@ export function LiveSessionShareSection({
     })
   }
 
+  const handleLeaveSession = async () => {
+    if (!activeSession) return
+    if (onLeaveSession) {
+      onLeaveSession()
+      return
+    }
+    void run("leave", async () => {
+      let retainedBatches = 0
+      let retainedBinaryVersions = 0
+      try {
+        if (window.electronAPI?.projectd?.sessions?.prepareLeave) {
+          const prepared = await window.electronAPI.projectd.sessions.prepareLeave(activeSession.publicSessionId)
+          if (prepared?.success) {
+            retainedBatches = prepared.pendingBatches ?? 0
+            retainedBinaryVersions = prepared.pendingBinaryVersions ?? 0
+          }
+        }
+      } catch (err) {
+        console.warn("[LiveSessionShareSection] prepareLeave warning:", err)
+      }
+
+      await leaveSessionMutation({ sessionId: activeSession._id })
+
+      try {
+        if (window.electronAPI?.projectd?.sessions?.detach) {
+          await window.electronAPI.projectd.sessions.detach(activeSession.publicSessionId)
+        }
+      } catch (err) {
+        console.warn("[LiveSessionShareSection] detach warning:", err)
+      }
+
+      if (retainedBatches > 0 || retainedBinaryVersions > 0) {
+        appToast.info({
+          title: "Left collaboration",
+          description: "Some edits were not confirmed by the session. Their recovery data remains on this Mac.",
+        })
+      }
+      return "Left the live session."
+    })
+  }
+
   let body: ReactNode
   if (sessions === undefined) {
     body = <p className="text-xs text-muted-foreground">Loading…</p>
@@ -171,12 +216,30 @@ export function LiveSessionShareSection({
     )
   } else {
     body = (
-      <div className="space-y-2">
-        <p className="text-xs">
-          {inSession.length} {inSession.length === 1 ? "person is" : "people are"} in the live session on{" "}
-          <span className="font-mono">{activeSession.branchName}</span>
-          {activeSession.lifecycle === "ACTIVE" ? "." : ` (${activeSession.lifecycle.toLowerCase()}).`}
-        </p>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/20 p-2.5">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium">
+              Live session on <span className="font-mono">{activeSession.branchName}</span>
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {inSession.length} {inSession.length === 1 ? "person is" : "people are"} currently collaborating
+              {activeSession.lifecycle === "ACTIVE" ? "." : ` (${activeSession.lifecycle.toLowerCase()}).`}
+            </p>
+          </div>
+          {self?.status === "active" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0"
+              disabled={busy !== null}
+              onClick={handleLeaveSession}
+            >
+              {busy === "leave" ? <Spinner size="xs" className="mr-1" /> : null}
+              Leave session
+            </Button>
+          ) : null}
+        </div>
         {canInvite ? (
           <>
             {invitable.length > 0 ? (
