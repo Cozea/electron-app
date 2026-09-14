@@ -6,9 +6,10 @@
  * session bar, recovers vertical space, and consolidates presence and voice.
  */
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowDown01Icon, MicOff01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
+import { MdCloud, MdCloudOff } from "react-icons/md"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -38,22 +39,16 @@ import { MergeSessionDialog } from "../ui/MergeSessionDialog"
 import { RebaseSessionDialog } from "../ui/RebaseSessionDialog"
 import { StructuralConflictDialog } from "../ui/StructuralConflictDialog"
 import { WorkbenchHeaderBranchControl } from "@/features/workbench/WorkbenchHeaderBranchControl"
-import { ProjectSyncIndicator } from "@/features/projects/ui/ProjectSyncIndicator"
-import type {
-  LiveSessionAction,
-  LiveSessionAutoGitView,
-  LiveSessionMember,
-  LiveSessionSyncView,
-  SessionMembership,
+import {
+  formatSaveAge,
+  formatSaveTime,
+  type LiveSessionAction,
+  type LiveSessionAutoGitView,
+  type LiveSessionMember,
+  type LiveSessionSyncView,
+  type SessionMembership,
 } from "./liveSessionModel"
 import type { LiveSessionController, LiveSessionRecord } from "./useLiveSession"
-
-const TONE_DOT = {
-  live: "bg-emerald-500",
-  working: "bg-amber-400 animate-pulse",
-  attention: "bg-destructive",
-  idle: "bg-muted-foreground",
-} as const
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -73,35 +68,47 @@ function SessionStatusPill({
   targetBranch: string
   branchName: string
 }) {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const interval = window.setInterval(() => setTick((t) => t + 1), 30000)
+    return () => window.clearInterval(interval)
+  }, [])
+
+  const isActive = sync.tone === "live" || sync.tone === "working"
+  const saveAgeLabel = autoGit?.isSaving
+    ? "Saving…"
+    : autoGit?.lastSavedAt
+      ? formatSaveAge(autoGit.lastSavedAt)
+      : autoGit?.label ?? "not saved"
+
   return (
     <div
-      className="inline-flex h-7 items-center gap-1 rounded-md border border-border/40 bg-secondary/50 px-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary/70 shrink-0"
-      aria-label={`Live session on ${branchName} · merges into ${targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
+      className="inline-flex h-7 items-center gap-1 rounded-md border border-border/40 bg-secondary/50 px-2 text-xs text-muted-foreground transition-colors hover:bg-secondary/70 shrink-0"
+      aria-label={`Session on ${branchName} · merges into ${targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
     >
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="inline-flex items-center gap-1.5 cursor-default pl-0.5">
-            <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", TONE_DOT[sync.tone])} />
-            <span className="font-medium text-foreground text-[11px]">Live</span>
+          <div className="inline-flex items-center cursor-default">
+            {isActive ? (
+              <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+            ) : (
+              <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+            )}
           </div>
         </TooltipTrigger>
         <TooltipContent side="bottom">
-          <p className="text-xs font-medium">Live Collaboration Session</p>
-          <p className="text-2xs text-muted-foreground">{sync.detail || `Live on ${branchName} · merges into ${targetBranch}`}</p>
+          <p className="text-xs font-medium">
+            {isActive ? "Live Collaboration Session" : "Collaboration Paused / Inactive"}
+          </p>
+          <p className="text-2xs text-muted-foreground">
+            {sync.detail || `Live on ${branchName} · merges into ${targetBranch}`}
+          </p>
         </TooltipContent>
       </Tooltip>
 
-      <span className="text-muted-foreground/40 text-[11px]">·</span>
-
       <WorkbenchHeaderBranchControl
         triggerClassName="h-6 min-h-6 min-w-0 shrink gap-1 rounded-none border-0 bg-transparent px-1 text-[11px] font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
-        trailing={
-          <ProjectSyncIndicator
-            variant="compact"
-            inheritPillTextColor
-            className="h-3.5 w-3.5 shrink-0 rounded-none bg-transparent shadow-none text-muted-foreground"
-          />
-        }
+        trailing={null}
       />
 
       {autoGit ? (
@@ -111,16 +118,25 @@ function SessionStatusPill({
             <TooltipTrigger asChild>
               <span
                 className={cn(
-                  "truncate text-[11px] max-w-[140px] cursor-default pr-0.5",
-                  autoGit.tone === "attention" ? "text-destructive" : "text-muted-foreground hover:text-foreground transition-colors",
+                  "truncate text-[11px] cursor-default pr-0.5",
+                  autoGit.tone === "attention"
+                    ? "text-destructive"
+                    : "text-muted-foreground hover:text-foreground transition-colors",
                 )}
               >
-                {autoGit.label}
+                {saveAgeLabel}
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs font-medium">Automatic Git Checkpoint</p>
-              <p className="text-2xs text-muted-foreground">{autoGit.detail || autoGit.title}</p>
+              <p className="text-2xs text-muted-foreground">
+                {autoGit.lastSavedAt
+                  ? `Saved to Git at ${formatSaveTime(autoGit.lastSavedAt)} (${formatSaveAge(autoGit.lastSavedAt)} ago).`
+                  : autoGit.label}
+              </p>
+              {autoGit.title ? (
+                <p className="text-2xs text-muted-foreground/80 mt-0.5">{autoGit.title}</p>
+              ) : null}
             </TooltipContent>
           </Tooltip>
         </>

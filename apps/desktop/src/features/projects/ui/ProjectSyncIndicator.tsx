@@ -71,15 +71,12 @@ function pickIcon(presentation: {
   if (presentation.transfer === "download") return MdCloudDownload
   if (
     presentation.severity === "unavailable" ||
+    presentation.severity === "local" ||
     presentation.primaryLabel === "Offline"
   ) {
     return MdCloudOff
   }
-  if (
-    presentation.severity === "local" ||
-    presentation.motion === "spin" ||
-    presentation.motion === "pulse"
-  ) {
+  if (presentation.motion === "spin" || presentation.motion === "pulse") {
     return MdCloudSync
   }
   return MdCloudDone
@@ -213,7 +210,10 @@ export function ProjectSyncIndicator({
   }, [computedState, computedStateKey, displayStateKey])
 
   const Icon = displayState.icon
-  const compactIconToneClass = inheritPillTextColor ? "text-current" : INDICATOR_ICON_CLASS
+  const isInactive = Icon === MdCloudOff
+  const compactIconToneClass = inheritPillTextColor
+    ? (isInactive ? "text-current" : "text-blue-500 dark:text-sky-400")
+    : (isInactive ? INDICATOR_ICON_CLASS : "text-blue-500 dark:text-sky-400")
   const iconClassName = cn(
     "h-4 w-4 shrink-0 transition-colors duration-200 ease-out",
     compactIconToneClass,

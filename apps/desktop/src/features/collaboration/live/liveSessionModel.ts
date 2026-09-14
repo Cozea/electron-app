@@ -169,6 +169,8 @@ export interface LiveSessionAutoGitView {
   canSave: boolean
   /** The fix the bar offers for why saving waits, when there is one. */
   fix: "ignore_env" | null
+  lastSavedAt?: number | null
+  isSaving?: boolean
 }
 
 // Stops the session itself can lift, and what the bar calls them.
@@ -177,8 +179,22 @@ const HOLD_LABELS: Record<string, string> = {
   CONFLICT_MARKERS: "Git saves wait on conflicts",
 }
 
-function formatSaveTime(publishedAt: number): string {
+export function formatSaveTime(publishedAt: number): string {
   return new Date(publishedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+}
+
+/** Short elapsed time since last Git save, e.g. "now", "5min", "2h", "1d". */
+export function formatSaveAge(publishedAt: number | null | undefined): string {
+  if (!publishedAt) return "not saved"
+  const diffMs = Math.max(0, Date.now() - publishedAt)
+  const diffSec = Math.floor(diffMs / 1000)
+  if (diffSec < 45) return "now"
+  const diffMin = Math.round(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}min`
+  const diffHours = Math.floor(diffMin / 60)
+  if (diffHours < 24) return `${diffHours}h`
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays}d`
 }
 
 /** How the session is saved to its Git branch, for the session bar (Section 14 - 16). */
@@ -199,6 +215,8 @@ export function describeAutoGit(
     title: title || null,
     canSave: status.role !== "viewer" && autoGit.leaderPrincipalId !== null,
     fix: null,
+    lastSavedAt: checkpoint?.publishedAt ?? null,
+    isSaving: Boolean(autoGit.saving),
   }
 
   switch (autoGit.state) {

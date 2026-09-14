@@ -312,7 +312,7 @@ export function resolveConnectionStatusPresentation(
       dataSync,
       gitRemote,
       layers,
-      primaryLabel: "Active Collab Sync",
+      primaryLabel: "Local Branch",
       primaryDetail: dataSyncDetail,
       severity: "local",
     }
