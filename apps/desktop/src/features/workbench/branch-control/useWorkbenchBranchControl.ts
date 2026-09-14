@@ -19,6 +19,7 @@ import {
   type CollabEncryptionStatus,
   type CollabSessionStatus,
 } from "@/contexts/project/ProjectSyncContext"
+import type { WorkbenchBranchPrInfo } from "./WorkbenchBranchStatusIcon"
 
 interface UseWorkbenchBranchControlInput {
   projectId: string | null
@@ -178,6 +179,8 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   const [currentGitBranch, setCurrentGitBranch] = useState<string | null>(null)
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
   const [hasVerifiedGitStatus, setHasVerifiedGitStatus] = useState(false)
+  const [gitStatus, setGitStatus] = useState<GitToolbarSnapshot["gitStatus"]>(null)
+  const [branches, setBranches] = useState<NativeGitBranch[]>([])
   const syncContext = useOptionalProjectSyncContext()
 
   const collabLiveAvailable = useMemo(
@@ -244,6 +247,8 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
     setLastError(snapshot.loadError)
     setIsGitRepo(snapshot.isRepo)
     setHasVerifiedGitStatus(snapshot.hasVerifiedGitStatus)
+    setGitStatus(snapshot.gitStatus)
+    setBranches(snapshot.branches)
   }, [])
 
   const refreshGitState = useCallback(async () => {
@@ -252,6 +257,8 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
       setLastError(null)
       setIsGitRepo(null)
       setHasVerifiedGitStatus(false)
+      setGitStatus(null)
+      setBranches([])
       return
     }
 
@@ -401,11 +408,35 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
     [displayedBranch, hasVerifiedGitStatus, isGitRepo, isLoading],
   )
 
+  const currentBranch = useMemo(() => {
+    return (
+      branches.find((b) => b.name === displayedBranch || (b.current && !displayedBranch)) ?? null
+    )
+  }, [branches, displayedBranch])
+
+  const isWorktree = Boolean(currentBranch?.worktreePath)
+  const branchPr: WorkbenchBranchPrInfo | null = useMemo(() => {
+    const rawPr = (gitStatus as Record<string, unknown> | null)?.pr as
+      | WorkbenchBranchPrInfo
+      | undefined
+    if (!rawPr || typeof rawPr.number !== "number") return null
+    return {
+      number: rawPr.number,
+      title: rawPr.title,
+      url: rawPr.url,
+      state: rawPr.state,
+      isDraft: rawPr.isDraft,
+    }
+  }, [gitStatus])
+
   return {
     branchCwd,
     chromeLabel,
     branchAriaLabel,
     branchTooltipDetail,
+    isRepo: Boolean(isGitRepo),
+    isWorktree,
+    branchPr,
     isBusy: isLoading || isSwitching,
     showActionSpinner: isSwitching,
     handleOpenNativeBranchMenu,

@@ -27,6 +27,8 @@ import { useLocation, useSearchParams } from "@/lib/router";
 import { useTheme } from "@/contexts/ThemeContext";
 import { ProjectSyncIndicator } from "@/features/projects/ui/ProjectSyncIndicator";
 import { WorkbenchHeaderBranchControl } from "@/features/workbench/WorkbenchHeaderBranchControl";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
 import { useProjectWorkbenchSearchParamSync } from "@/features/workbench/hooks/useProjectWorkbenchSearchParamSync";
 import {
   markWorkbenchIntentApplied,
@@ -194,9 +196,14 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     () => (
       <div className="flex min-w-0 items-center gap-2">
         <div
-          className="flex h-7 min-w-0 max-w-[320px] items-center text-sm font-medium text-foreground"
+          className="flex h-7 min-w-0 max-w-[320px] items-center gap-1.5 text-sm font-medium text-foreground"
           title={projectName}
         >
+          <HugeiconsIcon
+            icon={Folder01Icon}
+            className="size-4 shrink-0 text-muted-foreground/80"
+            aria-hidden="true"
+          />
           <span className="truncate">{projectName}</span>
         </div>
         {!hasActiveLiveSession ? (

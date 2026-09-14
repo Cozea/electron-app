@@ -8,8 +8,14 @@ import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteC
 import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
 import { useWorkbenchBranchControl } from "@/features/workbench/branch-control/useWorkbenchBranchControl"
 
+import { WorkbenchBranchStatusIcon } from "@/features/workbench/branch-control/WorkbenchBranchStatusIcon"
+
 interface WorkbenchHeaderBranchControlProps {
   triggerClassName?: string
+  /** Position of the branch/PR/worktree status icon: "leading" (default) or "trailing". */
+  iconPosition?: "leading" | "trailing"
+  /** Explicit override to show/hide branch status icon; defaults to true when repo detected. */
+  showBranchIcon?: boolean
   /** Rendered inside the branch button after the label; pointer-events disabled so the control stays one hit target. */
   trailing?: ReactNode
 }
@@ -23,6 +29,8 @@ interface WorkbenchHeaderBranchControlProps {
  */
 export function WorkbenchHeaderBranchControl({
   triggerClassName,
+  iconPosition = "leading",
+  showBranchIcon,
   trailing,
 }: WorkbenchHeaderBranchControlProps) {
   const routeContext = useOptionalProjectRouteContext()
@@ -40,6 +48,9 @@ export function WorkbenchHeaderBranchControl({
     chromeLabel,
     branchAriaLabel,
     branchTooltipDetail,
+    isRepo,
+    isWorktree,
+    branchPr,
     isBusy,
     showActionSpinner,
     handleOpenNativeBranchMenu,
@@ -58,6 +69,14 @@ export function WorkbenchHeaderBranchControl({
   const tooltipText =
     branchTooltipDetail ?? `${t("workbench.branch.currentBranch")}: ${chromeLabel.replace(/\?$/, "")}`
 
+  const shouldShowIcon = showBranchIcon ?? isRepo
+  const branchIcon = shouldShowIcon ? (
+    <WorkbenchBranchStatusIcon
+      pr={branchPr}
+      isWorktree={isWorktree}
+    />
+  ) : null
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -66,7 +85,7 @@ export function WorkbenchHeaderBranchControl({
           variant="ghost"
           size="sm"
           className={cn(
-            "h-7 gap-1 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60",
+            "h-7 gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60",
             triggerClassName,
           )}
           disabled={!branchCwd}
@@ -75,8 +94,13 @@ export function WorkbenchHeaderBranchControl({
           aria-label={ariaLabel}
           onClick={handleOpenNativeBranchMenu}
         >
-          {showActionSpinner ? <div className="loader text-muted-foreground" /> : null}
+          {showActionSpinner ? (
+            <div className="loader text-muted-foreground" />
+          ) : iconPosition === "leading" ? (
+            branchIcon
+          ) : null}
           <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
+          {iconPosition === "trailing" ? branchIcon : null}
           {trailing ? (
             <span className="inline-flex shrink-0 items-center pointer-events-none" aria-hidden="true">
               {trailing}
