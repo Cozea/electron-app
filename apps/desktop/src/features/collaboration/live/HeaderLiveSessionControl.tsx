@@ -86,26 +86,6 @@ function SessionStatusPill({
       className="inline-flex h-7 items-center gap-1.5 text-sm font-medium text-foreground shrink-0"
       aria-label={`Session on ${branchName} · merges into ${targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
     >
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="inline-flex items-center cursor-default">
-            {isActive ? (
-              <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
-            ) : (
-              <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
-            )}
-          </div>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          <p className="text-xs font-medium">
-            {isActive ? "Live Collaboration Session" : "Collaboration Paused / Inactive"}
-          </p>
-          <p className="text-2xs text-muted-foreground">
-            {sync.detail || `Live on ${branchName} · merges into ${targetBranch}`}
-          </p>
-        </TooltipContent>
-      </Tooltip>
-
       <WorkbenchHeaderBranchControl
         triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1 text-sm font-medium text-foreground shadow-none hover:bg-muted/60"
         trailing={null}
@@ -116,16 +96,23 @@ function SessionStatusPill({
           <span className="text-muted-foreground/60 text-sm font-normal">·</span>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span
-                className={cn(
-                  "truncate text-sm font-medium cursor-default pr-0.5",
-                  autoGit.tone === "attention"
-                    ? "text-destructive"
-                    : "text-foreground",
+              <div className="inline-flex items-center gap-1 cursor-default pr-0.5">
+                {isActive ? (
+                  <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+                ) : (
+                  <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
                 )}
-              >
-                {saveAgeLabel}
-              </span>
+                <span
+                  className={cn(
+                    "truncate text-sm font-medium",
+                    autoGit.tone === "attention"
+                      ? "text-destructive"
+                      : "text-foreground",
+                  )}
+                >
+                  {saveAgeLabel}
+                </span>
+              </div>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs font-medium">Automatic Git Checkpoint</p>
@@ -137,10 +124,33 @@ function SessionStatusPill({
               {autoGit.title ? (
                 <p className="text-2xs text-muted-foreground/80 mt-0.5">{autoGit.title}</p>
               ) : null}
+              <p className="text-2xs text-muted-foreground/70 mt-1 border-t border-border/40 pt-1">
+                {sync.detail || `Live on ${branchName} · merges into ${targetBranch}`}
+              </p>
             </TooltipContent>
           </Tooltip>
         </>
-      ) : null}
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="inline-flex items-center cursor-default">
+              {isActive ? (
+                <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+              ) : (
+                <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="text-xs font-medium">
+              {isActive ? "Live Collaboration Session" : "Collaboration Paused / Inactive"}
+            </p>
+            <p className="text-2xs text-muted-foreground">
+              {sync.detail || `Live on ${branchName} · merges into ${targetBranch}`}
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      )}
     </div>
   )
 }
