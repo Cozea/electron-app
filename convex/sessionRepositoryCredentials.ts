@@ -25,10 +25,11 @@ export function repositoryGrant(raw: string, projectId: string, repositoryUrl: s
 
 export async function issueRepositoryInstallationToken(grant: RepositoryGrant, appId: string, privateKey: string, fetchFn: typeof fetch = fetch, purpose: "pull_request" | "git_write" = "pull_request") {
   if (purpose === "git_write" && grant.allowGitWrite !== true) throw new Error("Git write access is not provisioned")
+  const normalizedKey = privateKey.replace(/\\n/g, "\n")
   const now = Math.floor(Date.now() / 1000)
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url")
   const unsigned = `${encode({ alg: "RS256", typ: "JWT" })}.${encode({ iat: now - 60, exp: now + 540, iss: appId })}`
-  const jwt = `${unsigned}.${sign("RSA-SHA256", Buffer.from(unsigned), privateKey).toString("base64url")}`
+  const jwt = `${unsigned}.${sign("RSA-SHA256", Buffer.from(unsigned), normalizedKey).toString("base64url")}`
   const response = await fetchFn(`https://api.github.com/app/installations/${grant.installationId}/access_tokens`, {
     method: "POST", redirect: "error", signal: AbortSignal.timeout(15_000),
     headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
@@ -63,8 +64,8 @@ function issueForSession(purpose: "pull_request" | "git_write") {
     const before = (await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)) as CredentialScope
     try {
       const grant = repositoryGrant(process.env.COZEA_GITHUB_REPOSITORY_GRANTS ?? "[]", before.projectId, before.repositoryUrl)
-      const appId = process.env.COZEA_GITHUB_APP_ID
-      const privateKey = process.env.COZEA_GITHUB_APP_PRIVATE_KEY
+      const appId = process.env.COZEA_GITHUB_APP_ID ?? process.env.GITHUB_SOURCE_CONTROL_APP_ID
+      const privateKey = (process.env.COZEA_GITHUB_APP_PRIVATE_KEY ?? process.env.GITHUB_SOURCE_CONTROL_APP_PRIVATE_KEY)?.replace(/\\n/g, "\n")
       if (!appId || !privateKey) throw new Error("Not configured")
       const issued = await issueRepositoryInstallationToken(grant, appId, privateKey, fetch, purpose)
       const after = (await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)) as CredentialScope
@@ -99,7 +100,9 @@ export const capabilities = action({
     let gitWrite = false
     try {
       const grant = repositoryGrant(process.env.COZEA_GITHUB_REPOSITORY_GRANTS ?? "[]", before.projectId, before.repositoryUrl)
-      const configured = Boolean(process.env.COZEA_GITHUB_APP_ID && process.env.COZEA_GITHUB_APP_PRIVATE_KEY)
+      const appId = process.env.COZEA_GITHUB_APP_ID ?? process.env.GITHUB_SOURCE_CONTROL_APP_ID
+      const privateKey = process.env.COZEA_GITHUB_APP_PRIVATE_KEY ?? process.env.GITHUB_SOURCE_CONTROL_APP_PRIVATE_KEY
+      const configured = Boolean(appId && privateKey)
       pullRequest = configured
       gitWrite = configured && grant.allowGitWrite === true
     } catch {

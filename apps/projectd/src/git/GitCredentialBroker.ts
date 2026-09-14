@@ -48,7 +48,7 @@ export async function withGitRepositoryCredential<T>(
         if (!line) continue
         const separator = line.indexOf("=")
         const key = line.slice(0, separator)
-        if (separator < 1 || fields.has(key)) { socket.end(); return }
+        if (separator < 1 || (!key.endsWith("[]") && fields.has(key))) { socket.end(); return }
         fields.set(key, line.slice(separator + 1))
       }
       const requested = fields.get("path")?.replace(/\.git$/, "").toLowerCase()
@@ -63,6 +63,7 @@ export async function withGitRepositoryCredential<T>(
     await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(socketPath, resolve) })
     await fs.chmod(socketPath, 0o600)
     const config = [
+      ["credential.https://github.com.helper", ""],
       ["credential.helper", ""],
       ["credential.helper", `!${quote(process.execPath)} -e ${quote(HELPER)} --`],
       ["credential.useHttpPath", "true"],

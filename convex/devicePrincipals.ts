@@ -46,6 +46,7 @@ export const createDeviceAuthChallengeFromServer = mutation({
     const identityAttempts = await ctx.db.query("deviceAuthChallenges")
       .withIndex("by_identity_and_created_at", (q) =>
         q.eq("identityKey", identityKey).gte("createdAt", now - CHALLENGE_WINDOW_MS))
+      .filter((q) => q.eq(q.field("consumedAt"), undefined))
       .take(MAX_IDENTITY_CHALLENGES_PER_WINDOW)
     if (identityAttempts.length >= MAX_IDENTITY_CHALLENGES_PER_WINDOW) {
       throw new ConvexError("Too many device authentication attempts")
@@ -54,6 +55,7 @@ export const createDeviceAuthChallengeFromServer = mutation({
       const attempts = await ctx.db.query("deviceAuthChallenges")
         .withIndex("by_fingerprint_and_created_at", (q) =>
           q.eq("requestFingerprint", args.requestFingerprint!).gte("createdAt", now - CHALLENGE_WINDOW_MS))
+        .filter((q) => q.eq(q.field("consumedAt"), undefined))
         .take(MAX_FINGERPRINT_CHALLENGES_PER_WINDOW)
       if (attempts.length >= MAX_FINGERPRINT_CHALLENGES_PER_WINDOW) {
         throw new ConvexError("Too many device authentication attempts")
