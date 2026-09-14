@@ -34,6 +34,7 @@ interface UnifiedHeaderProps {
   header?: ReactNode;
   centerAddon?: ReactNode;
   preSearchAddon?: ReactNode;
+  liveSessionControl?: ReactNode;
   rightAddon?: ReactNode;
   className?: string;
   /** `fixed` spans the viewport (legacy). `embedded` stays in layout flow (e.g. inside `SidebarInset`) so it clears the sidebar. */
@@ -55,6 +56,7 @@ export function UnifiedHeader({
   header,
   centerAddon,
   preSearchAddon,
+  liveSessionControl,
   rightAddon,
   className,
   layoutMode = "fixed",
@@ -103,7 +105,15 @@ export function UnifiedHeader({
   const isTabsPrimaryLayout = layoutMode === "inset" && Boolean(header);
 
   const groups: HeaderActionGroup[] = [];
-  if (preSearchAddon) {
+  if (liveSessionControl) {
+    groups.push({
+      id: "live-session",
+      label: "Live Session",
+      priority: 95,
+      placement: "leading",
+      content: liveSessionControl,
+    });
+  } else if (preSearchAddon) {
     groups.push({ id: "presence", label: "Collaboration", priority: 10, placement: "leading", content: preSearchAddon });
   }
   if (projectInviteContext) {

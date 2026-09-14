@@ -8,6 +8,7 @@ interface UseProjectChromeHeaderArgs {
   isSettingsModeRoute: boolean;
   isWorkbenchView: boolean;
   presencePreSearchAddon: ReactNode | null;
+  liveSessionControl?: ReactNode | null;
   /** Current route project for the changes/share/inbox strip. */
   projectId: Id<"projects"> | null;
   projectName: string | null;
@@ -24,6 +25,7 @@ export function useProjectChromeHeader({
   isSettingsModeRoute,
   isWorkbenchView,
   presencePreSearchAddon,
+  liveSessionControl,
   projectId,
   projectName,
   editorProjectPath,
@@ -48,6 +50,7 @@ export function useProjectChromeHeader({
       header: headerResolved,
       centerAddon,
       preSearchAddon: isSettingsModeRoute ? undefined : (presencePreSearchAddon ?? undefined),
+      liveSessionControl: isSettingsModeRoute ? undefined : (liveSessionControl ?? undefined),
       rightAddon: rightFromPage ?? undefined,
       hideShare: hideShare || isSettingsModeRoute || !isWorkbenchView || !projectId,
       contentInsetLeft: insetLeft,
@@ -69,6 +72,7 @@ export function useProjectChromeHeader({
     isSettingsModeRoute,
     isWorkbenchView,
     presencePreSearchAddon,
+    liveSessionControl,
     projectId,
     projectName,
   ]);

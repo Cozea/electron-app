@@ -69,7 +69,7 @@ function HeaderGroup({ group, hidden, destination, register, dismiss, overflowTr
   const slot = useRef<HTMLDivElement>(null)
   const [host] = useState(() => {
     const element = document.createElement("div")
-    element.className = "responsive-header-group"
+    element.className = "responsive-header-group titlebar-no-drag"
     element.dataset.headerGroup = group.id
     return element
   })

@@ -21,6 +21,7 @@ import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery";
 import { resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
 import { LiveSessionBar } from "@/features/collaboration/live/LiveSessionBar";
+import { HeaderLiveSessionControl } from "@/features/collaboration/live/HeaderLiveSessionControl";
 import { useLiveSession } from "@/features/collaboration/live/useLiveSession";
 import { buildLegacyProjectPath, buildProjectPath } from "@/contexts/project/projectRoutes";
 import { featureFlags } from "@/lib/featureFlags";
@@ -381,10 +382,18 @@ export function ProjectLayout({
     return project?._id ?? null;
   }, [project?._id]);
 
+  const liveSessionHeaderControl = useMemo(() => {
+    if (!liveSession.session || !liveSession.sync) {
+      return null;
+    }
+    return <HeaderLiveSessionControl live={liveSession} />;
+  }, [liveSession]);
+
   const chromeHeader = useProjectChromeHeader({
     isSettingsModeRoute,
     isWorkbenchView,
     presencePreSearchAddon: presenceHeaderAddon,
+    liveSessionControl: liveSessionHeaderControl,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,
