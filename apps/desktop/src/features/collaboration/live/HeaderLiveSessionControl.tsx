@@ -11,14 +11,6 @@ import { ArrowDown01Icon, FloppyDiskIcon, MicOff01Icon } from "@hugeicons/core-f
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MdCloud, MdCloudOff } from "react-icons/md"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { getUserColor } from "@/components/presence/PresenceAvatarGroup"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -44,18 +36,10 @@ import {
   formatSaveTime,
   type LiveSessionAction,
   type LiveSessionAutoGitView,
-  type LiveSessionMember,
   type LiveSessionSyncView,
   type SessionMembership,
 } from "./liveSessionModel"
 import type { LiveSessionController, LiveSessionRecord } from "./useLiveSession"
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return "?"
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-}
 
 function SessionStatusPill({
   sync,
@@ -260,93 +244,6 @@ function SessionStatusPill({
   )
 }
 
-function ParticipantAvatars({ members }: { members: LiveSessionMember[] }) {
-  const inSession = members.filter((m) => m.status === "active")
-  if (inSession.length === 0) return null
-
-  const MAX_AVATARS = 3
-  const visible = inSession.slice(0, MAX_AVATARS)
-  const overflow = inSession.length - MAX_AVATARS
-
-  return (
-    <TooltipProvider>
-      <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
-        {visible.map((member, index) => {
-          const isSpeaking = member.microphoneState === "speaking"
-          const isMuted = member.microphoneState === "muted"
-          const color = getUserColor(member.principalId)
-
-          return (
-            <Tooltip key={member.principalId}>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20 cursor-default focus:outline-none"
-                  style={{ zIndex: visible.length - index }}
-                >
-                  <Avatar
-                    className={cn(
-                      "size-6 border-2 border-background rounded-full transition-all",
-                      isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
-                    )}
-                  >
-                    {member.avatarUrl ? (
-                      <AvatarImage src={member.avatarUrl} alt={member.displayName} />
-                    ) : null}
-                    <AvatarFallback
-                      className="text-[10px] font-medium"
-                      style={{ backgroundColor: color, color: "white" }}
-                    >
-                      {initials(member.displayName)}
-                    </AvatarFallback>
-                  </Avatar>
-                  {isMuted ? (
-                    <span
-                      className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
-                      title="Microphone muted"
-                    >
-                      <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
-                    </span>
-                  ) : null}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="flex flex-col gap-0.5">
-                <p className="font-medium text-xs">
-                  {member.displayName} {member.isSelf && <span className="text-muted-foreground">(this device)</span>}
-                </p>
-                <p className="text-2xs text-muted-foreground capitalize">
-                  {member.role.replace(/_/g, " ")} · {isSpeaking ? "Speaking" : isMuted ? "Muted" : "Active"}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )
-        })}
-        {overflow > 0 ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20 cursor-default focus:outline-none"
-              >
-                <Avatar className="size-6 border-2 border-background bg-muted rounded-full">
-                  <AvatarFallback className="text-[10px] font-medium bg-muted text-muted-foreground">
-                    +{overflow}
-                  </AvatarFallback>
-                </Avatar>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">
-                {overflow} more {overflow === 1 ? "person" : "people"}
-              </p>
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-      </div>
-    </TooltipProvider>
-  )
-}
-
 function AudioControlPill({ media }: { media: SessionMediaController | null }) {
   if (!media) return null
 
@@ -493,8 +390,6 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
           onResume={live.resume}
           onEnd={live.end}
         />
-
-        <ParticipantAvatars members={live.members} />
 
         {live.membership === "active" ? <AudioControlPill media={live.media} /> : null}
 

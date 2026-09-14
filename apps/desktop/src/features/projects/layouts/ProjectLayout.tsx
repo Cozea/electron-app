@@ -394,6 +394,10 @@ export function ProjectLayout({
     isWorkbenchView,
     presencePreSearchAddon: presenceHeaderAddon,
     liveSessionControl: liveSessionHeaderControl,
+    liveSessionMembers:
+      liveSession.session && liveSession.membership === "active"
+        ? liveSession.members
+        : undefined,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,

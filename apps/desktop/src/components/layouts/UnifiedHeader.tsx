@@ -12,6 +12,7 @@ import { useWindowsCaptionControlsWidth } from "@/hooks/useWindowsCaptionControl
 import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChangesButton";
 import { WorkbenchHeaderEditorControl } from "@/features/workbench/WorkbenchHeaderEditorControl";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
+import type { LiveSessionMember } from "@/features/collaboration/live/liveSessionModel";
 
 import { ResponsiveHeaderRow, type HeaderActionGroup } from "./unified-header/ResponsiveHeaderRow";
 
@@ -35,6 +36,7 @@ interface UnifiedHeaderProps {
   centerAddon?: ReactNode;
   preSearchAddon?: ReactNode;
   liveSessionControl?: ReactNode;
+  liveSessionMembers?: LiveSessionMember[];
   rightAddon?: ReactNode;
   className?: string;
   /** `fixed` spans the viewport (legacy). `embedded` stays in layout flow (e.g. inside `SidebarInset`) so it clears the sidebar. */
@@ -57,6 +59,7 @@ export function UnifiedHeader({
   centerAddon,
   preSearchAddon,
   liveSessionControl,
+  liveSessionMembers,
   rightAddon,
   className,
   layoutMode = "fixed",
@@ -126,10 +129,23 @@ export function UnifiedHeader({
         content: <WorkbenchHeaderEditorControl workspaceId={editorProjectPath} /> });
     }
     if (!hideShare) {
-      groups.push({ id: "share", label: "Share project", priority: 20,
-        content: <Suspense fallback={<HeaderShareButtonFallback />}>
-          <LazyHeaderProjectShareButton projectId={projectInviteContext.projectId} projectName={projectInviteContext.projectName} />
-        </Suspense> });
+      const hasActiveSession = Boolean(
+        liveSessionMembers && liveSessionMembers.some((m) => m.status === "active")
+      );
+      groups.push({
+        id: "share",
+        label: hasActiveSession ? "Session members & access" : "Share project",
+        priority: 20,
+        content: (
+          <Suspense fallback={<HeaderShareButtonFallback />}>
+            <LazyHeaderProjectShareButton
+              projectId={projectInviteContext.projectId}
+              projectName={projectInviteContext.projectName}
+              liveSessionMembers={liveSessionMembers}
+            />
+          </Suspense>
+        ),
+      });
     }
   }
   if (rightAddon) {

@@ -31,6 +31,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { getUserColor } from "@/components/presence/PresenceAvatarGroup";
+import { cn } from "@/lib/utils";
+import type { LiveSessionMember } from "@/features/collaboration/live/liveSessionModel";
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -39,6 +42,7 @@ import {
   Link01Icon as __LinkHugeIcon,
   Refresh01Icon as __RefreshHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
+  MicOff01Icon,
 } from '@hugeicons/core-free-icons'
 
 type ProjectRole = "project_manager" | "developer" | "designer" | "viewer";
@@ -50,9 +54,11 @@ const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
   { value: "project_manager", label: "Project manager" },
 ];
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D";
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 }
 
 
@@ -60,9 +66,11 @@ function initials(value: string): string {
 export function HeaderProjectShareButton({
   projectId,
   projectName,
+  liveSessionMembers,
 }: {
   projectId: Id<"projects"> | null;
   projectName?: string | null;
+  liveSessionMembers?: LiveSessionMember[];
 }) {
   const { principalId } = useAuth();
   const syncContext = useOptionalProjectSyncContext();
@@ -174,38 +182,159 @@ export function HeaderProjectShareButton({
 
   if (!projectId) return null;
 
+  const inSession = (liveSessionMembers ?? []).filter((m) => m.status === "active");
+  const hasActiveSession = inSession.length > 0;
+  const MAX_AVATARS = 3;
+  const visible = inSession.slice(0, MAX_AVATARS);
+  const overflow = inSession.length - MAX_AVATARS;
+
   return (
     <>
     <Dialog open={open} onOpenChange={(next) => {
       setOpen(next);
       if (next) headerOverflow?.dismiss();
     }}>
-      <Tooltip>
+      <Tooltip open={open ? false : undefined}>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
-            <Button
-              variant="ghost"
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground"
-              disabled={roleCheckPending || shareStatePending}
-              aria-label="Share project"
-              title="Share project"
-            >
-              {roleCheckPending || shareStatePending ? (
-                <Spinner size="sm" className="text-muted-foreground" />
-              ) : (
-                <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
-              )}
-            </Button>
+            {hasActiveSession ? (
+              <Button
+                variant="ghost"
+                className="inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag cursor-pointer"
+                disabled={roleCheckPending || shareStatePending}
+                aria-label={`Live session with ${inSession.length} participant${inSession.length === 1 ? "" : "s"}. Click to open session menu.`}
+              >
+                <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
+                  {visible.map((member, index) => {
+                    const isSpeaking = member.microphoneState === "speaking";
+                    const isMuted = member.microphoneState === "muted";
+                    const color = getUserColor(member.principalId);
+
+                    return (
+                      <span
+                        key={member.principalId}
+                        className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20"
+                        style={{ zIndex: visible.length - index }}
+                      >
+                        <Avatar
+                          className={cn(
+                            "size-6 border-2 border-background rounded-full transition-all",
+                            isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
+                          )}
+                        >
+                          {member.avatarUrl ? (
+                            <AvatarImage src={member.avatarUrl} alt={member.displayName} />
+                          ) : null}
+                          <AvatarFallback
+                            className="text-[10px] font-medium"
+                            style={{ backgroundColor: color, color: "white" }}
+                          >
+                            {initials(member.displayName)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {isMuted ? (
+                          <span
+                            className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
+                            title="Microphone muted"
+                          >
+                            <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
+                          </span>
+                        ) : null}
+                      </span>
+                    );
+                  })}
+                  {overflow > 0 ? (
+                    <span
+                      className="relative inline-flex items-center"
+                      style={{ zIndex: 0 }}
+                    >
+                      <Avatar className="size-6 border-2 border-background rounded-full bg-muted">
+                        <AvatarFallback className="text-[10px] font-medium text-muted-foreground">
+                          +{overflow}
+                        </AvatarFallback>
+                      </Avatar>
+                    </span>
+                  ) : null}
+                </div>
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag"
+                disabled={roleCheckPending || shareStatePending}
+                aria-label="Share project"
+                title="Share project"
+              >
+                {roleCheckPending || shareStatePending ? (
+                  <Spinner size="sm" className="text-muted-foreground" />
+                ) : (
+                  <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
+                )}
+              </Button>
+            )}
           </DialogTrigger>
         </TooltipTrigger>
-        <TooltipContent>Share project</TooltipContent>
+        <TooltipContent
+          side="bottom"
+          align="end"
+          className={cn(
+            hasActiveSession ? "flex flex-col gap-1.5 p-2.5 min-w-48 text-xs" : undefined,
+          )}
+        >
+          {hasActiveSession ? (
+            <>
+              <div className="flex items-center justify-between border-b border-border/40 pb-1.5">
+                <span className="font-semibold text-xs text-foreground">Live session</span>
+                <span className="text-2xs text-muted-foreground">{inSession.length} active</span>
+              </div>
+              <div className="flex flex-col gap-1 py-0.5">
+                {inSession.map((m) => {
+                  const isSpeaking = m.microphoneState === "speaking";
+                  const isMuted = m.microphoneState === "muted";
+                  const color = getUserColor(m.principalId);
+                  return (
+                    <div key={m.principalId} className="flex items-center gap-2 text-xs">
+                      <span
+                        className="size-2 rounded-full shrink-0"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="font-medium text-foreground truncate max-w-[130px]">
+                        {m.displayName} {m.isSelf ? <span className="text-muted-foreground font-normal">(you)</span> : ""}
+                      </span>
+                      <span className="text-muted-foreground text-2xs ml-auto">
+                        {isSpeaking ? (
+                          <span className="text-emerald-500 font-medium">Speaking</span>
+                        ) : isMuted ? (
+                          "Muted"
+                        ) : (
+                          m.role.replace(/_/g, " ")
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="text-2xs text-muted-foreground/80 pt-1.5 border-t border-border/40">
+                Click to open session menu
+              </div>
+            </>
+          ) : (
+            "Share project"
+          )}
+        </TooltipContent>
       </Tooltip>
 
       <DialogContent finalFocus={headerOverflow?.returnFocus} className="max-h-[82vh] max-w-lg overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Share {projectName || "project"}</DialogTitle>
+          <DialogTitle>
+            {hasActiveSession
+              ? `Live session · ${projectName || "project"}`
+              : `Share ${projectName || "project"}`}
+          </DialogTitle>
           <DialogDescription>
-            Edit this branch together in a live session, or give other Cozea devices access to the project.
+            {hasActiveSession
+              ? `Edit this branch together in a live session, or give other Cozea devices access to the project.`
+              : `Edit this branch together in a live session, or give other Cozea devices access to the project.`}
           </DialogDescription>
         </DialogHeader>
 
