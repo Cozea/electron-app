@@ -4,27 +4,18 @@ import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
 import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
 
-import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import fs from 'node:fs'
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit } from '../gitRuntime'
+import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit, runGitCommand } from '../gitRuntime'
 import { resolvePathWithinDirectory } from '../pathUtils'
-import { markInternalFsChange } from '../projectWatcher'
-import {
-  acknowledgeSyncOps,
-  enqueueSyncOps,
-  getSyncJournalStateSnapshot,
-  normalizeSyncPath,
-  type SyncOpRecord,
-} from '../services/syncJournalStore'
 import { GitChangesBroadcaster } from '../services/GitChangesBroadcaster'
-import { GitSyncService } from '../services/gitSyncService'
 import { CheckpointWorkerClient } from '../services/CheckpointWorkerClient'
-import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
+import { getSharedProjectdClient } from '../projectd/ProjectdClient'
 import type { GitChangesScope } from '../../../../shared/electronApiTypes'
 import { bootstrapSubstrateVcs } from '../substrate/vcs/bootstrap'
-import { invalidateVcsStatus } from '../substrate/vcs/statusInvalidation'
 
 function sha256Hex(content: Buffer | Uint8Array): string {
   return createHash('sha256').update(content).digest('hex')
@@ -67,14 +58,8 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   // Phase 4: register Changes checkpoint facade + shared status invalidation bus.
   bootstrapSubstrateVcs()
 
-  const gitSyncService = GitSyncService.getInstance()
   const gitDirtyStateService = GitChangesBroadcaster.getInstance()
   const checkpointWorkerClient = CheckpointWorkerClient.getInstance()
-
-  /** Collab overlay → substrate status bus (4c/4d). Keeps Changes + agent on one invalidate path. */
-  const invalidateAfterCollabMutation = (projectPath: string): void => {
-    invalidateVcsStatus(projectPath, 'all')
-  }
   ipcMain.handle(
     'workspaceSync:hashFile',
     async (_event, { workspaceId, laneId, path }: { workspaceId: string; laneId?: string; path: string }): Promise<{ hash: string; size: number } | { success: false; error: string }> => {
@@ -96,7 +81,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       {
         workspaceId,
         files,
-        opMeta,
+        opMeta: _opMeta,
       }: {
         workspaceId: string
         files: Array<{ path: string; content: string; encoding?: 'utf8' | 'base64' }>
@@ -119,11 +104,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         return { results: [], successCount: 0 }
       }
       const results: Array<{ path: string; success: boolean; error?: string }> = []
-      const opsToEnqueue: SyncOpRecord[] = []
-      const opProjectId = opMeta?.projectId ? String(opMeta.projectId) : null
-      const opActorId = opMeta?.actorId?.trim() ? opMeta.actorId.trim() : 'system'
-      const opActorType = opMeta?.actorType ?? 'system'
-      const opSource = opMeta?.source ?? 'remote'
 
       for (const file of files) {
         try {
@@ -132,8 +112,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
 
           await mkdir(dir, { recursive: true })
 
-          // Prevent the project watcher from treating this as an external change.
-          markInternalFsChange(fullPath)
           const bytes =
             file.encoding === 'base64'
               ? Buffer.from(file.content, 'base64')
@@ -143,57 +121,12 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
           } else {
             await writeFile(fullPath, file.content, 'utf-8')
           }
-          const stats = await stat(fullPath)
           results.push({ path: file.path, success: true })
-          console.log(`[Sync] Wrote file: ${file.path}`)
-
-          if (opProjectId) {
-            const normalizedPath = normalizeSyncPath(file.path)
-            const timestamp = Date.now()
-            const newHash = sha256Hex(bytes)
-            opsToEnqueue.push({
-              opId: randomUUID(),
-              idempotencyKey: `${opProjectId}:${opSource}:upsert:${normalizedPath}:${newHash}`,
-              projectId: opProjectId,
-              actorId: opActorId,
-              actorType: opActorType,
-              source: opSource,
-              kind: 'upsert',
-              path: normalizedPath,
-              newHash,
-              isBinary: file.encoding === 'base64',
-              size: stats.size,
-              timestamp,
-            })
-          }
-
-          if (file.encoding !== 'base64') {
-            notifyFileChanged(fullPath, file.content, {
-              origin: 'sync',
-              workspaceId,
-              projectRootPath,
-              relativePath: file.path,
-            })
-          }
-          notifyFileMetaChanged({
-            filePath: fullPath,
-            workspaceId,
-            projectRootPath,
-            relativePath: file.path,
-            origin: 'sync',
-            isBinary: file.encoding === 'base64',
-            sizeBytes: stats.size,
-            content: file.encoding === 'base64' ? undefined : file.content,
-          })
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : 'Unknown error'
           results.push({ path: file.path, success: false, error: errorMsg })
           console.error(`[Sync] Failed to write file: ${file.path}`, error)
         }
-      }
-
-      if (opProjectId && opsToEnqueue.length > 0) {
-        enqueueSyncOps(opProjectId, opsToEnqueue)
       }
 
       return { results, successCount: results.filter((result) => result.success).length }
@@ -207,7 +140,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       {
         workspaceId,
         paths,
-        opMeta,
       }: {
         workspaceId: string
         paths: string[]
@@ -229,20 +161,12 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         return { results: [] }
       }
       const results: Array<{ path: string; success: boolean }> = []
-      const opsToEnqueue: SyncOpRecord[] = []
-      const opProjectId = opMeta?.projectId ? String(opMeta.projectId) : null
-      const opActorId = opMeta?.actorId?.trim() ? opMeta.actorId.trim() : 'system'
-      const opActorType = opMeta?.actorType ?? 'system'
-      const opSource = opMeta?.source ?? 'remote'
 
       for (const relPath of paths) {
         try {
           const fullPath = resolvePathWithinDirectory(projectRootPath, relPath)
           try {
-            // Prevent the project watcher from treating this as an external change.
-            markInternalFsChange(fullPath)
             await unlink(fullPath)
-            console.log(`[Sync] Deleted file: ${relPath}`)
           } catch (unlinkErr) {
             const code = (unlinkErr as NodeJS.ErrnoException)?.code
             if (code !== 'ENOENT') {
@@ -250,39 +174,10 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
             }
           }
           results.push({ path: relPath, success: true })
-
-          if (opProjectId) {
-            const normalizedPath = normalizeSyncPath(relPath)
-            const timestamp = Date.now()
-            opsToEnqueue.push({
-              opId: randomUUID(),
-              idempotencyKey: `${opProjectId}:${opSource}:delete:${normalizedPath}`,
-              projectId: opProjectId,
-              actorId: opActorId,
-              actorType: opActorType,
-              source: opSource,
-              kind: 'delete',
-              path: normalizedPath,
-              isBinary: false,
-              size: 0,
-              timestamp,
-            })
-          }
-
-          notifyFileDeleted(fullPath, {
-            origin: 'sync',
-            workspaceId,
-            projectRootPath,
-            relativePath: relPath,
-          })
         } catch (error) {
           console.error(`[Sync] Failed to delete file: ${relPath}`, error)
           results.push({ path: relPath, success: false })
         }
-      }
-
-      if (opProjectId && opsToEnqueue.length > 0) {
-        enqueueSyncOps(opProjectId, opsToEnqueue)
       }
 
       return { results }
@@ -293,83 +188,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
     return getGitRuntimeHealth(Boolean(force))
   })
 
-  ipcMain.handle(
-    'workspaceSync:gitEnsureRepo',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        branch?: string
-        repoUrl?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.ensureRepo({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
 
-  ipcMain.handle(
-    'workspaceSync:gitCloneIfMissing',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        repoUrl: string
-        branch?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.cloneIfMissing({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitFetchMain',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        remote?: string
-        branch?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.fetchMain({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
 
   ipcMain.handle(
     'workspaceSync:gitStatus',
@@ -387,132 +206,89 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
         projectPath = access.gitRootPath ?? access.projectRootPath
       } catch (e) {
-        return { success: false, isRepo: false, error: String(e) }
-      }
-      return gitSyncService.getStatus({ ...options, projectPath })
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitPullMain',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        remote?: string
-        branch?: string
-        strategy?: 'merge' | 'ff-only'
-        allowUnrelatedHistories?: boolean
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
+        return {
+          success: false,
+          isRepo: false,
+          hasOriginRemote: false,
+          branch: null,
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          clean: true,
+          files: [],
+          error: String(e),
+        }
       }
       try {
-        return await gitSyncService.pullMain({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitReplayLocalCommits',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        remote?: string
-        branch?: string
-        repoUrl?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.replayLocalCommits({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitClassifyRepoHealth',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        remote?: string
-        branch?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      return gitSyncService.classifyRepoHealth({ ...options, projectPath })
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitSalvageReclone',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        repoUrl: string
-        branch?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.salvageReclone({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
+        const client = getSharedProjectdClient()
+        const status = await client.gitStatus(projectPath)
+        const isRepo = Boolean(!status.isUnborn || (status.files && status.files.length > 0) || status.headOid)
+        return {
+          success: true,
+          isRepo,
+          hasOriginRemote: Boolean(status.upstream?.startsWith('origin/')),
+          branch: status.headRef,
+          upstream: status.upstream,
+          ahead: status.ahead ?? 0,
+          behind: status.behind ?? 0,
+          clean: status.clean ?? true,
+          files: (status.files ?? []).map((f: any) => ({
+            path: f.path,
+            status: f.isConflicted ? 'conflicted' : f.isUntracked ? 'untracked' : f.isStaged ? 'staged' : 'modified',
+            staged: Boolean(f.isStaged),
+          })),
+        }
+      } catch (err: any) {
+        return {
+          success: false,
+          isRepo: false,
+          hasOriginRemote: false,
+          branch: null,
+          upstream: null,
+          ahead: 0,
+          behind: 0,
+          clean: true,
+          files: [],
+          error: err?.message ?? 'Failed to get git status through canonical GitService',
+        }
       }
     }
   )
 
   ipcMain.handle(
     'workspaceSync:gitReadConflictFile',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        filePath: string
-      }
-    ) => {
-      let projectPath: string
+    async (_event, { workspaceId, filePath }: { workspaceId: string; filePath: string }) => {
       try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'git-read' })
+        const cwd = access.gitRootPath ?? access.projectRootPath
+
+        const runShow = async (stage: number) => {
+          const res = await runGitCommand(['show', `:${stage}:${filePath}`], { cwd })
+          return res.success ? res.stdout : null
+        }
+
+        const [baseContent, localContent, cloudContent] = await Promise.all([
+          runShow(1),
+          runShow(2),
+          runShow(3),
+        ])
+
+        const fullPath = path.resolve(cwd, filePath)
+        let currentContent = ''
+        if (fs.existsSync(fullPath)) {
+          currentContent = fs.readFileSync(fullPath, 'utf8')
+        }
+
+        return {
+          success: true,
+          baseContent,
+          localContent,
+          cloudContent,
+          currentContent,
+        }
       } catch (e) {
-        return { success: false, error: String(e) }
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
       }
-      return gitSyncService.readConflictFile({ ...options, projectPath })
     }
   )
 
@@ -520,153 +296,26 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
     'workspaceSync:gitResolveConflictFile',
     async (
       _event,
-      options: {
-        workspaceId: string
-        filePath: string
-        resolvedContent: string
-      }
+      { workspaceId, filePath, resolvedContent }: { workspaceId: string; filePath: string; resolvedContent: string }
     ) => {
-      let projectPath: string
       try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.resolveConflictFile({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
+        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'write-file' })
+        const cwd = access.gitRootPath ?? access.projectRootPath
+        const fullPath = path.resolve(cwd, filePath)
 
-  ipcMain.handle(
-    'workspaceSync:gitRestoreMain',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        remote?: string
-        branch?: string
-        repoUrl?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.restoreMain({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
+        fs.writeFileSync(fullPath, resolvedContent, 'utf8')
+        await runGitCommand(['add', filePath], { cwd })
 
-  ipcMain.handle(
-    'workspaceSync:gitAdoptWorkspace',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        branch?: string
-        repoUrl?: string
-        debug?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.adoptWorkspace({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
+        const diffRes = await runGitCommand(['diff', '--name-only', '--diff-filter=U'], { cwd })
+        const remaining = diffRes.stdout.split('\n').map((s) => s.trim()).filter(Boolean)
 
-  ipcMain.handle(
-    'workspaceSync:gitCommitAll',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        message: string
-        addAll?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
+        return {
+          success: true,
+          mergeCompleted: remaining.length === 0,
+          remainingConflictedPaths: remaining,
+        }
       } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.commitAll({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitPushMain',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        remote?: string
-        branch?: string
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.pushMain({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitCommitAndPush',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        message: string
-        remote?: string
-        branch?: string
-        addAll?: boolean
-      }
-    ) => {
-      let projectPath: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        projectPath = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      try {
-        return await gitSyncService.commitAndPush({ ...options, projectPath })
-      } finally {
-        invalidateAfterCollabMutation(projectPath)
+        return { success: false, error: e instanceof Error ? e.message : String(e) }
       }
     }
   )
@@ -998,80 +647,4 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       return mergeTreeWithGit(input)
     }
   )
-
-  ipcMain.handle(
-    'workspaceSync:enqueueOps',
-    async (
-      _event,
-      { projectId, ops }: { projectId: string; ops: SyncOpRecord[] }
-    ): Promise<{
-      accepted: number
-      acceptedOpIds: string[]
-      rejected: number
-      journalState: {
-        projectId: string
-        journalHead: number
-        pendingOps: number
-        lastAckedAt: number | null
-        ackedOps: number
-        pathHeads: Record<string, string>
-        lastJournalCursor: number
-        lastPersistedAt: number | null
-      }
-    }> => {
-      const result = enqueueSyncOps(String(projectId), Array.isArray(ops) ? ops : [])
-      return {
-        accepted: result.accepted,
-        acceptedOpIds: result.acceptedOpIds,
-        rejected: result.rejected,
-        journalState: getSyncJournalStateSnapshot(String(projectId)),
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:ackOps',
-    async (
-      _event,
-      { projectId, opIds }: { projectId: string; opIds: string[] }
-    ): Promise<{
-      acked: number
-      journalState: {
-        projectId: string
-        journalHead: number
-        pendingOps: number
-        lastAckedAt: number | null
-        ackedOps: number
-        pathHeads: Record<string, string>
-        lastJournalCursor: number
-        lastPersistedAt: number | null
-      }
-    }> => {
-      const result = acknowledgeSyncOps(String(projectId), Array.isArray(opIds) ? opIds : [])
-      return {
-        acked: result.acked,
-        journalState: getSyncJournalStateSnapshot(String(projectId)),
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:getJournalState',
-    async (
-      _event,
-      { projectId }: { projectId: string }
-    ): Promise<{
-      projectId: string
-      journalHead: number
-      pendingOps: number
-      lastAckedAt: number | null
-      ackedOps: number
-      pathHeads: Record<string, string>
-      lastJournalCursor: number
-      lastPersistedAt: number | null
-    }> => {
-      return getSyncJournalStateSnapshot(String(projectId))
-    }
-  )
-
 }

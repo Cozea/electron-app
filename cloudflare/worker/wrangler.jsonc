@@ -18,10 +18,6 @@
   "durable_objects": {
     "bindings": [
       {
-        "name": "COLLAB_ROOM",
-        "class_name": "CollabRoom",
-      },
-      {
         "name": "COLLAB_SESSION_ROOM",
         "class_name": "CollaborationSessionRoom",
       },
@@ -51,6 +47,10 @@
     {
       "tag": "v4",
       "new_sqlite_classes": ["CollaborationSessionRoom"],
+    },
+    {
+      "tag": "v5",
+      "deleted_classes": ["CollabRoom"],
     },
   ],
   "containers": [

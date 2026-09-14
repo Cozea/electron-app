@@ -57,4 +57,11 @@ fs.mkdirSync(outputDirectory, { recursive: true })
 const outputPath = path.join(outputDirectory, product)
 fs.copyFileSync(binaryPath, outputPath)
 fs.chmodSync(outputPath, 0o755)
+
+// Strip quarantine/provenance attributes and re-sign ad-hoc so macOS AMFI
+// validates the staged universal binary without SIGKILL (Code Signature Invalid).
+run('/usr/bin/xattr', ['-cr', outputPath])
+run('/usr/bin/codesign', ['-f', '-s', '-', outputPath])
+
 console.log(`Staged ${path.relative(repositoryRoot, outputPath)} (${architectures.join(', ')}).`)
+

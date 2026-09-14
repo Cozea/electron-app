@@ -2,11 +2,9 @@ import type { Env } from './types'
 import { ContainerProxy, proxyToSandbox } from '@cloudflare/sandbox'
 import { handleHealth } from './routes/health'
 import { handleCollabCapabilities } from './routes/collabCapabilities'
-import { handleCollabSession } from './routes/collabSession'
 import { handleSessionRoomConnect, PUBLIC_SESSION_ID_PATTERN } from './routes/sessionRoom'
 import { handleSessionBinaryObject } from './routes/sessionBinary'
 import { preflightResponse, protocolError } from './lib/protocol'
-import { CollabRoom } from './durableObjects/CollabRoom'
 import { CollaborationSessionRoom } from './durableObjects/CollaborationSessionRoom'
 import { DevAppRuntimeBuild } from './durableObjects/DevAppRuntimeBuild'
 import { CozeaDevAppSandbox } from './durableObjects/CozeaDevAppSandbox'
@@ -24,11 +22,6 @@ import {
 } from './routes/devAppHostedRuntimes'
 import { handleDeviceAuthChallenge, handleDeviceAuthComplete, handleDeviceAuthJwks } from './routes/deviceAuth'
 import { handleCreateRecoveryGrant, handleRedeemRecoveryGrant } from './routes/deviceRecovery'
-
-function getRoomStub(env: Env, roomId: string): DurableObjectStub {
-  const id = env.COLLAB_ROOM.idFromName(roomId)
-  return env.COLLAB_ROOM.get(id)
-}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -110,20 +103,6 @@ export default {
         }
       }
 
-      if (request.method === 'POST' && url.pathname === '/collab/session') {
-        try {
-          return await handleCollabSession(request, env)
-        } catch (error) {
-          return protocolError(
-            'BAD_REQUEST',
-            error instanceof Error ? error.message : 'Invalid collaboration session request',
-            { status: 400 },
-            false,
-            origin,
-          )
-        }
-      }
-
       if (request.method === 'POST' && url.pathname === '/devapps/runtime-builds') {
         return await handleCreateDevAppRuntimeBuild(request, env)
       }
@@ -191,15 +170,6 @@ export default {
         return room.fetch(request)
       }
 
-      if (url.pathname === '/collab/ws') {
-        const roomId = url.searchParams.get('roomId')
-        if (!roomId) {
-          return protocolError('BAD_REQUEST', 'roomId query parameter is required', { status: 400 }, false, origin)
-        }
-        const stub = getRoomStub(env, roomId)
-        return stub.fetch(request)
-      }
-
       return protocolError('NOT_FOUND', 'Route not found', { status: 404 }, false, origin)
     } catch (error) {
       return protocolError(
@@ -213,4 +183,4 @@ export default {
   },
 } satisfies ExportedHandler<Env>
 
-export { CollabRoom, CollaborationSessionRoom, CozeaDevAppSandbox, ContainerProxy, DevAppRuntimeBuild }
+export { CollaborationSessionRoom, CozeaDevAppSandbox, ContainerProxy, DevAppRuntimeBuild }

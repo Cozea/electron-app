@@ -672,8 +672,26 @@ describe("collaborationSessions members for the session bar", () => {
     await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
 
     expect(await runConvexHandler(sessions.listMembers, world.owner.ctx, { sessionId })).toEqual([
-      { principalId: world.owner.id, displayName: "Owner", role: "project_manager", status: "active", isSelf: true },
-      { principalId: world.teammate.id, displayName: "Teammate", role: "developer", status: "active", isSelf: false },
+      {
+        principalId: world.owner.id,
+        displayName: "Owner",
+        role: "project_manager",
+        status: "active",
+        isSelf: true,
+        microphoneState: "off",
+        isWorkbenchActive: false,
+        allowBackgroundAudio: false,
+      },
+      {
+        principalId: world.teammate.id,
+        displayName: "Teammate",
+        role: "developer",
+        status: "active",
+        isSelf: false,
+        microphoneState: "off",
+        isWorkbenchActive: false,
+        allowBackgroundAudio: false,
+      },
     ])
     expect(await runConvexHandler(sessions.listMembers, world.outsider.ctx, { sessionId })).toEqual([])
     expect(await runConvexHandler(sessions.listMembers, world.anonymous, { sessionId })).toEqual([])

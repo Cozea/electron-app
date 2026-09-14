@@ -5,6 +5,9 @@
  * Consolidates Git operations into a single daemon-owned authority.
  */
 
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 import { createHash } from "node:crypto"
 import { GitProcess, type GitProcessHealth } from "./GitProcess"
 import { GitStatusParser, type ParsedGitStatus } from "./GitStatus"
@@ -210,8 +213,226 @@ export class GitService {
     await this.process.execute(args, { cwd })
   }
 
-  async checkoutBranch(cwd: string, branchName: string): Promise<void> {
-    await this.process.execute(["checkout", branchName], { cwd })
+  async checkoutBranch(cwd: string, branchName: string): Promise<string> {
+    const trimmed = branchName.trim()
+    if (!trimmed) {
+      throw new Error("Branch name is required.")
+    }
+    const [localCheck, remoteCheck] = await Promise.all([
+      this.process.execute(["show-ref", "--verify", "--quiet", `refs/heads/${trimmed}`], {
+        cwd,
+        allowNonZeroExit: true,
+      }),
+      this.process.execute(["show-ref", "--verify", "--quiet", `refs/remotes/${trimmed}`], {
+        cwd,
+        allowNonZeroExit: true,
+      }),
+    ])
+
+    const remoteExists = remoteCheck.success
+    const localExists = localCheck.success
+
+    let localTrackingBranch: string | null = null
+    if (remoteExists) {
+      const trackingRes = await this.process.execute(
+        ["for-each-ref", "--format=%(refname:short)\t%(upstream:short)", "refs/heads"],
+        { cwd, allowNonZeroExit: true },
+      )
+      if (trackingRes.success) {
+        for (const line of trackingRes.stdout.split("\n")) {
+          const [branchNameRaw, upstreamBranchRaw = ""] = line.trim().split("\t")
+          if (upstreamBranchRaw.trim() === trimmed) {
+            localTrackingBranch = branchNameRaw.trim()
+            break
+          }
+        }
+      }
+    }
+
+    const separatorIndex = trimmed.indexOf("/")
+    const localTrackedCandidate =
+      separatorIndex > 0 ? trimmed.slice(separatorIndex + 1).trim() : null
+    let localTrackedCandidateExists = false
+    if (remoteExists && localTrackedCandidate) {
+      const candidateCheck = await this.process.execute(
+        ["show-ref", "--verify", "--quiet", `refs/heads/${localTrackedCandidate}`],
+        { cwd, allowNonZeroExit: true },
+      )
+      localTrackedCandidateExists = candidateCheck.success
+    }
+
+    const checkoutArgs = localExists
+      ? ["checkout", trimmed]
+      : remoteExists && !localTrackingBranch && localTrackedCandidateExists
+        ? ["checkout", trimmed]
+        : remoteExists && !localTrackingBranch
+          ? ["checkout", "--track", trimmed]
+          : remoteExists && localTrackingBranch
+            ? ["checkout", localTrackingBranch]
+            : ["checkout", trimmed]
+
+    const res = await this.process.execute(checkoutArgs, { cwd })
+    if (!res.success) {
+      throw new Error(res.stderr.trim() || "Failed to switch branches.")
+    }
+
+    const currentBranchRes = await this.process.execute(["branch", "--show-current"], {
+      cwd,
+      allowNonZeroExit: true,
+    })
+    return currentBranchRes.success && currentBranchRes.stdout.trim()
+      ? currentBranchRes.stdout.trim()
+      : trimmed
+  }
+
+  async createWorktree(
+    cwd: string,
+    branch: string,
+    options?: { newBranch?: string; path?: string | null },
+  ): Promise<{ success: boolean; worktree?: { path: string; branch: string }; error?: string }> {
+    const baseBranch = branch.trim()
+    const targetBranch = (options?.newBranch ?? branch).trim()
+    if (!baseBranch || !targetBranch) {
+      return { success: false, error: "Branch name is required." }
+    }
+
+    const worktreePath = options?.path?.trim()
+      ? path.resolve(options.path)
+      : path.join(os.tmpdir(), "cozea-worktrees", path.basename(cwd), targetBranch.replace(/\//g, "-"))
+
+    fs.mkdirSync(path.dirname(worktreePath), { recursive: true })
+
+    const gitArgs = options?.newBranch?.trim()
+      ? ["worktree", "add", "-b", options.newBranch.trim(), worktreePath, baseBranch]
+      : ["worktree", "add", worktreePath, baseBranch]
+
+    const res = await this.process.execute(gitArgs, { cwd, allowNonZeroExit: true })
+    if (!res.success) {
+      return { success: false, error: res.stderr.trim() || "Failed to create git worktree." }
+    }
+
+    return {
+      success: true,
+      worktree: {
+        path: worktreePath,
+        branch: targetBranch,
+      },
+    }
+  }
+
+  async listWorktrees(
+    cwd: string,
+  ): Promise<Array<{ path: string; headOid: string; branch: string | null }>> {
+    const res = await this.process.execute(["worktree", "list", "--porcelain", "-z"], {
+      cwd,
+      allowNonZeroExit: true,
+    })
+    if (!res.success) return []
+    const tokens = res.stdout.split("\0")
+    const worktrees: Array<{ path: string; headOid: string; branch: string | null }> = []
+    let currentPath: string | null = null
+    let currentOid = ""
+    let currentBranch: string | null = null
+
+    for (const token of tokens) {
+      if (!token) {
+        if (currentPath) {
+          worktrees.push({ path: currentPath, headOid: currentOid, branch: currentBranch })
+          currentPath = null
+          currentOid = ""
+          currentBranch = null
+        }
+        continue
+      }
+      if (token.startsWith("worktree ")) {
+        currentPath = token.slice("worktree ".length)
+      } else if (token.startsWith("HEAD ")) {
+        currentOid = token.slice("HEAD ".length)
+      } else if (token.startsWith("branch refs/heads/")) {
+        currentBranch = token.slice("branch refs/heads/".length)
+      }
+    }
+    if (currentPath) {
+      worktrees.push({ path: currentPath, headOid: currentOid, branch: currentBranch })
+    }
+    return worktrees
+  }
+
+  async listProjectBranches(cwd: string): Promise<{
+    isRepo: boolean
+    hasOriginRemote: boolean
+    branches: Array<{
+      name: string
+      current: boolean
+      isRemote: boolean
+      remoteName?: string
+      isDefault: boolean
+      worktreePath: string | null
+    }>
+    error?: string
+  }> {
+    const repoCheck = await this.process.execute(["rev-parse", "--is-inside-work-tree"], {
+      cwd,
+      allowNonZeroExit: true,
+    })
+    if (!repoCheck.success || repoCheck.stdout.trim() !== "true") {
+      return { isRepo: false, hasOriginRemote: false, branches: [] }
+    }
+
+    const [branches, remotesRes, defaultRefRes, worktrees] = await Promise.all([
+      this.getBranches(cwd),
+      this.process.execute(["remote"], { cwd, allowNonZeroExit: true }),
+      this.process.execute(["symbolic-ref", "refs/remotes/origin/HEAD"], {
+        cwd,
+        allowNonZeroExit: true,
+      }),
+      this.listWorktrees(cwd),
+    ])
+
+    const remotes = remotesRes.success
+      ? remotesRes.stdout.split("\n").map((r) => r.trim()).filter(Boolean)
+      : []
+    const hasOriginRemote = remotes.includes("origin")
+    const defaultBranch =
+      defaultRefRes.success &&
+      defaultRefRes.stdout.trim().startsWith("refs/remotes/origin/")
+        ? defaultRefRes.stdout.trim().replace(/^refs\/remotes\/origin\//, "")
+        : null
+
+    const worktreeMap = new Map<string, string>()
+    for (const wt of worktrees) {
+      if (wt.branch) {
+        worktreeMap.set(wt.branch, wt.path)
+      }
+    }
+
+    const resultBranches = branches.map((b) => {
+      let remoteName: string | undefined
+      if (b.isRemote) {
+        const slashIdx = b.name.indexOf("/")
+        if (slashIdx > 0) {
+          remoteName = b.name.slice(0, slashIdx)
+        }
+      }
+      const isDefault = b.isRemote
+        ? b.name === `origin/${defaultBranch}`
+        : b.name === defaultBranch
+
+      return {
+        name: b.name,
+        current: b.isCurrent,
+        isRemote: b.isRemote,
+        remoteName,
+        isDefault,
+        worktreePath: worktreeMap.get(b.name) ?? null,
+      }
+    })
+
+    return {
+      isRepo: true,
+      hasOriginRemote,
+      branches: resultBranches,
+    }
   }
 
   async createCommit(

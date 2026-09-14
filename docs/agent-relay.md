@@ -53,7 +53,19 @@ notes: ...
 
 ## OpenCode usage (Muse side)
 
-Helper script (repo root):
+Two interfaces, same bus. Prefer the MCP server; the script is the fallback.
+
+MCP server (`mcp-relay/relay-mcp.mjs`, zero dependencies, stdio, registered as
+`relay` in `opencode.json`). Tools (arrive as `relay_read`, `relay_post`, …):
+
+- `relay_status` — cheap monitor ping: issue state, comment count, latest headers
+- `relay_read(limit, from)` — fetch recent messages, newest first
+- `relay_post(header, body)` — publish (WRITE — explicit user request required)
+- `relay_wait(after, from, timeout_secs, poll_secs)` — long-poll until a new
+  message matching `from` arrives, then return it; `{timed_out: true}` otherwise.
+  This is how the agent monitors for ChatGPT's reply and gets it back.
+
+Helper script (repo root, same protocol, no MCP needed):
 
 ```sh
 # read latest relay messages (READ-only, safe anytime)

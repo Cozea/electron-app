@@ -1010,6 +1010,98 @@ export class ProjectdServer {
           })
         break
       }
+      case "git.projectBranches": {
+        const p = req.params as { cwd: string }
+        if (!p?.cwd) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'cwd' parameter",
+          })
+          break
+        }
+        void this.gitService
+          .listProjectBranches(p.cwd)
+          .then((result) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result,
+            })
+          })
+          .catch((err) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: { isRepo: false, hasOriginRemote: false, branches: [], error: err.message },
+            })
+          })
+        break
+      }
+      case "git.checkout": {
+        const p = req.params as { cwd: string; branch: string }
+        if (!p?.cwd || !p?.branch) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'cwd' or 'branch' parameter",
+          })
+          break
+        }
+        void this.gitService
+          .checkoutBranch(p.cwd, p.branch)
+          .then((branch) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: { success: true, branch },
+            })
+          })
+          .catch((err) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: { success: false, error: err.message },
+            })
+          })
+        break
+      }
+      case "git.worktreeAdd": {
+        const p = req.params as {
+          cwd: string
+          branch: string
+          newBranch?: string
+          path?: string | null
+        }
+        if (!p?.cwd || !p?.branch) {
+          this.sendError(state, req.id, {
+            code: "INVALID_PARAMS",
+            message: "Missing 'cwd' or 'branch' parameter",
+          })
+          break
+        }
+        void this.gitService
+          .createWorktree(p.cwd, p.branch, { newBranch: p.newBranch, path: p.path })
+          .then((result) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result,
+            })
+          })
+          .catch((err) => {
+            this.sendMessage(state, {
+              type: "response",
+              id: req.id,
+              success: true,
+              result: { success: false, error: err.message },
+            })
+          })
+        break
+      }
       case "sessions.attach":
         this.reply(state, req.id, () => this.attachSession(req.params))
         break

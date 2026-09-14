@@ -804,7 +804,7 @@ export const deleteProject = mutation({
 })
 
 const PROJECT_PURGE_BATCH_SIZE = 64
-const PROJECT_PURGE_FINAL_STAGE = 34
+const PROJECT_PURGE_FINAL_STAGE = 31
 
 async function deleteRows<TableName extends TableNames>(
   ctx: MutationCtx,
@@ -1036,37 +1036,13 @@ async function deleteProjectPurgeStage(
     }
     case 23: {
       const rows = await ctx.db
-        .query("yjsUpdates")
-        .withIndex("by_project_and_time", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 24: {
-      const rows = await ctx.db
-        .query("yjsDocuments")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 25: {
-      const rows = await ctx.db
-        .query("yjsAwareness")
-        .withIndex("by_project_and_updated", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 26: {
-      const rows = await ctx.db
         .query("projectPresence")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 27: {
+    case 24: {
       const rows = await ctx.db
         .query("deploymentJobs")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -1074,7 +1050,7 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 28: {
+    case 25: {
       const rows = await ctx.db
         .query("devAppArtifactUploads")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
@@ -1085,35 +1061,35 @@ async function deleteProjectPurgeStage(
       }
       return rows.length
     }
-    case 29:
+    case 26:
       return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
         ctx.db
           .query("collaborationSessionMembers")
           .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
           .take(limit),
       )
-    case 30:
+    case 27:
       return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
         ctx.db
           .query("collaborationSessionInvitations")
           .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
           .take(limit),
       )
-    case 31:
+    case 28:
       return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
         ctx.db
           .query("collaborationSessionKeys")
           .withIndex("by_session_and_version", (q) => q.eq("sessionId", sessionId))
           .take(limit),
       )
-    case 32:
+    case 29:
       return await deleteCollaborationSessionRows(ctx, projectId, (sessionId, limit) =>
         ctx.db
           .query("collaborationAutoGit")
           .withIndex("by_session", (q) => q.eq("sessionId", sessionId))
           .take(limit),
       )
-    case 33: {
+    case 30: {
       // Sessions go last, once nothing keyed by their ID remains.
       const rows = await ctx.db
         .query("collaborationSessions")

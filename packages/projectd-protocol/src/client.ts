@@ -356,6 +356,41 @@ export class ProjectdClient {
     return this.request<T[]>("git.branches", { cwd })
   }
 
+  async gitProjectBranches<T = any>(cwd: string): Promise<T> {
+    return this.request<T>("git.projectBranches", { cwd })
+  }
+
+  async gitCheckout(
+    cwd: string,
+    branch: string,
+  ): Promise<{ success: boolean; branch?: string; error?: string }> {
+    return this.request<{ success: boolean; branch?: string; error?: string }>("git.checkout", {
+      cwd,
+      branch,
+    })
+  }
+
+  async gitCreateWorktree(
+    cwd: string,
+    branch: string,
+    options?: { newBranch?: string; path?: string | null },
+  ): Promise<{
+    success: boolean
+    worktree?: { path: string; branch: string }
+    error?: string
+  }> {
+    return this.request<{
+      success: boolean
+      worktree?: { path: string; branch: string }
+      error?: string
+    }>("git.worktreeAdd", {
+      cwd,
+      branch,
+      newBranch: options?.newBranch,
+      path: options?.path,
+    })
+  }
+
   async gitCheckIgnore(cwd: string, paths: string[]): Promise<string[]> {
     return this.request<string[]>("git.checkIgnore", { cwd, paths })
   }

@@ -358,11 +358,20 @@ export function isCollabEncryptionAvailable(): boolean {
   return safeStorage.isEncryptionAvailable()
 }
 
+function resolveHelperPath(): string | undefined {
+  if (app.isPackaged) return path.join(process.resourcesPath, 'projectd/cozea-projectd-mac-helper')
+  if (process.env.COZEA_MAC_HELPER_PATH && fs.existsSync(process.env.COZEA_MAC_HELPER_PATH)) {
+    return process.env.COZEA_MAC_HELPER_PATH
+  }
+  const repoRoot = path.resolve(app.getAppPath(), '../..')
+  const staged = path.join(repoRoot, 'build/projectd-helper/cozea-projectd-mac-helper')
+  if (fs.existsSync(staged)) return staged
+  return undefined
+}
+
 /** Main-only handoff into this profile's OS Keychain. Private keys never cross renderer IPC. */
 export async function authorizeBackgroundCollaborationIdentity(): Promise<void> {
-  const helper = new NativeMacHelper(
-    app.isPackaged ? path.join(process.resourcesPath, 'projectd/cozea-projectd-mac-helper') : undefined,
-  )
+  const helper = new NativeMacHelper(resolveHelperPath())
   const identity = await loadStoredIdentityOrThrow()
   const existing = await helper.loadIdentity()
   if (existing) {
@@ -580,9 +589,7 @@ export async function unwrapRoomKeyFromRecoveryKit(args: {
 
 export async function deleteCollabDeviceIdentity(): Promise<{ success: boolean; error?: string }> {
   try {
-    const helper = new NativeMacHelper(
-      app.isPackaged ? path.join(process.resourcesPath, 'projectd/cozea-projectd-mac-helper') : undefined,
-    )
+    const helper = new NativeMacHelper(resolveHelperPath())
     if (helper.isAvailable && await helper.loadIdentity()) {
       const daemon = getSharedProjectdClient()
       await daemon.request("sessions.clear")

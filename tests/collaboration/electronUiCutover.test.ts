@@ -24,16 +24,17 @@ import {
   resolveCollaborationGate,
 } from "@/features/collaboration/collaborationGate"
 
-describe("P23 collaboration gate", () => {
-  it("keeps the shared branch collaborating when no session exists for it", () => {
+describe("P26 collaboration gate", () => {
+  it("keeps non-session branches local without the retired in-app engine", () => {
     expect(resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions: [] })).toEqual({
-      enabled: true,
-      reason: "shared-branch",
+      enabled: false,
+      reason: "private-branch",
     })
-    // Sessions still loading (or unreadable) behave like none.
-    expect(resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions: undefined }).enabled).toBe(
-      true,
-    )
+    // Sessions still loading (or unreadable) behave like none, remaining private.
+    expect(resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions: undefined })).toEqual({
+      enabled: false,
+      reason: "private-branch",
+    })
   })
 
   it("keeps other branches local without a session", () => {
@@ -43,8 +44,6 @@ describe("P23 collaboration gate", () => {
   })
 
   it("disables legacy collaboration for Session Workbenches even while sessions query is loading", () => {
-    // Regression: a Session Workbench on the shared branch must never mount the
-    // legacy in-app engine during the loading window before sessions arrive.
     expect(
       resolveCollaborationGate({
         activeBranch: "main",
@@ -54,7 +53,6 @@ describe("P23 collaboration gate", () => {
       }),
     ).toEqual({ enabled: false, reason: "session-daemon" })
 
-    // Ordinary workspaces retain the shared-branch fallback during loading until P26.
     expect(
       resolveCollaborationGate({
         activeBranch: "main",
@@ -62,7 +60,7 @@ describe("P23 collaboration gate", () => {
         sessions: undefined,
         workspaceId: "ws_ordinary_main",
       }),
-    ).toEqual({ enabled: true, reason: "shared-branch" })
+    ).toEqual({ enabled: false, reason: "private-branch" })
   })
 
   it("leaves a session's branch to the daemon, on the shared branch too", () => {
@@ -75,10 +73,10 @@ describe("P23 collaboration gate", () => {
         }),
       ).toEqual({ enabled: false, reason: "session-daemon" })
     }
-    // Branches without a session keep the in-app behaviour.
+    // Branches without a session remain private (in-app Yjs engine is dead).
     expect(
       resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions: [] }),
-    ).toEqual({ enabled: true, reason: "shared-branch" })
+    ).toEqual({ enabled: false, reason: "private-branch" })
   })
 
   it("leaves a session branch to the daemon regardless of fallback flags or lifecycle", () => {
@@ -99,7 +97,7 @@ describe("P23 collaboration gate", () => {
       { branchName: "feature/other", lifecycle: "ACTIVE" },
     ]
     expect(resolveCollaborationGate({ activeBranch: "main", sharedBranch: "main", sessions }).reason).toBe(
-      "shared-branch",
+      "private-branch",
     )
     expect(resolveCollaborationGate({ activeBranch: "feature/solo", sharedBranch: "main", sessions }).enabled).toBe(
       false,

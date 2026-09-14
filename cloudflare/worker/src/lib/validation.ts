@@ -1,4 +1,4 @@
-import type { DeviceAuthChallengeRequest, SessionRequestBody } from '../types'
+import type { DeviceAuthChallengeRequest } from '../types'
 import { isDeviceIdentityKey, normalizeDeviceIdentityKey } from '../../../../shared/deviceIdentity'
 
 function getStringField(value: unknown, name: string, maxLength = 500): string {
@@ -21,23 +21,6 @@ export async function parseJsonRequest(request: Request): Promise<unknown> {
     throw new Error('Expected application/json request body')
   }
   return request.json()
-}
-
-export function parseSessionRequestBody(value: unknown): SessionRequestBody {
-  if (!value || typeof value !== 'object') {
-    throw new Error('Request body must be an object')
-  }
-
-  const body = value as Record<string, unknown>
-  const clientType = getStringField(body.clientType ?? 'electron', 'clientType', 32)
-  if (clientType !== 'web' && clientType !== 'electron') {
-    throw new Error('clientType must be web or electron')
-  }
-
-  return {
-    projectId: getStringField(body.projectId, 'projectId', 200),
-    clientType,
-  }
 }
 
 export function parseDeviceAuthChallengeRequest(value: unknown): DeviceAuthChallengeRequest {

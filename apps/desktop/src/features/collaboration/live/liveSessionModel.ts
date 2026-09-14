@@ -22,12 +22,17 @@ export type LiveSessionAction =
   | "ignore_env"
   | "check_target"
 
+export type MicrophoneState = "muted" | "active" | "speaking" | "off" | "unpermitted"
+
 export interface LiveSessionMember {
   principalId: string
   displayName: string
   role: string
   status: string
   isSelf: boolean
+  microphoneState?: MicrophoneState
+  isWorkbenchActive?: boolean
+  allowBackgroundAudio?: boolean
 }
 
 export type LiveSessionTone = "live" | "working" | "attention" | "idle"

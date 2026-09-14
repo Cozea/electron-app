@@ -23,12 +23,7 @@ import type {
 import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
 import { resolvePathWithinDirectory } from '../pathUtils'
-import { markInternalFsChange, startProjectWatcher, stopProjectWatcher } from '../projectWatcher'
-import {
-  checkoutProjectGitBranch,
-  createProjectGitWorktree,
-  listProjectGitBranches,
-} from '../services/projectGitDesktopService'
+import { getSharedProjectdClient } from '../projectd/ProjectdClient'
 import { applyThreadWorktreeToWorkspace } from '../services/threadWorktreeService'
 import {
   shouldExcludeGeneratedDirectory,
@@ -37,7 +32,12 @@ import {
 import { listProjectFilesFromIndex } from '../services/ProjectFileIndexService'
 import { getProjectContextOptionsFromAnalysis } from '../services/ProjectAnalysisService'
 import { listProjectDirectoryEntries } from '../services/projectDirectoryInspection'
-import { notifyFileChanged, notifyFileDeleted, notifyFileMetaChanged } from '../yjsNotify'
+import { GitChangesBroadcaster } from '../services/GitChangesBroadcaster'
+import { markProjectAnalysisStaleForFile } from '../services/ProjectAnalysisService'
+import {
+  applyProjectFileDeleteToIndex,
+  applyProjectFileMetaChangeToIndex,
+} from '../services/ProjectFileIndexService'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
 interface RegisterProjectHandlersDeps {
@@ -182,7 +182,17 @@ export function registerProjectHandlers(
       } catch (e) {
         return { success: false, isRepo: false, hasOriginRemote: false, branches: [], error: String(e) }
       }
-      return listProjectGitBranches(projectPath)
+      try {
+        const client = getSharedProjectdClient()
+        return await client.gitProjectBranches(projectPath)
+      } catch (err: any) {
+        return {
+          isRepo: false,
+          hasOriginRemote: false,
+          branches: [],
+          error: err?.message ?? 'Failed to list git branches through canonical GitService',
+        }
+      }
     },
   )
 
@@ -196,7 +206,12 @@ export function registerProjectHandlers(
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return checkoutProjectGitBranch({ cwd: projectPath, branch })
+      try {
+        const client = getSharedProjectdClient()
+        return await client.gitCheckout(projectPath, branch)
+      } catch (err: any) {
+        return { success: false, error: err?.message ?? 'Failed to switch branches' }
+      }
     },
   )
 
@@ -213,12 +228,15 @@ export function registerProjectHandlers(
       } catch (e) {
         return { success: false, error: String(e) }
       }
-      return createProjectGitWorktree({
-        cwd: projectPath,
-        branch: options.branch,
-        newBranch: options.newBranch,
-        path: options.path,
-      })
+      try {
+        const client = getSharedProjectdClient()
+        return await client.gitCreateWorktree(projectPath, options.branch, {
+          newBranch: options.newBranch,
+          path: options.path,
+        })
+      } catch (err: any) {
+        return { success: false, error: err?.message ?? 'Failed to create git worktree' }
+      }
     },
   )
 
@@ -390,7 +408,7 @@ export function registerProjectHandlers(
         filePath,
         content,
         encoding = 'utf8',
-        origin = 'agent',
+        origin: _origin = 'agent',
       }: {
         workspaceId: string
         filePath: string
@@ -409,7 +427,6 @@ export function registerProjectHandlers(
         }
 
         // Prevent the project watcher from treating this as an external change.
-        markInternalFsChange(fullPath)
         if (encoding === 'base64') {
           fs.writeFileSync(fullPath, Buffer.from(content, 'base64'))
         } else {
@@ -418,24 +435,12 @@ export function registerProjectHandlers(
         const stats = fs.statSync(fullPath)
         console.log(`[Project] Wrote file: ${fullPath}`)
 
-        if (encoding !== 'base64') {
-          notifyFileChanged(fullPath, content, {
-            origin,
-            workspaceId,
-            projectRootPath: access.projectRootPath,
-            relativePath: filePath,
-          })
-        }
-        notifyFileMetaChanged({
+        applyProjectFileMetaChangeToIndex({
           filePath: fullPath,
-          workspaceId,
-          projectRootPath: access.projectRootPath,
-          relativePath: filePath,
-          origin,
-          isBinary: encoding === 'base64',
           sizeBytes: stats.size,
-          content: encoding === 'base64' ? undefined : content,
         })
+        markProjectAnalysisStaleForFile(fullPath)
+        GitChangesBroadcaster.getInstance().invalidateFilePath(fullPath)
 
         return {
           success: true,
@@ -595,7 +600,7 @@ export function registerProjectHandlers(
         workspaceId,
         oldPath,
         newPath,
-        origin,
+        origin: _origin,
       }: {
         workspaceId: string
         oldPath: string
@@ -617,30 +622,21 @@ export function registerProjectHandlers(
           fs.mkdirSync(newDir, { recursive: true })
         }
 
-        markInternalFsChange(fullOldPath)
-        markInternalFsChange(fullNewPath)
         fs.renameSync(fullOldPath, fullNewPath)
         console.log(`[Project] Renamed: ${oldPath} -> ${newPath}`, origin ? { origin } : undefined)
 
-        if (origin) {
-          const nextStats = fs.statSync(fullNewPath)
-          notifyFileDeleted(fullOldPath, {
-            origin,
-            workspaceId,
-            projectRootPath: access.projectRootPath,
-            relativePath: oldPath,
-          })
-          notifyFileMetaChanged({
-            filePath: fullNewPath,
-            workspaceId,
-            projectRootPath: access.projectRootPath,
-            relativePath: newPath,
-            origin,
-            isBinary: false,
-            isDirectory: nextStats.isDirectory(),
-            sizeBytes: nextStats.isDirectory() ? 0 : nextStats.size,
-          })
-        }
+        applyProjectFileDeleteToIndex(fullOldPath)
+        markProjectAnalysisStaleForFile(fullOldPath)
+        GitChangesBroadcaster.getInstance().invalidateFilePath(fullOldPath)
+
+        const nextStats = fs.statSync(fullNewPath)
+        applyProjectFileMetaChangeToIndex({
+          filePath: fullNewPath,
+          isDirectory: nextStats.isDirectory(),
+          sizeBytes: nextStats.isDirectory() ? 0 : nextStats.size,
+        })
+        markProjectAnalysisStaleForFile(fullNewPath)
+        GitChangesBroadcaster.getInstance().invalidateFilePath(fullNewPath)
 
         return { success: true }
       } catch (error) {
@@ -660,7 +656,7 @@ export function registerProjectHandlers(
       {
         workspaceId,
         targetPath,
-        origin,
+        origin: _origin,
       }: {
         workspaceId: string
         targetPath: string
@@ -676,7 +672,6 @@ export function registerProjectHandlers(
         }
 
         const stats = fs.statSync(fullPath)
-        markInternalFsChange(fullPath)
         if (stats.isDirectory()) {
           fs.rmSync(fullPath, { recursive: true, force: true })
         } else {
@@ -684,14 +679,9 @@ export function registerProjectHandlers(
         }
 
         console.log(`[Project] Deleted: ${targetPath}`)
-        if (origin) {
-          notifyFileDeleted(fullPath, {
-            origin,
-            workspaceId,
-            projectRootPath: access.projectRootPath,
-            relativePath: targetPath,
-          })
-        }
+        applyProjectFileDeleteToIndex(fullPath)
+        markProjectAnalysisStaleForFile(fullPath)
+        GitChangesBroadcaster.getInstance().invalidateFilePath(fullPath)
         return { success: true }
       } catch (error) {
         console.error('[Project] Failed to delete path:', error)
@@ -856,29 +846,15 @@ export function registerProjectHandlers(
     }
   )
 
-  // Watch/unwatch a project folder for external filesystem edits.
+  // Watch/unwatch a project folder (noop following P26 cutover).
   ipcMain.handle(
     'project:watchStart',
-    async (_event, { workspaceId }: { workspaceId: string }): Promise<WatchProjectResult> => {
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
-        return startProjectWatcher(access.projectRootPath, workspaceId)
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-    }
+    async (): Promise<WatchProjectResult> => ({ success: true }),
   )
 
   ipcMain.handle(
     'project:watchStop',
-    async (_event, { workspaceId }: { workspaceId: string }): Promise<WatchProjectResult> => {
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'read-file' })
-        return stopProjectWatcher(access.projectRootPath)
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-    }
+    async (): Promise<WatchProjectResult> => ({ success: true }),
   )
 
   /**

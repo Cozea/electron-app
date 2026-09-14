@@ -10,6 +10,7 @@
 
 import type * as activity from "../activity.js";
 import type * as clean from "../clean.js";
+import type * as collaborationSessionMedia from "../collaborationSessionMedia.js";
 import type * as collaborationSessions from "../collaborationSessions.js";
 import type * as crons from "../crons.js";
 import type * as deployments from "../deployments.js";
@@ -44,7 +45,6 @@ import type * as projectTasks from "../projectTasks.js";
 import type * as projects from "../projects.js";
 import type * as sessionRepositoryCredentials from "../sessionRepositoryCredentials.js";
 import type * as yjs from "../yjs.js";
-import type * as yjsAwareness from "../yjsAwareness.js";
 
 import type {
   ApiFromModules,
@@ -55,6 +55,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   activity: typeof activity;
   clean: typeof clean;
+  collaborationSessionMedia: typeof collaborationSessionMedia;
   collaborationSessions: typeof collaborationSessions;
   crons: typeof crons;
   deployments: typeof deployments;
@@ -89,7 +90,6 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   sessionRepositoryCredentials: typeof sessionRepositoryCredentials;
   yjs: typeof yjs;
-  yjsAwareness: typeof yjsAwareness;
 }>;
 
 /**

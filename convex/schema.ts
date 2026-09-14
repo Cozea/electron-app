@@ -987,50 +987,34 @@ export default defineSchema({
   })
     .index("by_session", ["sessionId"]),
 
-  // ============================================
-  // YJS COLLABORATIVE EDITING TABLES
-  // ============================================
-
-  // Yjs incremental updates for real-time collaboration
-  yjsUpdates: defineTable({
-    projectId: v.id("projects"),
-    // Backward-compatible: older rows may not have roomId/seq yet.
-    roomId: v.optional(v.string()),
-    seq: v.optional(v.number()),
-    update: v.bytes(), // Binary Yjs update
-    clientId: v.string(), // Y.Doc clientID as string
-    origin: v.optional(v.string()), // "user", "agent", "init", etc.
-    idempotencyKey: v.optional(v.string()),
-    timestamp: v.number(),
-  })
-    .index("by_project_and_time", ["projectId", "timestamp"])
-    .index("by_project_and_seq", ["projectId", "seq"])
-    .index("by_project_and_idempotency", ["projectId", "idempotencyKey"]),
-
-  // Yjs document snapshots for recovery/initialization
-  yjsDocuments: defineTable({
-    projectId: v.id("projects"),
-    snapshot: v.bytes(), // Full Y.Doc state as binary
-    version: v.number(),
-    snapshotBaseSeq: v.optional(v.number()),
-    byteSize: v.optional(v.number()),
-    createdByClientId: v.optional(v.string()),
+  collaborationSessionMediaSignals: defineTable({
+    sessionId: v.id("collaborationSessions"),
+    senderPrincipalId: v.id("devicePrincipals"),
+    targetPrincipalId: v.id("devicePrincipals"),
+    type: v.union(v.literal("offer"), v.literal("answer"), v.literal("candidate")),
+    payload: v.string(),
     createdAt: v.number(),
   })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_version", ["projectId", "version"]),
+    .index("by_session_and_target", ["sessionId", "targetPrincipalId", "createdAt"])
+    .index("by_session_and_sender", ["sessionId", "senderPrincipalId"]),
 
-  // Yjs awareness state for live cursors/selection (latest update per client)
-  yjsAwareness: defineTable({
-    projectId: v.id("projects"),
-    clientId: v.string(), // Y.Doc clientID as string
-    update: v.bytes(), // Awareness update bytes
-    updatedAt: v.number(),
-    expiresAt: v.optional(v.number()),
+  collaborationSessionPresence: defineTable({
+    sessionId: v.id("collaborationSessions"),
+    principalId: v.id("devicePrincipals"),
+    microphoneState: v.union(
+      v.literal("muted"),
+      v.literal("active"),
+      v.literal("speaking"),
+      v.literal("off"),
+      v.literal("unpermitted"),
+    ),
+    isWorkbenchActive: v.boolean(),
+    allowBackgroundAudio: v.boolean(),
+    lastHeartbeat: v.number(),
   })
-    .index("by_project_and_client", ["projectId", "clientId"])
-    .index("by_project_and_updated", ["projectId", "updatedAt"])
-    .index("by_updated_at", ["updatedAt"]),
+    .index("by_session", ["sessionId"])
+    .index("by_session_and_principal", ["sessionId", "principalId"]),
+
 
   // ============================================
   // REAL-TIME PRESENCE TABLES

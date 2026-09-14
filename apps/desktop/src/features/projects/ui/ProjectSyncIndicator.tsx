@@ -9,7 +9,6 @@ import {
   MdWarning,
 } from "react-icons/md"
 
-import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useAssistantTransportState } from "@/features/assistant/hooks/useAssistantTransportState"
@@ -89,7 +88,7 @@ export function ProjectSyncIndicator({
   inheritPillTextColor = false,
 }: ProjectSyncIndicatorProps) {
   const syncContext = useOptionalProjectSyncContext()
-  const { isConnected } = useYjsProject()
+  const isConnected = syncContext?.collabSessionStatus === "ready"
   const assistantTransport = useAssistantTransportState()
   const gitRemote = useGitRemoteStatus(syncContext?.workspaceId ?? null)
   const [isOnline, setIsOnline] = useState(

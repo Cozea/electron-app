@@ -1,11 +1,10 @@
 import { createContext, useContext, type ReactNode } from "react";
 
 import type { Id } from "../../../../../convex/_generated/dataModel";
-import type { CollabEncryptionBootstrap } from "@/features/collaboration/hooks/useCollabSession";
 import type { SyncProgress } from "@/lib/sync/types";
 
 export type CollabSessionStatus = "idle" | "loading" | "ready" | "error";
-export type CollabEncryptionStatus = CollabEncryptionBootstrap["status"];
+export type CollabEncryptionStatus = "room_not_initialized" | "ready" | "missing_for_device" | "device_revoked";
 
 export interface ProjectSyncContextValue {
   isSynced: boolean;

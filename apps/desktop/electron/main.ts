@@ -36,7 +36,6 @@ import { registerComputerUseHandlers } from './ipc/registerComputerUseHandlers'
 import { registerScheduledTaskHandlers } from './ipc/registerScheduledTaskHandlers'
 import { ComputerUseService } from './services/ComputerUseService'
 import { registerWorkspaceSyncHandlers } from './ipc/registerWorkspaceSyncHandlers'
-import { registerYjsHandlers } from './ipc/registerYjsHandlers'
 import { registerOrgDevAppHandlers } from './ipc/registerOrgDevAppHandlers'
 import { broadcastDevAppPreviewStatus, registerDevAppPreviewHandlers } from './ipc/registerDevAppPreviewHandlers'
 import { registerDevAppAuthoringHandlers } from './ipc/registerDevAppAuthoringHandlers'
@@ -62,6 +61,7 @@ import { registerWorkbenchSessionHandlers } from './ipc/registerWorkbenchSession
 import { registerBrowserSurfaceHandlers } from './ipc/registerBrowserSurfaceHandlers'
 import { registerWorkspaceHandlers } from './ipc/registerWorkspaceHandlers'
 import { registerTerminalWorkspaceHandlers } from './ipc/registerTerminalWorkspaceHandlers'
+import { registerMediaHandlers } from './ipc/registerMediaHandlers'
 import { registerProjectdHandlers } from './projectd/registerProjectdHandlers'
 import { initProjectdService, disposeProjectdService } from './projectd/ProjectdServiceRegistration'
 import { OrgDevAppArtifactService } from './services/OrgDevAppArtifactService'
@@ -83,7 +83,6 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 import { forEachBroadcastWindow, setBroadcastMainWindow } from './broadcastWindows'
-import { loadSyncState } from './services/syncJournalStore'
 import {
   initWorkspaceCatalogRuntime,
   disposeWorkspaceCatalogRuntime,
@@ -231,6 +230,7 @@ if (ELECTRON_REMOTE_DEBUGGING_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', ELECTRON_REMOTE_DEBUGGING_PORT)
   app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
 }
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 function matchesProtocolUrl(url: string, routePrefix: string): boolean {
   return SUPPORTED_PROTOCOLS.some((scheme) => url.startsWith(`${scheme}://${routePrefix}`))
@@ -500,6 +500,16 @@ function isRendererDevServerUrl(rawUrl: string): boolean {
   if (!DEV_SERVER_ORIGIN) return false
   try {
     return new URL(rawUrl).origin === DEV_SERVER_ORIGIN
+  } catch {
+    return false
+  }
+}
+
+function isTrustedAppOrigin(rawUrl: string): boolean {
+  if (isRendererDevServerUrl(rawUrl)) return true
+  try {
+    const parsed = new URL(rawUrl)
+    return parsed.protocol === 'file:' || parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
   } catch {
     return false
   }
@@ -1825,7 +1835,7 @@ registerRuntimeHandlers(ipcMain)
 
 registerWorkspaceSyncHandlers(ipcMain)
 
-registerYjsHandlers(ipcMain)
+registerMediaHandlers(ipcMain)
 
 registerOrgDevAppHandlers(ipcMain, {
   service: orgDevAppArtifactService,
@@ -1942,6 +1952,25 @@ app.on('web-contents-created', (_event, contents) => {
 })
 
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'display-capture') {
+      const url = webContents.getURL()
+      if (isTrustedAppOrigin(url)) {
+        callback(true)
+        return
+      }
+    }
+    callback(false)
+  })
+
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    if (permission === 'media') {
+      const url = webContents?.getURL()
+      return url ? isTrustedAppOrigin(url) : false
+    }
+    return false
+  })
+
   /*
    * Seeding must wait for app-ready. AgentSkillService resolves its data root
    * from app.getPath('userData') once ready and falls back to a home directory
@@ -1970,7 +1999,6 @@ app.whenReady().then(() => {
     WorkbenchSessionManager.getInstance().refreshBrowserSurfaceState(sessionKey)
   })
   refreshGpuDiagnostics()
-  loadSyncState()
 
   // Register workspace IPC handlers synchronously so they're available as soon
   // as the renderer loads. Internally each handler awaits catalog readiness.

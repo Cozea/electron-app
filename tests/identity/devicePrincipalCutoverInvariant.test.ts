@@ -83,13 +83,13 @@ describe("device-principal cutover invariants", () => {
     )
     const sessionRequest = section(
       workerTypes,
-      "export interface SessionRequestBody {",
+      "export interface SessionRoomConnectRequest {",
       "export interface DeviceAuthChallengeRequest {",
     )
 
     expect(challenge).not.toContain("deviceLabel")
     expect(accessClaims).not.toContain("device_id")
-    expect(sessionRequest).toContain("projectId: string")
+    expect(sessionRequest).toContain("publicSessionId: string")
     expect(sessionRequest).toContain("clientType: 'web' | 'electron'")
     expect(sessionRequest).not.toContain("identityKey")
     expect(sessionRequest).not.toContain("deviceId")

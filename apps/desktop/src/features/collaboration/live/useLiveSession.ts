@@ -28,6 +28,7 @@ import { useViewTransitionNavigate } from "@/lib/navigation"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
 import { findOpenSessionById, findWorkspaceSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
+import { useSessionMedia, type SessionMediaController } from "../media/useSessionMedia"
 import {
   describeAutoGit,
   describeLiveSessionSync,
@@ -87,6 +88,8 @@ export interface LiveSessionController {
   confirmClose: (choice: ProjectdCloseChoice) => void
   /** Opens the Session Workbench for the session with this id. */
   openSessionWorkbench: (publicSessionId: string) => void
+  /** Session WebRTC voice media and microphone controller. */
+  media: SessionMediaController | null
 }
 
 const NO_MEMBERS: LiveSessionMember[] = []
@@ -161,6 +164,14 @@ export function useLiveSession(input: {
     workspaceId,
     rootPath: input.rootPath,
     principalId: input.principalId,
+  })
+
+  const media = useSessionMedia({
+    sessionId,
+    enabled: membership === "active" && isSessionWorkspace,
+    members,
+    myPrincipalId: input.principalId,
+    isWorkbenchActive: isSessionWorkspace,
   })
 
   // A session started before sessions recorded their Git remote gets it from the folder
@@ -341,5 +352,6 @@ export function useLiveSession(input: {
         if (!target) throw new Error("That live session is no longer available.")
         await ensureAndOpenSessionWorkbench(target)
       }),
+    media,
   }
 }

@@ -1,11 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
-import * as Y from 'yjs'
 import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
-import { useCollabSession, invalidateCollabSession } from '@/features/collaboration/hooks/useCollabSession'
 import { SessionRecoveryPanel } from '@/features/settings/ui/SessionRecoveryPanel'
 import { useTranslation } from '@/lib/i18n'
 import { featureFlags } from '@/lib/featureFlags'
@@ -29,33 +27,17 @@ import {
   settingsInlineInputClass,
   settingsInlineInputWidth,
 } from '@/features/settings/ui/SettingsChrome'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import type { ContextMenuItem } from '@shared/assistant-contracts/ipc'
-import { showDesktopContextMenu } from '@/lib/desktopBridgeClient'
-import { getNativeMenuIcon } from '@/lib/nativeMenuIcons'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { EncryptedLocalSnapshotStore } from '@/lib/collab/EncryptedLocalSnapshotStore'
-import {
-  bytesToEnvelope,
-  decryptPayload,
-  encryptPayload,
-  envelopeToBytes,
-  generateRoomKeyBase64,
-} from '@/lib/collab/cipherEnvelope'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Bookmark01Icon as __SaveHugeIcon, Cancel01Icon as __XHugeIcon, Delete02Icon as __Trash2HugeIcon, Edit01Icon as __EditHugeIcon, MoreHorizontalIcon as __MoreHorizontalHugeIcon } from '@hugeicons/core-free-icons'
+import {
+  Alert01Icon as __AlertTriangleHugeIcon,
+  Bookmark01Icon as __SaveHugeIcon,
+  Cancel01Icon as __XHugeIcon,
+  Delete02Icon as __Trash2HugeIcon,
+  Edit01Icon as __EditHugeIcon,
+} from '@hugeicons/core-free-icons'
 
 const LazyProjectDevAppLogoDialog = lazy(() =>
   import('@/features/devapps/components/ProjectDevAppLogoDialog').then((module) => ({
@@ -68,24 +50,10 @@ export interface ProjectSettingsPageProps {
   onRequestClose?: (() => void) | null
 }
 
-
-
-interface ActiveRecoveryKit {
-  roomId: string
-  keyVersion: number
-  wrapAlgorithm: string
-  wrappedKey: string
-  salt: string
-  iterations: number
-  createdAt: number
-  createdByIdentityKey: string
-}
-
 export function ProjectSettingsPage({
   presentation = 'modal',
   onRequestClose = null,
 }: ProjectSettingsPageProps = {}) {
-  const unsafeYjsApi = api as any
   const isEmbedded = presentation === 'embedded'
   const navigate = useViewTransitionNavigate()
   const { principalId } = useAuth()
@@ -102,12 +70,6 @@ export function ProjectSettingsPage({
   const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
   const removeProject = useMutation(api.projects.deleteProject)
-  const revokeCollabDevice = useMutation(api.yjs.revokeCollabDevice)
-  const storeWrappedRoomKey = useMutation(api.yjs.storeWrappedRoomKey)
-  const storeRecoveryKit = useMutation(unsafeYjsApi.yjs.storeRecoveryKit)
-  const syncCollabRoom = useMutation(api.yjs.syncWithServer)
-  const rotateEncryptedRoomKey = useMutation(api.yjs.rotateEncryptedRoomKey)
-  const resetEncryptedRoom = useMutation(api.yjs.resetEncryptedRoom)
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
@@ -116,28 +78,6 @@ export function ProjectSettingsPage({
       : 'skip'
   )
   const isManager = memberRole === 'project_manager'
-  const collabSessionResult = useCollabSession({
-    projectId: project?._id ? String(project._id) : null,
-    enabled: Boolean(project?._id),
-  })
-  const collaborationDevices = useQuery(
-    api.yjs.listCollabRoomDevices,
-    isManager && project?._id && collabSessionResult.session?.roomId
-      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
-      : 'skip',
-  )
-  const pendingKeyRequests = useQuery(
-    api.yjs.listPendingKeyRequests,
-    isManager && project?._id && collabSessionResult.session?.roomId
-      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
-      : 'skip',
-  )
-  const activeRecoveryKit = useQuery(
-    unsafeYjsApi.yjs.getActiveRecoveryKit,
-    isManager && project?._id && collabSessionResult.session?.roomId
-      ? { projectId: project._id, roomId: collabSessionResult.session.roomId }
-      : 'skip',
-  ) as ActiveRecoveryKit | null | undefined
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -148,22 +88,12 @@ export function ProjectSettingsPage({
 
   const [isArchiving, setIsArchiving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [showRecoveryCodeDialog, setShowRecoveryCodeDialog] = useState(false)
-  const [generatedRecoveryCode, setGeneratedRecoveryCode] = useState<string | null>(null)
-  const [recoveryCodeInput, setRecoveryCodeInput] = useState('')
-  const [collabAction, setCollabAction] = useState<"share" | "rotate" | "reset" | "generate-recovery" | "recover" | `revoke:${string}` | null>(null)
-  const [collabError, setCollabError] = useState<string | null>(null)
-  const [collabNotice, setCollabNotice] = useState<string | null>(null)
 
   useEffect(() => {
     if (!project) return
     setName(project.name ?? '')
     setDescription(project.description ?? '')
     setSaveError(null)
-    setCollabError(null)
-    setCollabNotice(null)
-    setGeneratedRecoveryCode(null)
-    setRecoveryCodeInput('')
     setShowDevAppIdentityDialog(false)
     setDevAppIdentityError(null)
   }, [
@@ -182,171 +112,6 @@ export function ProjectSettingsPage({
     description !== projectDescription
   )
   const canSave = Boolean(principalId) && canEditGeneral && !isSaving && hasChanges && name.trim().length > 0
-  const collabSession = collabSessionResult.session
-  const collabBootstrap = collabSession?.encryption ?? null
-  const currentIdentityKey = collabSession?.identityKey ?? null
-  const collabScopeKey = project?._id ? String(project._id) : null
-  const canManageCollabSecurity = Boolean(project?._id && principalId && isManager)
-  const pendingRequestCount = pendingKeyRequests?.filter((request) => typeof request.fulfilledAt !== 'number').length ?? 0
-  const collabRotationRequired = collaborationDevices?.some((device) => device.rotationRequired) ?? false
-
-  const buildAndStoreRecoveryKit = useCallback(async (args: {
-    roomKeyBase64: string
-    keyVersion: number
-  }): Promise<string | null> => {
-    if (!project || !principalId || !collabSession) {
-      return null
-    }
-
-    const recoveryKit = await window.electronAPI.collab.createRecoveryKit({
-      roomKeyBase64: args.roomKeyBase64,
-    })
-
-    await storeRecoveryKit({
-      projectId: project._id,
-      roomId: collabSession.roomId,
-      keyVersion: args.keyVersion,
-      wrapAlgorithm: recoveryKit.wrapAlgorithm,
-      wrappedKey: recoveryKit.wrappedKey,
-      salt: recoveryKit.salt,
-      iterations: recoveryKit.iterations,
-    })
-
-    setGeneratedRecoveryCode(recoveryKit.recoveryCode)
-    setShowRecoveryCodeDialog(true)
-    return recoveryKit.recoveryCode
-  }, [collabSession, principalId, project, storeRecoveryKit])
-
-  const rotateRoomKeyWithCurrentRoom = useCallback(async (options?: {
-    devices?: NonNullable<typeof collaborationDevices>
-  }): Promise<number | null> => {
-    if (
-      !project ||
-      !principalId ||
-      !collabSession ||
-      !collabBootstrap ||
-      collabBootstrap.status !== 'ready' ||
-      !collabBootstrap.wrappedRoomKey ||
-      !collabBootstrap.senderPublicKeyJwk
-    ) {
-      return null
-    }
-
-    const devices = options?.devices ?? collaborationDevices
-    if (!devices || devices.length === 0) {
-      throw new Error(t('settings.error.noTrustedDevices'))
-    }
-
-    const { roomKeyBase64: currentRoomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
-      senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
-      wrappedKey: collabBootstrap.wrappedRoomKey,
-      wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
-    })
-
-    const syncState = await syncCollabRoom({
-      projectId: project._id,
-      clientId: `settings-rotation:${Date.now()}`,
-      roomId: collabSession.roomId,
-    })
-
-    const roomDoc = new Y.Doc()
-    if (syncState.serverSnapshot) {
-      const decryptedSnapshot = await decryptPayload({
-        roomKeyBase64: currentRoomKeyBase64,
-        envelope: bytesToEnvelope(new Uint8Array(syncState.serverSnapshot)),
-        expectedKind: 'yjs_snapshot',
-      })
-      Y.applyUpdate(roomDoc, decryptedSnapshot, 'snapshot')
-    }
-    for (const update of syncState.recentUpdates) {
-      const decryptedUpdate = await decryptPayload({
-        roomKeyBase64: currentRoomKeyBase64,
-        envelope: bytesToEnvelope(new Uint8Array(update.update)),
-        expectedKind: 'yjs_update',
-      })
-      Y.applyUpdate(roomDoc, decryptedUpdate, 'snapshot')
-    }
-
-    const nextKeyVersion = (collabBootstrap.activeKeyVersion ?? 1) + 1
-    const nextRoomKeyBase64 = generateRoomKeyBase64()
-    const nextSnapshotEnvelope = await encryptPayload({
-      roomKeyBase64: nextRoomKeyBase64,
-      kind: 'yjs_snapshot',
-      keyVersion: nextKeyVersion,
-      plaintext: Y.encodeStateAsUpdate(roomDoc),
-      metadata: {
-        projectId: String(project._id),
-        roomId: collabSession.roomId,
-      },
-    })
-
-    const wrappedKeys: Array<{
-      recipientPrincipalId: NonNullable<typeof devices>[number]['principalId']
-      wrapAlgorithm: string
-      wrappedKey: string
-    }> = []
-
-    for (const device of devices) {
-      if (device.revokedAt || !device.encryptionPublicKeyJwk) {
-        continue
-      }
-
-      const wrapped = await window.electronAPI.collab.wrapRoomKey({
-        roomKeyBase64: nextRoomKeyBase64,
-        recipientPublicKeyJwk: device.encryptionPublicKeyJwk,
-      })
-
-      wrappedKeys.push({
-        recipientPrincipalId: device.principalId,
-        wrapAlgorithm: wrapped.wrapAlgorithm,
-        wrappedKey: wrapped.wrappedKey,
-      })
-    }
-
-    if (wrappedKeys.length === 0) {
-      throw new Error(t('settings.error.noTrustedDevices'))
-    }
-
-    const nextSnapshotBytes = envelopeToBytes(nextSnapshotEnvelope)
-    await rotateEncryptedRoomKey({
-      projectId: project._id,
-      roomId: collabSession.roomId,
-      encryptedSnapshot: nextSnapshotBytes.slice().buffer,
-      createdByClientId: String(roomDoc.clientID),
-      wrappedKeys,
-    })
-
-    await buildAndStoreRecoveryKit({
-      roomKeyBase64: nextRoomKeyBase64,
-      keyVersion: nextKeyVersion,
-    })
-
-    if (collabScopeKey) {
-      const localStore = new EncryptedLocalSnapshotStore()
-      await localStore.save({
-        scopeKey: collabScopeKey,
-        keyVersion: nextKeyVersion,
-        envelopeJson: JSON.stringify(nextSnapshotEnvelope),
-        updatedAt: Date.now(),
-      })
-    }
-
-    invalidateCollabSession(String(project._id))
-    await collabSessionResult.refresh()
-
-    return nextKeyVersion
-  }, [
-    buildAndStoreRecoveryKit,
-    collabBootstrap,
-    collabScopeKey,
-    collabSession,
-    collabSessionResult,
-    collaborationDevices,
-    principalId,
-    project,
-    rotateEncryptedRoomKey,
-    syncCollabRoom,
-  ])
 
   const handleSave = useCallback(async () => {
     if (!project || !principalId) return
@@ -379,6 +144,7 @@ export function ProjectSettingsPage({
     hasChanges,
     name,
     project,
+    t,
     updateProject,
   ])
 
@@ -443,280 +209,6 @@ export function ProjectSettingsPage({
       setIsDeleting(false)
     }
   }, [principalId, navigate, project, removeProject])
-
-  const handleSharePendingDevices = useCallback(async () => {
-    if (
-      !project ||
-      !collabSession ||
-      !collabBootstrap ||
-      collabBootstrap.status !== 'ready' ||
-      !collabBootstrap.wrappedRoomKey ||
-      !collabBootstrap.senderPublicKeyJwk ||
-      !pendingKeyRequests ||
-      pendingKeyRequests.length === 0
-    ) {
-      return
-    }
-
-    setCollabAction('share')
-    setCollabError(null)
-    setCollabNotice(null)
-
-    try {
-      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
-        senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
-        wrappedKey: collabBootstrap.wrappedRoomKey,
-        wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
-      })
-
-      for (const request of pendingKeyRequests) {
-        if (typeof request.fulfilledAt === 'number') {
-          continue
-        }
-
-        const wrapped = await window.electronAPI.collab.wrapRoomKey({
-          roomKeyBase64,
-          recipientPublicKeyJwk: request.recipientPublicKeyJwk,
-        })
-
-        await storeWrappedRoomKey({
-          projectId: project._id,
-          roomId: collabSession.roomId,
-          keyVersion: collabBootstrap.activeKeyVersion ?? 1,
-          keyRequestId: request._id,
-          wrapAlgorithm: wrapped.wrapAlgorithm,
-          wrappedKey: wrapped.wrappedKey,
-        })
-      }
-
-      setCollabNotice(t('settings.notice.shared'))
-      await collabSessionResult.refresh()
-    } catch (error) {
-      setCollabError(cleanConvexError(error, t('settings.error.shareFailed')))
-    } finally {
-      setCollabAction(null)
-    }
-  }, [
-    collabBootstrap,
-    collabSession,
-    collabSessionResult,
-    pendingKeyRequests,
-    project,
-    storeWrappedRoomKey,
-  ])
-
-  const handleRevokeDevice = useCallback(async (identityKey: string) => {
-    if (!project || !collabSession) {
-      return
-    }
-
-    setCollabAction(`revoke:${identityKey}`)
-    setCollabError(null)
-    setCollabNotice(null)
-
-    try {
-      await revokeCollabDevice({
-        projectId: project._id,
-        roomId: collabSession.roomId,
-        identityKey,
-      })
-      if (collabBootstrap?.status === 'ready' && collaborationDevices) {
-        const nextDevices = collaborationDevices.map((device) =>
-          device.identityKey === identityKey
-            ? { ...device, revokedAt: Date.now() }
-            : device,
-        )
-        await rotateRoomKeyWithCurrentRoom({
-          devices: nextDevices,
-        })
-        setCollabNotice(t('settings.notice.revokedAndRotated'))
-      } else {
-        setCollabNotice(t('settings.notice.revokedFuture'))
-      }
-      await collabSessionResult.refresh()
-    } catch (error) {
-      setCollabError(cleanConvexError(error, t('settings.error.revokeFailed')))
-    } finally {
-      setCollabAction(null)
-    }
-  }, [
-    collabBootstrap?.status,
-    collabSession,
-    collabSessionResult,
-    collaborationDevices,
-    project,
-    revokeCollabDevice,
-    rotateRoomKeyWithCurrentRoom,
-  ])
-
-  const handleRotateRoomKey = useCallback(async () => {
-    if (!project || !collabSession || collabBootstrap?.status !== 'ready') {
-      return
-    }
-
-    setCollabAction('rotate')
-    setCollabError(null)
-    setCollabNotice(null)
-
-    try {
-      await rotateRoomKeyWithCurrentRoom()
-      setCollabNotice(t('settings.notice.rotated'))
-    } catch (error) {
-      setCollabError(cleanConvexError(error, t('settings.error.rotateFailed')))
-    } finally {
-      setCollabAction(null)
-    }
-  }, [collabBootstrap?.status, collabSession, project, rotateRoomKeyWithCurrentRoom])
-
-  const handleGenerateRecoveryKit = useCallback(async () => {
-    if (
-      !project ||
-      !collabSession ||
-      !collabBootstrap ||
-      collabBootstrap.status !== 'ready' ||
-      !collabBootstrap.wrappedRoomKey ||
-      !collabBootstrap.senderPublicKeyJwk
-    ) {
-      return
-    }
-
-    setCollabAction('generate-recovery')
-    setCollabError(null)
-    setCollabNotice(null)
-
-    try {
-      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRoomKey({
-        senderPublicKeyJwk: collabBootstrap.senderPublicKeyJwk,
-        wrappedKey: collabBootstrap.wrappedRoomKey,
-        wrapAlgorithm: collabBootstrap.wrapAlgorithm ?? undefined,
-      })
-
-      await buildAndStoreRecoveryKit({
-        roomKeyBase64,
-        keyVersion: collabBootstrap.activeKeyVersion ?? 1,
-      })
-
-      setCollabNotice(activeRecoveryKit ? t('settings.notice.recoveryRegenerated') : t('settings.notice.recoveryGenerated'))
-    } catch (error) {
-      setCollabError(cleanConvexError(error, t('settings.error.generateRecoveryFailed')))
-    } finally {
-      setCollabAction(null)
-    }
-  }, [
-    activeRecoveryKit,
-    buildAndStoreRecoveryKit,
-    collabBootstrap,
-    collabSession,
-    project,
-  ])
-
-  const handleRecoverWithCode = useCallback(async () => {
-    if (
-      !project ||
-      !principalId ||
-      !collabSession ||
-      !collabBootstrap ||
-      collabBootstrap.status !== 'missing_for_device' ||
-      !collabSession.encryptionPublicKeyJwk ||
-      !activeRecoveryKit ||
-      !pendingKeyRequests ||
-      !recoveryCodeInput.trim()
-    ) {
-      return
-    }
-
-    setCollabAction('recover')
-    setCollabError(null)
-    setCollabNotice(null)
-
-    try {
-      const { roomKeyBase64 } = await window.electronAPI.collab.unwrapRecoveryKit({
-        recoveryCode: recoveryCodeInput.trim(),
-        wrappedKey: activeRecoveryKit.wrappedKey,
-        salt: activeRecoveryKit.salt,
-        iterations: activeRecoveryKit.iterations,
-        wrapAlgorithm: activeRecoveryKit.wrapAlgorithm,
-      })
-
-      const ownKeyRequest = pendingKeyRequests.find(
-        (request) =>
-          request.recipientPrincipalId === principalId &&
-          typeof request.fulfilledAt !== 'number',
-      )
-      if (!ownKeyRequest) {
-        throw new Error('No pending encryption key request exists for this device.')
-      }
-
-      const wrapped = await window.electronAPI.collab.wrapRoomKey({
-        roomKeyBase64,
-        recipientPublicKeyJwk: collabSession.encryptionPublicKeyJwk,
-      })
-
-      await storeWrappedRoomKey({
-        projectId: project._id,
-        roomId: collabSession.roomId,
-        keyVersion: activeRecoveryKit.keyVersion,
-        keyRequestId: ownKeyRequest._id,
-        wrapAlgorithm: wrapped.wrapAlgorithm,
-        wrappedKey: wrapped.wrappedKey,
-      })
-
-      invalidateCollabSession(String(project._id))
-      await collabSessionResult.refresh()
-      setRecoveryCodeInput('')
-      setCollabNotice(t('settings.notice.recovered'))
-    } catch (error) {
-      setCollabError(cleanConvexError(error, t('settings.error.recoverFailed')))
-    } finally {
-      setCollabAction(null)
-    }
-  }, [
-    activeRecoveryKit,
-    collabBootstrap,
-    collabSession,
-    collabSessionResult,
-    principalId,
-    project,
-    recoveryCodeInput,
-    storeWrappedRoomKey,
-  ])
-
-  const handleResetEncryptedRoom = useCallback(async () => {
-    if (!project || !collabSession) {
-      return
-    }
-
-    setCollabAction('reset')
-    setCollabError(null)
-    setCollabNotice(null)
-
-    try {
-      await resetEncryptedRoom({
-        projectId: project._id,
-        roomId: collabSession.roomId,
-      })
-
-      if (collabScopeKey) {
-        const localStore = new EncryptedLocalSnapshotStore()
-        await localStore.clear(collabScopeKey)
-      }
-
-      invalidateCollabSession(String(project._id))
-      await collabSessionResult.refresh()
-      setCollabNotice(t('settings.notice.reset'))
-    } catch (error) {
-      setCollabError(cleanConvexError(error, t('settings.error.resetFailed')))
-    } finally {
-      setCollabAction(null)
-    }
-  }, [
-    collabScopeKey,
-    collabSession,
-    collabSessionResult,
-    principalId,
-    project,
-    resetEncryptedRoom,
-  ])
 
   function closeSettingsModal(): void {
     if (isEmbedded) {
@@ -880,254 +372,6 @@ export function ProjectSettingsPage({
                 <SessionRecoveryPanel key={String(project._id)} projectId={String(project._id)} />
 
                 <section>
-                  <SettingsSectionTitle>{t('settings.section.collabSecurity')}</SettingsSectionTitle>
-                  <SettingsGroup>
-                    <div className="px-4 py-3">
-                      <p className="text-xs font-medium text-foreground">{t('settings.label.collabTitle')}</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {t('settings.desc.collabTitle')}
-                      </p>
-                    </div>
-                    <div className="px-4 py-3 text-xs text-muted-foreground">
-                      {collabSessionResult.status === 'loading' ? t('settings.collab.loading') : null}
-                      {collabSessionResult.status === 'error' ? (
-                        <span className="text-destructive">{collabSessionResult.error ?? t('settings.collab.error')}</span>
-                      ) : null}
-                      {collabBootstrap?.status === 'room_not_initialized' ? (
-                        <span>
-                          {t('settings.collab.notInitialized')}
-                        </span>
-                      ) : null}
-                      {collabBootstrap?.status === 'missing_for_device' ? (
-                        <span>
-                          {activeRecoveryKit
-                            ? t('settings.collab.missingForDeviceRecover')
-                            : t('settings.collab.missingForDevice')}
-                        </span>
-                      ) : null}
-                      {collabBootstrap?.status === 'device_revoked' ? (
-                        <span className="text-destructive">
-                          {t('settings.collab.deviceRevoked')}
-                        </span>
-                      ) : null}
-                      {collabBootstrap?.status === 'ready' ? (
-                        <span>
-                          {collabRotationRequired
-                            ? 'A device was revoked. Rotate the room key before continuing collaboration.'
-                            : pendingRequestCount > 0
-                              ? t('settings.collab.readyDevices').replace('{count}', String(pendingRequestCount))
-                              : t('settings.collab.readyNoDevices')}
-                        </span>
-                      ) : null}
-                    </div>
-                    {collabError ? (
-                      <div className="border-t border-border/40 px-4 py-3">
-                        <p className="text-xs text-destructive">{collabError}</p>
-                      </div>
-                    ) : null}
-                    {collabNotice ? (
-                      <div className="border-t border-border/40 px-4 py-3">
-                        <p className="text-xs text-emerald-600 dark:text-emerald-500">{collabNotice}</p>
-                      </div>
-                    ) : null}
-                    {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
-                      <SettingsRow>
-                        <SettingsRowLabel
-                          title={t('settings.collab.trustedDeviceRecovery')}
-                          description={t('settings.collab.trustedDeviceRecoveryDesc')}
-                        />
-                        <SettingsRowControl>
-                          <Button
-                            variant="outline"
-                            className="h-7 text-xs"
-                            disabled={pendingRequestCount === 0 || collabAction === 'share'}
-                            onClick={() => {
-                              void handleSharePendingDevices()
-                            }}
-                          >
-                            {collabAction === 'share' ? (
-                              <div className="loader mr-2" />
-                            ) : null}
-                            {t('settings.collab.shareKeys')}
-                          </Button>
-                        </SettingsRowControl>
-                      </SettingsRow>
-                    ) : null}
-                    {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
-                      <SettingsRow>
-                        <SettingsRowLabel
-                          title={t('settings.collab.recoveryCode')}
-                          description={t('settings.collab.recoveryCodeDesc')}
-                        />
-                        <SettingsRowControl>
-                          <Button
-                            variant="outline"
-                            className="h-7 text-xs"
-                            disabled={collabAction === 'generate-recovery'}
-                            onClick={() => {
-                              void handleGenerateRecoveryKit()
-                            }}
-                          >
-                            {collabAction === 'generate-recovery' ? (
-                              <div className="loader mr-2" />
-                            ) : null}
-                            {activeRecoveryKit ? t('settings.collab.regenerateCode') : t('settings.collab.generateCode')}
-                          </Button>
-                        </SettingsRowControl>
-                      </SettingsRow>
-                    ) : null}
-                    {collabBootstrap?.status === 'ready' && canManageCollabSecurity ? (
-                      <SettingsRow>
-                        <SettingsRowLabel
-                          title={t('settings.collab.rotateRoomKey')}
-                          description={t('settings.collab.rotateRoomKeyDesc')}
-                        />
-                        <SettingsRowControl>
-                          <Button
-                            variant="outline"
-                            className="h-7 text-xs"
-                            disabled={collabAction === 'rotate' || !collaborationDevices || collaborationDevices.length === 0}
-                            onClick={() => {
-                              void handleRotateRoomKey()
-                            }}
-                          >
-                            {collabAction === 'rotate' ? (
-                              <div className="loader mr-2" />
-                            ) : null}
-                            {t('settings.collab.rotateKeys')}
-                          </Button>
-                        </SettingsRowControl>
-                      </SettingsRow>
-                    ) : null}
-                    {canManageCollabSecurity && collabBootstrap?.status !== 'room_not_initialized' ? (
-                      <SettingsRow>
-                        <SettingsRowLabel
-                          title={t('settings.collab.roomRecovery')}
-                          description={t('settings.collab.roomRecoveryDesc')}
-                        />
-                        <SettingsRowControl>
-                          <Button
-                            variant="ghost"
-                            className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-                            disabled={collabAction === 'reset'}
-                            onClick={async () => {
-                              const result = await window.electronAPI.dialog.showMessageBox({
-                                type: 'warning',
-                                title: t('settings.dialog.reset.title'),
-                                message: `${t('settings.dialog.reset.title')}?`,
-                                detail: `${t('settings.dialog.reset.desc1')}\n\n${t('settings.dialog.reset.desc2')}`,
-                                buttons: [t('settings.dialog.reset.action'), t('settings.action.cancel')],
-                                defaultId: 0,
-                                cancelId: 1,
-                                noLink: true,
-                              })
-                              if (result.response === 0) {
-                                void handleResetEncryptedRoom()
-                              }
-                            }}
-                          >
-                            {t('settings.collab.resetRoom')}
-                          </Button>
-                        </SettingsRowControl>
-                      </SettingsRow>
-                    ) : null}
-                    {collabBootstrap?.status === 'missing_for_device' && activeRecoveryKit && collabSession?.encryptionPublicKeyJwk ? (
-                      <div className="flex flex-col gap-3 border-t border-border/40 px-4 py-3">
-                        <div className="flex min-w-0 flex-col gap-0.5">
-                          <Label className="text-xs font-medium text-foreground">{t('settings.collab.recoverWithCode')}</Label>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {t('settings.collab.recoverWithCodeDesc')}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            value={recoveryCodeInput}
-                            onChange={(event) => {
-                              setRecoveryCodeInput(event.target.value)
-                            }}
-                            placeholder="XXXX-XXXX-XXXX-XXXX"
-                            className="h-8 text-xs"
-                          />
-                          <Button
-                            variant="outline"
-                            className="h-8 text-xs"
-                            disabled={collabAction === 'recover' || recoveryCodeInput.trim().length === 0}
-                            onClick={() => {
-                              void handleRecoverWithCode()
-                            }}
-                          >
-                            {collabAction === 'recover' ? (
-                              <div className="loader mr-2" />
-                            ) : null}
-                            {t('settings.collab.recover')}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                    {collaborationDevices && collaborationDevices.length > 0 ? (
-                      <div className="border-t border-border/40">
-                        {collaborationDevices.map((device, index) => (
-                          <div
-                            key={device.identityKey}
-                            className={cn(
-                              'flex min-h-[50px] items-center justify-between gap-4 px-4 py-3',
-                              index > 0 && 'border-t border-border/40',
-                            )}
-                          >
-                            <div className="flex min-w-0 flex-col gap-0.5">
-                              <p className="truncate text-xs font-medium text-foreground">
-                                {device.displayName}
-                                {device.identityKey === currentIdentityKey ? ` · ${t('settings.collab.thisDevice')}` : ''}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {device.platform} · {device.encryptionFingerprint.slice(0, 12)}
-                                {device.hasPendingRequest ? ` · ${t('settings.collab.waitingForKey')}` : ''}
-                                {device.revokedAt ? ` · ${t('settings.collab.revoked')}` : ''}
-                              </p>
-                            </div>
-                            {canManageCollabSecurity ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="size-7 rounded-lg p-0 text-muted-foreground hover:text-foreground"
-                                aria-label="Device options"
-                                disabled={
-                                  Boolean(device.revokedAt) ||
-                                  device.identityKey === currentIdentityKey ||
-                                  collabAction === `revoke:${device.identityKey}`
-                                }
-                                onClick={async (event) => {
-                                  event.preventDefault()
-                                  event.stopPropagation()
-                                  const rect = event.currentTarget.getBoundingClientRect()
-                                  const position = { x: Math.round(rect.left), y: Math.round(rect.bottom + 4) }
-
-                                  const items: ContextMenuItem<string>[] = [
-                                    {
-                                      id: "revoke",
-                                      label: device.revokedAt ? t('settings.collab.actionRevoked') : t('settings.collab.revoke'),
-                                      destructive: true,
-                                      icon: getNativeMenuIcon("shield"),
-                                    },
-                                  ]
-
-                                  const action = await showDesktopContextMenu(items, position)
-                                  if (action === "revoke") {
-                                    void handleRevokeDevice(device.identityKey)
-                                  }
-                                }}
-                              >
-                                <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
-                              </Button>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </SettingsGroup>
-                </section>
-
-                <section>
                   <SettingsSectionTitle variant="danger">
                     <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3.5 w-3.5" />
                     {t('settings.section.dangerZone')}
@@ -1253,46 +497,6 @@ export function ProjectSettingsPage({
           />
         </Suspense>
       ) : null}
-
-      <AlertDialog
-        open={showRecoveryCodeDialog}
-        onOpenChange={(open) => {
-          setShowRecoveryCodeDialog(open)
-          if (!open) {
-            setGeneratedRecoveryCode(null)
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('settings.dialog.recovery.title')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('settings.dialog.recovery.desc1')}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="rounded-xl bg-muted px-4 py-3">
-            <p className="font-mono text-sm tracking-[0.18em] text-foreground">
-              {generatedRecoveryCode ?? t('settings.dialog.recovery.noCode')}
-            </p>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {t('settings.dialog.recovery.desc2')}
-          </p>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('settings.action.close')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault()
-                if (generatedRecoveryCode) {
-                  void navigator.clipboard.writeText(generatedRecoveryCode)
-                }
-              }}
-            >
-              {t('settings.action.copyCode')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   )
 }

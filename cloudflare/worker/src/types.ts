@@ -8,9 +8,12 @@ export interface EncryptionBootstrap {
   senderPublicKeyJwk: string | null
 }
 
-export interface SessionRequestBody {
-  projectId: string
+
+export interface SessionRoomConnectRequest {
+  publicSessionId: string
   clientType: 'web' | 'electron'
+  recovery?: boolean
+  closePaused?: boolean
 }
 
 export interface DeviceAuthChallengeRequest {
@@ -82,21 +85,6 @@ export interface SessionClaims {
   iat: number
 }
 
-export interface ConvexSessionContext {
-  principalId: string
-  identityKey: string
-  displayName: string
-  projectId: string
-  roomId: string
-  encryptionFingerprint: string
-  encryptionPublicKeyJwk: string
-  encryption: EncryptionBootstrap
-}
-
-export interface ConvexPersistedUpdate {
-  seq: number
-  updateBinary: string
-}
 
 export interface DurableObjectNamespaceLike {
   idFromName(name: string): DurableObjectId
@@ -118,7 +106,6 @@ export interface Env {
   DEVICE_AUTH_KEY_ID: string
   DEVICE_AUTH_PREVIOUS_PUBLIC_JWK?: string
   DEVICE_AUTH_PREVIOUS_KEY_ID?: string
-  COLLAB_ROOM: DurableObjectNamespaceLike
   COLLAB_SESSION_ROOM: DurableObjectNamespaceLike
   COLLAB_BINARY_OBJECTS: R2Bucket
   DEVAPP_RUNTIME_BUILD: DurableObjectNamespaceLike

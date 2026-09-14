@@ -14,7 +14,6 @@ import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
 import { rememberProjectBranchSession } from "@/features/source-control/model/projectBranchSessionStore"
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
-import { useYjsProject } from "@/contexts/YjsProjectContextValue"
 import {
   useOptionalProjectSyncContext,
   type CollabEncryptionStatus,
@@ -41,11 +40,9 @@ interface GitToolbarSnapshot {
 
 function isCollabLiveAvailable(input: {
   sessionStatus: CollabSessionStatus
-  isTransportConnected: boolean
   encryptionStatus: CollabEncryptionStatus | null
 }): boolean {
   if (input.sessionStatus !== "ready") return false
-  if (!input.isTransportConnected) return false
   if (
     input.encryptionStatus === "missing_for_device" ||
     input.encryptionStatus === "device_revoked"
@@ -182,16 +179,14 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
   const [hasVerifiedGitStatus, setHasVerifiedGitStatus] = useState(false)
   const syncContext = useOptionalProjectSyncContext()
-  const { isConnected } = useYjsProject()
 
   const collabLiveAvailable = useMemo(
     () =>
       isCollabLiveAvailable({
         sessionStatus: syncContext?.collabSessionStatus ?? "idle",
-        isTransportConnected: isConnected,
         encryptionStatus: syncContext?.collabEncryptionStatus ?? null,
       }),
-    [isConnected, syncContext?.collabEncryptionStatus, syncContext?.collabSessionStatus],
+    [syncContext?.collabEncryptionStatus, syncContext?.collabSessionStatus],
   )
 
   const branchCwd = input.workspaceId

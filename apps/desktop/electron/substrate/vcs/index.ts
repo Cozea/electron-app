@@ -44,7 +44,6 @@ export {
   type PushSafetyDecision,
 } from "./pushSafety";
 
-export { pushWithSafety, type CollabPushGitRunner, type CollabPushWithSafetyInput } from "./collabPush";
 
 export {
   CHECKPOINT_REFS_PREFIX,

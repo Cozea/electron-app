@@ -20,6 +20,19 @@ import type {
   LiveSessionTargetView,
   SessionMembership,
 } from "@/features/collaboration/live/liveSessionModel"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { ArrowDown01Icon, MicOff01Icon } from "@hugeicons/core-free-icons"
+import type { SessionMediaController } from "../media/useSessionMedia"
+import { SoundWaveCandles } from "../media/SoundWaveCandles"
 import { cn } from "@/lib/utils"
 
 const TONE_DOT: Record<LiveSessionSyncView["tone"], string> = {
@@ -72,6 +85,7 @@ export interface SessionWorkbenchControlsProps {
   onPause?: () => void
   onResume?: () => void
   onEnd?: () => void
+  media?: SessionMediaController | null
 }
 
 export function SessionWorkbenchControls({
@@ -99,6 +113,7 @@ export function SessionWorkbenchControls({
   onPause,
   onResume,
   onEnd,
+  media = null,
 }: SessionWorkbenchControlsProps) {
   const busy = busyAction !== null
   const inSession = members.filter((member) => member.status === "active")
@@ -138,21 +153,138 @@ export function SessionWorkbenchControls({
           {inSession.length > 0 ? (
             <div className="flex items-center -space-x-1 pr-1">
               {inSession.slice(0, MAX_AVATARS).map((member) => {
-                const label = `${member.displayName}${member.isSelf ? " (this device)" : ""}, ${member.role.replace(/_/g, " ")}`
+                const isSpeaking = member.microphoneState === "speaking"
+                const isMuted = member.microphoneState === "muted"
+                const label = `${member.displayName}${member.isSelf ? " (this device)" : ""}, ${member.role.replace(/_/g, " ")}${
+                  isSpeaking ? " (speaking)" : isMuted ? " (muted)" : ""
+                }`
                 return (
-                  <Avatar
-                    key={member.principalId}
-                    className="size-6 border-2 border-background"
-                    title={label}
-                    aria-label={label}
-                  >
-                    <AvatarFallback className="text-[10px] font-medium">{initials(member.displayName)}</AvatarFallback>
-                  </Avatar>
+                  <div key={member.principalId} className="relative inline-flex items-center">
+                    <Avatar
+                      className={cn(
+                        "size-6 border-2 border-background transition-all",
+                        isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
+                      )}
+                      title={label}
+                      aria-label={label}
+                    >
+                      <AvatarFallback className="text-[10px] font-medium">{initials(member.displayName)}</AvatarFallback>
+                    </Avatar>
+                    {isMuted ? (
+                      <span
+                        className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
+                        title="Microphone muted"
+                      >
+                        <HugeiconsIcon icon={MicOff01Icon} className="size-2 text-muted-foreground" />
+                      </span>
+                    ) : null}
+                  </div>
                 )
               })}
               {inSession.length > MAX_AVATARS ? (
                 <span className="pl-2 text-muted-foreground">+{inSession.length - MAX_AVATARS}</span>
               ) : null}
+            </div>
+          ) : null}
+
+          {membership === "active" && media ? (
+            <div className="inline-flex items-center rounded-md border border-border/40 p-0.5 bg-background/50">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                data-live-session-mic-button
+                className={cn(
+                  "h-5 px-1.5 text-xs gap-1 rounded-sm",
+                  media.isMuted
+                    ? "text-muted-foreground hover:text-foreground"
+                    : "text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.12)]",
+                  media.permissionStatus === "denied" && "text-destructive hover:text-destructive",
+                )}
+                onClick={() => {
+                  if (media.permissionStatus === "denied") {
+                    void media.requestMicrophonePermission()
+                  } else {
+                    void media.toggleMute()
+                  }
+                }}
+                title={
+                  media.permissionStatus === "denied"
+                    ? "Microphone permission denied (click to retry)"
+                    : media.isMuted
+                      ? "Microphone muted (click to unmute)"
+                      : "Microphone active (click to mute)"
+                }
+                aria-label={media.isMuted ? "Unmute microphone" : "Mute microphone"}
+              >
+                {media.isMuted ? (
+                  <HugeiconsIcon icon={MicOff01Icon} className="size-3.5" />
+                ) : (
+                  <SoundWaveCandles
+                    analyser={media.analyserNode}
+                    isMuted={media.isMuted}
+                    isSpeaking={media.isSpeaking}
+                    className={cn(media.isSpeaking && "drop-shadow-[0_0_6px_rgba(16,185,129,0.5)]")}
+                  />
+                )}
+                <span>{media.isMuted ? "Muted" : "Mic"}</span>
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-5 w-4 p-0 text-muted-foreground hover:text-foreground rounded-sm"
+                    title="Audio input settings"
+                    aria-label="Select audio input device"
+                  >
+                    <HugeiconsIcon icon={ArrowDown01Icon} className="size-2.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60 text-xs">
+                  <DropdownMenuLabel className="text-[11px] font-medium text-muted-foreground px-2 py-1">
+                    Microphone
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {(media.audioDevices ?? []).length === 0 ? (
+                    <div className="px-2 py-1.5 text-[11px] text-muted-foreground italic">
+                      {media.permissionStatus === "denied"
+                        ? "Microphone permission denied"
+                        : "No microphones detected"}
+                    </div>
+                  ) : (
+                    (media.audioDevices ?? []).map((device) => {
+                      const isSelected =
+                        media.selectedDeviceId === device.deviceId ||
+                        (!media.selectedDeviceId && device.deviceId === "default") ||
+                        (!media.selectedDeviceId && (media.audioDevices ?? [])[0]?.deviceId === device.deviceId)
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={device.deviceId}
+                          checked={isSelected}
+                          className="cursor-pointer text-xs"
+                          onClick={() => void media.selectAudioDevice?.(device.deviceId)}
+                        >
+                          <span className="truncate">{device.label}</span>
+                        </DropdownMenuCheckboxItem>
+                      )
+                    })
+                  )}
+                  {media.permissionStatus === "denied" ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        className="text-xs text-destructive cursor-pointer"
+                        onClick={() => void media.requestMicrophonePermission()}
+                      >
+                        Request Microphone Permission
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ) : null}
 

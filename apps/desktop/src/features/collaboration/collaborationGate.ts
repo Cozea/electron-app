@@ -100,7 +100,7 @@ export function resolveCollaborationGate(input: {
     return { enabled: false, reason: "session-daemon" }
   }
 
-  return input.activeBranch === input.sharedBranch
-    ? { enabled: true, reason: "shared-branch" }
-    : { enabled: false, reason: "private-branch" }
+  // P26 / Section 26: Branch equality never decides live collaboration.
+  // Live collaboration is owned by session_members and the canonical projectd daemon.
+  return { enabled: false, reason: "private-branch" }
 }

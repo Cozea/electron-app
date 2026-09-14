@@ -1,8 +1,5 @@
 import { memo, useEffect, useMemo } from "react"
 
-import {
-  useYjsProject,
-} from "@/contexts/YjsProjectContextValue"
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
 import { ProjectSyncProviderRuntime } from "@/contexts/project/ProjectSyncProviderRuntime"
 import {
@@ -12,19 +9,13 @@ import {
 import { selectHostedWorkspaceRuntimeRecords } from "@/features/workspace/workspaceRuntimePolicy"
 
 function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {
-  const yjsContext = useYjsProject()
   const syncContext = useOptionalProjectSyncContext()
   const publishSyncContext = useWorkspaceRuntimeStore((state) => state.actions.publishSyncContext)
-  const publishYjsContext = useWorkspaceRuntimeStore((state) => state.actions.publishYjsContext)
   const clearPublishedContexts = useWorkspaceRuntimeStore((state) => state.actions.clearPublishedContexts)
 
   useEffect(() => {
     publishSyncContext(runtimeId, syncContext)
   }, [publishSyncContext, runtimeId, syncContext])
-
-  useEffect(() => {
-    publishYjsContext(runtimeId, yjsContext)
-  }, [publishYjsContext, runtimeId, yjsContext])
 
   useEffect(() => {
     return () => {
@@ -81,36 +72,6 @@ export function WorkspaceRuntimeHosts() {
     () => selectHostedWorkspaceRuntimeRecords(runtimeRecords),
     [runtimeRecords],
   )
-
-  // Per-window file-change interest roots: the workspace git roots this window
-  // hosts. Empty roots make the main process broadcast every external file
-  // change to every window, so keep this populated from the live hosts.
-  const interestRoots = useMemo(() => {
-    const seen = new Set<string>()
-    const roots: string[] = []
-
-    for (const record of hostedRuntimeRecords) {
-      const root = record.config.gitCwd?.trim()
-      if (!root || seen.has(root)) {
-        continue
-      }
-      seen.add(root)
-      roots.push(root)
-    }
-
-    return roots
-  }, [hostedRuntimeRecords])
-
-  useEffect(() => {
-    const yjsApi = window.electronAPI?.yjs
-    if (!yjsApi?.setInterestRoots) {
-      return
-    }
-
-    void yjsApi.setInterestRoots({ roots: interestRoots }).catch((error) => {
-      console.warn("[WorkspaceRuntimeHosts] Failed to update Yjs interest roots", error)
-    })
-  }, [interestRoots])
 
   useEffect(() => {
     refreshLifecycles()

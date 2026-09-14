@@ -10,7 +10,6 @@ import type {
   ProjectdSessionEvent,
   ProjectdSessionTicket,
   RuntimeKind,
-  SyncOp,
   SyncWriteFile,
   TerminalAttachViewResult,
   TerminalCreateOptions,
@@ -239,6 +238,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   windowContext,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
+  media: {
+    getMicrophonePermission: () => ipcRenderer.invoke('media:getMicrophonePermission'),
+    requestMicrophonePermission: () => ipcRenderer.invoke('media:requestMicrophonePermission'),
+  },
   integrations: {
     isEncryptionAvailable: () => ipcRenderer.invoke('integrations:isEncryptionAvailable'),
     generateKey: () => ipcRenderer.invoke('integrations:generateKey'),
@@ -828,76 +831,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }) => ipcRenderer.invoke('workspaceSync:deleteFiles', options),
     getGitRuntimeHealth: (options?: { force?: boolean }) =>
       ipcRenderer.invoke('workspaceSync:getGitRuntimeHealth', options ?? {}),
-    gitEnsureRepo: (options: { workspaceId: string; branch?: string; repoUrl?: string; debug?: boolean }) =>
-      ipcRenderer.invoke('workspaceSync:gitEnsureRepo', options),
-    gitCloneIfMissing: (options: {
-      workspaceId: string
-      repoUrl: string
-      branch?: string
-      debug?: boolean
-    }) => ipcRenderer.invoke('workspaceSync:gitCloneIfMissing', options),
-    gitFetchMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => ipcRenderer.invoke('workspaceSync:gitFetchMain', options),
     gitStatus: (options: { workspaceId: string; remote?: string; branch?: string; debug?: boolean }) =>
       ipcRenderer.invoke('workspaceSync:gitStatus', options),
-    gitPullMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      strategy?: 'merge' | 'ff-only'
-      allowUnrelatedHistories?: boolean
-      debug?: boolean
-    }) => ipcRenderer.invoke('workspaceSync:gitPullMain', options),
-    gitReplayLocalCommits: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => ipcRenderer.invoke('workspaceSync:gitReplayLocalCommits', options),
-    gitClassifyRepoHealth: (options: { workspaceId: string; remote?: string; branch?: string; debug?: boolean }) =>
-      ipcRenderer.invoke('workspaceSync:gitClassifyRepoHealth', options),
-    gitSalvageReclone: (options: {
-      workspaceId: string
-      repoUrl: string
-      branch?: string
-      debug?: boolean
-    }) => ipcRenderer.invoke('workspaceSync:gitSalvageReclone', options),
     gitReadConflictFile: (options: { workspaceId: string; filePath: string }) =>
       ipcRenderer.invoke('workspaceSync:gitReadConflictFile', options),
     gitResolveConflictFile: (options: { workspaceId: string; filePath: string; resolvedContent: string }) =>
       ipcRenderer.invoke('workspaceSync:gitResolveConflictFile', options),
-    gitRestoreMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => ipcRenderer.invoke('workspaceSync:gitRestoreMain', options),
-    gitAdoptWorkspace: (options: { workspaceId: string; branch?: string; repoUrl?: string; debug?: boolean }) =>
-      ipcRenderer.invoke('workspaceSync:gitAdoptWorkspace', options),
-    gitCommitAll: (options: { workspaceId: string; message: string; addAll?: boolean }) =>
-      ipcRenderer.invoke('workspaceSync:gitCommitAll', options),
-    gitPushMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-    }) => ipcRenderer.invoke('workspaceSync:gitPushMain', options),
-    gitCommitAndPush: (options: {
-      workspaceId: string
-      message: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      addAll?: boolean
-    }) => ipcRenderer.invoke('workspaceSync:gitCommitAndPush', options),
     gitCaptureCheckpoint: (options: {
       workspaceId: string
       checkpointId: string
@@ -974,89 +913,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
       maxPreviewFiles?: number
       maxPreviewBytes?: number
     }) => ipcRenderer.invoke('workspaceSync:mergeTreePreview', options),
-    enqueueOps: (options: { projectId: string; ops: SyncOp[] }) =>
-      ipcRenderer.invoke('workspaceSync:enqueueOps', options),
-    ackOps: (options: { projectId: string; opIds: string[] }) => ipcRenderer.invoke('workspaceSync:ackOps', options),
-    getJournalState: (options: { projectId: string }) => ipcRenderer.invoke('workspaceSync:getJournalState', options),
   },
   yjs: {
-    setInterestRoots: (options: { roots: string[] }) => ipcRenderer.invoke('yjs:setInterestRoots', options),
-    onExternalFileChange: (
-      callback: (data: {
-        filePath: string
-        workspaceId?: string
-        projectRootPath?: string
-        relativePath?: string
-        content: string
-        origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
-      }) => void,
-    ) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        data: {
-          filePath: string
-          workspaceId?: string
-          projectRootPath?: string
-          relativePath?: string
-          content: string
-          origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
-        },
-      ) => callback(data)
-      ipcRenderer.on('yjs:external-file-change', handler)
-      return () => ipcRenderer.removeListener('yjs:external-file-change', handler)
-    },
-    onExternalFileMetaChange: (
-      callback: (data: {
-        filePath: string
-        workspaceId?: string
-        projectRootPath?: string
-        relativePath?: string
-        origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
-        isBinary: boolean
-        isDirectory?: boolean
-        sizeBytes: number
-        content?: string
-      }) => void,
-    ) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        data: {
-          filePath: string
-          workspaceId?: string
-          projectRootPath?: string
-          relativePath?: string
-          origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
-          isBinary: boolean
-          isDirectory?: boolean
-          sizeBytes: number
-          content?: string
-        },
-      ) => callback(data)
-      ipcRenderer.on('yjs:external-file-meta-change', handler)
-      return () => ipcRenderer.removeListener('yjs:external-file-meta-change', handler)
-    },
-    onExternalFileDelete: (
-      callback: (data: {
-        filePath: string
-        workspaceId?: string
-        projectRootPath?: string
-        relativePath?: string
-        origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
-      }) => void,
-    ) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        data: {
-          filePath: string
-          workspaceId?: string
-          projectRootPath?: string
-          relativePath?: string
-          origin?: string | import('../../../shared/electronApiTypes').FileChangeAttribution
-        },
-      ) => callback(data)
-      ipcRenderer.on('yjs:external-file-delete', handler)
-      return () => ipcRenderer.removeListener('yjs:external-file-delete', handler)
-    },
+    setInterestRoots: async () => ({ success: true as const }),
+    onExternalFileChange: () => () => {},
+    onExternalFileMetaChange: () => () => {},
+    onExternalFileDelete: () => () => {},
   },
   devServer: {
     start: (options: {

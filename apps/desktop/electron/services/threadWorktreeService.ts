@@ -65,7 +65,23 @@ interface RegisteredWorktreeEntry {
   threadId: string
   createdAt: number
   baseCommit?: string
-  baseFileHashes?: Map<string, string>
+  baseEntries?: Map<string, EntryFingerprint>
+}
+
+type EntryKind = "file" | "symlink"
+
+interface FilesystemEntry {
+  kind: EntryKind
+  content: Buffer
+}
+
+interface EntryFingerprint {
+  kind: EntryKind
+  contentHash: string
+}
+
+interface BaseEntry extends EntryFingerprint {
+  content?: Buffer
 }
 
 // In-memory main-process registry tracking private worktree provenance
@@ -80,7 +96,14 @@ function hashContent(content: Buffer | string): string {
   return crypto.createHash("sha256").update(content).digest("hex")
 }
 
-function copyDirectoryContentsRecursive(source: string, target: string, hashesMap?: Map<string, string>, baseRel = ""): void {
+function fingerprintEntry(entry: FilesystemEntry): EntryFingerprint {
+  return {
+    kind: entry.kind,
+    contentHash: hashContent(entry.content),
+  }
+}
+
+function copyDirectoryContentsRecursive(source: string, target: string, entriesMap?: Map<string, EntryFingerprint>, baseRel = ""): void {
   if (!fs.existsSync(source)) return
   fs.mkdirSync(target, { recursive: true })
   const entries = fs.readdirSync(source, { withFileTypes: true })
@@ -94,17 +117,18 @@ function copyDirectoryContentsRecursive(source: string, target: string, hashesMa
       try {
         const linkTarget = fs.readlinkSync(srcPath)
         fs.symlinkSync(linkTarget, dstPath)
+        entriesMap?.set(relPath, fingerprintEntry({ kind: "symlink", content: Buffer.from(linkTarget) }))
       } catch {
         fs.copyFileSync(srcPath, dstPath)
       }
     } else if (entry.isDirectory()) {
-      copyDirectoryContentsRecursive(srcPath, dstPath, hashesMap, relPath)
+      copyDirectoryContentsRecursive(srcPath, dstPath, entriesMap, relPath)
     } else if (entry.isFile()) {
       fs.copyFileSync(srcPath, dstPath)
-      if (hashesMap) {
+      if (entriesMap) {
         try {
           const buf = fs.readFileSync(srcPath)
-          hashesMap.set(relPath, hashContent(buf))
+          entriesMap.set(relPath, fingerprintEntry({ kind: "file", content: buf }))
         } catch {
           // Non-fatal
         }
@@ -120,7 +144,7 @@ function copyDirectoryContentsRecursive(source: string, target: string, hashesMa
 export async function validateWorktreeProvenance(
   worktreePath: string,
   workspaceRoot: string,
-): Promise<{ ok: boolean; reason?: string; baseCommit?: string; baseHashes?: Map<string, string> }> {
+): Promise<{ ok: boolean; reason?: string; baseCommit?: string; baseEntries?: Map<string, EntryFingerprint> }> {
   const resolvedWorktree = path.resolve(worktreePath)
   const resolvedWorkspace = path.resolve(workspaceRoot)
 
@@ -211,7 +235,7 @@ export async function validateWorktreeProvenance(
     return { ok: false, reason: "Worktree path is not registered as an authorized private thread worktree." }
   }
 
-  return { ok: true, baseHashes: record.baseFileHashes }
+  return { ok: true, baseEntries: record.baseEntries }
 }
 
 /**
@@ -315,14 +339,14 @@ export async function createPrivateThreadWorktree(
       fs.rmSync(resolvedTarget, { recursive: true, force: true })
     }
     fs.mkdirSync(resolvedTarget, { recursive: true })
-    const baseHashes = new Map<string, string>()
-    copyDirectoryContentsRecursive(input.workspaceRoot, resolvedTarget, baseHashes)
+    const baseEntries = new Map<string, EntryFingerprint>()
+    copyDirectoryContentsRecursive(input.workspaceRoot, resolvedTarget, baseEntries)
 
     registeredPrivateWorktrees.set(resolvedTarget, {
       workspaceRoot: resolvedWorkspace,
       threadId: input.threadId,
       createdAt: Date.now(),
-      baseFileHashes: baseHashes,
+      baseEntries,
     })
 
     return {
@@ -346,6 +370,30 @@ interface TouchedPathDelta {
   action: "add" | "modify" | "delete"
 }
 
+interface DeltaDiscoveryResult {
+  deltas?: TouchedPathDelta[]
+  error?: string
+}
+
+interface ApplyOperation {
+  path: string
+  entry: FilesystemEntry | null
+}
+
+interface ApplyPlan {
+  operations: ApplyOperation[]
+  appliedFiles: string[]
+  conflicts: ApplyThreadWorktreeConflict[]
+}
+
+function readNullDelimited(value: Buffer | string): string[] {
+  return Buffer.from(value).toString("utf8").split("\0").filter((item) => item.length > 0)
+}
+
+function validateDeltaPath(relPath: string, rootDir: string): string | null {
+  return sanitizeSafeRelativePath(relPath, rootDir)
+}
+
 /**
  * Discovers the exact delta Δ(B → R) touched by the agent in the private worktree.
  * Does NOT touch unrelated files in the Session Workspace (L).
@@ -353,53 +401,65 @@ interface TouchedPathDelta {
 async function computeWorktreeDelta(
   resolvedWorktree: string,
   baseCommit?: string,
-  baseHashes?: Map<string, string>,
-): Promise<TouchedPathDelta[]> {
+  baseEntries?: Map<string, EntryFingerprint>,
+): Promise<DeltaDiscoveryResult> {
   const deltas = new Map<string, TouchedPathDelta>()
 
   if (baseCommit) {
     try {
-      // 1. Modified, added, deleted files tracked relative to baseCommit
-      const { stdout: diffOut } = await exec("git", ["diff", "--name-status", baseCommit], {
+      // Disable rename detection deliberately. A rename then becomes a safe, explicit
+      // delete + add pair, and NUL framing preserves spaces, tabs, and newlines in names.
+      const { stdout: diffOut } = await exec("git", ["diff", "--name-status", "-z", "--no-renames", baseCommit], {
         cwd: resolvedWorktree,
+        encoding: "buffer",
       })
-      for (const line of diffOut.split("\n")) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        const [status, ...pathParts] = trimmed.split(/\s+/)
-        const relPath = pathParts.join(" ")
-        if (!relPath || relPath.startsWith(".git/") || relPath === ".git") continue
+      const fields = readNullDelimited(diffOut)
+      for (let index = 0; index < fields.length; index += 2) {
+        const status = fields[index]
+        const rawPath = fields[index + 1]
+        if (!status || rawPath === undefined) {
+          return { error: "Git returned an incomplete private-worktree delta." }
+        }
+        const relPath = validateDeltaPath(rawPath, resolvedWorktree)
+        if (!relPath || relPath.startsWith(".git/") || relPath === ".git") {
+          return { error: `Unsafe path in private-worktree delta was rejected: ${JSON.stringify(rawPath)}` }
+        }
 
-        if (status.startsWith("M")) {
+        if (status.startsWith("M") || status.startsWith("T")) {
           deltas.set(relPath, { path: relPath, action: "modify" })
         } else if (status.startsWith("A")) {
           deltas.set(relPath, { path: relPath, action: "add" })
         } else if (status.startsWith("D")) {
           deltas.set(relPath, { path: relPath, action: "delete" })
+        } else {
+          return { error: `Unsupported private-worktree delta status: ${status}` }
         }
       }
 
       // 2. Untracked files added by the agent
-      const { stdout: untrackedOut } = await exec("git", ["ls-files", "--others", "--exclude-standard"], {
+      const { stdout: untrackedOut } = await exec("git", ["ls-files", "-z", "--others", "--exclude-standard"], {
         cwd: resolvedWorktree,
+        encoding: "buffer",
       })
-      for (const line of untrackedOut.split("\n")) {
-        const relPath = line.trim()
-        if (!relPath || relPath.startsWith(".git/")) continue
+      for (const rawPath of readNullDelimited(untrackedOut)) {
+        const relPath = validateDeltaPath(rawPath, resolvedWorktree)
+        if (!relPath || relPath.startsWith(".git/") || relPath === ".git") {
+          return { error: `Unsafe untracked private-worktree path was rejected: ${JSON.stringify(rawPath)}` }
+        }
         deltas.set(relPath, { path: relPath, action: "add" })
       }
 
-      return Array.from(deltas.values())
+      return { deltas: Array.from(deltas.values()) }
     } catch {
       // Fall through to hash comparison if git diff fails
     }
   }
 
-  // Non-git or fallback hash comparison against recorded baseHashes
-  if (baseHashes) {
-    const currentWorktreeFiles = new Map<string, string>()
+  // Non-git or fallback fingerprint comparison against recorded base entries.
+  if (baseEntries) {
+    const currentWorktreeEntries = new Map<string, EntryFingerprint>()
 
-    function scanHashes(dir: string, base: string) {
+    function scanEntries(dir: string, base: string) {
       if (!fs.existsSync(dir)) return
       const entries = fs.readdirSync(dir, { withFileTypes: true })
       for (const entry of entries) {
@@ -407,11 +467,17 @@ async function computeWorktreeDelta(
         const full = path.join(dir, entry.name)
         const rel = path.relative(base, full)
         if (entry.isDirectory()) {
-          scanHashes(full, base)
+          scanEntries(full, base)
+        } else if (entry.isSymbolicLink()) {
+          try {
+            currentWorktreeEntries.set(rel, fingerprintEntry({ kind: "symlink", content: Buffer.from(fs.readlinkSync(full)) }))
+          } catch {
+            // A vanished entry is observed on the next scan.
+          }
         } else if (entry.isFile()) {
           try {
             const buf = fs.readFileSync(full)
-            currentWorktreeFiles.set(rel, hashContent(buf))
+            currentWorktreeEntries.set(rel, fingerprintEntry({ kind: "file", content: buf }))
           } catch {
             // ignore
           }
@@ -419,52 +485,181 @@ async function computeWorktreeDelta(
       }
     }
 
-    scanHashes(resolvedWorktree, resolvedWorktree)
+    scanEntries(resolvedWorktree, resolvedWorktree)
 
     // Check additions and modifications
-    for (const [rel, hashR] of currentWorktreeFiles.entries()) {
-      const hashB = baseHashes.get(rel)
-      if (!hashB) {
+    for (const [rel, entryR] of currentWorktreeEntries.entries()) {
+      const entryB = baseEntries.get(rel)
+      if (!entryB) {
         deltas.set(rel, { path: rel, action: "add" })
-      } else if (hashB !== hashR) {
+      } else if (entryB.kind !== entryR.kind || entryB.contentHash !== entryR.contentHash) {
         deltas.set(rel, { path: rel, action: "modify" })
       }
     }
 
     // Check deletions
-    for (const [rel] of baseHashes.entries()) {
-      if (!currentWorktreeFiles.has(rel)) {
+    for (const [rel] of baseEntries.entries()) {
+      if (!currentWorktreeEntries.has(rel)) {
         deltas.set(rel, { path: rel, action: "delete" })
       }
     }
 
-    return Array.from(deltas.values())
+    return { deltas: Array.from(deltas.values()) }
   }
 
-  return []
+  return { error: "Private worktree has no verifiable base state." }
 }
 
-/**
- * Reads content at base B (using git show or baseHashes).
- */
-async function readBaseContent(
+function isMissing(error: unknown): boolean {
+  return Boolean(error && typeof error === "object" && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT")
+}
+
+/** Refuses symlinked ancestor traversal without ever dereferencing a link. */
+function assertSafeParent(root: string, relPath: string): void {
+  const rootReal = fs.realpathSync.native(root)
+  const safeRel = sanitizeSafeRelativePath(relPath, rootReal)
+  if (!safeRel) throw new Error(`Unsafe workspace path rejected: ${JSON.stringify(relPath)}`)
+
+  let current = rootReal
+  const parents = safeRel.split(path.sep).slice(0, -1)
+  for (const segment of parents) {
+    current = path.join(current, segment)
+    try {
+      const stat = fs.lstatSync(current)
+      if (stat.isSymbolicLink()) throw new Error(`Path escapes through symlinked parent: ${relPath}`)
+      if (!stat.isDirectory()) throw new Error(`Path parent is not a directory: ${relPath}`)
+    } catch (error) {
+      if (isMissing(error)) return
+      throw error
+    }
+  }
+}
+
+function readFilesystemEntry(root: string, relPath: string): FilesystemEntry | null {
+  assertSafeParent(root, relPath)
+  const fullPath = path.join(fs.realpathSync.native(root), relPath)
+  let stat: fs.Stats
+  try {
+    stat = fs.lstatSync(fullPath)
+  } catch (error) {
+    if (isMissing(error)) return null
+    throw error
+  }
+
+  if (stat.isSymbolicLink()) {
+    return { kind: "symlink", content: Buffer.from(fs.readlinkSync(fullPath)) }
+  }
+  if (stat.isFile()) {
+    return { kind: "file", content: fs.readFileSync(fullPath) }
+  }
+  throw new Error(`Private worktree apply only supports files and symlinks: ${relPath}`)
+}
+
+async function readGitBaseEntry(
   resolvedWorktree: string,
   relPath: string,
   baseCommit?: string,
-): Promise<Buffer | null> {
-  if (baseCommit) {
-    try {
-      const { stdout } = await exec("git", ["show", `${baseCommit}:${relPath}`], {
-        cwd: resolvedWorktree,
-        encoding: "buffer",
-        maxBuffer: 32 * 1024 * 1024,
-      })
-      return Buffer.from(stdout)
-    } catch {
-      return null
+): Promise<BaseEntry | null> {
+  if (!baseCommit) return null
+  try {
+    const { stdout: treeOut } = await exec("git", ["ls-tree", "-z", baseCommit, "--", relPath], {
+      cwd: resolvedWorktree,
+      encoding: "buffer",
+    })
+    const record = readNullDelimited(treeOut)[0]
+    if (!record) return null
+    const tabIndex = record.indexOf("\t")
+    const header = tabIndex >= 0 ? record.slice(0, tabIndex).split(" ") : []
+    const mode = header[0]
+    if (mode !== "100644" && mode !== "100755" && mode !== "120000") {
+      throw new Error(`Unsupported Git base entry mode for ${relPath}: ${mode ?? "missing"}`)
     }
+    const { stdout } = await exec("git", ["show", `${baseCommit}:${relPath}`], {
+      cwd: resolvedWorktree,
+      encoding: "buffer",
+      maxBuffer: 32 * 1024 * 1024,
+    })
+    const content = Buffer.from(stdout)
+    return {
+      kind: mode === "120000" ? "symlink" : "file",
+      content,
+      contentHash: hashContent(content),
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Unsupported Git base entry mode")) throw error
+    return null
   }
-  return null
+}
+
+function matchesBase(entry: FilesystemEntry | null, base: BaseEntry | null): boolean {
+  if (!entry || !base || entry.kind !== base.kind) return false
+  if (base.content) return entry.content.equals(base.content)
+  return hashContent(entry.content) === base.contentHash
+}
+
+function entriesEqual(left: FilesystemEntry | null, right: FilesystemEntry | null): boolean {
+  if (!left || !right) return left === right
+  return left.kind === right.kind && left.content.equals(right.content)
+}
+
+function createTemporaryPath(parent: string, basename: string): string {
+  return path.join(parent, `.${basename}.cozea-apply-${crypto.randomUUID()}.tmp`)
+}
+
+/**
+ * Writes an already-preflighted entry without following a destination link.
+ * Temporary entries are created in the verified parent, then renamed over the
+ * destination so a final symlink is replaced rather than dereferenced.
+ */
+function writeEntry(root: string, relPath: string, entry: FilesystemEntry): void {
+  assertSafeParent(root, relPath)
+  const rootReal = fs.realpathSync.native(root)
+  const destination = path.join(rootReal, relPath)
+  const parent = path.dirname(destination)
+  fs.mkdirSync(parent, { recursive: true })
+  assertSafeParent(rootReal, relPath)
+
+  const temporary = createTemporaryPath(parent, path.basename(destination))
+  try {
+    if (entry.kind === "symlink") {
+      fs.symlinkSync(entry.content.toString("utf8"), temporary)
+    } else {
+      const descriptor = fs.openSync(temporary, "wx", 0o600)
+      try {
+        fs.writeFileSync(descriptor, entry.content)
+        fs.fsyncSync(descriptor)
+      } finally {
+        fs.closeSync(descriptor)
+      }
+    }
+    // Recheck immediately before the commit point. rename replaces a final
+    // symlink itself, never its target.
+    assertSafeParent(rootReal, relPath)
+    fs.renameSync(temporary, destination)
+  } catch (error) {
+    try {
+      fs.unlinkSync(temporary)
+    } catch {
+      // The temporary either never existed or was committed by rename.
+    }
+    throw error
+  }
+}
+
+function deleteEntry(root: string, relPath: string): void {
+  assertSafeParent(root, relPath)
+  const destination = path.join(fs.realpathSync.native(root), relPath)
+  let stat: fs.Stats
+  try {
+    stat = fs.lstatSync(destination)
+  } catch (error) {
+    if (isMissing(error)) return
+    throw error
+  }
+  if (!stat.isFile() && !stat.isSymbolicLink()) {
+    throw new Error(`Private worktree apply only deletes files and symlinks: ${relPath}`)
+  }
+  fs.unlinkSync(destination)
 }
 
 /**
@@ -505,117 +700,118 @@ export async function applyThreadWorktreeToWorkspace(
       })
     }
   } else {
-    targetPaths = await computeWorktreeDelta(resolvedWorktree, provenance.baseCommit, provenance.baseHashes)
+    const discovered = await computeWorktreeDelta(resolvedWorktree, provenance.baseCommit, provenance.baseEntries)
+    if (discovered.error || !discovered.deltas) {
+      return { success: false, appliedFiles: [], error: discovered.error ?? "Could not inspect private-worktree changes." }
+    }
+    targetPaths = discovered.deltas
   }
 
-  const appliedFiles: string[] = []
-  const conflicts: ApplyThreadWorktreeConflict[] = []
-
-  // 2. Evaluate each touched path using B / R / L three-way comparison
+  // Preflight every path before changing any live file. A conflict must never
+  // produce a partial Apply result that the watcher could publish to peers.
+  const plan: ApplyPlan = { operations: [], appliedFiles: [], conflicts: [] }
+  const seenPaths = new Set<string>()
   for (const delta of targetPaths) {
     const rel = delta.path
-    const src = path.join(resolvedWorktree, rel)
-    const dst = path.join(resolvedWorkspace, rel)
+    if (seenPaths.has(rel)) continue
+    seenPaths.add(rel)
 
-    const baseBytes = await readBaseContent(resolvedWorktree, rel, provenance.baseCommit)
-    const existsInR = fs.existsSync(src)
-    const existsInL = fs.existsSync(dst)
+    let base: BaseEntry | null
+    try {
+      base = provenance.baseCommit
+        ? await readGitBaseEntry(resolvedWorktree, rel, provenance.baseCommit)
+        : provenance.baseEntries?.get(rel) ?? null
+    } catch (error) {
+      return { success: false, appliedFiles: [], error: error instanceof Error ? error.message : String(error) }
+    }
 
-    const bytesR = existsInR ? fs.readFileSync(src) : null
-    const bytesL = existsInL ? fs.readFileSync(dst) : null
+    let result: FilesystemEntry | null
+    let live: FilesystemEntry | null
+    try {
+      result = readFilesystemEntry(resolvedWorktree, rel)
+      live = readFilesystemEntry(resolvedWorkspace, rel)
+    } catch (error) {
+      return { success: false, appliedFiles: [], error: error instanceof Error ? error.message : String(error) }
+    }
 
-    // Case A: Agent added new file (not in base)
-    if (baseBytes === null && existsInR) {
-      if (!existsInL) {
-        // Safe addition: L does not have it -> copy R to L
-        fs.mkdirSync(path.dirname(dst), { recursive: true })
-        fs.copyFileSync(src, dst)
-        appliedFiles.push(rel)
+    if (!base && result) {
+      if (!live) {
+        plan.operations.push({ path: rel, entry: result })
+      } else if (!entriesEqual(live, result)) {
+        plan.conflicts.push({
+          path: rel,
+          kind: "add_conflict",
+          message: `File '${rel}' was added in private worktree but concurrently created by a peer in the Session Workspace.`,
+        })
       } else {
-        // Peer also created a file at rel in L
-        if (bytesL && bytesR && bytesL.equals(bytesR)) {
-          // Converged: identical content
-          appliedFiles.push(rel)
-        } else {
-          conflicts.push({
-            path: rel,
-            kind: "add_conflict",
-            message: `File '${rel}' was added in private worktree but concurrently created by a peer in the Session Workspace.`,
-          })
-        }
+        plan.appliedFiles.push(rel)
       }
       continue
     }
 
-    // Case B: Agent deleted file (existed in base, absent in R)
-    if (baseBytes !== null && !existsInR) {
-      if (!existsInL) {
-        // Already deleted in L
-        appliedFiles.push(rel)
+    if (base && !result) {
+      if (!live) {
+        plan.appliedFiles.push(rel)
+      } else if (matchesBase(live, base)) {
+        plan.operations.push({ path: rel, entry: null })
       } else {
-        // Check if peer modified the file in L
-        if (bytesL && baseBytes.equals(bytesL)) {
-          // Safe deletion: peer did not touch it -> delete from L
-          try {
-            fs.rmSync(dst, { force: true })
-            appliedFiles.push(rel)
-          } catch (err) {
-            console.warn(`[ThreadWorktreeService] Failed to delete ${rel}:`, err)
-          }
-        } else {
-          // Conflict: peer modified file in L while agent deleted it in worktree
-          conflicts.push({
-            path: rel,
-            kind: "delete_conflict",
-            message: `File '${rel}' was deleted in private worktree but modified by a peer in the Session Workspace.`,
-          })
-        }
+        plan.conflicts.push({
+          path: rel,
+          kind: "delete_conflict",
+          message: `File '${rel}' was deleted in private worktree but modified by a peer in the Session Workspace.`,
+        })
       }
       continue
     }
 
-    // Case C: Agent modified file (exists in base, exists in R, R != B)
-    if (baseBytes !== null && existsInR) {
-      if (!existsInL) {
-        // Conflict: peer deleted file in L while agent modified it
-        conflicts.push({
+    if (base && result) {
+      if (!live) {
+        plan.conflicts.push({
           path: rel,
           kind: "modify_conflict",
           message: `File '${rel}' was modified in private worktree but deleted by a peer in the Session Workspace.`,
         })
-        continue
-      }
-
-      if (bytesL && baseBytes.equals(bytesL)) {
-        // Safe fast-forward: peer did not modify it in L -> apply R to L
-        fs.mkdirSync(path.dirname(dst), { recursive: true })
-        fs.copyFileSync(src, dst)
-        appliedFiles.push(rel)
-      } else if (bytesL && bytesR && bytesL.equals(bytesR)) {
-        // Converged: peer and agent made identical edit
-        appliedFiles.push(rel)
+      } else if (matchesBase(live, base)) {
+        plan.operations.push({ path: rel, entry: result })
+      } else if (entriesEqual(live, result)) {
+        plan.appliedFiles.push(rel)
       } else {
-        // Conflict: both peer and agent modified the same file
-        conflicts.push({
+        plan.conflicts.push({
           path: rel,
           kind: "modify_conflict",
           message: `File '${rel}' was concurrently modified in private worktree and by a peer in the Session Workspace.`,
         })
       }
-      continue
     }
   }
 
-  if (conflicts.length > 0) {
+  if (plan.conflicts.length > 0) {
     return {
       success: false,
-      appliedFiles,
-      conflicts,
-      error: `Conflicting concurrent changes detected on ${conflicts.length} file(s). Peer edits were preserved.`,
+      appliedFiles: [],
+      conflicts: plan.conflicts,
+      error: `Conflicting concurrent changes detected on ${plan.conflicts.length} file(s). No files were applied.`,
     }
   }
 
-  return { success: true, appliedFiles }
+  try {
+    for (const operation of plan.operations) {
+      if (operation.entry) {
+        writeEntry(resolvedWorkspace, operation.path, operation.entry)
+      } else {
+        deleteEntry(resolvedWorkspace, operation.path)
+      }
+      plan.appliedFiles.push(operation.path)
+    }
+  } catch (error) {
+    return {
+      success: false,
+      appliedFiles: plan.appliedFiles,
+      error: `Apply stopped after a filesystem error: ${error instanceof Error ? error.message : String(error)}`,
+    }
+  }
+
+  return { success: true, appliedFiles: plan.appliedFiles }
 }
 
 /**

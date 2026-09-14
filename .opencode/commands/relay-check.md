@@ -1,7 +1,11 @@
 ---
 description: Check ChatGPT instructions from shared relay
 ---
-Latest shared relay messages from GitHub (READ-only):
+Check for new ChatGPT instructions on the shared relay (READ-only).
+
+Prefer the relay MCP tools: call `relay_read` (limit 5, from any) and look for
+the newest [CHATGPT → MUSE / REVIEW] or [CHATGPT → MUSE / INSTRUCTION].
+Fallback if MCP is unavailable:
 
 !`scripts/agent-relay.sh read --limit 5`
 

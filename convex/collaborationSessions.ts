@@ -206,16 +206,27 @@ export const listMembers = publicQuery({
       .query("collaborationSessionMembers")
       .withIndex("by_session", (q) => q.eq("sessionId", session._id))
       .collect()
+
+    const presenceList = await ctx.db
+      .query("collaborationSessionPresence")
+      .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+      .collect()
+    const presenceByPrincipal = new Map(presenceList.map((p) => [p.principalId, p]))
+
     const results = []
     for (const member of members) {
       if (member.status === "revoked") continue
       const principal = await ctx.db.get(member.principalId)
+      const presence = presenceByPrincipal.get(member.principalId)
       results.push({
         principalId: member.principalId,
         displayName: principal?.displayName ?? "A Cozea device",
         role: member.role,
         status: member.status,
         isSelf: member.principalId === caller._id,
+        microphoneState: presence?.microphoneState ?? "off",
+        isWorkbenchActive: presence?.isWorkbenchActive ?? false,
+        allowBackgroundAudio: presence?.allowBackgroundAudio ?? false,
       })
     }
     return results

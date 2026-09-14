@@ -20,10 +20,6 @@ import {
   ActiveWorkspaceContext,
   useActiveWorkspaceOrNull,
 } from "@/contexts/workspace/ActiveWorkspaceContext"
-import {
-  YjsProjectContext,
-  useYjsProject,
-} from "@/contexts/YjsProjectContextValue"
 
 interface WorkbenchKeepAliveHostProps {
   current: WorkbenchKeepAliveSession | null
@@ -48,11 +44,10 @@ function FrozenWorkbenchContextBoundary({
   const routeContext = useOptionalProjectRouteContext()
   const syncContext = useOptionalProjectSyncContext()
   const activeWorkspace = useActiveWorkspaceOrNull()
-  const yjsProject = useYjsProject()
-  const frozenRef = useRef({ routeContext, syncContext, activeWorkspace, yjsProject })
+  const frozenRef = useRef({ routeContext, syncContext, activeWorkspace })
 
   if (active) {
-    frozenRef.current = { routeContext, syncContext, activeWorkspace, yjsProject }
+    frozenRef.current = { routeContext, syncContext, activeWorkspace }
   }
 
   const frozen = frozenRef.current
@@ -60,9 +55,7 @@ function FrozenWorkbenchContextBoundary({
     <ProjectRouteContext.Provider value={frozen.routeContext}>
       <ActiveWorkspaceContext.Provider value={frozen.activeWorkspace}>
         <ProjectSyncContext.Provider value={frozen.syncContext}>
-          <YjsProjectContext.Provider value={frozen.yjsProject}>
-            {children}
-          </YjsProjectContext.Provider>
+          {children}
         </ProjectSyncContext.Provider>
       </ActiveWorkspaceContext.Provider>
     </ProjectRouteContext.Provider>

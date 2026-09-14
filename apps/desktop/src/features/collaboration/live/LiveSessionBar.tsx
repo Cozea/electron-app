@@ -49,6 +49,7 @@ export function LiveSessionBar({ live }: { live: LiveSessionController }) {
         onPause={live.pause}
         onResume={live.resume}
         onEnd={live.end}
+        media={live.media}
       />
         {reviewingFiles && <BinaryConflictDialog key={live.session.publicSessionId} publicSessionId={live.session.publicSessionId}
           canEdit={live.canEdit} onClose={() => setReviewingFiles(false)} />}

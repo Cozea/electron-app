@@ -1617,6 +1617,10 @@ export interface ElectronAPI {
     getDiagnostics: () => Promise<ComputerUseDiagnostics>
     openPermissionSettings: (target: 'accessibility' | 'screenRecording') => Promise<void>
   }
+  media: {
+    getMicrophonePermission: () => Promise<"not-determined" | "granted" | "denied" | "restricted" | "unknown">
+    requestMicrophonePermission: () => Promise<boolean>
+  }
   integrations: {
     isEncryptionAvailable: () => Promise<boolean>
     generateKey: () => Promise<IntegrationKeyResult>
@@ -2353,93 +2357,18 @@ export interface ElectronAPI {
       }
     }) => Promise<SyncDeleteFilesResult>
     getGitRuntimeHealth: (options?: { force?: boolean }) => Promise<GitRuntimeHealth>
-    gitEnsureRepo: (options: {
-      workspaceId: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => Promise<GitSyncEnsureRepoResult>
-    gitCloneIfMissing: (options: {
-      workspaceId: string
-      repoUrl: string
-      branch?: string
-      debug?: boolean
-    }) => Promise<GitSyncCloneResult>
-    gitFetchMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => Promise<GitSyncFetchResult>
     gitStatus: (options: {
       workspaceId: string
       remote?: string
       branch?: string
       debug?: boolean
     }) => Promise<GitSyncStatusResult>
-    gitPullMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      strategy?: 'merge' | 'ff-only'
-      allowUnrelatedHistories?: boolean
-      debug?: boolean
-    }) => Promise<GitSyncPullResult>
-    gitReplayLocalCommits: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => Promise<GitSyncReplayResult>
-    gitClassifyRepoHealth: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      debug?: boolean
-    }) => Promise<GitRepoHealthResult>
-    gitSalvageReclone: (options: {
-      workspaceId: string
-      repoUrl: string
-      branch?: string
-      debug?: boolean
-    }) => Promise<GitSyncSalvageResult>
     gitReadConflictFile: (options: { workspaceId: string; filePath: string }) => Promise<GitConflictFileResult>
     gitResolveConflictFile: (options: {
       workspaceId: string
       filePath: string
       resolvedContent: string
     }) => Promise<GitResolveConflictResult>
-    gitRestoreMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => Promise<GitSyncRestoreResult>
-    gitAdoptWorkspace: (options: {
-      workspaceId: string
-      branch?: string
-      repoUrl?: string
-      debug?: boolean
-    }) => Promise<GitSyncAdoptResult>
-    gitCommitAll: (options: { workspaceId: string; message: string; addAll?: boolean }) => Promise<GitSyncCommitResult>
-    gitPushMain: (options: {
-      workspaceId: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-    }) => Promise<GitSyncPushResult>
-    gitCommitAndPush: (options: {
-      workspaceId: string
-      message: string
-      remote?: string
-      branch?: string
-      repoUrl?: string
-      addAll?: boolean
-    }) => Promise<GitSyncCommitPushResult>
     gitCaptureCheckpoint: (options: {
       workspaceId: string
       checkpointId: string
@@ -2503,17 +2432,6 @@ export interface ElectronAPI {
       maxPreviewFiles?: number
       maxPreviewBytes?: number
     }) => Promise<MergeTreePreviewResult>
-    enqueueOps: (options: { projectId: string; ops: SyncOp[] }) => Promise<{
-      accepted: number
-      acceptedOpIds: string[]
-      rejected: number
-      journalState: SyncJournalState
-    }>
-    ackOps: (options: {
-      projectId: string
-      opIds: string[]
-    }) => Promise<{ acked: number; journalState: SyncJournalState }>
-    getJournalState: (options: { projectId: string }) => Promise<SyncJournalState>
   }
   yjs: {
     setInterestRoots: (options: { roots: string[] }) => Promise<{ success: true }>

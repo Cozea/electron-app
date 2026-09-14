@@ -194,4 +194,130 @@ describe("P23 session bar", () => {
     expect(markup).toContain("feature/live")
     expect(markup).toContain("Switch branch")
   })
+
+  it("renders microphone controls and member voice activity states", () => {
+    const mediaMembers: LiveSessionMember[] = [
+      {
+        principalId: "p1",
+        displayName: "Alice",
+        role: "developer",
+        status: "active",
+        isSelf: true,
+        microphoneState: "speaking",
+      },
+      {
+        principalId: "p2",
+        displayName: "Bob",
+        role: "developer",
+        status: "active",
+        isSelf: false,
+        microphoneState: "muted",
+      },
+    ]
+
+    const markupWithMuted = renderToStaticMarkup(
+      <SessionWorkbenchControls
+        branchName="feature/live"
+        targetBranch="main"
+        lifecycle="ACTIVE"
+        sync={LIVE}
+        members={mediaMembers}
+        membership="active"
+        canManage
+        media={{
+          microphoneState: "muted",
+          isMuted: true,
+          permissionStatus: "granted",
+          isSpeaking: false,
+          allowBackgroundAudio: false,
+          setAllowBackgroundAudio: noop,
+          error: null,
+          toggleMute: async () => {},
+          requestMicrophonePermission: async () => true,
+          audioDevices: [],
+          selectedDeviceId: null,
+          selectAudioDevice: async () => {},
+        }}
+        {...HANDLERS}
+      />,
+    )
+
+    expect(markupWithMuted).toContain("data-live-session-mic-button")
+    expect(markupWithMuted).toContain('aria-label="Unmute microphone"')
+    expect(markupWithMuted).toContain("Muted")
+    expect(markupWithMuted).not.toContain("data-soundwave-candles")
+    // Alice is speaking -> should have the speaking ring
+    expect(markupWithMuted).toContain("ring-emerald-500")
+
+    const markupWithUnmuted = renderToStaticMarkup(
+      <SessionWorkbenchControls
+        branchName="feature/live"
+        targetBranch="main"
+        lifecycle="ACTIVE"
+        sync={LIVE}
+        members={mediaMembers}
+        membership="active"
+        canManage
+        media={{
+          microphoneState: "speaking",
+          isMuted: false,
+          permissionStatus: "granted",
+          isSpeaking: true,
+          allowBackgroundAudio: false,
+          setAllowBackgroundAudio: noop,
+          error: null,
+          toggleMute: async () => {},
+          requestMicrophonePermission: async () => true,
+          audioDevices: [],
+          selectedDeviceId: null,
+          selectAudioDevice: async () => {},
+        }}
+        {...HANDLERS}
+      />,
+    )
+
+    expect(markupWithUnmuted).toContain('aria-label="Mute microphone"')
+    expect(markupWithUnmuted).toContain("data-soundwave-candles")
+    expect(markupWithUnmuted).toContain("Mic")
+  })
+
+  it("renders audio input device selector trigger and options", () => {
+    let selectedId = "mic-1"
+    const markup = renderToStaticMarkup(
+      <SessionWorkbenchControls
+        branchName="feature/live"
+        targetBranch="main"
+        lifecycle="ACTIVE"
+        sync={LIVE}
+        members={MEMBERS}
+        membership="active"
+        canManage
+        media={{
+          microphoneState: "active",
+          isMuted: false,
+          permissionStatus: "granted",
+          isSpeaking: false,
+          allowBackgroundAudio: false,
+          setAllowBackgroundAudio: noop,
+          error: null,
+          toggleMute: async () => {},
+          requestMicrophonePermission: async () => true,
+          audioDevices: [
+            { deviceId: "mic-1", label: "MacBook Air Microphone", groupId: "g1" },
+            { deviceId: "mic-2", label: "AirPods Pro", groupId: "g2" },
+          ],
+          selectedDeviceId: "mic-1",
+          selectAudioDevice: async (id) => {
+            selectedId = id
+          },
+        }}
+        {...HANDLERS}
+      />,
+    )
+
+    expect(markup).toContain('aria-label="Select audio input device"')
+    expect(markup).toContain('title="Audio input settings"')
+    expect(selectedId).toBe("mic-1")
+  })
 })
+

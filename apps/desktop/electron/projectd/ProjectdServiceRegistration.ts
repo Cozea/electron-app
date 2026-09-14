@@ -96,6 +96,12 @@ function launcherEffects(socketPath: string): ProjectdLauncherEffects {
         const log = fs.openSync(options.logPath, "a")
         const env = { ...process.env }
         delete env.ELECTRON_RUN_AS_NODE
+        if (!app.isPackaged) {
+          const devHelper = path.join(findRepoRoot(app.getAppPath()), "build", "projectd-helper", "cozea-projectd-mac-helper")
+          if (fs.existsSync(devHelper)) {
+            env.COZEA_MAC_HELPER_PATH = devHelper
+          }
+        }
         const child = spawn(command, args, { cwd: options.cwd, env, detached: true, stdio: ["ignore", log, log] })
         child.once("error", (error) => {
           fs.closeSync(log)

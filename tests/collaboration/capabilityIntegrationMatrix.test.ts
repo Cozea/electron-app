@@ -346,6 +346,96 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
     expect(unprovenApply.error).toContain("is not a registered worktree")
   })
 
+  it("U02: applies rename and literal symlink deltas without following links or partially applying conflicts", async () => {
+    const outsideRoot = await tempFolder("u02-outside")
+    const outsideFile = path.join(outsideRoot, "sentinel.txt")
+    const outsideDirectory = path.join(outsideRoot, "directory")
+    await fs.mkdir(outsideDirectory)
+    await fs.writeFile(outsideFile, "outside must stay unchanged\n")
+    await fs.writeFile(path.join(outsideDirectory, "sentinel.txt"), "parent outside must stay unchanged\n")
+
+    await alice.write("rename-old.ts", "export const renamed = 'base';\n")
+    await alice.write("first.ts", "export const first = 'base';\n")
+    await alice.write("second.ts", "export const second = 'base';\n")
+    await alice.write("replace.ts", "export const replace = 'base';\n")
+    git(alice.root, "add", "-A")
+    git(alice.root, "commit", "-q", "-m", "u02-safe-apply-base")
+
+    const renameWorktree = await createPrivateThreadWorktree({ workspaceRoot: alice.root, threadId: `rename_${Date.now()}` })
+    expect(renameWorktree.success).toBe(true)
+    cleanups.push(() => removePrivateThreadWorktree({ worktreePath: renameWorktree.worktreePath, workspaceRoot: alice.root }))
+    git(renameWorktree.worktreePath, "mv", "rename-old.ts", "rename-new.ts")
+    await fs.symlink(outsideFile, path.join(renameWorktree.worktreePath, "literal-link"))
+
+    const renameResult = await applyThreadWorktreeToWorkspace({
+      worktreePath: renameWorktree.worktreePath,
+      workspaceRoot: alice.root,
+    })
+    expect(renameResult).toMatchObject({ success: true })
+    expect(renameResult.appliedFiles).toEqual(expect.arrayContaining(["rename-old.ts", "rename-new.ts", "literal-link"]))
+    await expect(fs.readFile(path.join(alice.root, "rename-old.ts"), "utf8")).rejects.toMatchObject({ code: "ENOENT" })
+    expect(await fs.readFile(path.join(alice.root, "rename-new.ts"), "utf8")).toContain("base")
+    expect((await fs.lstat(path.join(alice.root, "literal-link"))).isSymbolicLink()).toBe(true)
+    expect(await fs.readlink(path.join(alice.root, "literal-link"))).toBe(outsideFile)
+    expect(await fs.readFile(outsideFile, "utf8")).toBe("outside must stay unchanged\n")
+
+    // Advance the common B state for independent conflict tests.
+    git(alice.root, "add", "-A")
+    git(alice.root, "commit", "-q", "-m", "u02-rename-applied")
+
+    const conflictWorktree = await createPrivateThreadWorktree({ workspaceRoot: alice.root, threadId: `conflict_${Date.now()}` })
+    expect(conflictWorktree.success).toBe(true)
+    cleanups.push(() => removePrivateThreadWorktree({ worktreePath: conflictWorktree.worktreePath, workspaceRoot: alice.root }))
+    await fs.writeFile(path.join(conflictWorktree.worktreePath, "first.ts"), "export const first = 'private';\n")
+    await fs.writeFile(path.join(conflictWorktree.worktreePath, "second.ts"), "export const second = 'private';\n")
+    await fs.writeFile(path.join(alice.root, "second.ts"), "export const second = 'peer';\n")
+
+    const conflictResult = await applyThreadWorktreeToWorkspace({
+      worktreePath: conflictWorktree.worktreePath,
+      workspaceRoot: alice.root,
+    })
+    expect(conflictResult.success).toBe(false)
+    expect(conflictResult.appliedFiles).toEqual([])
+    expect(conflictResult.conflicts?.some((conflict) => conflict.path === "second.ts")).toBe(true)
+    expect(await fs.readFile(path.join(alice.root, "first.ts"), "utf8")).toBe("export const first = 'base';\n")
+
+    // Restore a clean common base, then make the live destination a symlink.
+    await fs.writeFile(path.join(alice.root, "second.ts"), "export const second = 'base';\n")
+
+    const finalLinkWorktree = await createPrivateThreadWorktree({ workspaceRoot: alice.root, threadId: `final_link_${Date.now()}` })
+    expect(finalLinkWorktree.success).toBe(true)
+    cleanups.push(() => removePrivateThreadWorktree({ worktreePath: finalLinkWorktree.worktreePath, workspaceRoot: alice.root }))
+    await fs.writeFile(path.join(finalLinkWorktree.worktreePath, "replace.ts"), "export const replace = 'private';\n")
+    await fs.unlink(path.join(alice.root, "replace.ts"))
+    await fs.symlink(outsideFile, path.join(alice.root, "replace.ts"))
+
+    const finalLinkResult = await applyThreadWorktreeToWorkspace({
+      worktreePath: finalLinkWorktree.worktreePath,
+      workspaceRoot: alice.root,
+    })
+    expect(finalLinkResult.success).toBe(false)
+    expect(await fs.readFile(outsideFile, "utf8")).toBe("outside must stay unchanged\n")
+    expect((await fs.lstat(path.join(alice.root, "replace.ts"))).isSymbolicLink()).toBe(true)
+
+    // A symlinked live parent is an immediate fail-closed error, never a write through it.
+    await fs.unlink(path.join(alice.root, "replace.ts"))
+    await fs.writeFile(path.join(alice.root, "replace.ts"), "export const replace = 'base';\n")
+    const parentLinkWorktree = await createPrivateThreadWorktree({ workspaceRoot: alice.root, threadId: `parent_link_${Date.now()}` })
+    expect(parentLinkWorktree.success).toBe(true)
+    cleanups.push(() => removePrivateThreadWorktree({ worktreePath: parentLinkWorktree.worktreePath, workspaceRoot: alice.root }))
+    await fs.mkdir(path.join(parentLinkWorktree.worktreePath, "linked-parent"))
+    await fs.writeFile(path.join(parentLinkWorktree.worktreePath, "linked-parent", "new.ts"), "export const safe = true;\n")
+    await fs.symlink(outsideDirectory, path.join(alice.root, "linked-parent"))
+
+    const parentLinkResult = await applyThreadWorktreeToWorkspace({
+      worktreePath: parentLinkWorktree.worktreePath,
+      workspaceRoot: alice.root,
+    })
+    expect(parentLinkResult.success).toBe(false)
+    expect(parentLinkResult.error).toContain("symlinked parent")
+    expect(await fs.readFile(path.join(outsideDirectory, "sentinel.txt"), "utf8")).toBe("parent outside must stay unchanged\n")
+  })
+
   it("U03: qualifies Terminal writes and formatters (Section 24.3)", async () => {
     // Production terminal spawns with cwd = Session Workspace root
     // Execute a real shell write command in alice.root matching terminal execution
@@ -364,7 +454,7 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
     alice.events.report(alice.root, "terminal_exec.ts")
 
     await waitFor(
-      async () => (await bob.read("terminal_exec.ts"))?.includes("200"),
+      async () => (await bob.read("terminal_exec.ts"))?.includes("200") ?? false,
       "bob to receive formatted terminal_exec.ts",
     )
     expect(await bob.read("terminal_exec.ts")).toContain("terminalOutput = 200")
@@ -460,17 +550,26 @@ describe("P24 Capability integration qualification matrix (U01-U10)", () => {
   it("U08: qualifies Tasks execution context binds to Session Workspace (Section 24.9)", async () => {
     // Invoke actual production scheduled-task workspaceRoot resolution (scheduledTaskRunner.ts)
     const task: ScheduledTask = {
-      _id: "task_test_99" as any,
-      _creationTime: Date.now(),
-      title: "Scheduled Build",
+      id: "task_test_99",
+      name: "Scheduled Build",
       prompt: "build and test",
-      cron: "0 0 * * *",
-      status: "active",
       provider: "claude",
+      model: null,
+      modelOptions: [],
+      computerUse: false,
       project: {
         workspaceRoot: alice.root,
-        name: "Test Session Project",
+        label: "Test Session Project",
       },
+      startAt: Date.now(),
+      recurrence: { unit: null, interval: 1 },
+      enabled: true,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastRunAt: null,
+      lastError: null,
+      lastThreadId: null,
+      runs: [],
     }
     const executionRoot = resolveScheduledTaskWorkspaceRoot(task, alice.root)
     expect(executionRoot).toBe(alice.root)

@@ -64,10 +64,19 @@ export class NativeMacHelper {
 
     // Default development build locations
     const candidatePaths = [
-      path.resolve(__dirname, "../../../native/projectd-macos/.build/debug/cozea-projectd-mac-helper"),
+      path.resolve(__dirname, "../../../../build/projectd-helper/cozea-projectd-mac-helper"),
+      path.resolve(__dirname, "../../../build/projectd-helper/cozea-projectd-mac-helper"),
+      path.resolve(__dirname, "../../../../native/projectd-macos/.build/release/cozea-projectd-mac-helper"),
+      path.resolve(__dirname, "../../../../native/projectd-macos/.build/debug/cozea-projectd-mac-helper"),
       path.resolve(__dirname, "../../../native/projectd-macos/.build/release/cozea-projectd-mac-helper"),
-      path.resolve(process.cwd(), "native/projectd-macos/.build/debug/cozea-projectd-mac-helper"),
+      path.resolve(__dirname, "../../../native/projectd-macos/.build/debug/cozea-projectd-mac-helper"),
+      path.resolve(process.cwd(), "build/projectd-helper/cozea-projectd-mac-helper"),
+      path.resolve(process.cwd(), "../build/projectd-helper/cozea-projectd-mac-helper"),
+      path.resolve(process.cwd(), "../../build/projectd-helper/cozea-projectd-mac-helper"),
       path.resolve(process.cwd(), "native/projectd-macos/.build/release/cozea-projectd-mac-helper"),
+      path.resolve(process.cwd(), "native/projectd-macos/.build/debug/cozea-projectd-mac-helper"),
+      path.resolve(process.cwd(), "../native/projectd-macos/.build/release/cozea-projectd-mac-helper"),
+      path.resolve(process.cwd(), "../native/projectd-macos/.build/debug/cozea-projectd-mac-helper"),
     ]
 
     const found = candidatePaths.find((p) => fs.existsSync(p))

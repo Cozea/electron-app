@@ -54,20 +54,8 @@ interface PinnedFeatureImport {
 const PINNED_FEATURE_IMPORTS: readonly PinnedFeatureImport[] = [
   {
     file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
-    specifier: "@/features/collaboration/hooks/useCollabSession",
-    because:
-      "The provider runtime composes the capabilities the sync context exposes rather than being ambient itself; it belongs in app composition, not here.",
-  },
-  {
-    file: "apps/desktop/src/contexts/project/ProjectSyncProviderRuntime.tsx",
     specifier: "@/features/source-control/hooks/useProjectCheckpointCleanup",
     because: "Same runtime, same reason.",
-  },
-  {
-    file: "apps/desktop/src/contexts/project/projectSyncShared.ts",
-    specifier: "@/features/collaboration/hooks/useCollabSession",
-    because:
-      "Type-only. CollabEncryptionBootstrap is a collaboration contract that has no home of its own yet.",
   },
   {
     file: "apps/desktop/src/lib/sidebarActivity.ts",

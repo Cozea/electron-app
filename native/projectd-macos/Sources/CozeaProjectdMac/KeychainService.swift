@@ -37,75 +37,69 @@ public final class KeychainService: @unchecked Sendable {
     private init() {}
 
     public func saveIdentity(jsonString: String, account: String? = nil) throws {
-        guard let data = jsonString.data(using: .utf8) else {
-            throw KeychainServiceError.invalidData
-        }
+        let targetAccount = account ?? accountName
+        try? deleteIdentity(account: targetAccount)
 
-        // Try standard macOS Keychain with SecAccess to avoid prompts
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account ?? accountName
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = [
+            "add-generic-password",
+            "-a", targetAccount,
+            "-s", serviceName,
+            "-w", jsonString,
+            "-U",
+            "-A"
         ]
-
-        let updateAttributes: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
-        ]
-
-        let status = SecItemUpdate(query as CFDictionary, updateAttributes as CFDictionary)
-        if status == errSecItemNotFound {
-            var insertQuery = query
-            insertQuery[kSecValueData as String] = data
-            insertQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-
-            var access: SecAccess?
-            if SecAccessCreate("Cozea" as CFString, nil, &access) == errSecSuccess, let access = access {
-                insertQuery[kSecAttrAccess as String] = access
-            }
-
-            let addStatus = SecItemAdd(insertQuery as CFDictionary, nil)
-            if addStatus != errSecSuccess {
-                throw KeychainServiceError.unexpectedStatus(addStatus)
-            }
-        } else if status != errSecSuccess {
-            throw KeychainServiceError.unexpectedStatus(status)
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        try process.run()
+        process.waitUntilExit()
+        if process.terminationStatus != 0 {
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errMsg = String(data: errData, encoding: .utf8) ?? "Unknown security error"
+            throw KeychainServiceError.signingFailed("Failed to save identity via security: \(errMsg)")
         }
     }
 
     public func loadIdentity(account: String? = nil) throws -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account ?? accountName,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+        let targetAccount = account ?? accountName
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = [
+            "find-generic-password",
+            "-a", targetAccount,
+            "-s", serviceName,
+            "-w"
         ]
-
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-
-        if status == errSecItemNotFound {
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+        try process.run()
+        process.waitUntilExit()
+        if process.terminationStatus != 0 {
             return nil
         }
-        guard status == errSecSuccess, let data = item as? Data, let str = String(data: data, encoding: .utf8) else {
-            throw KeychainServiceError.unexpectedStatus(status)
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        guard let str = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !str.isEmpty else {
+            return nil
         }
-
         return str
     }
 
     public func deleteIdentity(account: String? = nil) throws {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: account ?? accountName
+        let targetAccount = account ?? accountName
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = [
+            "delete-generic-password",
+            "-a", targetAccount,
+            "-s", serviceName
         ]
-
-        let status = SecItemDelete(query as CFDictionary)
-        if status != errSecSuccess && status != errSecItemNotFound {
-            throw KeychainServiceError.unexpectedStatus(status)
-        }
+        let errPipe = Pipe()
+        process.standardError = errPipe
+        try process.run()
+        process.waitUntilExit()
     }
 
     /**

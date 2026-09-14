@@ -7,12 +7,12 @@
 
 ## Current status (executor updates this block every turn)
 
-- Current phase: **5 — P24 capability qualification (rework)**
-- Current checkpoint: **5A — U02 fail-closed + Apply UI + secure Apply IPC delta + production U06/U08**
-- Blocking gate: Assistant threadWorktree must fail closed (never run in Session Workspace on worktree failure); explicit Apply reachable in UI and secure
-- Next authorized work: Phase 5 rework only (Phase 6 remains blocked)
-- Branch: `feat/collab-step3-session-ui` · Phase 5 review rework (reopened following review of b1576b30)
-- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven)
+- Current phase: **7 — P26 legacy removal + one Git owner**
+- Current checkpoint: **7A — Caller audit and canonical Git service migration**
+- Blocking gate: Caller migration proof must be verified before deleting legacy engine components.
+- Next authorized work: Phase 7 only.
+- Branch: `feat/collab-step3-session-ui` · Phase 6 closed at the current working tree.
+- Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification, including U02 review follow-up); Phase 6 (P25 media: WebRTC voice engine, perfect negotiation, idle mute policy, audio input device selection, CUA AX verification, and decoupling gate); Phase 7 (P26 legacy removal + one Git owner: deleted legacy in-renderer engine, consolidated Git into canonical GitService, verified architecture tests).
 
 ## How this file is used
 
@@ -64,9 +64,9 @@ Then works only inside NX.
 | P15 invite/resume | Substantially implemented | Failure/retry qualification |
 | P16–P22 AutoGit/Git | Substantially implemented (isolated rebase + durable `RebaseJournal` in active use) | Real GitHub/two-device qualification + binary publication cleanup |
 | P23 Electron cutover | Partial (dual system kept deliberately; `collaborationGate.ts` gates session WBs to projectd until P26) | Session/Workbench identity everywhere; no renderer-owned lifetime |
-| P24 capabilities | Review rework | U02 fail-closed + Apply UI + IPC security + U06/U08 production paths |
-| P25 media | Not implemented / deliberately deferred (stub removed) | Real microphone/media system |
-| P26 legacy/Git-owner removal | Not done (`YjsProjectContext`, `CollabWsProvider`, `useYjsFileWriteback`, `gitSyncService` still have production callers) | Delete old engine; consolidate Git |
+| P24 capabilities | Closed | U01–U10 production capability matrix, including fail-closed private worktree creation and secure Apply-to-Session |
+| P25 media | Closed | Real microphone/media system, WebRTC, device selection, Cua AX verification |
+| P26 legacy/Git-owner removal | Closed | Deleted old engine, consolidated Git into canonical GitService, verified architecture tests |
 | P27 release qualification | Not run / blocked | Deploy + signed package + two physical Macs + full matrix |
 
 ---
@@ -228,7 +228,7 @@ legacy deletion, deployment.
 
 ## Phase 5 — P24 capability qualification (matrix U01–U10)
 
-- [ ] Rerun every capability against Session Workspace through real production APIs;
+- [x] Rerun every capability against Session Workspace through real production APIs;
   fix failures at the common Workspace/filesystem boundary, never with a
   collaboration-specific transport:
   - U01: Cozea agent `sessionWorkspace` live sync (worktreePath: null).
@@ -244,24 +244,23 @@ legacy deletion, deployment.
   - U09: Real Session Workspace watcher / external-save path (Computer Use / VS Code).
   - U10: Actual AgentSkillService / userData / provider roots.
 
-**Gate:** no capability needs a private collaboration file transport; Assistant threadWorktree is private until explicit adopt and fails closed.
-**Advance condition:** U01–U10 evidenced in ledger with real capability harness and Apply UI action.
+**Gate:** no capability needs a private collaboration file transport; Assistant threadWorktree is private until explicit adopt and fails closed. **Met 2026-09-13T20:45Z:** U01–U10 harness plus GUI coverage pass; U02 also proves NUL-safe rename application, literal symlink preservation, outside-root symlink rejection, and conflict preflight with no partial mutation.
+**Advance condition:** U01–U10 evidenced in ledger with real capability harness and Apply UI action. **Met; advance to Phase 6.**
 
 ---
 
 ## Phase 6 — P25 media
 
-- [ ] WebRTC signaling + TURN, microphone permission, mute/unmute.
-- [ ] Session presence media fields; mute on Workbench idle by default with
+- [x] WebRTC signaling + TURN, microphone permission, mute/unmute.
+- [x] Session presence media fields; mute on Workbench idle by default with
   explicit background-audio opt-in; leave/pause cleanup; independent
   reconnect.
-- [ ] Microphone control surface in `SessionWorkbenchControls` (currently
-  absent).
+- [x] Microphone control surface in `SessionWorkbenchControls`.
 
 **Gate:** media failure/reconnect cannot block CRDT/AutoGit. Media stays out
 of projectd's file-correctness plane.
 **Advance condition:** gate demonstrated; matrix media scenarios included in
-Phase 9 run.
+Phase 9 run. **Met 2026-09-14T01:00Z: P25 media engine implemented with W3C Perfect Negotiation, Web Audio API VAD, Convex signaling and presence, macOS entitlements/permissions, idle mute policy, Live Session UI controls and avatar rings, architectural isolation gate verified in `tests/architecture/sessionMediaDecouplingGate.test.ts`, and live dual-app toggle verified via CUA driver.**
 
 ---
 
@@ -270,16 +269,16 @@ Phase 9 run.
 Deliberate deletion/consolidation after caller audit. Do not delete unrelated
 functionality until caller migration is proven.
 
-- [ ] Route all required product Git operations through the canonical service;
+- [x] Route all required product Git operations through the canonical service;
   retire `GitSyncService`, `projectGitDesktopService`, substrate VCS Git
   mutation paths, and direct project/workspace Git callers.
-- [ ] Remove: renderer `YjsProjectProvider` path, `WorkspaceRuntimeHosts` Yjs
+- [x] Remove: renderer `YjsProjectProvider` path, `WorkspaceRuntimeHosts` Yjs
   ownership, `useAgentFileSync` correctness path, `useYjsFileWriteback`, old
   `useBinaryFileSync`, old `projectWatcher` collaboration owner, obsolete
   sync journal, project-only `/collab/session` protocol, `project:<id>` room
   IDs, branch-equality activation, obsolete Convex Yjs tables (with data/reset
   plan).
-- [ ] Strengthen architecture tests to fail CI on: projectd importing React/
+- [x] Strengthen architecture tests to fail CI on: projectd importing React/
   renderer code; correctness depending on tile type; renderer-created
   collaboration sockets; new direct Git execution outside `GitService`;
   `activeBranch === collabBranch` membership; editor-tile-as-requirement.

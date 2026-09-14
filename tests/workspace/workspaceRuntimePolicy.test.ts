@@ -54,7 +54,6 @@ function createRuntime(
       workspaceRevision: 1,
     },
     syncContext: null,
-    yjsContext: {} as WorkspaceRuntimeRecord["yjsContext"],
     routeAttachmentCount: input.lifecycle === "focused" ? 1 : 0,
     lifecycle: input.lifecycle ?? "background-warm",
     signals: {

@@ -11,10 +11,6 @@
 import { create } from "zustand"
 
 import type { Id } from "../../../../convex/_generated/dataModel"
-import {
-  EMPTY_YJS_PROJECT_CONTEXT_VALUE,
-  type YjsProjectContextValue,
-} from "@/contexts/YjsProjectContextValue"
 import type { ProjectSyncContextValue } from "@/contexts/project/projectSyncShared"
 import { buildWorkspaceIdentityKey, normalizeWorkspaceLaneId } from "@/lib/workspaceIdentity"
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
@@ -83,7 +79,6 @@ export interface WorkspaceRuntimeRecord {
   workspaceId: string
   config: WorkspaceRuntimeConfig
   syncContext: ProjectSyncContextValue | null
-  yjsContext: YjsProjectContextValue
   routeAttachmentCount: number
   lifecycle: WorkspaceRuntimeLifecycle
   signals: WorkspaceRuntimeSignals
@@ -102,7 +97,6 @@ interface WorkspaceRuntimeState {
     attachRuntime: (runtimeId: string) => void
     detachRuntime: (runtimeId: string) => void
     publishSyncContext: (runtimeId: string, value: ProjectSyncContextValue | null) => void
-    publishYjsContext: (runtimeId: string, value: YjsProjectContextValue) => void
     clearPublishedContexts: (runtimeId: string) => void
     bindSessionSnapshot: (runtimeId: string, snapshot: WorkbenchSessionSnapshot | null) => void
     refreshLifecycles: () => void
@@ -115,7 +109,7 @@ interface WorkspaceRuntimeState {
 function readSignalState(
   record: Pick<
     WorkspaceRuntimeRecord,
-    "config" | "syncContext" | "yjsContext" | "routeAttachmentCount" | "sessionSnapshot" | "lastAttachedAt" | "lastDetachedAt"
+    "config" | "syncContext" | "routeAttachmentCount" | "sessionSnapshot" | "lastAttachedAt" | "lastDetachedAt"
   >,
   now: number,
 ): Omit<WorkspaceRuntimeSignals, "lifecycleReason"> {
@@ -124,7 +118,7 @@ function readSignalState(
     pendingSyncStatus === "checking" ||
     pendingSyncStatus === "planning" ||
     pendingSyncStatus === "syncing"
-  const hasConnectedCollab = record.yjsContext.isConnected
+  const hasConnectedCollab = false
   const terminalBindingCount = Object.keys(record.sessionSnapshot?.terminalBindings ?? {}).length
   const hasRunningTerminals = terminalBindingCount > 0
   const hasRunningDevServer = Boolean(record.sessionSnapshot?.devServer.running)
@@ -138,7 +132,6 @@ function readSignalState(
     record.syncContext?.lastSyncAt ?? 0,
     record.config.lastSyncAt ?? 0,
     hasSyncActivity ? now : 0,
-    hasConnectedCollab ? now : 0,
   ) || null
 
   return {
@@ -156,7 +149,7 @@ function readSignalState(
 function resolveLifecycle(
   record: Pick<
     WorkspaceRuntimeRecord,
-    "config" | "syncContext" | "yjsContext" | "routeAttachmentCount" | "sessionSnapshot" | "lastAttachedAt" | "lastDetachedAt"
+    "config" | "syncContext" | "routeAttachmentCount" | "sessionSnapshot" | "lastAttachedAt" | "lastDetachedAt"
   >,
   now = Date.now(),
 ): Pick<WorkspaceRuntimeRecord, "lifecycle" | "signals"> {
@@ -221,7 +214,6 @@ function createRecord(runtimeId: string, config: WorkspaceRuntimeConfig): Worksp
     workspaceId: config.workspaceId,
     config,
     syncContext: null,
-    yjsContext: EMPTY_YJS_PROJECT_CONTEXT_VALUE,
     routeAttachmentCount: 0,
     lifecycle: "background-warm",
     signals: {
@@ -391,22 +383,6 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set, ge
         }
       })
     },
-    publishYjsContext: (runtimeId, value) => {
-      set((state) => {
-        const record = state.runtimes[runtimeId]
-        if (!record) return state
-        const nextRecord = applyResolvedLifecycle({
-          ...record,
-          yjsContext: value,
-        })
-        return {
-          runtimes: {
-            ...state.runtimes,
-            [runtimeId]: nextRecord,
-          },
-        }
-      })
-    },
     clearPublishedContexts: (runtimeId) => {
       set((state) => {
         const record = state.runtimes[runtimeId]
@@ -414,7 +390,6 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set, ge
         const nextRecord = applyResolvedLifecycle({
           ...record,
           syncContext: null,
-          yjsContext: EMPTY_YJS_PROJECT_CONTEXT_VALUE,
         })
         return {
           runtimes: {
@@ -504,7 +479,6 @@ export const useWorkspaceRuntimeStore = create<WorkspaceRuntimeState>()((set, ge
             ...record,
             lifecycle: "closed",
             syncContext: null,
-            yjsContext: record.yjsContext,
             signals: {
               ...record.signals,
               lifecycleReason: "project-suppressed",

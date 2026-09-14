@@ -160,6 +160,10 @@ module.exports = {
     // above, which is why both read the same flag. Notarization is moot unsigned.
     ...(unsignedDist ? { identity: null, notarize: false } : {}),
     ...(process.env.COZEA_SKIP_NOTARIZE === "1" ? { notarize: false } : {}),
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        "Cozea uses your microphone for real-time voice collaboration during live sessions.",
+    },
     target: ["dmg", "zip"],
   },
   dmg: {
