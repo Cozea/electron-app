@@ -224,6 +224,7 @@ export const listMembers = publicQuery({
         role: member.role,
         status: member.status,
         isSelf: member.principalId === caller._id,
+        avatarUrl: principal?.avatarStorageId ? ((await ctx.storage.getUrl(principal.avatarStorageId)) ?? null) : null,
         microphoneState: presence?.microphoneState ?? "off",
         isWorkbenchActive: presence?.isWorkbenchActive ?? false,
         allowBackgroundAudio: presence?.allowBackgroundAudio ?? false,

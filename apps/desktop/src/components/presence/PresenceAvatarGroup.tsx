@@ -36,7 +36,7 @@ function getInitials(name: string): string {
     .slice(0, 2)
 }
 
-function getUserColor(principalId: string): string {
+export function getUserColor(principalId: string): string {
   // Generate a consistent color based on principalId
   const colors = [
     "#ef4444", // red

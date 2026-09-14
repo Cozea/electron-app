@@ -30,6 +30,7 @@ export interface LiveSessionMember {
   role: string
   status: string
   isSelf: boolean
+  avatarUrl?: string | null
   microphoneState?: MicrophoneState
   isWorkbenchActive?: boolean
   allowBackgroundAudio?: boolean

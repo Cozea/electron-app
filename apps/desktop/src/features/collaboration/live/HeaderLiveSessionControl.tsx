@@ -10,7 +10,14 @@ import { useState } from "react"
 import { ArrowDown01Icon, MicOff01Icon, MoreHorizontalIcon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { getUserColor } from "@/components/presence/PresenceAvatarGroup"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -90,46 +97,85 @@ function ParticipantAvatars({ members }: { members: LiveSessionMember[] }) {
   if (inSession.length === 0) return null
 
   const MAX_AVATARS = 3
+  const visible = inSession.slice(0, MAX_AVATARS)
+  const overflow = inSession.length - MAX_AVATARS
 
   return (
-    <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
-      {inSession.slice(0, MAX_AVATARS).map((member) => {
-        const isSpeaking = member.microphoneState === "speaking"
-        const isMuted = member.microphoneState === "muted"
-        const label = `${member.displayName}${member.isSelf ? " (this device)" : ""}, ${member.role.replace(/_/g, " ")}${
-          isSpeaking ? " (speaking)" : isMuted ? " (muted)" : ""
-        }`
-        return (
-          <div key={member.principalId} className="relative inline-flex items-center">
-            <Avatar
-              className={cn(
-                "size-6 border-2 border-background transition-all",
-                isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
-              )}
-              title={label}
-              aria-label={label}
-            >
-              <AvatarFallback className="text-[10px] font-medium bg-muted text-muted-foreground">
-                {initials(member.displayName)}
-              </AvatarFallback>
-            </Avatar>
-            {isMuted ? (
-              <span
-                className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
-                title="Microphone muted"
+    <TooltipProvider>
+      <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
+        {visible.map((member, index) => {
+          const isSpeaking = member.microphoneState === "speaking"
+          const isMuted = member.microphoneState === "muted"
+          const color = getUserColor(member.principalId)
+
+          return (
+            <Tooltip key={member.principalId}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20 cursor-default focus:outline-none"
+                  style={{ zIndex: visible.length - index }}
+                >
+                  <Avatar
+                    className={cn(
+                      "size-6 border-2 border-background rounded-full transition-all",
+                      isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
+                    )}
+                  >
+                    {member.avatarUrl ? (
+                      <AvatarImage src={member.avatarUrl} alt={member.displayName} />
+                    ) : null}
+                    <AvatarFallback
+                      className="text-[10px] font-medium"
+                      style={{ backgroundColor: color, color: "white" }}
+                    >
+                      {initials(member.displayName)}
+                    </AvatarFallback>
+                  </Avatar>
+                  {isMuted ? (
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
+                      title="Microphone muted"
+                    >
+                      <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
+                    </span>
+                  ) : null}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="flex flex-col gap-0.5">
+                <p className="font-medium text-xs">
+                  {member.displayName} {member.isSelf && <span className="text-muted-foreground">(this device)</span>}
+                </p>
+                <p className="text-2xs text-muted-foreground capitalize">
+                  {member.role.replace(/_/g, " ")} · {isSpeaking ? "Speaking" : isMuted ? "Muted" : "Active"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+        {overflow > 0 ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20 cursor-default focus:outline-none"
               >
-                <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
-              </span>
-            ) : null}
-          </div>
-        )
-      })}
-      {inSession.length > MAX_AVATARS ? (
-        <span className="pl-1.5 text-[11px] text-muted-foreground font-medium">
-          +{inSession.length - MAX_AVATARS}
-        </span>
-      ) : null}
-    </div>
+                <Avatar className="size-6 border-2 border-background bg-muted rounded-full">
+                  <AvatarFallback className="text-[10px] font-medium bg-muted text-muted-foreground">
+                    +{overflow}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">
+                {overflow} more {overflow === 1 ? "person" : "people"}
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+      </div>
+    </TooltipProvider>
   )
 }
 
