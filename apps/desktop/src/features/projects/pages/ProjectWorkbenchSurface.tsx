@@ -200,23 +200,21 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
           <span className="truncate">{projectName}</span>
         </div>
         {!hasActiveLiveSession ? (
-          <div className="flex min-w-0 items-center gap-2 whitespace-nowrap">
-            <div className="inline-flex h-7 min-w-0 items-center rounded-md bg-secondary px-1 text-muted-foreground/85 transition-colors hover:bg-accent/80">
-              {/* Lane/branch state is read from context inside the control so
-                  this element stays identity-stable while lanes settle. */}
-              <WorkbenchHeaderBranchControl
-                triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-none border-0 bg-transparent px-1 font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
-                trailing={
-                  project?._id ? (
-                    <ProjectSyncIndicator
-                      variant="compact"
-                      inheritPillTextColor
-                      className="h-5 w-5 shrink-0 rounded-none bg-transparent shadow-none"
-                    />
-                  ) : null
-                }
-              />
-            </div>
+          <div className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+            {/* Lane/branch state is read from context inside the control so
+                this element stays identity-stable while lanes settle. */}
+            <WorkbenchHeaderBranchControl
+              triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-foreground shadow-none hover:bg-muted/60"
+              trailing={
+                project?._id ? (
+                  <ProjectSyncIndicator
+                    variant="compact"
+                    inheritPillTextColor
+                    className="h-4 w-4 shrink-0 rounded-none bg-transparent shadow-none"
+                  />
+                ) : null
+              }
+            />
           </div>
         ) : null}
       </div>

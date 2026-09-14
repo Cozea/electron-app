@@ -83,7 +83,7 @@ function SessionStatusPill({
 
   return (
     <div
-      className="inline-flex h-7 items-center gap-1 rounded-md border border-border/40 bg-secondary/50 px-2 text-xs text-muted-foreground transition-colors hover:bg-secondary/70 shrink-0"
+      className="inline-flex h-7 items-center gap-1.5 text-sm font-medium text-foreground shrink-0"
       aria-label={`Session on ${branchName} · merges into ${targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
     >
       <Tooltip>
@@ -107,21 +107,21 @@ function SessionStatusPill({
       </Tooltip>
 
       <WorkbenchHeaderBranchControl
-        triggerClassName="h-6 min-h-6 min-w-0 shrink gap-1 rounded-none border-0 bg-transparent px-1 text-[11px] font-normal text-inherit shadow-none hover:bg-transparent hover:text-inherit"
+        triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1 text-sm font-medium text-foreground shadow-none hover:bg-muted/60"
         trailing={null}
       />
 
       {autoGit ? (
         <>
-          <span className="text-muted-foreground/40 text-[11px]">·</span>
+          <span className="text-muted-foreground/60 text-sm font-normal">·</span>
           <Tooltip>
             <TooltipTrigger asChild>
               <span
                 className={cn(
-                  "truncate text-[11px] cursor-default pr-0.5",
+                  "truncate text-sm font-medium cursor-default pr-0.5",
                   autoGit.tone === "attention"
                     ? "text-destructive"
-                    : "text-muted-foreground hover:text-foreground transition-colors",
+                    : "text-foreground",
                 )}
               >
                 {saveAgeLabel}
