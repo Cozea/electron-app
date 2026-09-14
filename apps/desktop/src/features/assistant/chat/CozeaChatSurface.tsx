@@ -1732,6 +1732,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     ) : (
       <button
         type="submit"
+        onClick={(event) => {
+          event.preventDefault();
+          if (!isSendDisabled) {
+            void handleSendWithMode();
+          }
+        }}
         className={cn(
           "flex shrink-0 items-center justify-center rounded-full transition-all duration-150",
           buttonSizeClass,
