@@ -707,7 +707,6 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   );
   const composerDisabled =
     !isChatReady ||
-    props.isBinding ||
     isComposerApprovalState ||
     activePendingIsResponding ||
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false ||
@@ -1450,7 +1449,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     if (phase === "error") return t("assistant.chat.placeholder.error");
     if (phase === "interrupted") return t("assistant.chat.placeholder.interrupted");
     if (phase === "stopped") return t("assistant.chat.placeholder.stopped");
-    if (phase === "disconnected") return t("assistant.chat.placeholder.disconnected");
+    if (props.thread && phase === "disconnected") return t("assistant.chat.placeholder.disconnected");
     if (activeMode === "debug") {
       return "Debug and troubleshoot issues...";
     }

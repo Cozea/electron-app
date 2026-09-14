@@ -54,6 +54,7 @@ import {
   subscribeMemoryUpdateRequests,
 } from "@/features/project-memory/memoryUpdateBus";
 import { hasBlockingProviderBanner } from "@/features/assistant/chat/providerStatusPresentation";
+import { providerInstanceIdForSnapshot } from "@/features/assistant/providerInstances";
 import {
   assistantDrafts,
   threadDraftKey,
@@ -520,7 +521,7 @@ export function useWorkbenchAssistantTileController(
   const providerSnapshot =
     config?.providers.find(
       (entry) =>
-        entry.instanceId === selectedProviderInstanceId &&
+        providerInstanceIdForSnapshot(entry) === selectedProviderInstanceId &&
         (entry.provider ?? entry.driver) === selectedProvider,
     ) ?? null;
   const canUseProvider = Boolean(
@@ -776,7 +777,11 @@ export function useWorkbenchAssistantTileController(
     latestTurnSettled &&
     hasActionableProposedPlan(activeProposedPlan);
   const hasBoundThread = Boolean(input.tile.threadId && thread);
-  const visibleBindingState = isRuntimeReady && !hasBoundThread && isBinding;
+  const isResumingExistingThread = Boolean(input.tile.threadId);
+  const visibleBindingState =
+    isRuntimeReady &&
+    isBinding &&
+    (isResumingExistingThread ? !hasBoundThread : !input.tile.assistantProjectId);
   const chatTitle =
     visibleThread?.title?.trim() ||
     input.tile.agentLabel?.trim() ||
@@ -856,7 +861,7 @@ export function useWorkbenchAssistantTileController(
     if (bindingInFlightRef.current) {
       return;
     }
-    if (hasBoundThread) {
+    if (hasBoundThread || (!input.tile.threadId && input.tile.assistantProjectId)) {
       setBindingError(null);
       setIsBinding(false);
       return;
@@ -1071,9 +1076,7 @@ export function useWorkbenchAssistantTileController(
         }
       } finally {
         bindingInFlightRef.current = false;
-        if (!cancelled) {
-          setIsBinding(false);
-        }
+        setIsBinding(false);
       }
     };
 

@@ -46,7 +46,7 @@ export function useAssistantThreadViewModel({
 }: UseAssistantThreadViewModelInput) {
   const activeTurn = thread?.latestTurn ?? null
   const latestTurnSettled = isLatestTurnSettled(activeTurn, thread?.session ?? null)
-  const phase = thread ? derivePhase(thread.session ?? null) : "disconnected"
+  const phase = thread ? derivePhase(thread.session ?? null) : "ready"
   const isWorking = isRunning || isSending || isInterrupting || Boolean(isRevertingCheckpoint)
   const threadActivities = thread?.activities ?? []
   const generationStatusPhase = useMemo(
