@@ -43,6 +43,7 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
 
       if (featureFlags.commonRoutePrewarm) {
         tasks.push(import("@/features/projects/pages/ProjectWorkbenchPage"))
+        tasks.push(import("@/features/projects/pages/ProjectWorkbenchSurface"))
       }
 
       if (input.principalId) {
@@ -62,6 +63,18 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
             projectSlug: input.projectSlug ?? null,
             preferredWorkspaceId: input.workspaceId ?? null,
             allowCandidateScan: false,
+          }).then((resolution) => {
+            if (
+              resolution?.status === "ready" &&
+              typeof window !== "undefined" &&
+              window.electronAPI?.workspaceSync?.gitStatus
+            ) {
+              const workspaceId = resolution.workspace.workspaceId
+              return window.electronAPI.workspaceSync
+                .gitStatus({ workspaceId })
+                .catch(() => null)
+            }
+            return null
           }),
         )
       }
@@ -74,6 +87,13 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
             collabBranch: input.collabBranch ?? null,
           }),
         )
+        if (typeof window !== "undefined" && window.electronAPI?.workspaceSync?.gitStatus) {
+          tasks.push(
+            window.electronAPI.workspaceSync
+              .gitStatus({ workspaceId: input.workspaceId })
+              .catch(() => null),
+          )
+        }
       }
 
       await Promise.all(tasks)

@@ -82,6 +82,12 @@
   --sidebar-blur: var(--panel-blur);
   --sidebar-ease: var(--panel-ease);
 
+  /* Transitions.dev — Icon swap tokens */
+  --icon-swap-dur: 250ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+
   /* Match the workbench tiles (slight vibrancy translucency still applies). */
   --sidebar: var(--content-surface);
   --sidebar-foreground: var(--foreground);
@@ -1902,6 +1908,55 @@ body {
 .sidebar-resizing .t-panel-slide,
 .sidebar-resizing .sidebar-transition {
   transition: none !important;
+}
+
+/* Transitions.dev — Icon swap */
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity   var(--icon-swap-dur) var(--icon-swap-ease),
+    filter    var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state="active"] .t-icon[data-icon="active"],
+.t-icon-swap[data-state="inactive"] .t-icon[data-icon="inactive"],
+.t-icon-swap[data-state="time"] .t-icon[data-icon="time"],
+.t-icon-swap[data-state="unsaved"] .t-icon[data-icon="unsaved"],
+.t-icon-swap[data-state="saving"] .t-icon[data-icon="saving"],
+.t-icon-swap[data-state="loading"] .t-icon[data-icon="loading"],
+.t-icon-swap[data-state="muted"] .t-icon[data-icon="muted"],
+.t-icon-swap[data-state="recording"] .t-icon[data-icon="recording"],
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+  pointer-events: auto;
+}
+.t-icon-swap[data-state="active"] .t-icon:not([data-icon="active"]),
+.t-icon-swap[data-state="inactive"] .t-icon:not([data-icon="inactive"]),
+.t-icon-swap[data-state="time"] .t-icon:not([data-icon="time"]),
+.t-icon-swap[data-state="unsaved"] .t-icon:not([data-icon="unsaved"]),
+.t-icon-swap[data-state="saving"] .t-icon:not([data-icon="saving"]),
+.t-icon-swap[data-state="loading"] .t-icon:not([data-icon="loading"]),
+.t-icon-swap[data-state="muted"] .t-icon:not([data-icon="muted"]),
+.t-icon-swap[data-state="recording"] .t-icon:not([data-icon="recording"]),
+.t-icon-swap[data-state="hidden"] .t-icon,
+.t-icon-swap[data-state="a"] .t-icon:not([data-icon="a"]),
+.t-icon-swap[data-state="b"] .t-icon:not([data-icon="b"]) {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-icon-swap .t-icon { transition: none !important; }
 }
 
 [data-slot="sidebar"][data-side="left"] {

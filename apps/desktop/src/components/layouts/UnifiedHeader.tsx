@@ -1,8 +1,4 @@
-import {
-  lazy,
-  type ReactNode,
-  Suspense,
-} from "react";
+import type { ReactNode } from "react";
 
 import type { Id } from "../../../../../convex/_generated/dataModel";
 import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
@@ -17,20 +13,7 @@ import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSe
 
 import { ResponsiveHeaderRow, type HeaderActionGroup } from "./unified-header/ResponsiveHeaderRow";
 
-const LazyHeaderProjectShareButton = lazy(() =>
-  import("./unified-header/HeaderProjectShareButton").then((module) => ({
-    default: module.HeaderProjectShareButton,
-  })),
-);
-
-function HeaderShareButtonFallback() {
-  return (
-    <div
-      aria-hidden="true"
-      className="h-7 w-7 rounded-md bg-sidebar transition-colors"
-    />
-  );
-}
+import { HeaderProjectShareButton } from "./unified-header/HeaderProjectShareButton";
 
 interface UnifiedHeaderProps {
   header?: ReactNode;
@@ -39,6 +22,7 @@ interface UnifiedHeaderProps {
   liveSessionControl?: ReactNode;
   liveSessionMembers?: LiveSessionMember[];
   liveSession?: LiveSessionContext;
+  onlinePrincipalIds?: Set<string>;
   rightAddon?: ReactNode;
   className?: string;
   /** `fixed` spans the viewport (legacy). `embedded` stays in layout flow (e.g. inside `SidebarInset`) so it clears the sidebar. */
@@ -63,6 +47,7 @@ export function UnifiedHeader({
   liveSessionControl,
   liveSessionMembers,
   liveSession,
+  onlinePrincipalIds,
   rightAddon,
   className,
   layoutMode = "fixed",
@@ -140,14 +125,13 @@ export function UnifiedHeader({
         label: hasActiveSession ? "Session members & access" : "Share project",
         priority: 20,
         content: (
-          <Suspense fallback={<HeaderShareButtonFallback />}>
-            <LazyHeaderProjectShareButton
-              projectId={projectInviteContext.projectId}
-              projectName={projectInviteContext.projectName}
-              liveSessionMembers={liveSessionMembers}
-              liveSession={liveSession}
-            />
-          </Suspense>
+          <HeaderProjectShareButton
+            projectId={projectInviteContext.projectId}
+            projectName={projectInviteContext.projectName}
+            liveSessionMembers={liveSessionMembers}
+            liveSession={liveSession}
+            onlinePrincipalIds={onlinePrincipalIds}
+          />
         ),
       });
     }

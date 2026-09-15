@@ -23,6 +23,7 @@ import { resolveCollaborationGate } from "@/features/collaboration/collaboration
 import { LiveSessionBar } from "@/features/collaboration/live/LiveSessionBar";
 import { HeaderLiveSessionControl } from "@/features/collaboration/live/HeaderLiveSessionControl";
 import { useLiveSession } from "@/features/collaboration/live/useLiveSession";
+import { readCachedProjectSessions } from "@/features/collaboration/live/liveSessionCache";
 import { buildLegacyProjectPath, buildProjectPath } from "@/contexts/project/projectRoutes";
 import { featureFlags } from "@/lib/featureFlags";
 import { useProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution";
@@ -308,22 +309,29 @@ export function ProjectLayout({
     api.collaborationSessions.listByProject,
     project?._id && isConvexAuthReady ? { projectId: project._id } : "skip",
   );
+  const effectiveProjectId = project?._id ? String(project._id) : workspaceProjectId;
+  const cachedSessions = useMemo(() => {
+    if (collaborationSessionsQuery.data !== undefined) return undefined;
+    return readCachedProjectSessions(effectiveProjectId);
+  }, [collaborationSessionsQuery.data, effectiveProjectId]);
+  const effectiveSessions = collaborationSessionsQuery.data ?? cachedSessions;
+
   const collaborationGate = resolveCollaborationGate({
     activeBranch,
     sharedBranch: collabBranch,
-    sessions: collaborationSessionsQuery.data,
+    sessions: effectiveSessions,
     workspaceId: runtimeWorkspaceId,
   });
   // The daemon syncs this folder with the branch's live session while this device
   // is in it; the in-app engine leaves session branches alone.
   const liveSession = useLiveSession({
-    enabled: Boolean(project?._id) && isConvexAuthReady,
-    sessions: collaborationSessionsQuery.data,
-    projectId: project?._id ? String(project._id) : null,
+    enabled: Boolean(effectiveProjectId),
+    sessions: effectiveSessions,
+    projectId: effectiveProjectId,
     workspaceId: runtimeWorkspaceId,
     rootPath: activeProjectRootPath,
     principalId: principalId ? String(principalId) : null,
-    projectName: project?.name ?? null,
+    projectName: effectiveProjectName,
   });
   const collaborationEnabled =
     shouldEnableProjectRuntime &&
@@ -358,6 +366,14 @@ export function ProjectLayout({
   // which happens well before the device token is re-established on the
   // shell-first bootstrap path. Presence queries the cloud, so it waits for auth.
   const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime && isConvexAuthReady;
+  const { otherUsers: presenceUsers } = useProjectPresence({
+    projectId: presenceGateOpen ? project?._id ?? null : null,
+    principalId: presenceGateOpen ? principalId ?? null : null,
+  });
+  const onlinePrincipalIds = useMemo(() => {
+    return new Set((presenceUsers ?? []).map((u) => String(u.principalId)));
+  }, [presenceUsers]);
+
   const presenceHeaderAddon = useMemo(
     () => (
       <ProjectPresenceHeaderAddon
@@ -383,11 +399,14 @@ export function ProjectLayout({
   }, [project?._id]);
 
   const liveSessionHeaderControl = useMemo(() => {
+    if (isWorkbenchView) {
+      return <HeaderLiveSessionControl live={liveSession} isWorkbenchView={true} />;
+    }
     if (!liveSession.session || !liveSession.sync) {
       return null;
     }
-    return <HeaderLiveSessionControl live={liveSession} />;
-  }, [liveSession]);
+    return <HeaderLiveSessionControl live={liveSession} isWorkbenchView={false} />;
+  }, [isWorkbenchView, liveSession]);
 
   const chromeHeader = useProjectChromeHeader({
     isSettingsModeRoute,
@@ -405,6 +424,7 @@ export function ProjectLayout({
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,
+    onlinePrincipalIds,
   });
 
   // Stable element: layout re-renders bail out of the header subtree unless

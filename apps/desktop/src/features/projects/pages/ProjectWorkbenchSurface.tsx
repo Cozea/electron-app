@@ -25,9 +25,7 @@ import {
 } from "@/features/tasks/model/taskFocusOverlay";
 import { useLocation, useSearchParams } from "@/lib/router";
 import { useTheme } from "@/contexts/ThemeContext";
-import { ProjectSyncIndicator } from "@/features/projects/ui/ProjectSyncIndicator";
-import { WorkbenchHeaderBranchControl } from "@/features/workbench/WorkbenchHeaderBranchControl";
-import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon";
+import { WorkbenchHeaderTitle } from "@/features/workbench/WorkbenchHeaderTitle";
 import { useProjectWorkbenchSearchParamSync } from "@/features/workbench/hooks/useProjectWorkbenchSearchParamSync";
 import {
   markWorkbenchIntentApplied,
@@ -193,36 +191,11 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
 
   const headerWorkbench = useMemo(
     () => (
-      <div className="flex min-w-0 items-center gap-2">
-        <div
-          className="flex h-7 min-w-0 max-w-[320px] items-center gap-1.5 text-sm font-medium text-foreground"
-          title={projectName}
-        >
-          <ProjectPixelInvaderIcon
-            name={projectName}
-            className="size-4 shrink-0"
-          />
-          <span className="truncate">{projectName}</span>
-        </div>
-        {!hasActiveLiveSession ? (
-          <div className="flex min-w-0 items-center gap-1 whitespace-nowrap">
-            {/* Lane/branch state is read from context inside the control so
-                this element stays identity-stable while lanes settle. */}
-            <WorkbenchHeaderBranchControl
-              triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-foreground shadow-none hover:bg-muted/60"
-              trailing={
-                project?._id ? (
-                  <ProjectSyncIndicator
-                    variant="compact"
-                    inheritPillTextColor
-                    className="h-4 w-4 shrink-0 rounded-none bg-transparent shadow-none"
-                  />
-                ) : null
-              }
-            />
-          </div>
-        ) : null}
-      </div>
+      <WorkbenchHeaderTitle
+        projectName={projectName}
+        hasActiveLiveSession={hasActiveLiveSession}
+        hasProjectRecord={Boolean(project?._id)}
+      />
     ),
     [hasActiveLiveSession, project?._id, projectName],
   );

@@ -5,6 +5,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useProjectHeaderStore } from "@/lib/projectHeaderStore";
 import type { LiveSessionMember } from "@/features/collaboration/live/liveSessionModel";
 import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
+import { WorkbenchHeaderTitle } from "@/features/workbench/WorkbenchHeaderTitle";
 
 interface UseProjectChromeHeaderArgs {
   isSettingsModeRoute: boolean;
@@ -18,6 +19,8 @@ interface UseProjectChromeHeaderArgs {
   projectName: string | null;
   /** Local path for Open-in-editor; same source the workbench uses */
   editorProjectPath: string | null;
+  /** Principal IDs of users actively online in this project */
+  onlinePrincipalIds?: Set<string>;
 }
 
 /**
@@ -35,6 +38,7 @@ export function useProjectChromeHeader({
   projectId,
   projectName,
   editorProjectPath,
+  onlinePrincipalIds,
 }: UseProjectChromeHeaderArgs) {
   const { headerFromPage, centerFromPage, rightFromPage, hideShare, insetLeft, insetRight } =
     useProjectHeaderStore(
@@ -49,7 +53,17 @@ export function useProjectChromeHeader({
     );
 
   return useMemo(() => {
-    const headerResolved = headerFromPage ?? undefined;
+    const hasActiveLiveSession = Boolean(
+      liveSessionMembers && liveSessionMembers.some((m) => m.status === "active")
+    );
+    const defaultWorkbenchHeader = isWorkbenchView && projectName ? (
+      <WorkbenchHeaderTitle
+        projectName={projectName}
+        hasActiveLiveSession={hasActiveLiveSession}
+        hasProjectRecord={Boolean(projectId)}
+      />
+    ) : undefined;
+    const headerResolved = headerFromPage ?? defaultWorkbenchHeader;
     const centerAddon = isSettingsModeRoute ? undefined : (centerFromPage ?? undefined);
 
     return {
@@ -59,6 +73,7 @@ export function useProjectChromeHeader({
       liveSessionControl: isSettingsModeRoute ? undefined : (liveSessionControl ?? undefined),
       liveSessionMembers: isSettingsModeRoute ? undefined : liveSessionMembers,
       liveSession: isSettingsModeRoute ? undefined : (liveSession ?? undefined),
+      onlinePrincipalIds: isSettingsModeRoute ? undefined : onlinePrincipalIds,
       rightAddon: rightFromPage ?? undefined,
       hideShare: hideShare || isSettingsModeRoute || !isWorkbenchView || !projectId,
       contentInsetLeft: insetLeft,
@@ -83,6 +98,7 @@ export function useProjectChromeHeader({
     liveSessionControl,
     liveSessionMembers,
     liveSession,
+    onlinePrincipalIds,
     projectId,
     projectName,
   ]);

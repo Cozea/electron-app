@@ -314,17 +314,23 @@ export function SessionWorkbenchControls({
                 }
                 aria-label={media.isMuted ? "Unmute microphone" : "Mute microphone"}
               >
-                {media.isMuted ? (
-                  <HugeiconsIcon icon={MicOff01Icon} className="size-3.5" />
-                ) : (
-                  <SoundWaveCandles
-                    analyser={media.analyserNode}
-                    isMuted={media.isMuted}
-                    isSpeaking={media.isSpeaking}
-                    className={cn(media.isSpeaking && "drop-shadow-[0_0_6px_rgba(16,185,129,0.5)]")}
-                  />
-                )}
-                <span>{media.isMuted ? "Muted" : "Mic"}</span>
+                <span
+                  className="t-icon-swap size-3.5 shrink-0"
+                  data-state={media.isMuted ? "muted" : "recording"}
+                >
+                  <span className="t-icon flex items-center justify-center" data-icon="muted">
+                    <HugeiconsIcon icon={MicOff01Icon} className="size-3.5" />
+                  </span>
+                  <span className="t-icon flex items-center justify-center" data-icon="recording">
+                    <SoundWaveCandles
+                      analyser={media.analyserNode}
+                      isMuted={media.isMuted}
+                      isSpeaking={media.isSpeaking}
+                      className={cn(media.isSpeaking && "drop-shadow-[0_0_6px_rgba(16,185,129,0.5)]")}
+                    />
+                  </span>
+                </span>
+                {!media.isMuted ? <span>Mic</span> : null}
               </Button>
 
               <Button

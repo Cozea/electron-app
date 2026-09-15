@@ -13,7 +13,7 @@
  * member, and offers the membership and lifecycle actions the bar shows.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation } from "convex/react"
 import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/projectd-protocol"
 
@@ -29,6 +29,7 @@ import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryU
 import { findOpenSessionById, findWorkspaceSession } from "../collaborationGate"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import { useSessionMedia, type SessionMediaController } from "../media/useSessionMedia"
+import { cacheProjectSessions, readCachedProjectSessions } from "./liveSessionCache"
 import {
   describeAutoGit,
   describeLiveSessionSync,
@@ -141,8 +142,21 @@ export function useLiveSession(input: {
   principalId: string | null
 }): LiveSessionController {
   const navigate = useViewTransitionNavigate()
-  const { enabled, sessions, workspaceId } = input
-  const session = enabled ? findWorkspaceSession(sessions, workspaceId) : null
+  const { enabled, sessions, workspaceId, projectId } = input
+
+  useEffect(() => {
+    if (projectId && sessions && sessions.length > 0) {
+      cacheProjectSessions(projectId, sessions)
+    }
+  }, [projectId, sessions])
+
+  const cachedSessions = useMemo(() => {
+    if (sessions !== undefined) return undefined
+    return readCachedProjectSessions(projectId)
+  }, [projectId, sessions])
+
+  const effectiveSessions = sessions ?? cachedSessions
+  const session = enabled ? findWorkspaceSession<LiveSessionRecord>(effectiveSessions, workspaceId) : null
   const sessionId = session?._id ?? null
 
   const membersQuery = useSafeConvexQuery(
@@ -179,7 +193,6 @@ export function useLiveSession(input: {
   const recordRepository = useMutation(api.collaborationSessions.recordRepository)
   const repositoryRecordAttempted = useRef<string | null>(null)
   const sessionRepositoryUrl = session?.repositoryUrl ?? null
-  const projectId = input.projectId
   useEffect(() => {
     if (!sessionId || sessionRepositoryUrl || !canEdit || !projectId || daemon.phase !== "attached") return
     if (repositoryRecordAttempted.current === sessionId) return

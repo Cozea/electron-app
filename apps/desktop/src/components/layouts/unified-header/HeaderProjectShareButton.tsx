@@ -1,5 +1,5 @@
 import { useHeaderOverflow } from "./HeaderOverflowContext";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 
 import { api } from "../../../../../../convex/_generated/api";
@@ -42,7 +42,6 @@ import {
   Link01Icon as __LinkHugeIcon,
   Refresh01Icon as __RefreshHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
-  MicOff01Icon,
 } from '@hugeicons/core-free-icons'
 import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
 import { SessionHubDialog } from "@/features/collaboration/ui/SessionHubDialog";
@@ -70,13 +69,15 @@ export function HeaderProjectShareButton({
   projectName,
   liveSessionMembers,
   liveSession,
+  onlinePrincipalIds,
 }: {
   projectId: Id<"projects"> | null;
   projectName?: string | null;
   liveSessionMembers?: LiveSessionMember[];
   liveSession?: LiveSessionContext | null;
+  onlinePrincipalIds?: Set<string>;
 }) {
-  const { principalId } = useAuth();
+  const { principalId, user } = useAuth();
   const syncContext = useOptionalProjectSyncContext();
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
@@ -187,7 +188,53 @@ export function HeaderProjectShareButton({
 
   if (!projectId) return null;
 
-  const inSession = (liveSessionMembers ?? []).filter((m) => m.status === "active");
+  const isSelfInSession = Boolean(
+    liveSession?.session &&
+    (liveSession.membership === "active" || liveSession.membership === "none")
+  );
+
+  const inSession = useMemo<LiveSessionMember[]>(() => {
+    const activeMembers = (liveSessionMembers ?? []).filter((m) => {
+      if (m.status !== "active") return false;
+      // Current user is always online if on this device
+      if (m.isSelf) return true;
+      // Heartbeat presence check in project
+      if (onlinePrincipalIds?.has(String(m.principalId))) return true;
+      // Media / voice / workbench presence check
+      if (m.isWorkbenchActive === true) return true;
+      if (m.microphoneState && m.microphoneState !== "off") return true;
+      return false;
+    });
+
+    if (activeMembers.length > 0) return activeMembers;
+
+    // Frame 0 fallback: if liveSession is active for this device, seed with self immediately
+    if (isSelfInSession && principalId) {
+      return [
+        {
+          principalId: String(principalId),
+          displayName: user?.displayName ?? "This device",
+          role: "developer",
+          status: "active",
+          isSelf: true,
+          avatarUrl: user?.avatarUrl ?? null,
+          microphoneState: liveSession?.media?.isMuted ? "muted" : "active",
+          isWorkbenchActive: true,
+        } as LiveSessionMember,
+      ];
+    }
+
+    return activeMembers;
+  }, [
+    isSelfInSession,
+    liveSession?.media?.isMuted,
+    liveSessionMembers,
+    onlinePrincipalIds,
+    principalId,
+    user?.avatarUrl,
+    user?.displayName,
+  ]);
+
   const hasActiveSession = inSession.length > 0;
   const MAX_AVATARS = 3;
   const visible = inSession.slice(0, MAX_AVATARS);
@@ -213,7 +260,6 @@ export function HeaderProjectShareButton({
               <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
                 {visible.map((member, index) => {
                   const isSpeaking = member.microphoneState === "speaking";
-                  const isMuted = member.microphoneState === "muted";
                   const color = getUserColor(member.principalId);
 
                   return (
@@ -224,7 +270,7 @@ export function HeaderProjectShareButton({
                     >
                       <Avatar
                         className={cn(
-                          "size-6 border-2 border-background rounded-full transition-all",
+                          "size-6 border-2 border-background rounded-[6px] transition-all",
                           isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
                         )}
                       >
@@ -238,14 +284,6 @@ export function HeaderProjectShareButton({
                           {initials(member.displayName)}
                         </AvatarFallback>
                       </Avatar>
-                      {isMuted ? (
-                        <span
-                          className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
-                          title="Microphone muted"
-                        >
-                          <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
-                        </span>
-                      ) : null}
                     </span>
                   );
                 })}
@@ -254,7 +292,7 @@ export function HeaderProjectShareButton({
                     className="relative inline-flex items-center"
                     style={{ zIndex: 0 }}
                   >
-                    <Avatar className="size-6 border-2 border-background rounded-full bg-muted">
+                    <Avatar className="size-6 border-2 border-background rounded-[6px] bg-muted">
                       <AvatarFallback className="text-[10px] font-medium text-muted-foreground">
                         +{overflow}
                       </AvatarFallback>
@@ -355,7 +393,6 @@ export function HeaderProjectShareButton({
                 <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
                   {visible.map((member, index) => {
                     const isSpeaking = member.microphoneState === "speaking";
-                    const isMuted = member.microphoneState === "muted";
                     const color = getUserColor(member.principalId);
 
                     return (
@@ -366,7 +403,7 @@ export function HeaderProjectShareButton({
                       >
                         <Avatar
                           className={cn(
-                            "size-6 border-2 border-background rounded-full transition-all",
+                            "size-6 border-2 border-background rounded-[6px] transition-all",
                             isSpeaking && "ring-2 ring-emerald-500 ring-offset-1 border-emerald-500",
                           )}
                         >
@@ -380,14 +417,6 @@ export function HeaderProjectShareButton({
                             {initials(member.displayName)}
                           </AvatarFallback>
                         </Avatar>
-                        {isMuted ? (
-                          <span
-                            className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full bg-background border border-border"
-                            title="Microphone muted"
-                          >
-                            <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
-                          </span>
-                        ) : null}
                       </span>
                     );
                   })}
@@ -396,7 +425,7 @@ export function HeaderProjectShareButton({
                       className="relative inline-flex items-center"
                       style={{ zIndex: 0 }}
                     >
-                      <Avatar className="size-6 border-2 border-background rounded-full bg-muted">
+                      <Avatar className="size-6 border-2 border-background rounded-[6px] bg-muted">
                         <AvatarFallback className="text-[10px] font-medium text-muted-foreground">
                           +{overflow}
                         </AvatarFallback>

@@ -12,7 +12,11 @@ import {
 import { checkoutGitBranchCompat, loadGitBranchesCompat } from "./workbenchBranchCompat"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
-import { rememberProjectBranchSession } from "@/features/source-control/model/projectBranchSessionStore"
+import {
+  readProjectBranchSession,
+  readScopedProjectBranchSession,
+  rememberProjectBranchSession,
+} from "@/features/source-control/model/projectBranchSessionStore"
 import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
 import {
   useOptionalProjectSyncContext,
@@ -173,15 +177,37 @@ function parseBranchIndex(action: string): number | null {
 }
 
 export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput) {
-  const [isLoading, setIsLoading] = useState(false)
+  const [cachedBranch, cachedIsRepo] = useMemo(() => {
+    if (input.activeLane?.branch) {
+      return [input.activeLane.branch, true] as const
+    }
+    const stored =
+      readScopedProjectBranchSession(input.projectId, input.workspaceId) ??
+      readProjectBranchSession(input.projectId)
+    return [stored?.activeBranch ?? null, stored?.activeBranch ? true : null] as const
+  }, [input.activeLane?.branch, input.projectId, input.workspaceId])
+
+  const [isLoading, setIsLoading] = useState(() => Boolean(input.workspaceId))
   const [isSwitching, setIsSwitching] = useState(false)
   const [lastError, setLastError] = useState<string | null>(null)
-  const [currentGitBranch, setCurrentGitBranch] = useState<string | null>(null)
-  const [isGitRepo, setIsGitRepo] = useState<boolean | null>(null)
+  const [currentGitBranch, setCurrentGitBranch] = useState<string | null>(cachedBranch)
+  const [isGitRepo, setIsGitRepo] = useState<boolean | null>(cachedIsRepo)
   const [hasVerifiedGitStatus, setHasVerifiedGitStatus] = useState(false)
   const [gitStatus, setGitStatus] = useState<GitToolbarSnapshot["gitStatus"]>(null)
   const [branches, setBranches] = useState<NativeGitBranch[]>([])
   const syncContext = useOptionalProjectSyncContext()
+
+  useEffect(() => {
+    setCurrentGitBranch((prev) => {
+      if (!hasVerifiedGitStatus && cachedBranch) {
+        return cachedBranch
+      }
+      return prev ?? cachedBranch
+    })
+    if (cachedIsRepo !== null) {
+      setIsGitRepo((prev) => prev ?? cachedIsRepo)
+    }
+  }, [cachedBranch, cachedIsRepo, hasVerifiedGitStatus])
 
   const collabLiveAvailable = useMemo(
     () =>
@@ -273,8 +299,9 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   }, [applyGitToolbarSnapshot, branchCwd, loadGitToolbarSnapshot])
 
   useEffect(() => {
+    setHasVerifiedGitStatus(false)
     void refreshGitState()
-  }, [refreshGitState])
+  }, [branchCwd, input.projectId, refreshGitState])
 
   const handleBranchSelect = useCallback(
     async (branch: NativeGitBranch) => {

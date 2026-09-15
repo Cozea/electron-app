@@ -183,18 +183,20 @@ export function formatSaveTime(publishedAt: number): string {
   return new Date(publishedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
 }
 
-/** Short elapsed time since last Git save, e.g. "now", "5min", "2h", "1d". */
-export function formatSaveAge(publishedAt: number | null | undefined): string {
-  if (!publishedAt) return "not saved"
+/** Short elapsed time since last Git save in xxn format, e.g. "now", "5m", "2h", "1d". */
+export function formatSaveAge(publishedAt: number | null | undefined): string | null {
+  if (!publishedAt) return null
   const diffMs = Math.max(0, Date.now() - publishedAt)
   const diffSec = Math.floor(diffMs / 1000)
   if (diffSec < 45) return "now"
   const diffMin = Math.round(diffSec / 60)
-  if (diffMin < 60) return `${diffMin}min`
+  if (diffMin < 60) return `${diffMin}m`
   const diffHours = Math.floor(diffMin / 60)
   if (diffHours < 24) return `${diffHours}h`
   const diffDays = Math.floor(diffHours / 24)
-  return `${diffDays}d`
+  if (diffDays < 100) return `${diffDays}d`
+  const diffWeeks = Math.floor(diffDays / 7)
+  return `${diffWeeks}w`
 }
 
 /** How the session is saved to its Git branch, for the session bar (Section 14 - 16). */

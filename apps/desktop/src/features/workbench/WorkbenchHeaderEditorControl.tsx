@@ -115,6 +115,31 @@ export function WorkbenchHeaderEditorControl({
   const SelectedEditorIcon = selectedEditor ? getExternalEditorIcon(selectedEditor.id) : GenericCodeIcon
   const hasPicker = orderedEditors.length > 1
 
+  const currentEditorId = selectedEditor?.id ?? "generic"
+  const [activeSlot, setActiveSlot] = useState<"a" | "b">("a")
+  const [slotA, setSlotA] = useState<{ id: string; Icon: React.ComponentType<{ className?: string }> }>({
+    id: currentEditorId,
+    Icon: SelectedEditorIcon,
+  })
+  const [slotB, setSlotB] = useState<{ id: string; Icon: React.ComponentType<{ className?: string }> }>({
+    id: currentEditorId,
+    Icon: SelectedEditorIcon,
+  })
+
+  useEffect(() => {
+    if (activeSlot === "a") {
+      if (slotA.id !== currentEditorId) {
+        setSlotB({ id: currentEditorId, Icon: SelectedEditorIcon })
+        setActiveSlot("b")
+      }
+    } else {
+      if (slotB.id !== currentEditorId) {
+        setSlotA({ id: currentEditorId, Icon: SelectedEditorIcon })
+        setActiveSlot("a")
+      }
+    }
+  }, [activeSlot, currentEditorId, SelectedEditorIcon, slotA.id, slotB.id])
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -145,7 +170,14 @@ export function WorkbenchHeaderEditorControl({
                 : t("workbench.editor.noEditor")
             }
           >
-            <SelectedEditorIcon className="size-3.5 shrink-0 transition-colors" />
+            <span className="t-icon-swap size-3.5 shrink-0" data-state={activeSlot}>
+              <span className="t-icon flex items-center justify-center" data-icon="a">
+                <slotA.Icon className="size-3.5 shrink-0" />
+              </span>
+              <span className="t-icon flex items-center justify-center" data-icon="b">
+                <slotB.Icon className="size-3.5 shrink-0" />
+              </span>
+            </span>
           </Button>
 
           {hasPicker ? (

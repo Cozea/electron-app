@@ -10,6 +10,7 @@ import { useEffect, useState } from "react"
 import { ArrowDown01Icon, MicOff01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MdCloud, MdCloudOff } from "react-icons/md"
+import { LuSaveOff } from "react-icons/lu"
 
 import { Button } from "@/components/ui/button"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
@@ -24,7 +25,6 @@ import { CloseSessionDialog } from "../ui/CloseSessionDialog"
 import { MergeSessionDialog } from "../ui/MergeSessionDialog"
 import { RebaseSessionDialog } from "../ui/RebaseSessionDialog"
 import { StructuralConflictDialog } from "../ui/StructuralConflictDialog"
-import { WorkbenchHeaderBranchControl } from "@/features/workbench/WorkbenchHeaderBranchControl"
 import {
   formatSaveAge,
   formatSaveTime,
@@ -81,11 +81,20 @@ function SessionStatusPill({
 
   const isActive = sync.tone === "live" || sync.tone === "working"
   const paused = session.lifecycle === "PAUSED" || session.lifecycle === "PAUSING"
-  const saveAgeLabel = autoGit?.isSaving
-    ? "Saving…"
-    : autoGit?.lastSavedAt
-      ? formatSaveAge(autoGit.lastSavedAt)
-      : autoGit?.label ?? "not saved"
+  const saveAge = autoGit?.lastSavedAt ? formatSaveAge(autoGit.lastSavedAt) : null
+  const isCurrentlySaving = Boolean(autoGit?.isSaving || isSaving)
+  const isSyncConnecting = sync.tone === "working" || sync.label.includes("Connecting") || sync.label.includes("Starting")
+  const isStatLoading = Boolean(isCurrentlySaving || isSyncConnecting || (isActive && autoGit === null))
+  const [lastSaveAge, setLastSaveAge] = useState<string | null>(saveAge)
+
+  useEffect(() => {
+    if (saveAge) {
+      setLastSaveAge(saveAge)
+    }
+  }, [saveAge])
+
+  const timestampState = isStatLoading ? "loading" : saveAge ? "time" : "unsaved"
+  const displayedSaveAge = saveAge ?? lastSaveAge ?? ""
 
   const handleOpenSessionMenu = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
@@ -210,53 +219,74 @@ function SessionStatusPill({
   }
 
   return (
-    <div
-      className="inline-flex h-7 items-center gap-1.5 text-sm font-medium text-foreground shrink-0 titlebar-no-drag"
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0 shrink-0"
       aria-label={`Session on ${session.branchName} · merges into ${session.targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
+      aria-haspopup="menu"
+      onClick={handleOpenSessionMenu}
+      title={
+        isCurrentlySaving
+          ? "Saving changes to Git…"
+          : autoGit?.lastSavedAt
+            ? `Automatic Git Checkpoint: Saved at ${formatSaveTime(autoGit.lastSavedAt)} (${saveAge ?? ""} ago). Click for session options.`
+            : `${autoGit?.label ?? "Not saved yet"}. Click for session options.`
+      }
     >
-      <WorkbenchHeaderBranchControl
-        triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1 text-sm font-medium text-foreground shadow-none hover:bg-muted/60"
-        trailing={null}
-      />
-
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0"
-        aria-label="Collaboration sync and session options"
-        aria-haspopup="menu"
-        onClick={handleOpenSessionMenu}
-        title={
-          autoGit?.lastSavedAt
-            ? `Automatic Git Checkpoint: Saved at ${formatSaveTime(autoGit.lastSavedAt)} (${formatSaveAge(autoGit.lastSavedAt)} ago). Click for session options.`
-            : `${autoGit?.label ?? "Collaboration sync active"}. Click for session options.`
-        }
-      >
-        {isActive ? (
+      <span className="t-icon-swap size-4 shrink-0" data-state={isActive ? "active" : "inactive"}>
+        <span className="t-icon flex items-center justify-center" data-icon="active">
           <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
-        ) : (
+        </span>
+        <span className="t-icon flex items-center justify-center" data-icon="inactive">
           <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+        </span>
+      </span>
+      <span
+        className={cn(
+          "t-icon-swap inline-grid h-4 w-[28px] shrink-0 items-center justify-center text-center text-sm font-medium leading-none select-none",
+          autoGit?.tone === "attention"
+            ? "text-destructive"
+            : "text-foreground",
         )}
-        {saveAgeLabel ? (
-          <span
+        data-state={timestampState}
+      >
+        <span className="t-icon flex items-center justify-center" data-icon="unsaved">
+          <LuSaveOff
             className={cn(
-              "truncate text-sm font-medium",
-              autoGit?.tone === "attention"
-                ? "text-destructive"
-                : "text-foreground",
+              "size-3.5 shrink-0",
+              autoGit?.tone === "attention" ? "text-destructive" : "text-muted-foreground",
             )}
-          >
-            {saveAgeLabel}
-          </span>
-        ) : null}
-      </Button>
-    </div>
+            aria-hidden="true"
+          />
+        </span>
+        <span className="t-icon flex items-center justify-center" data-icon="time">
+          {displayedSaveAge}
+        </span>
+        <span className="t-icon flex items-center justify-center" data-icon="loading">
+          <div className="loader shrink-0 text-muted-foreground" aria-label="Loading save status…" />
+        </span>
+      </span>
+    </Button>
   )
 }
 
-function AudioControlPill({ media }: { media: SessionMediaController | null }) {
-  if (!media) return null
+function AudioControlPill({
+  media,
+  visible = true,
+}: {
+  media: SessionMediaController | null
+  visible?: boolean
+}) {
+  if (!visible || !media) {
+    return (
+      <div
+        aria-hidden="true"
+        className="inline-flex h-7 w-[52px] items-center rounded-md border border-transparent shrink-0 invisible pointer-events-none"
+      />
+    )
+  }
 
   const isDenied = media.permissionStatus === "denied"
   const isMuted = media.isMuted
@@ -317,14 +347,15 @@ function AudioControlPill({ media }: { media: SessionMediaController | null }) {
   }
 
   return (
-    <div className="inline-flex items-center rounded-md border border-border/50 bg-background/60 shadow-xs shrink-0">
+    <div className="inline-flex h-7 items-center rounded-md border border-border/50 bg-background/60 shadow-xs shrink-0">
       <Button
         type="button"
         size="sm"
         variant="ghost"
         data-live-session-mic-button
         className={cn(
-          "h-7 px-2 text-xs gap-1.5 rounded-l-md rounded-r-none border-0 font-normal transition-colors",
+          "h-7 text-xs rounded-l-md rounded-r-none border-0 font-normal transition-colors",
+          isMuted ? "w-8 p-0 justify-center" : "px-2 gap-1.5",
           isDenied
             ? "text-destructive hover:bg-destructive/10"
             : isMuted
@@ -347,17 +378,27 @@ function AudioControlPill({ media }: { media: SessionMediaController | null }) {
         }
         aria-label={isMuted ? "Unmute microphone" : "Mute microphone"}
       >
-        {isMuted ? (
-          <HugeiconsIcon icon={MicOff01Icon} className="size-3.5 text-muted-foreground" />
-        ) : (
-          <SoundWaveCandles
-            analyser={media.analyserNode}
-            isMuted={media.isMuted}
-            isSpeaking={isSpeaking}
-            className={cn(isSpeaking && "drop-shadow-[0_0_6px_rgba(16,185,129,0.5)]")}
-          />
-        )}
-        <span className="text-[11px] leading-none">{isDenied ? "Mic error" : isMuted ? "Muted" : "Voice"}</span>
+        <span
+          className="t-icon-swap size-3.5 shrink-0"
+          data-state={isMuted ? "muted" : "recording"}
+        >
+          <span className="t-icon flex items-center justify-center" data-icon="muted">
+            <HugeiconsIcon icon={MicOff01Icon} className="size-3.5 text-muted-foreground" />
+          </span>
+          <span className="t-icon flex items-center justify-center" data-icon="recording">
+            <SoundWaveCandles
+              analyser={media.analyserNode}
+              isMuted={media.isMuted}
+              isSpeaking={isSpeaking}
+              className={cn(isSpeaking && "drop-shadow-[0_0_6px_rgba(16,185,129,0.5)]")}
+            />
+          </span>
+        </span>
+        {isDenied ? (
+          <span className="text-[11px] leading-none">Mic error</span>
+        ) : !isMuted ? (
+          <span className="text-[11px] leading-none">Voice</span>
+        ) : null}
       </Button>
 
       <Button
@@ -376,44 +417,86 @@ function AudioControlPill({ media }: { media: SessionMediaController | null }) {
   )
 }
 
-export function HeaderLiveSessionControl({ live }: { live: LiveSessionController }) {
+export function HeaderLiveSessionControl({
+  live,
+  isWorkbenchView = true,
+}: {
+  live: LiveSessionController
+  isWorkbenchView?: boolean
+}) {
   const [merging, setMerging] = useState(false)
   const [rebasing, setRebasing] = useState(false)
   const [reviewingFiles, setReviewingFiles] = useState(false)
   const [reviewingPaths, setReviewingPaths] = useState(false)
 
-  if (!live.session || !live.sync) {
+  const activeSession = live.session && live.sync ? live.session : null
+  const hasSession = activeSession !== null
+  if (!hasSession && !isWorkbenchView) {
     return null
   }
 
   const busy = live.busyAction !== null
-  const canJoin = live.membership === "none" || live.membership === "left"
+  const canJoin = live.session ? (live.membership === "none" || live.membership === "left") : false
   const isSaving = live.busyAction === "save" || (live.autoGit?.tone === "working" && live.autoGit.label.startsWith("Saving"))
 
   return (
     <>
       <div className="flex items-center gap-1.5 shrink-0 titlebar-no-drag" data-header-live-session="">
-        <SessionStatusPill
-          sync={live.sync}
-          autoGit={live.autoGit}
-          session={live.session}
-          canManage={live.canManage}
-          canEdit={live.canEdit}
-          membership={live.membership}
-          busy={busy}
-          busyAction={live.busyAction}
-          isSaving={isSaving}
-          onSaveNow={live.saveNow}
-          onRebase={() => setRebasing(true)}
-          onMerge={() => setMerging(true)}
-          onBinaryConflicts={() => setReviewingFiles(true)}
-          onStructuralConflicts={() => setReviewingPaths(true)}
-          onPause={live.pause}
-          onResume={live.resume}
-          onEnd={live.end}
-        />
+        {hasSession ? (
+          <SessionStatusPill
+            sync={live.sync!}
+            autoGit={live.autoGit}
+            session={live.session!}
+            canManage={live.canManage}
+            canEdit={live.canEdit}
+            membership={live.membership}
+            busy={busy}
+            busyAction={live.busyAction}
+            isSaving={isSaving}
+            onSaveNow={live.saveNow}
+            onRebase={() => setRebasing(true)}
+            onMerge={() => setMerging(true)}
+            onBinaryConflicts={() => setReviewingFiles(true)}
+            onStructuralConflicts={() => setReviewingPaths(true)}
+            onPause={live.pause}
+            onResume={live.resume}
+            onEnd={live.end}
+          />
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0 shrink-0"
+            title="Local session · No active live collaboration"
+          >
+            <span className="t-icon-swap size-4 shrink-0" data-state="inactive">
+              <span className="t-icon flex items-center justify-center" data-icon="active">
+                <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+              </span>
+              <span className="t-icon flex items-center justify-center" data-icon="inactive">
+                <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
+              </span>
+            </span>
+            <span
+              className="t-icon-swap inline-grid h-4 w-[28px] shrink-0 items-center justify-center text-center text-sm font-medium leading-none select-none text-muted-foreground"
+              data-state="unsaved"
+            >
+              <span className="t-icon flex items-center justify-center" data-icon="unsaved">
+                <LuSaveOff className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              </span>
+              <span className="t-icon flex items-center justify-center" data-icon="time" />
+              <span className="t-icon flex items-center justify-center" data-icon="saving">
+                <div className="loader shrink-0 text-muted-foreground" />
+              </span>
+            </span>
+          </Button>
+        )}
 
-        {live.membership === "active" ? <AudioControlPill media={live.media} /> : null}
+        <AudioControlPill
+          media={live.media}
+          visible={hasSession && live.membership === "active"}
+        />
 
         {canJoin ? (
           <Button
@@ -429,33 +512,35 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
         ) : null}
       </div>
 
-      {reviewingFiles && (
+      {activeSession && reviewingFiles && (
         <BinaryConflictDialog
-          key={live.session.publicSessionId}
-          publicSessionId={live.session.publicSessionId}
+          key={activeSession.publicSessionId}
+          publicSessionId={activeSession.publicSessionId}
           canEdit={live.canEdit}
           onClose={() => setReviewingFiles(false)}
         />
       )}
 
-      {reviewingPaths && (
+      {activeSession && reviewingPaths && (
         <StructuralConflictDialog
-          key={live.session.publicSessionId}
-          publicSessionId={live.session.publicSessionId}
+          key={activeSession.publicSessionId}
+          publicSessionId={activeSession.publicSessionId}
           canEdit={live.canEdit}
           onClose={() => setReviewingPaths(false)}
         />
       )}
 
-      <RebaseSessionDialog
-        isOpen={rebasing}
-        onOpenChange={setRebasing}
-        publicSessionId={live.session.publicSessionId}
-        branchName={live.session.branchName}
-        targetBranch={live.session.targetBranch}
-      />
+      {activeSession && (
+        <RebaseSessionDialog
+          isOpen={rebasing}
+          onOpenChange={setRebasing}
+          publicSessionId={activeSession.publicSessionId}
+          branchName={activeSession.branchName}
+          targetBranch={activeSession.targetBranch}
+        />
+      )}
 
-      {live.closeReview && (
+      {activeSession && live.closeReview && (
         <CloseSessionDialog
           key={live.closeReview.reviewId}
           review={live.closeReview}
@@ -465,19 +550,21 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
         />
       )}
 
-      <MergeSessionDialog
-        isOpen={merging}
-        onOpenChange={setMerging}
-        publicSessionId={live.session.publicSessionId}
-        branchName={live.session.branchName}
-        targetBranch={live.session.targetBranch}
-        canManage={live.canManage}
-        onPause={live.pause}
-        onEnd={() => {
-          setMerging(false)
-          live.end()
-        }}
-      />
+      {activeSession && (
+        <MergeSessionDialog
+          isOpen={merging}
+          onOpenChange={setMerging}
+          publicSessionId={activeSession.publicSessionId}
+          branchName={activeSession.branchName}
+          targetBranch={activeSession.targetBranch}
+          canManage={live.canManage}
+          onPause={live.pause}
+          onEnd={() => {
+            setMerging(false)
+            live.end()
+          }}
+        />
+      )}
     </>
   )
 }
