@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 53fc2f7efd2df38f0388d7fa94ec3456d6f2a33c; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import {
   NonNegativeInt,
@@ -106,7 +106,7 @@ function decodedProjectErrorMessage(props: object): string | undefined {
   return typeof props.message === "string" ? props.message : undefined;
 }
 
-export class ProjectSearchEntriesError extends Schema.TaggedErrorClass<ProjectSearchEntriesError>()(
+export class ProjectSearchEntriesError extends Schema.TaggedError<ProjectSearchEntriesError>()(
   "ProjectSearchEntriesError",
   {
     cwd: Schema.optional(TrimmedNonEmptyString),
@@ -117,7 +117,7 @@ export class ProjectSearchEntriesError extends Schema.TaggedErrorClass<ProjectSe
     timeout: Schema.optional(TrimmedNonEmptyString),
     detail: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   // The structured fields are optional on the wire so newer peers can decode legacy message-only
@@ -139,7 +139,7 @@ export class ProjectSearchEntriesError extends Schema.TaggedErrorClass<ProjectSe
   }
 }
 
-export class ProjectSearchContentsError extends Schema.TaggedErrorClass<ProjectSearchContentsError>()(
+export class ProjectSearchContentsError extends Schema.TaggedError<ProjectSearchContentsError>()(
   "ProjectSearchContentsError",
   {
     cwd: Schema.optional(TrimmedNonEmptyString),
@@ -150,7 +150,7 @@ export class ProjectSearchContentsError extends Schema.TaggedErrorClass<ProjectS
     timeout: Schema.optional(TrimmedNonEmptyString),
     detail: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off
@@ -170,7 +170,7 @@ export class ProjectSearchContentsError extends Schema.TaggedErrorClass<ProjectS
   }
 }
 
-export class ProjectListEntriesError extends Schema.TaggedErrorClass<ProjectListEntriesError>()(
+export class ProjectListEntriesError extends Schema.TaggedError<ProjectListEntriesError>()(
   "ProjectListEntriesError",
   {
     cwd: Schema.optional(TrimmedNonEmptyString),
@@ -179,7 +179,7 @@ export class ProjectListEntriesError extends Schema.TaggedErrorClass<ProjectList
     timeout: Schema.optional(TrimmedNonEmptyString),
     detail: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off
@@ -240,7 +240,7 @@ type ProjectFileFailureContext = {
   readonly cause?: unknown;
 };
 
-export class ProjectReadFileError extends Schema.TaggedErrorClass<ProjectReadFileError>()(
+export class ProjectReadFileError extends Schema.TaggedError<ProjectReadFileError>()(
   "ProjectReadFileError",
   {
     cwd: Schema.optional(TrimmedNonEmptyString),
@@ -251,7 +251,7 @@ export class ProjectReadFileError extends Schema.TaggedErrorClass<ProjectReadFil
     operation: Schema.optional(ProjectFileOperation),
     operationPath: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off
@@ -277,7 +277,7 @@ export const ProjectWriteFileResult = Schema.Struct({
 });
 export type ProjectWriteFileResult = typeof ProjectWriteFileResult.Type;
 
-export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteFileError>()(
+export class ProjectWriteFileError extends Schema.TaggedError<ProjectWriteFileError>()(
   "ProjectWriteFileError",
   {
     cwd: Schema.optional(TrimmedNonEmptyString),
@@ -288,7 +288,7 @@ export class ProjectWriteFileError extends Schema.TaggedErrorClass<ProjectWriteF
     operation: Schema.optional(ProjectFileOperation),
     operationPath: Schema.optional(TrimmedNonEmptyString),
     message: TrimmedNonEmptyString,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   // @effect-diagnostics-next-line overriddenSchemaConstructor:off

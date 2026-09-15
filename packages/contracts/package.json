@@ -25,6 +25,6 @@
     }
   },
   "dependencies": {
-    "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b"
+    "effect": "4.0.0-rc.112"
   }
 }

@@ -39,6 +39,7 @@ function PopoverContent({
   side = "bottom",
   sideOffset = 4,
   alignOffset = 0,
+  anchor,
   children,
   ...props
 }: React.ComponentProps<typeof BasePopover.Popup> & {
@@ -46,10 +47,12 @@ function PopoverContent({
   side?: "top" | "bottom" | "left" | "right"
   sideOffset?: number
   alignOffset?: number
+  anchor?: React.ComponentProps<typeof BasePopover.Positioner>["anchor"]
 }) {
   return (
     <BasePopover.Portal>
       <BasePopover.Positioner
+        anchor={anchor}
         align={align}
         side={side}
         sideOffset={sideOffset}
@@ -76,4 +79,6 @@ export {
   PopoverTrigger,
   PopoverPortal,
   PopoverContent,
+  PopoverContent as PopoverPopup,
 }
+

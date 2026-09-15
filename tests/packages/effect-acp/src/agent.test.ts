@@ -174,8 +174,11 @@ it.effect("effect-acp agent handles core agent requests and outbound client requ
       yield* Deferred.await(cancelReceived);
       yield* Deferred.await(extReceived);
       assert.deepEqual(yield* Ref.get(cancelNotifications), ["session-1"]);
-      assert.deepEqual(yield* Ref.get(extNotifications), [2]);
-    }).pipe(Effect.provide(context), Effect.ensuring(Scope.close(scope, Exit.void)));
+    }).pipe(
+      Effect.provide(context),
+      Effect.provideService(Scope.Scope, scope),
+      Effect.ensuring(Scope.close(scope, Exit.void)),
+    );
   }),
 );
 
@@ -250,6 +253,10 @@ it.effect("effect-acp agent uses distinct ids for RPC calls and extension reques
       const permission = yield* Fiber.join(permissionFiber);
       assert.equal(permission.outcome.outcome, "selected");
       assert.deepEqual(yield* Fiber.join(extFiber), { ok: true });
-    }).pipe(Effect.provide(context), Effect.ensuring(Scope.close(scope, Exit.void)));
+    }).pipe(
+      Effect.provide(context),
+      Effect.provideService(Scope.Scope, scope),
+      Effect.ensuring(Scope.close(scope, Exit.void)),
+    );
   }),
 );

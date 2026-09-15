@@ -91,7 +91,12 @@ import {
   replaceTextRange,
   collapseExpandedComposerCursor,
   expandCollapsedComposerCursor,
+  formatAssistantCitationForComposer,
 } from "@/features/assistant/composer-logic";
+import { assistantCitationFromLocation } from "@/lib/assistantCitationNavigation";
+import type { AssistantCitation, EnvironmentId, ScopedThreadRef, ThreadId } from "@cozea/contracts/t3";
+import type { AssistantCitationSourceAnchor } from "@/lib/assistantTextSelection";
+import type { AssistantCitationRequest } from "./AssistantCitationSource";
 import { basenameOfPath, getVscodeIconUrlForEntry } from "@/features/assistant/vscode-icons";
 import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWindow";
 import type { AccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits";
@@ -107,6 +112,22 @@ import { useElementPointerHover } from "@/hooks/useElementPointerHover";
 import { COMPOSER_DOCK_EASING_CSS, COMPOSER_DOCK_TRANSITION_MS } from "./composerDockMotion";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
+import { ComposerBanner } from "./ComposerBanner";
+import { ComposerStashBadge } from "./ComposerStashBadge";
+import { ComposerStashMenu } from "./ComposerStashMenu";
+import { ComposerPendingReviewComments } from "./ComposerPendingReviewComments";
+import { ComposerPendingElementContexts } from "./ComposerPendingElementContexts";
+import { appendReviewCommentsToPrompt } from "./reviewCommentContext";
+import { ComposerTasksBadge, ComposerTasksDrawer } from "./ComposerTasksBadge";
+import { resolveTasksProgressAndSteps } from "./taskProgress";
+import { appendElementContextsToPrompt } from "@/features/browser/elementContext";
+import { useAssistantComposerDraftStore } from "./composerDraftStore";
+import {
+  usePromptStashStore,
+  partitionStashAttachments,
+  type PromptStashEntry,
+  type PersistedComposerImageAttachment,
+} from "./promptStashStore";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -202,10 +223,46 @@ const COMPOSER_LAYOUT_TRANSITION = {
   duration: COMPOSER_DOCK_TRANSITION_MS / 1000,
   ease: [0, 0, 0.2, 1] as const,
 };
+async function dataUrlToFile(dataUrl: string, filename: string, mimeType: string): Promise<File> {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return new File([blob], filename, { type: mimeType });
+}
 
+function fileToDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
-
-
+async function composerImageDraftToAttachment(
+  image: ComposerImageDraft,
+): Promise<PersistedComposerImageAttachment | null> {
+  try {
+    let dataUrl = "";
+    if (image.previewUrl.startsWith("data:")) {
+      dataUrl = image.previewUrl;
+    } else if (image.file) {
+      dataUrl = await fileToDataUrl(image.file);
+    } else {
+      const res = await fetch(image.previewUrl);
+      const blob = await res.blob();
+      dataUrl = await fileToDataUrl(blob);
+    }
+    return {
+      id: image.id,
+      name: image.name,
+      mimeType: image.mimeType,
+      sizeBytes: image.sizeBytes,
+      dataUrl,
+    };
+  } catch {
+    return null;
+  }
+}
 
 interface CozeaChatSurfaceProps {
   isChatVisible?: boolean;
@@ -297,9 +354,13 @@ interface CozeaChatSurfaceProps {
   onSubmitUserInput: (requestId: string) => void | Promise<void>;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void | Promise<void>;
   onDismissThreadError?: () => void;
-  onRevertToTurnCount?: (turnCount: number) => void | Promise<void>;
+  onRevertToTurnCount?: (
+    turnCount: number,
+    options?: { restoreFiles?: boolean; promptToRestore?: string },
+  ) => void | Promise<void>;
   /** Workbench tiles: bottom composer floats and expands on card hover or focus (like the browser omnibar). */
   dockComposerOnHover?: boolean;
+  draftTargetKey?: string;
 }
 
 function isNonEmptyReactNode(node: ReactNode): boolean {
@@ -464,6 +525,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
 
   const {
     activeTurn,
+    activePlan,
     latestTurnSettled,
     phase,
     isWorking,
@@ -542,6 +604,39 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const activePendingIsResponding = activePendingUserInput
     ? props.activeRequestKey === String(activePendingUserInput.requestId)
     : false;
+  const resolvedDraftTargetKey = props.draftTargetKey ?? props.thread?.id ?? "default";
+  const pendingReviewComments = useAssistantComposerDraftStore(
+    (state) => state.draftsByTargetKey[resolvedDraftTargetKey]?.reviewComments,
+  );
+  const pendingElementContexts = useAssistantComposerDraftStore(
+    (state) => state.draftsByTargetKey[resolvedDraftTargetKey]?.elementContexts,
+  );
+  const removeReviewComment = useAssistantComposerDraftStore((state) => state.removeReviewComment);
+  const clearReviewComments = useAssistantComposerDraftStore((state) => state.clearReviewComments);
+  const removeElementContext = useAssistantComposerDraftStore((state) => state.removeElementContext);
+  const clearElementContexts = useAssistantComposerDraftStore((state) => state.clearElementContexts);
+  const { tasksProgress: activeTasksProgress, taskSteps: activeTaskSteps } = useMemo(() => {
+    return resolveTasksProgressAndSteps({
+      activePlan,
+      activeProposedPlan,
+      isWorking,
+    });
+  }, [activePlan, activeProposedPlan, isWorking]);
+
+  const [isTasksDrawerOpen, setIsTasksDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!activeTasksProgress || !activeTaskSteps) {
+      setIsTasksDrawerOpen(false);
+    }
+  }, [activeTasksProgress, activeTaskSteps]);
+
+  const showTasksTab =
+    !isTasksDrawerOpen &&
+    activeTasksProgress !== null &&
+    activeTaskSteps !== null &&
+    activeTasksProgress.totalSteps > 0;
+
   const isComposerApprovalState = activePendingApproval !== null;
   const hasComposerHeader =
     isComposerApprovalState || activePendingUserInput !== null || showPlanFollowUpPrompt;
@@ -1126,7 +1221,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     if (typeof turnCount !== "number") {
       return;
     }
-    void props.onRevertToTurnCount?.(turnCount);
+    const message = props.thread?.messages.find((m) => m.id === messageId);
+    void props.onRevertToTurnCount?.(turnCount, {
+      restoreFiles: false,
+      promptToRestore: message?.text,
+    });
   });
   const handleOpenTurnDiff = useCommittedChatCallback(props.onOpenTurnDiff);
   const handleOpenArtifact = useCommittedChatCallback((artifactId: string) =>
@@ -1311,29 +1410,44 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   };
 
   const handleSendWithMode = useCallback(async () => {
-    const trimmed = composerValue.trim();
+    let trimmed = composerValue.trim();
     if (activeMode === "debug") {
-      const promptToSend =
+      trimmed =
         trimmed &&
         !trimmed.toLowerCase().startsWith("[debug") &&
         !trimmed.toLowerCase().startsWith("/debug")
           ? `[Debug Mode: Troubleshoot and diagnose this issue]\n${trimmed}`
           : trimmed;
-      await props.onSend(promptToSend);
-      return;
-    }
-    if (activeMode === "ask") {
-      const promptToSend =
+    } else if (activeMode === "ask") {
+      trimmed =
         trimmed &&
         !trimmed.toLowerCase().startsWith("[ask") &&
         !trimmed.toLowerCase().startsWith("/ask")
           ? `[Ask Mode: Answer questions and explain without making file changes]\n${trimmed}`
           : trimmed;
-      await props.onSend(promptToSend);
-      return;
     }
-    await props.onSend();
-  }, [activeMode, composerValue, props]);
+
+    if (pendingReviewComments && pendingReviewComments.length > 0) {
+      trimmed = appendReviewCommentsToPrompt(trimmed, pendingReviewComments);
+      clearReviewComments(resolvedDraftTargetKey);
+    }
+    if (pendingElementContexts && pendingElementContexts.length > 0) {
+      trimmed = appendElementContextsToPrompt(trimmed, pendingElementContexts);
+      clearElementContexts(resolvedDraftTargetKey);
+    }
+
+    const promptToSend = trimmed.length > 0 ? trimmed : undefined;
+    await props.onSend(promptToSend);
+  }, [
+    activeMode,
+    composerValue,
+    pendingReviewComments,
+    pendingElementContexts,
+    resolvedDraftTargetKey,
+    clearReviewComments,
+    clearElementContexts,
+    props,
+  ]);
 
   const handleComposerCommandKey = (
     key: "ArrowDown" | "ArrowUp" | "Enter" | "Tab",
@@ -1405,6 +1519,183 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     // Allow selecting the same file repeatedly.
     event.currentTarget.value = "";
   };
+
+  const stashQueue = usePromptStashStore((state) => state.entries);
+  const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
+  const [stashPulse, setStashPulse] = useState({ key: 0, active: false });
+
+  useEffect(() => {
+    if (!stashPulse.active) return;
+    const timer = setTimeout(() => {
+      setStashPulse((prev) => ({ ...prev, active: false }));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [stashPulse.key, stashPulse.active]);
+
+  const restoreStashEntry = useCallback(
+    async (menuEntry: PromptStashEntry) => {
+      setIsStashMenuOpen(false);
+      const { entry } = usePromptStashStore.getState().takeEntry(menuEntry.id);
+      if (!entry) return;
+
+      const currentPrompt = composerValue;
+      const nextPrompt =
+        entry.prompt.length === 0
+          ? currentPrompt
+          : currentPrompt.trim().length
+            ? `${currentPrompt.replace(/\s+$/, "")}\n\n${entry.prompt}`
+            : entry.prompt;
+
+      if (nextPrompt !== currentPrompt) {
+        props.onComposerChange(nextPrompt, nextPrompt.length);
+      }
+
+      if (entry.attachments && entry.attachments.length > 0) {
+        const restoredFiles: File[] = [];
+        for (const attachment of entry.attachments) {
+          try {
+            const file = await dataUrlToFile(attachment.dataUrl, attachment.name, attachment.mimeType);
+            restoredFiles.push(file);
+          } catch (e) {
+            console.error("Failed to restore image attachment", e);
+          }
+        }
+        if (restoredFiles.length > 0) {
+          props.onAttachFiles(restoredFiles);
+        }
+      }
+    },
+    [composerValue, props.onComposerChange, props.onAttachFiles],
+  );
+
+  const deleteStashEntry = useCallback((entry: PromptStashEntry) => {
+    usePromptStashStore.getState().takeEntry(entry.id);
+  }, []);
+
+  const stashCurrentPrompt = useCallback(async () => {
+    const prompt = composerValue.trim();
+    const images = [...props.composerImages];
+    if (prompt.length === 0 && images.length === 0) {
+      const entries = usePromptStashStore.getState().entries;
+      const entry = entries.length === 1 ? entries[0] : undefined;
+      if (entry && !entry.pendingImageCount) {
+        await restoreStashEntry(entry);
+      } else {
+        setIsStashMenuOpen((open) => !open);
+      }
+      return;
+    }
+
+    const entryId = crypto.randomUUID();
+    const { written } = usePromptStashStore.getState().stashEntry({
+      id: entryId,
+      createdAt: new Date().toISOString(),
+      prompt,
+      attachments: [],
+      droppedImageNames: [],
+      unreadableImageNames: [],
+      pendingImageCount: images.length,
+    });
+
+    if (!written) {
+      return;
+    }
+
+    props.onComposerChange("", 0);
+    for (const img of images) {
+      props.onRemoveComposerImage(img.id);
+    }
+    setStashPulse((prev) => ({ key: prev.key + 1, active: true }));
+
+    if (images.length > 0) {
+      const encodedResults = await Promise.all(images.map((img) => composerImageDraftToAttachment(img)));
+      const successful: PersistedComposerImageAttachment[] = [];
+      const unreadableImageNames: string[] = [];
+      encodedResults.forEach((res, idx) => {
+        if (res) {
+          successful.push(res);
+        } else {
+          unreadableImageNames.push(images[idx]?.name ?? `image-${idx + 1}`);
+        }
+      });
+      const { kept, droppedNames } = partitionStashAttachments(successful);
+      usePromptStashStore.getState().finalizeEntryImages(entryId, {
+        attachments: kept,
+        droppedImageNames: droppedNames,
+        unreadableImageNames,
+      });
+    }
+  }, [composerValue, props.composerImages, props.onComposerChange, props.onRemoveComposerImage, restoreStashEntry]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (props.isRevertingCheckpoint) return;
+        if (asyncUserInputs.length > 0 && !isComposerApprovalState) {
+          setIsStashMenuOpen((open) => !open);
+          return;
+        }
+        if (isComposerApprovalState || activePendingProgress !== null) return;
+        void stashCurrentPrompt();
+      }
+    };
+    window.addEventListener("keydown", handleGlobalKeyDown, true);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
+  }, [activePendingProgress, asyncUserInputs.length, isComposerApprovalState, props.isRevertingCheckpoint, stashCurrentPrompt]);
+
+  const citationThreadRef = useMemo<ScopedThreadRef>(
+    () => ({
+      environmentId: "local" as EnvironmentId,
+      threadId: (props.thread?.id ?? "local") as ThreadId,
+    }),
+    [props.thread?.id],
+  );
+
+  const [citationLocationHref, setCitationLocationHref] = useState(() =>
+    typeof window !== "undefined" ? window.location.href : "",
+  );
+  useEffect(() => {
+    const onHashChange = () => setCitationLocationHref(window.location.href);
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const citationRequest = useMemo<AssistantCitationRequest | null>(() => {
+    const citation = assistantCitationFromLocation(citationLocationHref);
+    return citation && citation.threadId === citationThreadRef.threadId
+      ? { citation, key: citationLocationHref }
+      : null;
+  }, [citationLocationHref, citationThreadRef.threadId]);
+
+  const handleCiteAssistantText = useCallback(
+    (citation: AssistantCitation, _sourceAnchor: AssistantCitationSourceAnchor) => {
+      const formatted = formatAssistantCitationForComposer(citation, citation.comment);
+      const prev = props.composer;
+      const nextPrompt = prev ? `${prev.trimEnd()} ${formatted}` : formatted;
+      const collapsedCursor = collapseExpandedComposerCursor(nextPrompt, nextPrompt.length);
+      props.onComposerChange(nextPrompt, collapsedCursor);
+      composerEditorRef.current?.focusAtEnd();
+      return true;
+    },
+    [props.composer, props.onComposerChange],
+  );
+
+  const draftHeroProjectName = useMemo(() => {
+    return props.workspaceRoot ? basenameOfPath(props.workspaceRoot) : props.thread?.title || null;
+  }, [props.workspaceRoot, props.thread?.title]);
+
+  const handleSelectDraftPrompt = useCallback(
+    (prompt: string) => {
+      const collapsedCursor = collapseExpandedComposerCursor(prompt, prompt.length);
+      props.onComposerChange(prompt, collapsedCursor);
+      setTimeout(() => {
+        composerEditorRef.current?.focusAtEnd();
+      }, 0);
+    },
+    [props.onComposerChange],
+  );
 
   const hasActiveComposerHeader = Boolean(
     hasComposerHeader || (showPlanFollowUpPrompt && activeProposedPlan),
@@ -1874,6 +2165,18 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         </div>
       ) : null}
 
+      {isStashMenuOpen && !composerMenuOpen && !isComposerApprovalState && !activePendingProgress ? (
+        <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 w-[min(38rem,100%)]">
+          <ComposerStashMenu
+            entries={stashQueue}
+            stashShortcutLabel="⌘S"
+            onRestore={restoreStashEntry}
+            onDelete={deleteStashEntry}
+            onClose={() => setIsStashMenuOpen(false)}
+          />
+        </div>
+      ) : null}
+
       {/* Floating Model Picker */}
       {shouldRenderModelPicker ? (
         <div
@@ -1935,6 +2238,37 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
           />
         </div>
       ) : null}
+
+      <ComposerBanner.Dock>
+        <ComposerBanner.Column>
+          {isTasksDrawerOpen && activeTasksProgress && activeTaskSteps ? (
+            <ComposerTasksDrawer
+              onCollapse={() => setIsTasksDrawerOpen(false)}
+              progress={activeTasksProgress}
+              steps={activeTaskSteps}
+            />
+          ) : null}
+          {showTasksTab ? (
+            <ComposerBanner.Attachment>
+              <ComposerTasksBadge
+                expanded={false}
+                onToggle={() => setIsTasksDrawerOpen((open) => !open)}
+                progress={activeTasksProgress}
+                steps={activeTaskSteps}
+              />
+            </ComposerBanner.Attachment>
+          ) : null}
+        </ComposerBanner.Column>
+        {!isComposerApprovalState && !activePendingProgress ? (
+          <ComposerStashBadge
+            count={stashQueue.length}
+            menuOpen={isStashMenuOpen}
+            pulseKey={stashPulse.key}
+            pulsing={stashPulse.active}
+            onToggleMenu={() => setIsStashMenuOpen((open) => !open)}
+          />
+        ) : null}
+      </ComposerBanner.Dock>
 
       {/* Resolve the final geometry once, then interpolate its presentation.
        * Padding must not transition: intermediate widths feed back into line
@@ -2031,6 +2365,30 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 const preview = buildExpandedImagePreview(props.composerImages, imageId);
                 if (preview) handleExpandImage(preview);
               }}
+            />
+          </div>
+        ) : null}
+
+        {!isComposerApprovalState &&
+        !activePendingUserInput &&
+        pendingReviewComments &&
+        pendingReviewComments.length > 0 ? (
+          <div className="basis-full mb-2">
+            <ComposerPendingReviewComments
+              comments={pendingReviewComments}
+              onRemove={(id) => removeReviewComment(resolvedDraftTargetKey, id)}
+            />
+          </div>
+        ) : null}
+
+        {!isComposerApprovalState &&
+        !activePendingUserInput &&
+        pendingElementContexts &&
+        pendingElementContexts.length > 0 ? (
+          <div className="basis-full mb-2">
+            <ComposerPendingElementContexts
+              contexts={pendingElementContexts}
+              onRemove={(id) => removeElementContext(resolvedDraftTargetKey, id)}
             />
           </div>
         ) : null}
@@ -2155,7 +2513,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               optionDescriptors={props.modelOptionDescriptors}
               showProviderIcon={false}
               disabled={!isChatReady || props.isRunning}
-              triggerClassName="h-7 rounded-full border-0 px-2 text-xs font-normal leading-none text-foreground/80 hover:text-foreground hover:bg-accent/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer sm:text-xs"
+              triggerClassName="h-7 rounded-full border-0 px-2 text-sm font-normal leading-none text-foreground/80 hover:text-foreground hover:bg-accent/80 dark:text-zinc-300 dark:hover:text-white dark:hover:bg-white/10 transition-colors cursor-pointer sm:text-sm"
               onProviderModelChange={props.onProviderModelChange}
               open={isModelPickerOpen}
               activeView={modelPickerView}
@@ -2289,6 +2647,11 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   workspaceRoot={props.workspaceRoot ?? undefined}
                   artifactUrlsById={props.artifactUrlsById}
                   onOpenArtifact={props.onOpenArtifact ? handleOpenArtifact : undefined}
+                  citationRequest={citationRequest}
+                  citationThreadRef={citationThreadRef}
+                  onCiteAssistantText={handleCiteAssistantText}
+                  projectName={draftHeroProjectName}
+                  onSelectPrompt={handleSelectDraftPrompt}
                 />
               </ChatMediaProvider>
             </ChatArtifactTemplateProvider>

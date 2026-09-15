@@ -77,17 +77,13 @@ export interface AppSettings {
    */
   nativeThemeSource?: 'system' | 'light' | 'dark'
   computerUseEnabled?: boolean
-  computerUseCliPath?: string
   disabledComputerUseTools?: string[]
 }
 
 export interface ComputerUseDiagnostics {
   supported?: boolean
-  abiVersion?: number
-  sky?: { available: boolean; missingSymbols?: string[]; osVersion?: string }
   installed: boolean
   version?: string
-  path?: string
   accessibility: boolean
   screenRecording: boolean
   error?: string

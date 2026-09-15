@@ -41,11 +41,11 @@
     "generate": "bun run scripts/generate.ts"
   },
   "dependencies": {
-    "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b"
+    "effect": "4.0.0-rc.112"
   },
   "devDependencies": {
-    "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b",
-    "@effect/vitest": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/vitest@8881a9b",
+    "@effect/platform-node": "4.0.0-rc.112",
+    "@effect/vitest": "4.0.0-rc.112",
     "typescript": "~5.9.3",
     "vitest": "^4.0.18"
   }

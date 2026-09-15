@@ -2,8 +2,9 @@ import { deriveDisplayedUserMessageState } from "../lib/terminalContext";
 import { buildInlineTerminalContextText } from "./userMessageTerminalContexts";
 import { measureTextLineCountAtWidthAtLeastOne } from "@/lib/text/pretextMeasure";
 
-// Match timeline `text-xs leading-normal` (~12px × 1.5 line-height).
+// Match timeline `text-xs leading-normal` (~12px × 1.5 line-height) and `text-sm leading-normal` (~14px × 1.5 line-height = 21px).
 const LINE_HEIGHT_PX = 18;
+const USER_LINE_HEIGHT_PX = 21;
 const ASSISTANT_BASE_HEIGHT_PX = 72;
 const USER_BASE_HEIGHT_PX = 88;
 const TIMELINE_MAX_CONTENT_WIDTH_PX = 768;
@@ -21,7 +22,7 @@ const ATTACHMENT_CARD_WIDTH_PX = 128;
 const ATTACHMENT_CARD_HEIGHT_PX = 96;
 const ATTACHMENT_GAP_PX = 8;
 const ATTACHMENT_MARGIN_BOTTOM_PX = 4;
-const USER_MESSAGE_FONT = "400 12px Inter";
+const USER_MESSAGE_FONT = "400 14px Inter";
 const ASSISTANT_MESSAGE_FONT = "400 12px Inter";
 const MIN_TEXT_LAYOUT_WIDTH_PX = 32;
 
@@ -151,7 +152,7 @@ export function estimateTimelineMessageHeight(
       message.attachments?.length ?? 0,
       layout.timelineWidthPx,
     );
-    return USER_BASE_HEIGHT_PX + estimatedLines * LINE_HEIGHT_PX + attachmentHeight;
+    return USER_BASE_HEIGHT_PX + estimatedLines * USER_LINE_HEIGHT_PX + attachmentHeight;
   }
 
   // `system` messages are not rendered in the chat timeline, but keep a stable

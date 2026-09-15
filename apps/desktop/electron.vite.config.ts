@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 import fs from 'node:fs'
 import { build as viteBuild, loadEnv, type Alias, type Plugin } from 'vite'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 function readBooleanFlag(name: string, fallback: boolean): boolean {
   const raw = process.env[name]
@@ -216,6 +217,49 @@ function normalizeModuleId(id: string): string {
   return id.split(path.sep).join('/')
 }
 
+// --- Sentry ----------------------------------------------------------------
+// DSN/release/environment are baked via `define` so packaged builds (which
+// have no .env at runtime) and dev builds share one mechanism. Source maps
+// upload only when SENTRY_AUTH_TOKEN/ORG/PROJECT are all set (release CI);
+// otherwise the plugin stays out and local builds never touch Sentry.
+const desktopPackageVersion = (
+  JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')) as {
+    version?: string
+  }
+).version
+const sentryRelease =
+  process.env.SENTRY_RELEASE?.trim() || `cozea-desktop@${desktopPackageVersion ?? '0.0.0-dev'}`
+const sentryEnvironment = process.env.SENTRY_ENVIRONMENT?.trim() || ''
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim() || ''
+const sentryOrg = process.env.SENTRY_ORG?.trim() || ''
+const sentryProject = process.env.SENTRY_PROJECT?.trim() || ''
+
+function sentryDefines(env: Record<string, string | undefined>): Record<string, string> {
+  return {
+    __COZEA_SENTRY_DSN__: JSON.stringify(env.VITE_SENTRY_DSN ?? process.env.VITE_SENTRY_DSN ?? ''),
+    __COZEA_SENTRY_RELEASE__: JSON.stringify(sentryRelease),
+    __COZEA_SENTRY_ENVIRONMENT__: JSON.stringify(
+      env.VITE_SENTRY_ENVIRONMENT ?? process.env.VITE_SENTRY_ENVIRONMENT ?? sentryEnvironment,
+    ),
+  }
+}
+
+function sentrySourcemapPlugins(outSubdir: string): Plugin[] {
+  if (!sentryAuthToken || !sentryOrg || !sentryProject) return []
+  const plugin = sentryVitePlugin({
+    org: sentryOrg,
+    project: sentryProject,
+    authToken: sentryAuthToken,
+    release: { name: sentryRelease },
+    sourcemaps: {
+      assets: path.join(__dirname, 'out', outSubdir, '**', '*.map'),
+      deleteSourcemapsAfterUpload: true,
+    },
+    telemetry: false,
+  })
+  return (Array.isArray(plugin) ? plugin : [plugin]) as Plugin[]
+}
+
 function rendererManualChunks(id: string): string | undefined {
   const normalizedId = normalizeModuleId(id)
   if (!normalizedId.includes('/node_modules/')) {
@@ -266,6 +310,7 @@ export default defineConfig(({ mode }) => ({
     define: {
       __COZEA_DEVICE_GATEWAY_ORIGIN__: JSON.stringify(resolveDeviceGatewayOrigin(loadEnv(mode, repoRoot, 'VITE_'))),
       __COZEA_CONVEX_URL__: JSON.stringify(loadEnv(mode, repoRoot, 'VITE_').VITE_CONVEX_URL ?? ''),
+      ...sentryDefines(loadEnv(mode, repoRoot, 'VITE_')),
     },
     resolve: {
       alias: [...mainBootAliases, ...sharedAliases],
@@ -283,8 +328,12 @@ export default defineConfig(({ mode }) => ({
           }
         },
       },
+      ...sentrySourcemapPlugins('main'),
     ],
     build: {
+      // Source maps upload to Sentry on release CI and are deleted from the
+      // packaged output by the plugin; they never ship in the app.
+      sourcemap: true,
       externalizeDeps: {
         exclude: [
           '@pierre/diffs',
@@ -315,13 +364,17 @@ export default defineConfig(({ mode }) => ({
     },
   },
   preload: {
+    define: {
+      ...sentryDefines(loadEnv(mode, repoRoot, 'VITE_')),
+    },
     resolve: {
       alias: sharedAliases,
     },
-    plugins: [sandboxedPreloadBundlesPlugin()],
+    plugins: [sandboxedPreloadBundlesPlugin(), ...sentrySourcemapPlugins('preload')],
     build: {
+      sourcemap: true,
       externalizeDeps: {
-        exclude: ['@t3tools/contracts', 'react-grab'],
+        exclude: ['@t3tools/contracts', 'react-grab', '@sentry/electron'],
       },
       lib: {
         entry: {
@@ -343,10 +396,12 @@ export default defineConfig(({ mode }) => ({
   renderer: {
     define: {
       __COZEA_NAVIGATION_TEST__: JSON.stringify(process.env.COZEA_NAVIGATION_TEST === '1'),
+      ...sentryDefines(loadEnv(mode, repoRoot, 'VITE_')),
     },
     root: '.',
     envDir: repoRoot,
     plugins: [
+      ...sentrySourcemapPlugins('renderer'),
       react({
         babel: reactCompilerEnabled
           ? {
@@ -396,6 +451,7 @@ export default defineConfig(({ mode }) => ({
     },
     build: {
       emptyOutDir: true,
+      sourcemap: true,
       // DevApp PNGs are kept small so they inline as data URLs (no separate asset requests in packaged Electron).
       assetsInlineLimit: 12_288,
       rollupOptions: {

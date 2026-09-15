@@ -655,7 +655,9 @@ function parsePorcelainStatus(stdout: string): {
     if (!filePath) continue
 
     if (x === '?' && y === '?') {
-      untrackedPaths.push(filePath)
+      if (!filePath.endsWith('/')) {
+        untrackedPaths.push(filePath)
+      }
       files.push({ path: filePath, status: 'added' })
       continue
     }
@@ -696,7 +698,7 @@ async function readCurrentWorkingTreeChanges(cwd: string): Promise<{
   const [statusResult, trackedDiffResult] = await Promise.all([
     executeGit({
       cwd,
-      args: ['status', '--porcelain=1', '-z', '--untracked-files=all'],
+      args: ['status', '--porcelain=1', '-z', '--untracked-files=normal'],
       allowNonZeroExit: true,
     }),
     headCommit

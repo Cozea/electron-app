@@ -1486,10 +1486,9 @@ if (!gotTheLock) {
 // Electron defaults both to 0, so the window could be dragged below the point
 // where the app still reflows: the renderer's only floor is
 // `body { min-width: 320px }`, which overflows horizontally rather than
-// adapting. 480 stays clear of that floor and gives the header's overflow
-// budget a defined worst case, though it leaves only ~224px beside an expanded
+// adapting. 600 stays clear of that floor and leaves ~344px beside an expanded
 // 16rem sidebar.
-const MIN_WINDOW_WIDTH = 480
+const MIN_WINDOW_WIDTH = 600
 const MIN_WINDOW_HEIGHT = 480
 
 function createWindow() {
@@ -1553,7 +1552,7 @@ function createWindow() {
           height: 36,
         }
       : false,
-    trafficLightPosition: isMac ? { x: 15, y: 10 } : undefined,
+    trafficLightPosition: isMac ? { x: 15, y: 14 } : undefined,
   })
 
   if (!t3BrowserSurfaceService) {

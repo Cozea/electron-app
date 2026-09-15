@@ -214,8 +214,8 @@ it.layer(NodeServices.layer)("effect-acp client", (it) => {
           assert.fail("Expected prompt to fail for invalid typed extension payload");
         }
         const rendered = Cause.pretty(result.cause);
-        assert.include(rendered, "Invalid x/typed_request payload:");
-        assert.include(rendered, "Expected string, got 123");
+        assert.include(rendered, "Expected string");
+        assert.include(rendered, '["message"]');
       }),
   );
 

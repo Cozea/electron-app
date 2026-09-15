@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { TrimmedNonEmptyString } from "./baseSchemas";
 
@@ -19,12 +19,18 @@ const TerminalEnvKeySchema = Schema.String.check(
   Schema.isMaxLength(128),
 );
 const TerminalEnvValueSchema = Schema.String.check(Schema.isMaxLength(8_192));
-const TerminalEnvSchema = Schema.Record(TerminalEnvKeySchema, TerminalEnvValueSchema).check(
+const TerminalEnvSchema = Schema.Record(Schema.String, TerminalEnvValueSchema).check(
   Schema.isMaxProperties(128),
+  Schema.makeFilter((input) => {
+    for (const key of Object.keys(input)) {
+      if (!Schema.is(TerminalEnvKeySchema)(key)) return false;
+    }
+    return true;
+  }),
 );
 
 const TerminalIdWithDefaultSchema = TerminalIdSchema.pipe(
-  Schema.withDecodingDefault(() => DEFAULT_TERMINAL_ID),
+  Schema.withDecodingDefault(Effect.succeed(DEFAULT_TERMINAL_ID)),
 );
 
 export const TerminalThreadInput = Schema.Struct({

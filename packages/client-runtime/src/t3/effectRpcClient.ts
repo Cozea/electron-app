@@ -173,6 +173,42 @@ export class T3EffectRpcClient {
       return;
     }
 
+    if (record._tag === "Defect") {
+      const defectMessage = `T3 server defect: ${JSON.stringify(record.defect ?? record).slice(0, 400)}`;
+      const requestId =
+        typeof record.requestId === "string" || typeof record.requestId === "number"
+          ? String(record.requestId)
+          : undefined;
+
+      if (requestId) {
+        const waiter = this.exitWaiters.get(requestId);
+        if (waiter) {
+          clearTimeout(waiter.timer);
+          this.exitWaiters.delete(requestId);
+          waiter.reject(new Error(defectMessage));
+        }
+        this.chunkListeners.delete(requestId);
+        const onDisconnect = this.streamDisconnectListeners.get(requestId);
+        this.streamDisconnectListeners.delete(requestId);
+        onDisconnect?.();
+      } else {
+        for (const [, waiter] of this.exitWaiters.entries()) {
+          clearTimeout(waiter.timer);
+          waiter.reject(new Error(defectMessage));
+        }
+        this.exitWaiters.clear();
+        this.chunkListeners.clear();
+        const disconnects = Array.from(this.streamDisconnectListeners.values());
+        this.streamDisconnectListeners.clear();
+        for (const cb of disconnects) {
+          try {
+            cb();
+          } catch {}
+        }
+      }
+      return;
+    }
+
     if (record._tag === "Exit") {
       const message = parsed as RpcExitSuccess | RpcExitFailure;
       const requestId = String(message.requestId);

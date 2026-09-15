@@ -30,7 +30,7 @@ export class ComputerUseService {
 
   async openPermissionSettings(target: 'accessibility' | 'screenRecording'): Promise<void> {
     if (process.platform !== 'darwin') return
-    const granted = this.runtime.requestPermission(target)
+    const granted = await this.runtime.requestPermission(target)
     if (granted) return
     const url =
       target === 'accessibility'

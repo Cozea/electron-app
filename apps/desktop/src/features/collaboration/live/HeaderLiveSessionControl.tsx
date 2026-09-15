@@ -219,8 +219,6 @@ function SessionStatusPill({
         trailing={null}
       />
 
-      <span className="text-muted-foreground/60 text-sm font-normal">·</span>
-
       <Button
         type="button"
         variant="ghost"
@@ -366,7 +364,7 @@ function AudioControlPill({ media }: { media: SessionMediaController | null }) {
         type="button"
         size="sm"
         variant="ghost"
-        className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-l border-border/40"
+        className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l border-border/40"
         title="Audio settings"
         aria-label="Select audio input device"
         aria-haspopup="menu"

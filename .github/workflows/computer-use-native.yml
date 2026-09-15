@@ -4,7 +4,6 @@ on:
     branches: [feat/macos-computer-use-v2]
     paths:
       - 'native/computer-use-*/**'
-      - 'packages/computer-use-native/**'
       - 'scripts/*computer-use*'
       - 'scripts/prepare-t3-runtime.mjs'
       - 'tests/computer-use/**'
@@ -17,7 +16,6 @@ on:
   pull_request:
     paths:
       - 'native/computer-use-*/**'
-      - 'packages/computer-use-native/**'
       - 'scripts/*computer-use*'
       - 'scripts/prepare-t3-runtime.mjs'
       - 'tests/computer-use/**'
@@ -60,25 +58,13 @@ jobs:
         run: |
           set -o pipefail
           xcrun swift test --package-path native/computer-use-runtime --configuration '${{ matrix.configuration }}' 2>&1 | tee build/cu-validation/swift-test.log
-      - name: Cross-build Intel bridge
-        run: |
-          set -o pipefail
-          xcrun swift build --package-path native/computer-use-bridge --configuration '${{ matrix.configuration }}' --triple x86_64-apple-macosx14.0 2>&1 | tee build/cu-validation/intel-build.log
       - name: Install locked JavaScript dependencies
         run: bun install --frozen-lockfile --ignore-scripts
-      - name: Build and validate packaged N-API runtime
+      - name: Stage and validate embedded Cua Driver runtime
         run: |
           set -o pipefail
-          flags=()
-          if [ '${{ matrix.configuration }}' = debug ]; then flags+=(--debug); fi
-          bun run scripts/prepare-computer-use-runtime.mjs "${flags[@]}" 2>&1 | tee build/cu-validation/napi-build.log
-          bun run scripts/prepare-computer-use-runtime.mjs "${flags[@]}" --check
-      - name: Relocated Electron ABI smoke without desktop input
-        run: |
-          bun node_modules/electron/install.js
-          unset ELECTRON_RUN_AS_NODE
-          set -o pipefail
-          node_modules/.bin/electron tests/computer-use/nativeSmoke.cjs 2>&1 | tee build/cu-validation/abi-smoke.log
+          bun run scripts/prepare-computer-use-runtime.mjs 2>&1 | tee build/cu-validation/driver-stage.log
+          bun run scripts/prepare-computer-use-runtime.mjs --check
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -8,7 +8,25 @@ import type {
 import type { ProjectdRecoveryPreviewBridge } from "@shared/projectdRecoveryPreviewApi"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { SettingsGroup, SettingsRow, SettingsRowLabel, SettingsRowControl, SettingsSectionTitle } from "@/features/settings/ui/SettingsChrome"
+import {
+  SettingsGroup,
+  SettingsGroupError,
+  SettingsGroupSuccess,
+  SettingsRow,
+  SettingsRowControl,
+  SettingsRowLabel,
+  SettingsSectionDescription,
+  SettingsSectionTitle,
+} from "@/features/settings/ui/SettingsChrome"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { HugeiconsIcon } from "@hugeicons/react"
+import { ArrowDown01Icon, RefreshIcon as __RefreshHugeIcon } from "@hugeicons/core-free-icons"
+import { cn } from "@/lib/utils"
 
 interface SessionRecoveryPanelProps {
   projectId: string
@@ -17,14 +35,23 @@ interface SessionRecoveryPanelProps {
 type RecoverySessionsApi = typeof window.electronAPI.projectd.sessions & ProjectdRecoveryPreviewBridge
 
 function recoveryDescription(entry: ProjectdSessionRecoveryEntry): string {
-  if (entry.descriptorState === "unreadable") return "This Mac cannot read the retained recovery record. Its data has been kept."
-  const details = [entry.source === "left" ? "Retained after leaving the session." : "Retained on this Mac."]
-  if (entry.requiresOnlineVerification) details.push("Online verification is required before reopening. Retained files can still be exported.")
-  if (entry.pendingBinaryVersions > 0) details.push(`${entry.pendingBinaryVersions} binary versions are retained for upload.`)
-  if (entry.pendingBatches > 0) details.push("Some changes have not been confirmed by the session.")
-  if (entry.snapshotSequence !== null) details.push("A local snapshot is recorded.")
-  if (!entry.hasRetainedKey) details.push("The recovery key is not available locally.")
-  return details.join(" ")
+  if (entry.descriptorState === "unreadable") return "Unreadable recovery record"
+  if (!entry.hasRetainedKey) return "Recovery key missing locally"
+  if (entry.requiresOnlineVerification) return "Requires online verification"
+
+  const parts: string[] = []
+  if (entry.snapshotSequence !== null) {
+    parts.push("Local snapshot recorded")
+  } else {
+    parts.push(entry.source === "left" ? "Retained after leaving" : "Retained on this Mac")
+  }
+
+  const pending = entry.pendingBatches + entry.pendingBinaryVersions
+  if (pending > 0) {
+    parts.push(`${pending} pending change${pending === 1 ? "" : "s"}`)
+  }
+
+  return parts.join(" · ")
 }
 
 function formatBytes(bytes: number | null): string {
@@ -236,72 +263,203 @@ export function SessionRecoveryPanel({ projectId }: SessionRecoveryPanelProps) {
     }
   }
 
-  return <section aria-label="Collaboration recovery" aria-busy={loading}>
-    <div className="flex items-center justify-between gap-3">
-      <SettingsSectionTitle>Collaboration recovery</SettingsSectionTitle>
-      <Button variant="outline" size="sm" disabled={loading || busy} onClick={() => {
-        const retry = error ? retryExport.current : null
-        if (retry?.source === "share") void shareKeys(retry.publicSessionId)
-        else if (retry) void exportEntry(retry, retry.source)
-        else void refresh()
-      }}>
-        {loading ? "Loading…" : error ? "Retry" : "Refresh"}
-      </Button>
-    </div>
-    <p className="mb-3 text-xs text-muted-foreground">Inspect or export local retained data, or retrieve a paused or closed session’s cloud snapshot. Local inspection does not reopen the session. Cloud recovery requires current membership and an available session key.</p>
-    <div className="mb-3 flex items-center gap-2">
-      <Input aria-label="Session ID for cloud recovery" placeholder="Session ID (czs_…)" value={cloudSessionId}
-        onChange={(event) => setCloudSessionId(event.target.value.trim())} disabled={busy} />
-      <Button variant="outline" size="sm" disabled={busy || !/^czs_[a-f0-9]{16}$/.test(cloudSessionId)}
-        onClick={() => { void exportEntry({ publicSessionId: cloudSessionId }, "cloud") }}>Recover from cloud</Button>
-    </div>
-    <p className="mb-3 text-xs text-muted-foreground">Have the key on this device? Share recovery keys lets existing authorized members recover a paused or closed session.</p>
-    <Button className="mb-3" variant="outline" size="sm" disabled={busy || !/^czs_[a-f0-9]{16}$/.test(cloudSessionId)}
-      onClick={() => { void shareKeys(cloudSessionId) }}>{sharing ? "Sharing…" : "Share recovery keys"}</Button>
-    {error && <p role="alert" className="mb-3 text-sm text-destructive">{error}</p>}
-    {notice && <p role="status" className="mb-3 break-words text-sm">{notice}</p>}
-    {!loading && !error && projectEntries.length === 0 && <p className="text-sm text-muted-foreground">No local recovery records for this project.</p>}
-    {projectEntries.length > 0 && <SettingsGroup>
-      {projectEntries.map((entry, index) => {
-        const hasLocalState = entry.snapshotSequence !== null || entry.pendingBatches > 0 || entry.pendingBinaryVersions > 0
-        const expanded = expandedPreview === entry.publicSessionId
-        return <div key={entry.publicSessionId}>
-          <SettingsRow isFirst={index === 0}>
-            <SettingsRowLabel title={entry.branchName ?? entry.publicSessionId}
-              description={`${entry.publicSessionId} — ${recoveryDescription(entry)}`} />
-            <SettingsRowControl className="flex-wrap gap-2">
-              <Button variant="outline" size="sm" disabled={busy || previewing === entry.publicSessionId || !entry.hasRetainedKey || !hasLocalState}
-                onClick={() => {
-                  if (expanded) setExpandedPreview(null)
-                  else if (previews[entry.publicSessionId]) setExpandedPreview(entry.publicSessionId)
-                  else void loadPreview(entry.publicSessionId)
-                }}>
-                {previewing === entry.publicSessionId ? "Inspecting…" : expanded ? "Hide preview" : "Inspect retained state"}
-              </Button>
-              <Button variant="outline" size="sm"
-                disabled={busy || !entry.hasRetainedKey || !hasLocalState}
-                onClick={() => { void exportEntry(entry) }}>
-                {exporting === entry.publicSessionId ? "Exporting…" : "Export retained files"}
-              </Button>
-              <Button variant="outline" size="sm" disabled={busy}
-                onClick={() => { void exportEntry(entry, "cloud") }}>Export cloud snapshot</Button>
-            </SettingsRowControl>
-          </SettingsRow>
-          {expanded && <div className="border-t border-border/30 px-6 py-4">
-            <RecoveryPreview preview={previews[entry.publicSessionId]}
-              loading={previewing === entry.publicSessionId}
-              error={previewErrors[entry.publicSessionId]}
-              onLoadMore={(cursor) => { void loadPreview(entry.publicSessionId, cursor) }}
-              onRefresh={() => { void loadPreview(entry.publicSessionId) }} />
-          </div>}
+  return (
+    <section aria-label="Collaboration recovery" aria-busy={loading}>
+      <div className="flex items-start justify-between gap-4 pb-1">
+        <div>
+          <SettingsSectionTitle className="mb-1">Collaboration recovery</SettingsSectionTitle>
+          <SettingsSectionDescription className="mb-2.5">
+            Inspect or export local retained data, or retrieve a paused or closed session’s cloud snapshot.
+          </SettingsSectionDescription>
         </div>
-      })}
-    </SettingsGroup>}
-    {unreadable.length > 0 && <div className="mt-4">
-      <p className="mb-2 text-xs text-muted-foreground">These unreadable records could not be assigned to a project.</p>
-      <SettingsGroup>{unreadable.map((entry, index) => <SettingsRow key={entry.publicSessionId} isFirst={index === 0}>
-        <SettingsRowLabel title={entry.publicSessionId} description={recoveryDescription(entry)} />
-      </SettingsRow>)}</SettingsGroup>
-    </div>}
-  </section>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 shrink-0 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+          disabled={loading || busy}
+          onClick={() => {
+            const retry = error ? retryExport.current : null
+            if (retry?.source === "share") void shareKeys(retry.publicSessionId)
+            else if (retry) void exportEntry(retry, retry.source)
+            else void refresh()
+          }}
+        >
+          <HugeiconsIcon
+            icon={__RefreshHugeIcon}
+            className={cn("h-3 w-3", loading && "animate-spin")}
+          />
+          {loading ? "Loading…" : error ? "Retry" : "Refresh"}
+        </Button>
+      </div>
+
+      <SettingsGroup>
+        <SettingsRow isFirst>
+          <SettingsRowLabel
+            title="Cloud snapshot recovery"
+            description="Retrieve a paused or closed session snapshot."
+            htmlFor="cloud-session-id"
+          />
+          <SettingsRowControl className="flex items-center gap-2">
+            <Input
+              id="cloud-session-id"
+              aria-label="Session ID for cloud recovery"
+              placeholder="Session ID (czs_…)"
+              value={cloudSessionId}
+              onChange={(event) => setCloudSessionId(event.target.value.trim())}
+              disabled={busy}
+              className="h-8 w-52 font-mono text-xs"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 text-xs"
+              disabled={busy || !/^czs_[a-f0-9]{16}$/.test(cloudSessionId)}
+              onClick={() => { void exportEntry({ publicSessionId: cloudSessionId }, "cloud") }}
+            >
+              {exporting === cloudSessionId ? "Recovering…" : "Recover"}
+            </Button>
+          </SettingsRowControl>
+        </SettingsRow>
+
+        <SettingsRow>
+          <SettingsRowLabel
+            title="Share recovery keys"
+            description="Share local recovery keys with session members."
+          />
+          <SettingsRowControl>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 text-xs"
+              disabled={busy || !/^czs_[a-f0-9]{16}$/.test(cloudSessionId)}
+              onClick={() => { void shareKeys(cloudSessionId) }}
+            >
+              {sharing ? "Sharing…" : "Share keys"}
+            </Button>
+          </SettingsRowControl>
+        </SettingsRow>
+
+        {projectEntries.length === 0 && !loading && (
+          <SettingsRow>
+            <SettingsRowLabel
+              title="Local retained records"
+              description="No local recovery records found for this project."
+            />
+          </SettingsRow>
+        )}
+
+        {projectEntries.map((entry) => {
+          const hasLocalState = entry.snapshotSequence !== null || entry.pendingBatches > 0 || entry.pendingBinaryVersions > 0
+          const expanded = expandedPreview === entry.publicSessionId
+          return (
+            <div key={entry.publicSessionId}>
+              <SettingsRow>
+                <SettingsRowLabel
+                  title={
+                    <span className="flex items-center gap-2">
+                      <span>{entry.branchName ?? entry.publicSessionId}</span>
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        Local record
+                      </span>
+                    </span>
+                  }
+                  description={
+                    entry.branchName
+                      ? `${entry.publicSessionId} · ${recoveryDescription(entry)}`
+                      : recoveryDescription(entry)
+                  }
+                />
+                <SettingsRowControl className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={busy || previewing === entry.publicSessionId || !entry.hasRetainedKey || !hasLocalState}
+                    onClick={() => {
+                      if (expanded) setExpandedPreview(null)
+                      else if (previews[entry.publicSessionId]) setExpandedPreview(entry.publicSessionId)
+                      else void loadPreview(entry.publicSessionId)
+                    }}
+                  >
+                    {previewing === entry.publicSessionId ? "Inspecting…" : expanded ? "Hide" : "Inspect"}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs gap-1.5"
+                        disabled={busy}
+                      >
+                        <span>{exporting === entry.publicSessionId ? "Exporting…" : "Export"}</span>
+                        <HugeiconsIcon icon={ArrowDown01Icon} className="h-3 w-3 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuItem
+                        disabled={busy || !entry.hasRetainedKey || !hasLocalState}
+                        onClick={() => { void exportEntry(entry) }}
+                      >
+                        Export retained files
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={busy}
+                        onClick={() => { void exportEntry(entry, "cloud") }}
+                      >
+                        Export cloud snapshot
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SettingsRowControl>
+              </SettingsRow>
+              {expanded && (
+                <div className="border-t border-border/30 px-6 py-4">
+                  <RecoveryPreview
+                    preview={previews[entry.publicSessionId]}
+                    loading={previewing === entry.publicSessionId}
+                    error={previewErrors[entry.publicSessionId]}
+                    onLoadMore={(cursor) => { void loadPreview(entry.publicSessionId, cursor) }}
+                    onRefresh={() => { void loadPreview(entry.publicSessionId) }}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {error && <SettingsGroupError>{error}</SettingsGroupError>}
+        {notice && <SettingsGroupSuccess>{notice}</SettingsGroupSuccess>}
+      </SettingsGroup>
+
+      {unreadable.length > 0 && (
+        <div className="mt-4 space-y-2">
+          <SettingsSectionDescription>
+            These unreadable records could not be assigned to a project.
+          </SettingsSectionDescription>
+          <SettingsGroup>
+            {unreadable.map((entry, index) => (
+              <SettingsRow key={entry.publicSessionId} isFirst={index === 0}>
+                <SettingsRowLabel
+                  title={
+                    <span className="flex items-center gap-2 font-mono text-xs">
+                      <span>{entry.publicSessionId}</span>
+                      <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-destructive">
+                        Unreadable
+                      </span>
+                    </span>
+                  }
+                  description={recoveryDescription(entry)}
+                />
+              </SettingsRow>
+            ))}
+          </SettingsGroup>
+        </div>
+      )}
+    </section>
+  )
 }

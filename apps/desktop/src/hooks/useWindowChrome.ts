@@ -2,7 +2,7 @@ import * as React from "react"
 
 import type { ElectronWindowContext } from "@shared/electronApiTypes"
 
-const MAC_TOP_INSET_PX = 36
+const MAC_TOP_INSET_PX = 40
 const MAC_COMPACT_LEFT_INSET_PX = 48
 const MAC_WIDE_LEFT_INSET_PX = 74
 const MAC_FULLSCREEN_LEFT_INSET_PX = 8

@@ -1,5 +1,14 @@
+import type { AssistantCitation } from "@cozea/contracts/t3";
+import {
+  serializeAssistantCitation,
+  withAssistantCitationComment,
+} from "@/lib/assistantCitations";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
+
+export function formatAssistantCitationForComposer(citation: AssistantCitation, comment = ""): string {
+  return `${serializeAssistantCitation(withAssistantCitationComment(citation, comment))} `;
+}
 
 export type ComposerTriggerKind = "path" | "slash-command" | "slash-model" | "skill";
 export type ComposerSlashCommand = "model" | "plan" | "default" | "clear" | "help" | "debug" | "ask";
@@ -10,6 +19,39 @@ export interface ComposerTrigger {
   rangeStart: number;
   rangeEnd: number;
 }
+
+const SIMPLE_MENTION_PATH_REGEX = /^[^\s@"\\]+$/;
+
+export function serializeComposerMentionPath(path: string): string {
+  if (SIMPLE_MENTION_PATH_REGEX.test(path)) {
+    return path;
+  }
+  return `"${path.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+function composerFileLinkBasename(path: string): string {
+  const separatorIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  return separatorIndex >= 0 ? path.slice(separatorIndex + 1) : path;
+}
+
+function escapeMarkdownLinkLabel(label: string): string {
+  return label.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
+}
+
+function encodeMarkdownLinkDestination(path: string): string {
+  return encodeURI(path)
+    .replaceAll("(", "%28")
+    .replaceAll(")", "%29")
+    .replaceAll("#", "%23")
+    .replaceAll("?", "%3F")
+    .replaceAll("\\", "%5C");
+}
+
+export function serializeComposerFileLink(path: string): string {
+  const label = escapeMarkdownLinkLabel(composerFileLinkBasename(path));
+  return `[${label}](${encodeMarkdownLinkDestination(path)})`;
+}
+
 
 const isInlineTokenSegment = (
   segment:

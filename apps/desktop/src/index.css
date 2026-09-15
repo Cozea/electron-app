@@ -69,6 +69,19 @@
   --chart-3: oklch(0.66 0.12 310);
   --chart-4: oklch(0.71 0.13 85);
   --chart-5: oklch(0.64 0.13 20);
+  /* Transitions.dev — Panel reveal tokens */
+  --panel-open-dur: 400ms;
+  --panel-close-dur: 350ms;
+  --panel-translate-y: calc(187px * 0.5);
+  --panel-translate-x: calc(var(--sidebar-width, 16rem) * -0.5);
+  --panel-blur: 2px;
+  --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --sidebar-open-dur: var(--panel-open-dur);
+  --sidebar-close-dur: var(--panel-close-dur);
+  --sidebar-blur: var(--panel-blur);
+  --sidebar-ease: var(--panel-ease);
+
   /* Match the workbench tiles (slight vibrancy translucency still applies). */
   --sidebar: var(--content-surface);
   --sidebar-foreground: var(--foreground);
@@ -1817,11 +1830,77 @@ body {
   background-color: var(--sidebar-surface);
 }
 
+/* Transitions.dev — Panel reveal animation & synchronized sidebar transitions */
+.t-panel-slide {
+  transform: translateY(var(--panel-translate-y));
+  opacity: 0;
+  filter: blur(var(--panel-blur));
+  pointer-events: none;
+  transition:
+    transform var(--panel-close-dur) var(--panel-ease),
+    opacity   var(--panel-close-dur) var(--panel-ease),
+    filter    var(--panel-close-dur) var(--panel-ease);
+  will-change: transform, opacity, filter;
+}
+
+.t-panel-slide-x,
+[data-slot="sidebar-container"].t-panel-slide {
+  transform: translateX(var(--panel-translate-x));
+}
+
+[data-side="right"] {
+  --panel-translate-x: calc(var(--sidebar-width, 16rem) * 0.5);
+}
+
+.t-panel-slide[data-open="true"],
+.t-panel-slide[data-state="expanded"] {
+  transform: translateY(0);
+  opacity: 1;
+  filter: blur(0);
+  pointer-events: auto;
+  transition:
+    transform var(--panel-open-dur) var(--panel-ease),
+    opacity   var(--panel-open-dur) var(--panel-ease),
+    filter    var(--panel-open-dur) var(--panel-ease);
+}
+
+.t-panel-slide-x[data-open="true"],
+.t-panel-slide-x[data-state="expanded"],
+[data-slot="sidebar-container"].t-panel-slide[data-open="true"],
+[data-slot="sidebar-container"].t-panel-slide[data-state="expanded"] {
+  transform: translateX(0);
+}
+
+.sidebar-transition {
+  transition-duration: var(--sidebar-close-dur);
+  transition-timing-function: var(--sidebar-ease);
+}
+
+[data-sidebar-open="true"] .sidebar-transition,
+[data-sidebar-state="expanded"] .sidebar-transition,
+[data-state="expanded"] .sidebar-transition,
+.sidebar-transition[data-state="expanded"],
+[data-open="true"] .sidebar-transition,
+.sidebar-transition[data-open="true"] {
+  transition-duration: var(--sidebar-open-dur);
+  transition-timing-function: var(--sidebar-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-panel-slide,
+  .sidebar-transition {
+    transition: none !important;
+  }
+}
+
 /* Live sidebar resize: suspend the width animations (root + gap + container)
    so the drag tracks the pointer instead of rubber-banding. */
 .sidebar-resizing,
+.sidebar-resizing *,
 .sidebar-resizing [data-slot="sidebar-gap"],
-.sidebar-resizing [data-slot="sidebar-container"] {
+.sidebar-resizing [data-slot="sidebar-container"],
+.sidebar-resizing .t-panel-slide,
+.sidebar-resizing .sidebar-transition {
   transition: none !important;
 }
 

@@ -186,6 +186,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (toolCallId) {
     entry.toolCallId = toolCallId;
   }
+  const toolIcon = extractToolIcon(payload);
+  if (toolIcon) {
+    entry.toolIcon = toolIcon;
+  }
   const collapseKey = deriveToolLifecycleCollapseKey(entry);
   if (collapseKey) {
     entry.collapseKey = collapseKey;
@@ -297,6 +301,7 @@ function mergeDerivedWorkLogEntries(
   const requestKind = next.requestKind ?? previous.requestKind;
   const collapseKey = next.collapseKey ?? previous.collapseKey;
   const toolCallId = next.toolCallId ?? previous.toolCallId;
+  const toolIcon = next.toolIcon ?? previous.toolIcon;
   return {
     ...previous,
     ...next,
@@ -310,6 +315,7 @@ function mergeDerivedWorkLogEntries(
     ...(requestKind ? { requestKind } : {}),
     ...(collapseKey ? { collapseKey } : {}),
     ...(toolCallId ? { toolCallId } : {}),
+    ...(toolIcon ? { toolIcon } : {}),
   };
 }
 
@@ -504,6 +510,22 @@ function extractToolDetail(
   }
 
   return null;
+}
+
+function extractToolIcon(
+  payload: Record<string, unknown> | null,
+): { _tag: "website"; pageUrl: string } | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const icon = payload.toolIcon;
+  if (
+    icon &&
+    typeof icon === "object" &&
+    (icon as { _tag?: string })._tag === "website" &&
+    typeof (icon as { pageUrl?: unknown }).pageUrl === "string"
+  ) {
+    return icon as { _tag: "website"; pageUrl: string };
+  }
+  return undefined;
 }
 
 function extractToolTitle(payload: Record<string, unknown> | null): string | null {

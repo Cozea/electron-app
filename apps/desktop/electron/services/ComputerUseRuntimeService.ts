@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { readComputerUseAppSettings, type ComputerUseAppSettings } from './computerUseSettings'
 import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
 import { EmbeddedCuaDaemon } from './EmbeddedCuaDaemon'
-import { CuaSocketClient } from './CuaSocketClient'
+import { CuaSocketClient, parseToolResult, type CuaContentItem } from './CuaSocketClient'
 import {
   isApplicationExcluded,
   filterVisibleApplications,
@@ -36,15 +36,8 @@ interface ScheduledThreadPolicyEntry {
   scheduledTaskId: string
 }
 
-interface ComputerUseContentItem {
-  type: 'text' | 'image'
-  text?: string
-  data?: string
-  mimeType?: string
-}
-
 export interface ComputerUseToolResult {
-  content: ComputerUseContentItem[]
+  content: CuaContentItem[]
   isError: boolean
   structuredContent?: Record<string, unknown>
 }
@@ -82,30 +75,6 @@ function successAck(): ComputerUseToolResult {
   return { content: [{ type: 'text', text: '{"ok":true,"delivery":"dispatched"}' }], isError: false }
 }
 
-function parseToolResult(raw: string): ComputerUseToolResult {
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return failure('Invalid native result envelope.')
-    const record = parsed as Record<string, unknown>
-    if (!Array.isArray(record.content) || typeof record.isError !== 'boolean') {
-      return failure('Invalid native result envelope.')
-    }
-    const content: ComputerUseContentItem[] = []
-    for (const item of record.content) {
-      if (!item || typeof item !== 'object') return failure('Invalid native result content.')
-      const entry = item as Record<string, unknown>
-      if (entry.type === 'text' && typeof entry.text === 'string') {
-        content.push({ type: 'text', text: entry.text })
-      } else if (entry.type === 'image' && typeof entry.data === 'string' && entry.mimeType === 'image/png') {
-        content.push({ type: 'image', data: entry.data, mimeType: entry.mimeType })
-      } else return failure('Invalid native result content.')
-    }
-    return content.length ? { content, isError: record.isError } : failure('Native runtime returned no content.')
-  } catch {
-    return failure('Computer Use returned invalid JSON.')
-  }
-}
-
 function safeTokenEquals(received: string, expected: string): boolean {
   const left = Buffer.from(received)
   const right = Buffer.from(expected)
@@ -134,6 +103,38 @@ function validateActionPolicy(
     return 'Global physical-pointer fallback is disabled in Cozea Settings.'
   }
   return null
+}
+
+/**
+ * Provider-facing element indexes arrive as integers or digit strings (see
+ * tools.json). Anything else is rejected here instead of reaching the engine
+ * as NaN.
+ */
+function parseElementIndex(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 0) return value
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim())
+  return null
+}
+
+/** Screenshot pixel coordinates are finite, non-negative numbers. */
+function parseCoordinate(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value >= 0) return value
+  return null
+}
+
+const SCROLL_DIRECTIONS = new Set(['up', 'down', 'left', 'right'])
+
+/**
+ * Secondary gestures the embedded engine implements. Anything else fails
+ * here: the engine has no generic action parameter, so forwarding an unknown
+ * action would silently degrade to a plain click.
+ */
+const SECONDARY_ACTION_TOOLS: Record<string, 'double_click' | 'right_click' | 'move_cursor'> = {
+  double_click: 'double_click',
+  right_click: 'right_click',
+  context_menu: 'right_click',
+  show_menu: 'right_click',
+  hover: 'move_cursor',
 }
 
 export class ComputerUseRuntimeService {
@@ -194,21 +195,25 @@ export class ComputerUseRuntimeService {
     elementIndex?: number,
     callerSnapshotId?: string,
   ): { snapshotId?: string; elementToken?: string } {
-    if (callerSnapshotId) {
-      const token = elementIndex !== undefined ? `${callerSnapshotId}:${elementIndex}` : undefined
-      return { snapshotId: callerSnapshotId, elementToken: token }
-    }
     const keyWithWindow = windowId ? `${sessionId}:${pid}:${windowId}` : null
     const cached =
       (keyWithWindow ? this.activeSnapshots.get(keyWithWindow) : null) ??
       this.activeSnapshots.get(`${sessionId}:${pid}`)
 
-    if (cached) {
+    // A cached entry for the caller's own snapshot carries the engine-issued
+    // token; prefer it over the reconstructed `${snapshotId}:${index}` form,
+    // which is only a fallback for observations this process never cached
+    // (e.g. after a restart that kept the provider thread alive).
+    if (cached && (!callerSnapshotId || cached.snapshotId === callerSnapshotId)) {
       const token =
         elementIndex !== undefined
           ? (cached.elementTokens.get(elementIndex) ?? `${cached.snapshotId}:${elementIndex}`)
           : undefined
       return { snapshotId: cached.snapshotId, elementToken: token }
+    }
+    if (callerSnapshotId) {
+      const token = elementIndex !== undefined ? `${callerSnapshotId}:${elementIndex}` : undefined
+      return { snapshotId: callerSnapshotId, elementToken: token }
     }
     return {}
   }
@@ -349,7 +354,7 @@ export class ComputerUseRuntimeService {
 
     // 2. get_app_state
     if (tool === 'get_app_state') {
-      if (!targetPid) return failure('The target application is not running.')
+      if (!targetPid) return failure('Specify a running target application.')
       if (!targetWindowId) return failure('No eligible window found for the target application.')
 
       const result = await CuaSocketClient.callTool(
@@ -399,15 +404,22 @@ export class ComputerUseRuntimeService {
 
     // 3. click
     if (tool === 'click') {
-      if (!targetPid) return failure('The target application is not running.')
+      if (!targetPid) return failure('Specify a running target application.')
       const clickArgs: Record<string, unknown> = {
         pid: targetPid,
         session: sessionId,
       }
       if (targetWindowId) clickArgs.window_id = targetWindowId
 
-      if (args.element_index !== undefined && args.element_index !== null) {
-        const idx = Number(args.element_index)
+      const hasIndex = args.element_index !== undefined && args.element_index !== null
+      const hasX = args.x !== undefined && args.x !== null
+      const hasY = args.y !== undefined && args.y !== null
+      if (hasIndex && (hasX || hasY)) {
+        return failure('Specify either element_index or x and y, not both.')
+      }
+      if (hasIndex) {
+        const idx = parseElementIndex(args.element_index)
+        if (idx === null) return failure('element_index must be a non-negative integer.')
         clickArgs.element_index = idx
         const { snapshotId, elementToken } = this.resolveSnapshot(
           sessionId,
@@ -418,15 +430,45 @@ export class ComputerUseRuntimeService {
         )
         if (elementToken) clickArgs.element_token = elementToken
         if (snapshotId) clickArgs.snapshot_id = snapshotId
-      } else if (typeof args.x === 'number' && typeof args.y === 'number') {
-        clickArgs.x = args.x
-        clickArgs.y = args.y
+      } else if (hasX || hasY) {
+        const x = parseCoordinate(args.x)
+        const y = parseCoordinate(args.y)
+        if (x === null || y === null) return failure('x and y must be non-negative numbers.')
+        clickArgs.x = x
+        clickArgs.y = y
       } else {
         return failure('Specify either element_index or both x and y.')
       }
 
-      if (args.button === 'right') {
-        clickArgs.button = 'right'
+      // Translate the provider-facing click options to the embedded Cua engine
+      // dialect. Options the engine cannot honor fail here: a wrong click is
+      // worse than an error. Defaults (left button, single click, background
+      // delivery) are omitted so the default wire shape is unchanged.
+      const mouseButton = args.mouse_button ?? args.button
+      if (mouseButton !== undefined && mouseButton !== null) {
+        if (mouseButton !== 'left' && mouseButton !== 'right' && mouseButton !== 'middle') {
+          return failure(
+            `Unsupported mouse_button: ${String(mouseButton)}. Use 'left', 'right', or 'middle'.`,
+          )
+        }
+        if (mouseButton !== 'left') clickArgs.button = mouseButton
+      }
+      if (args.click_count !== undefined && args.click_count !== null) {
+        const count = args.click_count
+        if (typeof count !== 'number' || !Number.isInteger(count) || count < 1 || count > 3) {
+          return failure(`Unsupported click_count: ${String(count)}. Use an integer from 1 to 3.`)
+        }
+        if (count !== 1) clickArgs.count = count
+      }
+      if (typeof args.click_method === 'string' && args.click_method !== 'auto') {
+        if (args.click_method === 'global') {
+          clickArgs.delivery_mode = 'foreground'
+        } else {
+          return failure(
+            `click_method '${args.click_method}' is not supported by the embedded Cua engine. ` +
+              `Omit click_method or use 'auto'.`,
+          )
+        }
       }
 
       const res = await CuaSocketClient.callTool(socketPath, 'click', clickArgs, sessionId, {
@@ -439,17 +481,23 @@ export class ComputerUseRuntimeService {
 
     // 4. perform_secondary_action
     if (tool === 'perform_secondary_action') {
-      if (!targetPid) return failure('The target application is not running.')
+      if (!targetPid) return failure('Specify a running target application.')
       const action = String(args.action ?? '').toLowerCase().trim()
+      const engineTool = SECONDARY_ACTION_TOOLS[action]
+      if (!engineTool) {
+        return failure(
+          `Unsupported action: ${action || '(missing)'}. Use one of: ${Object.keys(SECONDARY_ACTION_TOOLS).join(', ')}.`,
+        )
+      }
       const actionArgs: Record<string, unknown> = {
         pid: targetPid,
         session: sessionId,
       }
       if (targetWindowId) actionArgs.window_id = targetWindowId
 
-      let elementIdx: number | undefined
       if (args.element_index !== undefined && args.element_index !== null) {
-        elementIdx = Number(args.element_index)
+        const elementIdx = parseElementIndex(args.element_index)
+        if (elementIdx === null) return failure('element_index must be a non-negative integer.')
         actionArgs.element_index = elementIdx
         const { snapshotId, elementToken } = this.resolveSnapshot(
           sessionId,
@@ -460,34 +508,18 @@ export class ComputerUseRuntimeService {
         )
         if (elementToken) actionArgs.element_token = elementToken
         if (snapshotId) actionArgs.snapshot_id = snapshotId
-      } else if (typeof args.x === 'number' && typeof args.y === 'number') {
-        actionArgs.x = args.x
-        actionArgs.y = args.y
+      } else if (args.x !== undefined || args.y !== undefined) {
+        const x = parseCoordinate(args.x)
+        const y = parseCoordinate(args.y)
+        if (x === null || y === null) return failure('x and y must be non-negative numbers.')
+        actionArgs.x = x
+        actionArgs.y = y
       }
 
-      let res: ComputerUseToolResult
-      if (action === 'double_click') {
-        res = await CuaSocketClient.callTool(socketPath, 'double_click', actionArgs, sessionId, {
-          signal: options.signal,
-          timeoutMs,
-        })
-      } else if (action === 'right_click' || action === 'context_menu' || action === 'show_menu') {
-        res = await CuaSocketClient.callTool(socketPath, 'right_click', actionArgs, sessionId, {
-          signal: options.signal,
-          timeoutMs,
-        })
-      } else if (action === 'hover') {
-        res = await CuaSocketClient.callTool(socketPath, 'move_cursor', actionArgs, sessionId, {
-          signal: options.signal,
-          timeoutMs,
-        })
-      } else {
-        actionArgs.action = args.action
-        res = await CuaSocketClient.callTool(socketPath, 'click', actionArgs, sessionId, {
-          signal: options.signal,
-          timeoutMs,
-        })
-      }
+      const res = await CuaSocketClient.callTool(socketPath, engineTool, actionArgs, sessionId, {
+        signal: options.signal,
+        timeoutMs,
+      })
 
       if (res.isError) return res
       return successAck()
@@ -495,20 +527,41 @@ export class ComputerUseRuntimeService {
 
     // 5. scroll
     if (tool === 'scroll') {
-      if (!targetPid) return failure('The target application is not running.')
+      if (!targetPid) return failure('Specify a running target application.')
+      // The provider contract names the magnitude `pages`; the Cua engine
+      // names it `amount`. `amount` stays accepted for direct callers. The
+      // default is 1 page to match the contract: T3 passes arguments through
+      // without filling schema defaults, so an omitted `pages` must behave
+      // exactly like the documented default.
+      const pages = args.pages ?? args.amount
+      let amount = 1
+      if (pages !== undefined && pages !== null) {
+        if (typeof pages !== 'number' || !Number.isFinite(pages) || pages <= 0) {
+          return failure(`Unsupported pages: ${String(pages)}. Use a positive number of pages.`)
+        }
+        amount = pages
+      }
+      const direction = args.direction ?? 'down'
+      if (typeof direction !== 'string' || !SCROLL_DIRECTIONS.has(direction)) {
+        return failure(`Unsupported direction: ${String(direction)}. Use one of: up, down, left, right.`)
+      }
       const scrollArgs: Record<string, unknown> = {
         pid: targetPid,
-        direction: args.direction ?? 'down',
-        amount: typeof args.amount === 'number' ? args.amount : 3,
+        direction,
+        amount,
         session: sessionId,
       }
       if (targetWindowId) scrollArgs.window_id = targetWindowId
-      if (typeof args.x === 'number' && typeof args.y === 'number') {
-        scrollArgs.x = args.x
-        scrollArgs.y = args.y
+      if (args.x !== undefined || args.y !== undefined) {
+        const x = parseCoordinate(args.x)
+        const y = parseCoordinate(args.y)
+        if (x === null || y === null) return failure('x and y must be non-negative numbers.')
+        scrollArgs.x = x
+        scrollArgs.y = y
       }
       if (args.element_index !== undefined && args.element_index !== null) {
-        const idx = Number(args.element_index)
+        const idx = parseElementIndex(args.element_index)
+        if (idx === null) return failure('element_index must be a non-negative integer.')
         scrollArgs.element_index = idx
         const { snapshotId, elementToken } = this.resolveSnapshot(
           sessionId,
@@ -531,13 +584,20 @@ export class ComputerUseRuntimeService {
 
     // 6. drag
     if (tool === 'drag') {
-      if (!targetPid) return failure('The target application is not running.')
+      if (!targetPid) return failure('Specify a running target application.')
+      const fromX = parseCoordinate(args.from_x)
+      const fromY = parseCoordinate(args.from_y)
+      const toX = parseCoordinate(args.to_x)
+      const toY = parseCoordinate(args.to_y)
+      if (fromX === null || fromY === null || toX === null || toY === null) {
+        return failure('from_x, from_y, to_x, and to_y must be non-negative numbers.')
+      }
       const dragArgs: Record<string, unknown> = {
         pid: targetPid,
-        from_x: args.from_x,
-        from_y: args.from_y,
-        to_x: args.to_x,
-        to_y: args.to_y,
+        from_x: fromX,
+        from_y: fromY,
+        to_x: toX,
+        to_y: toY,
         session: sessionId,
       }
       if (targetWindowId) dragArgs.window_id = targetWindowId
@@ -552,7 +612,7 @@ export class ComputerUseRuntimeService {
 
     // 7. type_text
     if (tool === 'type_text') {
-      if (!targetPid) return failure('The target application is not running.')
+      if (!targetPid) return failure('Specify a running target application.')
       const typeArgs: Record<string, unknown> = {
         pid: targetPid,
         text: String(args.text ?? ''),
@@ -560,7 +620,8 @@ export class ComputerUseRuntimeService {
       }
       if (targetWindowId) typeArgs.window_id = targetWindowId
       if (args.element_index !== undefined && args.element_index !== null) {
-        const idx = Number(args.element_index)
+        const idx = parseElementIndex(args.element_index)
+        if (idx === null) return failure('element_index must be a non-negative integer.')
         typeArgs.element_index = idx
         const { snapshotId, elementToken } = this.resolveSnapshot(
           sessionId,
@@ -583,16 +644,22 @@ export class ComputerUseRuntimeService {
 
     // 8. press_key
     if (tool === 'press_key') {
-      if (!targetPid) return failure('The target application is not running.')
+      if (!targetPid) return failure('Specify a running target application.')
       const keyStr = String(args.key ?? '')
       const modifiers = Array.isArray(args.modifiers) ? (args.modifiers as string[]) : []
 
+      // A bare '+' is a literal key, not a chord separator: only split
+      // into a hotkey when modifiers are present or '+' separates at least
+      // two key names. Anything else presses the key verbatim.
+      const chordParts = keyStr
+        .split('+')
+        .map((part) => part.trim())
+        .filter(Boolean)
       let res: ComputerUseToolResult
-      if (keyStr.includes('+') || modifiers.length > 0) {
+      if (modifiers.length > 0 || chordParts.length > 1) {
         const keys = modifiers.slice()
-        for (const part of keyStr.split('+')) {
-          const trimmed = part.trim()
-          if (trimmed && !keys.includes(trimmed)) keys.push(trimmed)
+        for (const part of chordParts) {
+          if (!keys.includes(part)) keys.push(part)
         }
         const hotkeyArgs: Record<string, unknown> = { keys, session: sessionId, pid: targetPid }
         if (targetWindowId) hotkeyArgs.window_id = targetWindowId
@@ -621,8 +688,9 @@ export class ComputerUseRuntimeService {
 
     // 9. set_value
     if (tool === 'set_value') {
-      if (!targetPid) return failure('The target application is not running.')
-      const idx = Number(args.element_index)
+      if (!targetPid) return failure('Specify a running target application.')
+      const idx = parseElementIndex(args.element_index)
+      if (idx === null) return failure('set_value requires element_index as a non-negative integer.')
       const setArgs: Record<string, unknown> = {
         pid: targetPid,
         element_index: idx,
@@ -727,24 +795,32 @@ export class ComputerUseRuntimeService {
     }
   }
 
-  requestPermission(target: 'accessibility' | 'screenRecording'): boolean {
+  /**
+   * Reports whether the embedded driver's TCC grant for `target` is already
+   * in place. The CLI status command cannot see the embedded daemon's custom
+   * socket (it reports `unknown`), so the authoritative answer comes from the
+   * daemon itself over the supervised socket. Callers open System Settings
+   * when this returns false; Cozea deliberately never invokes the driver's
+   * `permissions grant` flow, which would launch a second, unsupervised
+   * driver instance outside embedded supervision.
+   */
+  async requestPermission(target: 'accessibility' | 'screenRecording'): Promise<boolean> {
     if (this.platform !== 'darwin') return false
 
     const daemon = this.getDaemon()
-    const binPath = daemon?.resolveExecutablePath()
-    if (!binPath) return false
+    if (!daemon || !daemon.isInstalled()) return false
 
     try {
-      const stdout = execFileSync(binPath, ['permissions', 'status', '--json'], {
-        encoding: 'utf8',
-        env: { ...process.env, CUA_TELEMETRY_DISABLED: '1' },
-        timeout: 4000,
+      const socketPath = await daemon.ensureDaemon()
+      const res = await CuaSocketClient.callTool(socketPath, 'check_permissions', { prompt: false }, 'permissions', {
+        timeoutMs: 4000,
       })
-      const parsed = JSON.parse(stdout) as {
-        accessibility?: boolean
-        screen_recording?: boolean
-      }
-      return target === 'accessibility' ? parsed.accessibility === true : parsed.screen_recording === true
+      if (res.isError) return false
+      const struct = res.structuredContent as
+        | { accessibility?: boolean; screen_recording?: boolean }
+        | undefined
+      if (!struct) return false
+      return target === 'accessibility' ? struct.accessibility === true : struct.screen_recording === true
     } catch {
       return false
     }

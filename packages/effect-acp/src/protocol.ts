@@ -83,7 +83,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   const nextRequestId = yield* Ref.make(1n);
   const terminationHandled = yield* Ref.make(false);
   const extPending = yield* Ref.make(
-    new Map<string, Deferred.Deferred<unknown, AcpError.AcpError>>(),
+    new Map<string | number, Deferred.Deferred<unknown, AcpError.AcpError>>(),
   );
 
   const logProtocol = (event: AcpProtocolLogEvent) => {
@@ -129,7 +129,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
   });
 
   const resolveExtPending = (
-    requestId: string,
+    requestId: string | number,
     onFound: (deferred: Deferred.Deferred<unknown, AcpError.AcpError>) => Effect.Effect<void>,
   ) =>
     Ref.modify(extPending, (pending) => {
@@ -142,7 +142,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       return [onFound(deferred), next] as const;
     }).pipe(Effect.flatten);
 
-  const removeExtPending = (requestId: string) =>
+  const removeExtPending = (requestId: string | number) =>
     Ref.update(extPending, (pending) => {
       if (!pending.has(requestId)) {
         return pending;
@@ -152,10 +152,10 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       return next;
     });
 
-  const completeExtPendingFailure = (requestId: string, error: AcpError.AcpError) =>
+  const completeExtPendingFailure = (requestId: string | number, error: AcpError.AcpError) =>
     resolveExtPending(requestId, (deferred) => Deferred.fail(deferred, error));
 
-  const completeExtPendingSuccess = (requestId: string, value: unknown) =>
+  const completeExtPendingSuccess = (requestId: string | number, value: unknown) =>
     resolveExtPending(requestId, (deferred) => Deferred.succeed(deferred, value));
 
   const failAllExtPending = (error: AcpError.AcpError) =>
@@ -210,7 +210,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       ] as const;
     }).pipe(Effect.flatten);
 
-  const respondWithSuccess = (requestId: string, value: unknown) =>
+  const respondWithSuccess = (requestId: string | number, value: unknown) =>
     offerOutgoing({
       _tag: "Exit",
       requestId,
@@ -220,7 +220,7 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
       },
     });
 
-  const respondWithError = (requestId: string, error: AcpError.AcpRequestError) =>
+  const respondWithError = (requestId: string | number, error: AcpError.AcpRequestError) =>
     offerOutgoing({
       _tag: "Exit",
       requestId,
@@ -431,17 +431,19 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     Effect.forkScoped,
   );
 
-  yield* Stream.fromQueue(outgoing).pipe(Stream.run(options.stdio.stdout), Effect.forkScoped);
+  yield* Stream.fromQueue(outgoing).pipe(Stream.run(options.stdio.stdout()), Effect.forkScoped);
 
   const clientProtocol = RpcClient.Protocol.of({
-    run: (f) =>
+    run: (_clientId, f) =>
       Stream.fromQueue(clientQueue).pipe(
         Stream.runForEach((message) => f(message)),
         Effect.forever,
       ),
-    send: (request, _transferables) => offerOutgoing(request).pipe(Effect.mapError(toRpcClientError)),
+    send: (_clientId, request, _transferables) =>
+      offerOutgoing(request).pipe(Effect.mapError(toRpcClientError)),
     supportsAck: true,
     supportsTransferables: false,
+    codecFor: parserFactory.codecFor,
   });
 
   const serverProtocol = RpcServer.Protocol.of({
@@ -457,7 +459,9 @@ export const makeAcpPatchedProtocol = Effect.fn("makeAcpPatchedProtocol")(functi
     initialMessage: Effect.succeedNone,
     supportsAck: true,
     supportsTransferables: false,
+    codecFor: parserFactory.codecFor,
     supportsSpanPropagation: true,
+    supportsNotifications: true,
   });
 
   const sendNotification = Effect.fn("sendNotification")(function* (

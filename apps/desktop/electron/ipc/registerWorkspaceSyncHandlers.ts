@@ -202,9 +202,11 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       }
     ) => {
       let projectPath: string
+      let hasKnownGit = false
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
         projectPath = access.gitRootPath ?? access.projectRootPath
+        hasKnownGit = Boolean(access.gitRootPath)
       } catch (e) {
         return {
           success: false,
@@ -222,7 +224,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       try {
         const client = getSharedProjectdClient()
         const status = await client.gitStatus(projectPath)
-        const isRepo = Boolean(!status.isUnborn || (status.files && status.files.length > 0) || status.headOid)
+        const isRepo = hasKnownGit || Boolean(!status.isUnborn || (status.files && status.files.length > 0) || status.headOid)
         return {
           success: true,
           isRepo,
@@ -241,7 +243,7 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
       } catch (err: any) {
         return {
           success: false,
-          isRepo: false,
+          isRepo: hasKnownGit,
           hasOriginRemote: false,
           branch: null,
           upstream: null,

@@ -42,23 +42,6 @@
             "type": "boolean",
             "default": true
           },
-          "text_limit": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "description": "Text character budget per element.",
-                "minimum": 1,
-                "maximum": 100000
-              },
-              {
-                "type": "string",
-                "enum": [
-                  "max"
-                ]
-              }
-            ],
-            "default": 500
-          },
           "max_tree_nodes": {
             "type": "integer",
             "description": "Tree node budget.",
@@ -147,12 +130,9 @@
           },
           "click_method": {
             "type": "string",
-            "description": "auto selects semantic AX then targeted SkyLight/PID input. sky_click supports one or two left clicks. global requires explicit user permission and a foreground target; it may move the real pointer.",
+            "description": "Delivery route. auto acts on the observed window without disturbing it. global fronts the target to act in the foreground; it requires the physical-pointer fallback setting.",
             "enum": [
               "auto",
-              "accessibility",
-              "app_post",
-              "sky_click",
               "global"
             ],
             "default": "auto"

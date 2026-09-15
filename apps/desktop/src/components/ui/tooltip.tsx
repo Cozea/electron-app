@@ -21,11 +21,16 @@ function Tooltip({ ...props }: React.ComponentProps<typeof BaseTooltip.Root>) {
   return <BaseTooltip.Root {...props} />
 }
 
-function TooltipTrigger({ asChild, children, ...props }: React.ComponentProps<typeof BaseTooltip.Trigger> & { asChild?: boolean }) {
-  if (asChild) {
+function TooltipTrigger({
+  asChild,
+  render,
+  children,
+  ...props
+}: React.ComponentProps<typeof BaseTooltip.Trigger> & { asChild?: boolean }) {
+  if (asChild || render) {
     return (
       <BaseTooltip.Trigger
-        render={children as React.ComponentProps<typeof BaseTooltip.Trigger>["render"]}
+        render={(render ?? children) as React.ComponentProps<typeof BaseTooltip.Trigger>["render"]}
         {...props}
       />
     )
@@ -67,4 +72,5 @@ function TooltipContent({
   )
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider }
+export { Tooltip, TooltipTrigger, TooltipContent, TooltipContent as TooltipPopup, TooltipProvider }
+

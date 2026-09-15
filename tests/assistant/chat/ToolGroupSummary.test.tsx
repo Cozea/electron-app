@@ -75,4 +75,23 @@ describe("plain tool summary", () => {
     expect(render(true)).not.toContain("cozea-live-shimmer-focus");
     expect(render(true)).toContain("motion-reduce:transition-none");
   });
+
+  it("renders live working timer next to active collapsed tool summary", () => {
+    const html = renderToStaticMarkup(
+      createElement(ToolGroupSummary, {
+        rowId: "row",
+        groupId: "group",
+        summary: "Running bun",
+        count: 1,
+        expanded: false,
+        active: true,
+        startedAt: new Date(Date.now() - 5000).toISOString(),
+        animateEntrance: false,
+        seenRows: new Set<string>(),
+        onToggle: () => {},
+      }),
+    );
+    expect(html).toContain("Running bun");
+    expect(html).toContain(">for<");
+  });
 });

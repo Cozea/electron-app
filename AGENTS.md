@@ -19,23 +19,15 @@ This is an Electron desktop application with a React frontend and Convex backend
 
 > **Note**: Use web search to find current versions and documentation. Do not hardcode specific version numbers.
 
-### Effect (effect-smol) pin — read before touching `effect` deps
+### Effect pin (`4.0.0-rc.112`) — read before touching `effect` deps
 
-`effect`, `@effect/platform-node`, `@effect/sql-sqlite-bun`, and `@effect/vitest` are pinned to
-**experimental effect-smol snapshot builds** via immutable `pkg.pr.new` URLs (one commit hash shared
-across all four). Consequences:
+`effect`, `@effect/platform`, `@effect/platform-node`, `@effect/sql`, and `@effect/vitest` are pinned to
+`4.0.0-rc.112` directly matching upstream `pingdotgg/t3code`. Notes:
 
-- The API differs from mainline Effect v3 and moves between snapshots. Known traps:
-  `effect/Context` does not exist (use `effect/ServiceMap`); `Effect.fork` is `forkScoped`/`forkIn`;
-  client `RpcClient.Protocol.run(f)` takes a single handler (server `run` takes `(clientId, message)`).
-- Repins must update **all four URLs to the same commit hash** (including
-  `packages/effect-acp/package.json`), then run the full suite — a repin is an API migration,
-  not a version bump.
-- `scripts/apply-effect-rpc-jsonrpc-id-patch.mjs` (postinstall) patches an upstream bug where
-  JSON-RPC `id: 0` is dropped by a truthiness check. On every repin, check whether upstream fixed
-  it (the script throws if its anchor is missing) and drop the patch when it has.
-- 46 files still carry `// @ts-nocheck` headers for real effect-typing errors (provider adapters
-  mostly). Do not add new ones; the rest of the runtime is typechecked.
+- The codebase uses standard `effect/Context` (`Context.Service<Self, Shape>()("id")`), `Schema.TaggedError`, and `Effect.succeed(...)` for `withDecodingDefault` and `withConstructorDefault`.
+- `scripts/apply-effect-rpc-jsonrpc-id-patch.mjs` (postinstall) patches an upstream bug where JSON-RPC `id: 0` is dropped by a truthiness check.
+- `scripts/vendor/t3-contract-compat.mjs` synchronizes T3 contracts cleanly with minimal delta.
+- The entire repository is typechecked with zero errors (`bun run typecheck:electron` and `bun run typecheck`).
 
 ### ACP schema pin (packages/effect-acp) — assessed 2026-06-11
 
@@ -156,10 +148,12 @@ The release workflow expects these to be set in GitHub Actions for `Cozea/electr
 - macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD` (Developer ID Application certificate)
 - Vite build-time env: `VITE_CONVEX_URL` (provided via Actions Variables or Secrets; see workflow `env`)
 - Vite build-time env: `VITE_AI_API_URL` (provided via Actions Variables or Secrets; see workflow `env`)
+- Sentry (optional; monitoring stays inert when unset): `VITE_SENTRY_DSN` (Variables or Secrets), source-map upload via `SENTRY_AUTH_TOKEN` (Secret) + `SENTRY_ORG`/`SENTRY_PROJECT` (Variables)
 
 CircleCI expects a context named `cozea-release` with:
 
 - Vite build-time env: `VITE_CONVEX_URL`, `VITE_AI_API_URL`
+- Sentry (optional; same inert-when-unset behavior): `VITE_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`
 - Cloudflare R2 upload: `COZEA_UPDATE_BASE_URL`, `COZEA_UPDATE_BUCKET`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`
 - Apple notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
 - macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD`
@@ -591,4 +585,4 @@ was unavailable on the implementation host; container execution is unverified.
 
 ## macOS Computer Use
 
-Read `docs/computer-use-v2.md` before changing Computer Use input, observations, cursor, policy, packaging, or release validation.
+Cozea embeds Cua Driver v0.28.1 as a universal binary (`arm64` + `x86_64`) managed via `EmbeddedCuaDaemon` and `CuaSocketClient` over a process-private UNIX domain socket, fronted by a token-authenticated loopback broker. TCC grants attach to the driver's own code identity, not Cozea's. The 9 canonical tools (`list_apps`, `get_app_state`, `click`, `perform_secondary_action`, `scroll`, `drag`, `type_text`, `press_key`, `set_value`) are defined in `native/computer-use-runtime/Sources/CozeaComputerUseCore/Resources/tools.json`. Password managers are strictly excluded via `ApplicationExclusions.ts`. Read `docs/computer-use-v2.md` before changing Computer Use input, observations, cursor, policy, packaging, or release validation.

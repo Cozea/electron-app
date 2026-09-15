@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 import { GenerationStatusLine } from "./GenerationStatusLine";
+import { WorkingTimer } from "./WorkingTimer";
 
 interface ToolGroupSummaryProps {
   rowId: string;
@@ -14,6 +15,7 @@ interface ToolGroupSummaryProps {
   count: number;
   expanded: boolean;
   active: boolean;
+  startedAt?: string | null;
   children?: ReactNode;
   animateEntrance: boolean;
   seenRows: Set<string>;
@@ -28,6 +30,7 @@ export const ToolGroupSummary = memo(function ToolGroupSummary({
   count,
   expanded,
   active,
+  startedAt,
   children,
   animateEntrance,
   seenRows,
@@ -78,6 +81,14 @@ export const ToolGroupSummary = memo(function ToolGroupSummary({
         {active && !expanded ? (
           <GenerationStatusLine textKey={summary} animateEntrance={animateEntrance} className="h-6 min-h-6">
             <LiveShimmerText className="align-middle">{summary}</LiveShimmerText>
+            {startedAt ? (
+              <>
+                <span className="text-muted-foreground/75">for</span>
+                <span className="text-muted-foreground/75">
+                  <WorkingTimer startedAtIso={startedAt} />
+                </span>
+              </>
+            ) : null}
           </GenerationStatusLine>
         ) : (
           <span className="min-w-0 truncate text-sm font-normal leading-6 tabular-nums text-muted-foreground">

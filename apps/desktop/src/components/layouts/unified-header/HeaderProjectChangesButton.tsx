@@ -14,8 +14,10 @@ import { useChangesSidebarStore } from "@/features/source-control/model/changesS
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useGitChangesStore } from "@/features/source-control/model/gitChangesStore";
+import { useHeaderOverflow } from "./HeaderOverflowContext";
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
+  const headerOverflow = useHeaderOverflow();
   const navigate = useViewTransitionNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const convex = useConvex();
@@ -81,6 +83,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
           onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
+            headerOverflow?.dismiss();
 
             if (!isOnWorkbench) {
               sidebarActions.open();

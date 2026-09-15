@@ -84,12 +84,30 @@ describe("tool activity phase", () => {
     expect([...phase.liveIds]).toEqual(["start", "b"]);
   });
   it("summarizes completed actions and counts failures without claiming success", () => {
-    expect(summarizeToolPhase([entry("a", "inProgress")], true)).toBe("Working");
-    expect(summarizeToolPhase([entry("a"), entry("b", "inProgress")], true)).toBe("Read 1 file");
+    expect(summarizeToolPhase([entry("a", "inProgress")], true)).toBe("Reading file");
+    expect(summarizeToolPhase([entry("a"), entry("b", "inProgress")], true)).toBe("Read 1 file · Reading file");
     expect(
       summarizeToolPhase([entry("a"), entry("b", "failed"), entry("c", "failed")], false),
     ).toBe("Read 1 file · 2 actions failed");
     expect(summarizeToolPhase([entry("a", "failed")], false)).toBe("1 action failed");
+  });
+  it("formats live task labels for commands and files", () => {
+    const cmdEntry: WorkLogEntry = {
+      ...entry("cmd", "inProgress"),
+      label: "Run command",
+      requestKind: "command",
+      command: "bun test",
+    };
+    expect(summarizeToolPhase([cmdEntry], true)).toBe("Running bun");
+    expect(summarizeToolPhase([entry("a"), cmdEntry], true)).toBe("Read 1 file · Running bun");
+
+    const editEntry: WorkLogEntry = {
+      ...entry("edit", "inProgress"),
+      label: "Edit file",
+      requestKind: "file-change",
+      detail: "/root/src/app.tsx",
+    };
+    expect(summarizeToolPhase([editEntry], true, "/root")).toBe("Modifying root/src/app.tsx");
   });
 });
 it("never summarizes unfinished, declined or cancelled actions as successful after the phase ends", () => {

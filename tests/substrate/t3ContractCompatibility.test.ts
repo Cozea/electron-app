@@ -15,7 +15,7 @@ describe("adapted T3 wire contracts", () => {
   it("retains async delivery and native choice identity under the root Effect pin", () => {
     const request = { responseMode: "message", questions: [question] };
     expect(Schema.decodeUnknownSync(UserInputRequestedPayload)(request)).toEqual(request);
-    expect(UserInputQuestion.makeUnsafe(question).multiSelect).toBe(false);
+    expect(UserInputQuestion.make(question).multiSelect).toBe(false);
     expect(Schema.decodeUnknownSync(UserInputRequestedPayload)({ questions: [{ ...question, options: [], allowCustomAnswer: true }] }).questions).toHaveLength(1);
   });
 

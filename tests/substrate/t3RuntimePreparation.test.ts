@@ -10,6 +10,7 @@ import {
   patchT3ServerBundleProviderUpdates,
   patchT3ServerBundleComputerUse,
   sanitizePortableRuntimeSymlinks,
+  prunePackagedRuntimeArtifacts,
 } from "../../scripts/prepare-t3-runtime.mjs";
 
 const repositoryRoot = path.resolve(__dirname, "../..");
@@ -128,6 +129,82 @@ message: couldNotVerify ? "Update command completed, but T3 Code could not verif
       expect(() => sanitizePortableRuntimeSymlinks(runtimeRoot)).toThrow(
         "Portable T3 deployment contains an external symlink",
       );
+    } finally {
+      fs.rmSync(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("prunes foreign prebuilds and foreign OS packages while preserving host artifacts", () => {
+    const temporaryRoot = fs.mkdtempSync(
+      path.join(repositoryRoot, ".agent", "t3-runtime-prune-test-"),
+    );
+    const runtimeRoot = path.join(temporaryRoot, "runtime");
+    const nodeModulesRoot = path.join(runtimeRoot, "node_modules");
+    const pnpmStoreRoot = path.join(nodeModulesRoot, "pnpm-store");
+
+    // 1. Setup mock node-pty prebuilds
+    const nodePtyPrebuilds = path.join(
+      pnpmStoreRoot,
+      "node-pty@1.1.0",
+      "node_modules",
+      "node-pty",
+      "prebuilds",
+    );
+    const darwinArm64Prebuild = path.join(nodePtyPrebuilds, "darwin-arm64");
+    const win32Prebuild = path.join(nodePtyPrebuilds, "win32-x64");
+    fs.mkdirSync(darwinArm64Prebuild, { recursive: true });
+    fs.mkdirSync(win32Prebuild, { recursive: true });
+    fs.writeFileSync(path.join(darwinArm64Prebuild, "node-pty.node"), "darwin-bin");
+    fs.writeFileSync(path.join(win32Prebuild, "conpty.node"), "win-bin");
+
+    // 2. Setup mock pnpm-store foreign and darwin packages
+    const darwinPkg = path.join(
+      pnpmStoreRoot,
+      "@ff-labs+fff-bin-darwin-arm64@0.9.4",
+      "node_modules",
+      "@ff-labs",
+      "fff-bin-darwin-arm64",
+    );
+    const linuxPkg = path.join(
+      pnpmStoreRoot,
+      "@ff-labs+fff-bin-linux-x64-gnu@0.9.4",
+      "node_modules",
+      "@ff-labs",
+      "fff-bin-linux-x64-gnu",
+    );
+    fs.mkdirSync(darwinPkg, { recursive: true });
+    fs.mkdirSync(linuxPkg, { recursive: true });
+
+    // 3. Setup mock symlinks in fff-node
+    const fffNodeLinks = path.join(
+      pnpmStoreRoot,
+      "@ff-labs+fff-node@0.9.4",
+      "node_modules",
+      "@ff-labs",
+    );
+    fs.mkdirSync(fffNodeLinks, { recursive: true });
+    fs.symlinkSync(darwinPkg, path.join(fffNodeLinks, "fff-bin-darwin-arm64"));
+    fs.symlinkSync(linuxPkg, path.join(fffNodeLinks, "fff-bin-linux-x64-gnu"));
+
+    try {
+      const removed = prunePackagedRuntimeArtifacts(runtimeRoot, { platform: "darwin" });
+      // Windows prebuild should be removed, Darwin prebuild preserved
+      expect(fs.existsSync(win32Prebuild)).toBe(false);
+      expect(fs.existsSync(darwinArm64Prebuild)).toBe(true);
+
+      // Linux package in store should be removed, Darwin package preserved
+      expect(fs.existsSync(path.join(pnpmStoreRoot, "@ff-labs+fff-bin-linux-x64-gnu@0.9.4"))).toBe(
+        false,
+      );
+      expect(
+        fs.existsSync(path.join(pnpmStoreRoot, "@ff-labs+fff-bin-darwin-arm64@0.9.4")),
+      ).toBe(true);
+
+      // Broken linux symlink should be unlinked, darwin symlink preserved
+      expect(fs.existsSync(path.join(fffNodeLinks, "fff-bin-linux-x64-gnu"))).toBe(false);
+      expect(fs.existsSync(path.join(fffNodeLinks, "fff-bin-darwin-arm64"))).toBe(true);
+
+      expect(removed.length).toBeGreaterThan(0);
     } finally {
       fs.rmSync(temporaryRoot, { recursive: true, force: true });
     }

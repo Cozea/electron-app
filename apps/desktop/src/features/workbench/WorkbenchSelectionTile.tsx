@@ -34,10 +34,7 @@ import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
 import { useViewTransitionNavigate } from "@/lib/navigation"
-import {
-  computeWorkbenchSelectionLauncherLayout,
-  WORKBENCH_SELECTION_LAUNCHER_LAYOUT,
-} from "@/features/workbench/workbenchSelectionLauncherLayout"
+import { WORKBENCH_SELECTION_LAUNCHER_LAYOUT } from "@/features/workbench/workbenchSelectionLauncherLayout"
 import { useLauncherGridLayout } from "./useLauncherGridLayout"
 import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders"
 import { useTranslation } from "@/lib/i18n"
@@ -464,14 +461,11 @@ export function WorkbenchSelectionTile({
     }
     return `${t("workbench.selection.noResults")} "${searchQuery.trim()}".`
   }, [canResolvePublicationRef, isDevAppRefInput, parsedRef, resolvedPublicationRef, resolvedRefOptions.length, searchQuery, t])
-  const spacious = isSpaciousSelectionSurface(surfaceMetrics.width, surfaceMetrics.height)
-  const isSingletonEmpty = singletonEmptyWorkbench && spacious
-  const rootColumnCapacity = computeWorkbenchSelectionLauncherLayout({
-    width: Math.max(0, surfaceMetrics.width - 48),
-    height: 0,
-    itemCount: allOptions.length,
-  }).fittingColumns
-  const targetListView = rootColumnCapacity <= 2
+  const isFullScreenView = Boolean(
+    singletonEmptyWorkbench &&
+      isSpaciousSelectionSurface(surfaceMetrics.width, surfaceMetrics.height),
+  )
+  const targetListView = !isFullScreenView
   // The rendered mode trails the measured one so the swap can go through a view
   // transition. List rows and grid cells are different components, so nothing
   // short of a snapshot can relate them; `devAppViewTransitionName` is what
@@ -488,7 +482,7 @@ export function WorkbenchSelectionTile({
     }
     startViewTransition(() => setUseListView(targetListView))
   }, [targetListView, useListView])
-  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length, isSingletonEmpty)
+  const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
 
@@ -499,9 +493,6 @@ export function WorkbenchSelectionTile({
     }
     return pages.length > 0 ? pages : [[]]
   }, [filteredOptions, launcherLayout.itemsPerPage])
-
-  const showHero = isSingletonEmpty
-  const centerSingletonSelectionLayout = showHero && !useListView
 
   useEffect(() => {
     setCurrentPage(0)
@@ -626,43 +617,22 @@ export function WorkbenchSelectionTile({
       ) : (
         <div
           data-tour="project-devapps"
-          className={cn(
-            "flex min-h-0 flex-1 flex-col overflow-hidden",
-            centerSingletonSelectionLayout
-              ? "justify-center items-center py-2"
-              : "pb-1",
-          )}
+          className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden py-2"
         >
-          {showHero ? (
-            <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-2 pt-0 md:px-10">
-              <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
-              {sharedFilterBar}
-            </div>
-          ) : (
-            sharedFilterBar
-          )}
+          <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-2 pt-0 md:px-10">
+            <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
+            {sharedFilterBar}
+          </div>
 
-          <div
-            className={cn(
-              "mx-auto flex w-full flex-col px-3 md:px-6",
-              centerSingletonSelectionLayout ? "flex-none" : "flex-1 min-h-0",
-              "max-w-5xl",
-            )}
-          >
+          <div className="mx-auto flex w-full max-w-5xl flex-none flex-col px-3 md:px-6">
             <div
               ref={launcherViewportRef}
-              className={cn(
-                "flex w-full flex-col overflow-hidden",
-                centerSingletonSelectionLayout ? "h-[238px] flex-none" : "min-h-0 flex-1",
-              )}
+              className="flex h-[238px] w-full flex-none flex-col overflow-hidden"
             >
               {filteredOptions.length > 0 ? (
                 <div
                   ref={launcherPagerRef}
-                  className={cn(
-                    "overflow-x-auto overflow-y-hidden scroll-smooth motion-reduce:scroll-auto snap-x snap-mandatory [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                    centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
-                  )}
+                  className="h-full w-full flex-none overflow-x-auto overflow-y-hidden snap-x snap-mandatory scroll-smooth motion-reduce:scroll-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 >
                   <div className="flex h-full">
                     {pagedOptions.map((page, pageIndex) => {
@@ -679,9 +649,7 @@ export function WorkbenchSelectionTile({
                               gridAutoRows: `${densityConfig.cellHeight}px`,
                               columnGap: `${densityConfig.columnGap}px`,
                               rowGap: `${densityConfig.rowGap}px`,
-                              minHeight: centerSingletonSelectionLayout
-                                ? `${2 * densityConfig.cellHeight + densityConfig.rowGap}px`
-                                : `${launcherLayout.rows * densityConfig.cellHeight + Math.max(0, launcherLayout.rows - 1) * densityConfig.rowGap}px`,
+                              minHeight: `${2 * densityConfig.cellHeight + densityConfig.rowGap}px`,
                             }}
                           >
                             {page.map((option) => (
@@ -698,12 +666,7 @@ export function WorkbenchSelectionTile({
                   </div>
                 </div>
               ) : (
-                <div
-                  className={cn(
-                    "flex items-center justify-center px-2 py-8 text-xs text-muted-foreground",
-                    centerSingletonSelectionLayout ? "w-full h-full flex-none" : "min-h-0 flex-1",
-                  )}
-                >
+                <div className="flex h-full w-full flex-none items-center justify-center px-2 py-8 text-xs text-muted-foreground">
                   {emptyResultsMessage}
                 </div>
               )}

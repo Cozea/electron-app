@@ -1,128 +1,27 @@
 import { useTranslation } from "@/lib/i18n"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { SiClion, SiDatagrip, SiGoland, SiIntellijidea, SiPhpstorm, SiPycharm, SiRider, SiRubymine, SiWebstorm } from "react-icons/si"
-import { VscVscodeInsiders } from "react-icons/vsc"
-import type { ComponentType, MouseEvent, SVGProps } from "react"
+import type { MouseEvent } from "react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { AvailableExternalEditor, ExternalEditorId } from "@shared/electronApiTypes"
 import {
-
   openProjectFileInExternalEditor,
+  orderDetectedEditors,
   PREVIEW_EDITOR_PREFERENCE_KEY,
   readStoredExternalEditorPreference,
   resolvePreferredExternalEditorId,
 } from "@/features/settings/model/externalEditorPreference"
-import {
-  AntigravityIcon,
-  CursorIcon,
-  FinderIcon,
-  VisualStudioCodeIcon,
-  ZedIcon,
-} from "@/components/EditorBrandIcons"
+import { getExternalEditorIcon, GenericCodeIcon } from "@/features/settings/model/externalEditorIcons"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowDown01Icon as __ChevronDownHugeIcon, CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'
-
-const Code2 = (props: any) => <HugeiconsIcon icon={__Code2HugeIcon} {...props} />
+import { ArrowDown01Icon as __ChevronDownHugeIcon } from '@hugeicons/core-free-icons'
 
 interface WorkbenchHeaderEditorControlProps {
   workspaceId: string | null
   /** When the project drawer is open, use sidebar palette so icons read on glass/vibrancy. */
   adjacentOpenSidebar?: boolean
-}
-
-interface OrderedEditorOption {
-  editor: AvailableExternalEditor
-  Icon: ComponentType<SVGProps<SVGSVGElement>>
-}
-
-const T3_STYLE_EDITOR_ORDER: ReadonlyArray<ExternalEditorId> = [
-  "cursor",
-  "vscode",
-  "zed",
-  "antigravity",
-  "windsurf",
-  "vscode-insiders",
-  "vscodium",
-  "webstorm",
-  "intellij-idea",
-  "phpstorm",
-  "pycharm",
-  "rider",
-  "goland",
-  "rubymine",
-  "clion",
-  "datagrip",
-  "finder",
-]
-
-function getWorkbenchEditorIcon(editorId: ExternalEditorId): ComponentType<SVGProps<SVGSVGElement>> {
-  switch (editorId) {
-    case "vscode":
-    case "vscodium":
-      return VisualStudioCodeIcon
-    case "vscode-insiders":
-      return VscVscodeInsiders
-    case "zed":
-      return ZedIcon
-    case "webstorm":
-      return SiWebstorm
-    case "intellij-idea":
-      return SiIntellijidea
-    case "phpstorm":
-      return SiPhpstorm
-    case "pycharm":
-      return SiPycharm
-    case "rider":
-      return SiRider
-    case "goland":
-      return SiGoland
-    case "rubymine":
-      return SiRubymine
-    case "clion":
-      return SiClion
-    case "datagrip":
-      return SiDatagrip
-    case "cursor":
-      return CursorIcon
-    case "windsurf":
-      return Code2
-    case "antigravity":
-      return AntigravityIcon
-    case "finder":
-      return FinderIcon
-    default:
-      return Code2
-  }
-}
-
-function orderDetectedEditors(availableEditors: ReadonlyArray<AvailableExternalEditor>): OrderedEditorOption[] {
-  const byId = new Map(availableEditors.map((editor) => [editor.id, editor] as const))
-  const seen = new Set<ExternalEditorId>()
-  const ordered: OrderedEditorOption[] = []
-
-  for (const editorId of T3_STYLE_EDITOR_ORDER) {
-    const editor = byId.get(editorId)
-    if (!editor) continue
-    ordered.push({
-      editor,
-      Icon: getWorkbenchEditorIcon(editor.id),
-    })
-    seen.add(editor.id)
-  }
-
-  for (const editor of availableEditors) {
-    if (seen.has(editor.id)) continue
-    ordered.push({
-      editor,
-      Icon: getWorkbenchEditorIcon(editor.id),
-    })
-  }
-
-  return ordered
 }
 
 export function WorkbenchHeaderEditorControl({
@@ -161,7 +60,7 @@ export function WorkbenchHeaderEditorControl({
 
   useEffect(() => {
     const resolvedEditorId = resolvePreferredExternalEditorId(
-      orderedEditors.map(({ editor }) => editor),
+      orderedEditors,
       selectedEditorId,
     )
     if (resolvedEditorId === selectedEditorId) return
@@ -173,8 +72,8 @@ export function WorkbenchHeaderEditorControl({
     window.localStorage.setItem(PREVIEW_EDITOR_PREFERENCE_KEY, selectedEditorId)
   }, [selectedEditorId])
 
-  const selectedEditorOption = useMemo(
-    () => orderedEditors.find(({ editor }) => editor.id === selectedEditorId) ?? orderedEditors[0] ?? null,
+  const selectedEditor = useMemo(
+    () => orderedEditors.find((editor) => editor.id === selectedEditorId) ?? orderedEditors[0] ?? null,
     [orderedEditors, selectedEditorId],
   )
 
@@ -182,16 +81,16 @@ export function WorkbenchHeaderEditorControl({
     if (!workspaceId) return
 
     void openProjectFileInExternalEditor({
-      availableEditors: orderedEditors.map(({ editor }) => editor),
+      availableEditors: orderedEditors,
       filePath: ".",
-      preferredEditorId: selectedEditorOption?.editor.id ?? selectedEditorId,
+      preferredEditorId: selectedEditor?.id ?? selectedEditorId,
       workspaceId,
     }).then((result) => {
       if (!result.success) {
         console.error("[Workbench] Failed to open project in external editor", result.error)
       }
     })
-  }, [orderedEditors, workspaceId, selectedEditorId, selectedEditorOption])
+  }, [orderedEditors, workspaceId, selectedEditorId, selectedEditor])
 
   const handleShowEditorPicker = useCallback(
     async (event: MouseEvent<HTMLButtonElement>) => {
@@ -203,59 +102,75 @@ export function WorkbenchHeaderEditorControl({
       const { editorId } = await window.electronAPI.contextMenu.showOpenInEditorPicker({
         x: Math.round(rect.left),
         y: Math.round(rect.bottom + 4),
-        editors: orderedEditors.map(({ editor }) => ({ id: editor.id, name: editor.name })),
-        selectedEditorId: selectedEditorOption?.editor.id ?? selectedEditorId,
+        editors: orderedEditors.map((editor) => ({ id: editor.id, name: editor.name })),
+        selectedEditorId: selectedEditor?.id ?? selectedEditorId,
       })
       if (editorId) {
         setSelectedEditorId(editorId)
       }
     },
-    [orderedEditors, selectedEditorId, selectedEditorOption],
+    [orderedEditors, selectedEditorId, selectedEditor],
   )
 
-  const SelectedEditorIcon = selectedEditorOption?.Icon ?? Code2
-
-  const chromeButtonClass = adjacentOpenSidebar
-    ? "text-sidebar-foreground shadow-none hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-    : "text-muted-foreground shadow-none hover:bg-muted/60 hover:text-foreground"
+  const SelectedEditorIcon = selectedEditor ? getExternalEditorIcon(selectedEditor.id) : GenericCodeIcon
+  const hasPicker = orderedEditors.length > 1
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="group inline-flex h-7 items-center rounded-md bg-transparent shadow-none">
+        <div
+          className={cn(
+            "inline-flex items-center rounded-md border shadow-xs shrink-0",
+            adjacentOpenSidebar
+              ? "border-sidebar-border/50 bg-sidebar/60"
+              : "border-border/50 bg-background/60",
+          )}
+        >
           <Button
+            type="button"
+            size="sm"
             variant="ghost"
-            className={cn("h-7 shrink-0 rounded-md bg-transparent !px-1.5 shadow-none hover:bg-muted/40", chromeButtonClass)}
+            className={cn(
+              "h-7 px-2 text-xs border-0 font-normal transition-colors shrink-0",
+              hasPicker ? "rounded-l-md rounded-r-none" : "rounded-md",
+              adjacentOpenSidebar
+                ? "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
+            )}
             onClick={handleOpenProjectInEditor}
-            disabled={!workspaceId || !selectedEditorOption}
+            disabled={!workspaceId || !selectedEditor}
             aria-label={
-              selectedEditorOption
-                ? t("workbench.editor.openIn").replace("{editor}", selectedEditorOption.editor.name)
+              selectedEditor
+                ? t("workbench.editor.openIn").replace("{editor}", selectedEditor.name)
                 : t("workbench.editor.noEditor")
             }
           >
-            <SelectedEditorIcon className="size-5 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+            <SelectedEditorIcon className="size-3.5 shrink-0 transition-colors" />
           </Button>
 
-          {orderedEditors.length > 1 ? (
+          {hasPicker ? (
             <Button
               type="button"
+              size="sm"
               variant="ghost"
               className={cn(
-                "inline-flex h-7 w-5 shrink-0 items-center justify-center rounded-md bg-transparent px-0 shadow-none hover:bg-muted/40",
-                chromeButtonClass,
+                "h-7 w-5 p-0 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l transition-colors shrink-0",
+                adjacentOpenSidebar
+                  ? "border-sidebar-border/40 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-accent/60",
               )}
               aria-label="Choose editor"
               aria-haspopup="menu"
+              disabled={!workspaceId}
               onClick={handleShowEditorPicker}
             >
-              <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground group-focus-within:text-foreground" />
+              <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-2.5 shrink-0" />
             </Button>
           ) : null}
         </div>
       </TooltipTrigger>
       <TooltipContent side="bottom">
-        {selectedEditorOption ? t("workbench.editor.openIn").replace("{editor}", selectedEditorOption.editor.name) : t("workbench.editor.noEditor")}
+        {selectedEditor ? t("workbench.editor.openIn").replace("{editor}", selectedEditor.name) : t("workbench.editor.noEditor")}
       </TooltipContent>
     </Tooltip>
   )

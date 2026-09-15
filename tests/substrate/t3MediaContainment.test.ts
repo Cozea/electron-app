@@ -77,7 +77,7 @@ it("executes the patched mint branch with native workspace resolver, filesystem 
         `${prefix}${JSON.stringify(pathToFileURL(path.join(server, "dist", name)).href)}`,
     );
     source +=
-      "\nexport const testMintMedia = input => runPromise(issueAssetUrl(input).pipe(scoped$1, provide$2(layer$72.pipe(provideMerge(layer$104)))));\n";
+      "\nexport const testMintMedia = input => runPromise(issueAssetUrl(input).pipe(scoped, provide$1(layer$72.pipe(provideMerge(layer$101)))));\n";
     fs.writeFileSync(path.join(temp, "probe.mjs"), source);
     const cases = [
       { name: "relative", path: "inside.png", workspaceRoot: root },

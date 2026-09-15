@@ -6,7 +6,6 @@ import {
   type TurnId,
   type OrchestrationThreadActivity,
 } from "@cozea/assistant-contracts";
-import { useTranslation } from "@/lib/i18n";
 import {
   createContext,
   memo,
@@ -32,7 +31,6 @@ import {
   AlertCircleIcon as __CircleAlertIconHugeIcon,
   ArrowDown01Icon as __WorkLogExpandHugeIcon,
   ArrowDownLeft01Icon as __Undo2IconHugeIcon,
-  ArrowLeftRightIcon as __MessageSquareIconHugeIcon,
   ArrowUp01Icon as __WorkLogCollapseHugeIcon,
   ArrowUpDownIcon as __ChevronsUpDownHugeIcon,
   CheckmarkCircle02Icon as __CheckIconHugeIcon,
@@ -71,13 +69,6 @@ import { ProviderPlanSteps } from "./ProviderPlanSteps";
 import { ToolGroupSummary } from "./ToolGroupSummary";
 import { toolRowId } from "./toolPhase";
 import { useTimelineTextReveal } from "./useTextReveal";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { asHugeIcon } from "@/lib/icons/asHugeIcon";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -108,6 +99,11 @@ import {
   type GenerationStatusPhase,
 } from "./MessagesTimeline.logic";
 import { PersistedFilesList } from "./PersistedFilesList";
+import type { AssistantCitation, ScopedThreadRef } from "@cozea/contracts/t3";
+import type { AssistantCitationSourceAnchor } from "@/lib/assistantTextSelection";
+import { AssistantCitationSource, type AssistantCitationRequest } from "./AssistantCitationSource";
+import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
+import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssistantCitationTarget";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { extractTrailingPreviewAnnotations } from "@/features/browser/previewAnnotation";
 import {
@@ -121,10 +117,17 @@ import {
   formatInlineTerminalContextLabel,
   textContainsInlineTerminalContextLabels,
 } from "./userMessageTerminalContexts";
-import { ClaudeAI, CursorIcon, OpenAI, OpenCodeIcon } from "../Icons";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { PROVIDER_ICON_BY_PROVIDER } from "./providerIconUtils";
+import { Gemini } from "../Icons";
 
 const ZapIcon = asHugeIcon(__ZapIconHugeIcon);
-const MessageSquareIcon = asHugeIcon(__MessageSquareIconHugeIcon);
 const CheckIcon = asHugeIcon(__CheckIconHugeIcon);
 const TerminalIcon = asHugeIcon(__TerminalIconHugeIcon);
 const BotIcon = asHugeIcon(__BotIconHugeIcon);
@@ -192,6 +195,13 @@ interface MessagesTimelineProps {
   workspaceRoot: string | undefined;
   artifactUrlsById?: Readonly<Record<string, string>>;
   onOpenArtifact?: (artifactId: string) => void;
+  citationRequest?: AssistantCitationRequest | null;
+  citationThreadRef?: ScopedThreadRef;
+  onCiteAssistantText?: (citation: AssistantCitation, sourceAnchor: AssistantCitationSourceAnchor) => boolean;
+  loadEarlier?: CitationHistoryPage | null;
+  onManualNavigation?: () => void;
+  projectName?: string | null;
+  onSelectPrompt?: (prompt: string) => void;
 }
 
 const LEGEND_LIST_AGENT_TIMELINE_RECYCLE_KEY = "cozea:legend-list-agent-timeline:recycle";
@@ -226,19 +236,12 @@ function shouldRecycleLegendListItems(): boolean {
   return readLegendListBooleanPreference(LEGEND_LIST_AGENT_TIMELINE_RECYCLE_KEY, true);
 }
 
-function resolveAssistantIdentityIcon(provider: ProviderKind | null | undefined): LucideIcon {
-  switch (provider) {
-    case "claudeAgent":
-      return ClaudeAI;
-    case "cursor":
-      return CursorIcon;
-    case "opencode":
-      return OpenCodeIcon;
-    case "codex":
-      return OpenAI;
-    default:
-      return MessageSquareIcon;
-  }
+function resolveAssistantIdentityIcon(
+  provider: ProviderKind | null | undefined,
+): ComponentType<SVGProps<SVGSVGElement>> {
+  if (!provider) return BotIcon;
+  if (provider === ("gemini" as any)) return Gemini;
+  return PROVIDER_ICON_BY_PROVIDER[provider] ?? BotIcon;
 }
 
 export const MessagesTimeline = memo(function MessagesTimeline({
@@ -272,14 +275,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   workspaceRoot,
   artifactUrlsById,
   onOpenArtifact,
+  citationRequest,
+  citationThreadRef,
+  onCiteAssistantText,
+  loadEarlier,
+  onManualNavigation,
 }: MessagesTimelineProps) {
-  const { t } = useTranslation();
+  const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
   const revealMessages = useMemo(
     () => timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
     [timelineEntries],
   );
   const textReveal = useTimelineTextReveal(revealMessages, isChatVisible, revealImmediately);
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
+  const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(null);
   const legendListRef = useRef<LegendListRef | null>(null);
   // Held in state, not a ref, so the scroll listener attaches once LegendList
   // hands the scroll view over rather than on a first render where it is null.
@@ -319,7 +328,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     Record<string, boolean>
   >({});
   const [expandedUserMessageIds, setExpandedUserMessageIds] = useState<Record<string, boolean>>({});
-  const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
 
   useLayoutEffect(() => {
     const timelineRoot = timelineRootRef.current;
@@ -360,6 +368,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         activeWorkStartedAt,
         generationStatusPhase,
         expanded: expandedWorkGroups,
+        workspaceRoot,
       }),
     [
       rowProjector,
@@ -373,6 +382,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       activeWorkStartedAt,
       generationStatusPhase,
       expandedWorkGroups,
+      workspaceRoot,
     ],
   );
   useEffect(() => () => rowProjector.clear(), [rowProjector]);
@@ -442,8 +452,33 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     return Math.min(firstCurrentTurnRowIndex, firstTailRowIndex);
   }, [activeTurnInProgress, activeWorkStartedAt, rows]);
 
+  const {
+    target: readyCitationRequest,
+    onListLoad: onCitationListLoad,
+    alwaysRender: citationAlwaysRender,
+  } = useAssistantCitationTarget({
+    request: citationRequest ?? null,
+    entries: timelineEntries,
+    rows,
+    listRef: legendListRef,
+    viewport: timelineViewportElement,
+    historyLoading: Boolean(loadEarlier?.loading),
+    loadEarlier: loadEarlier ?? null,
+    onExpandTurn: (turnId) => {
+      if (!expandedWorkGroups[`turn-fold:${turnId}`]) {
+        onToggleWorkGroup(`turn-fold:${turnId}`);
+      }
+    },
+    onManualNavigation: onManualNavigation ?? (() => {}),
+  });
+
   const alwaysRenderKeys = useMemo(() => {
     const keys = new Set<string>();
+    if (citationAlwaysRender?.keys) {
+      for (const key of citationAlwaysRender.keys) {
+        keys.add(key);
+      }
+    }
     for (let index = firstAlwaysRenderedRowIndex; index < rows.length; index += 1) {
       const row = rows[index];
       if (row) keys.add(row.id);
@@ -459,7 +494,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
     }
     return Array.from(keys);
-  }, [firstAlwaysRenderedRowIndex, rows]);
+  }, [citationAlwaysRender?.keys, firstAlwaysRenderedRowIndex, rows]);
 
   const recycleItems = useMemo(() => shouldRecycleLegendListItems(), []);
   const estimatedListSize = useMemo(
@@ -764,6 +799,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               count={row.hiddenCount}
               expanded={row.expanded}
               active={row.active}
+              startedAt={row.startedAt}
               animateEntrance={isChatVisible && isWorkActive}
               seenRows={seenToolSummaryRows}
               onToggle={onToggleWorkGroup}
@@ -986,74 +1022,82 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             })()}
 
           {row.kind === "message" && row.message.role === "assistant" && (
-            <AssistantMessageBody
-              message={row.message}
-              controller={textReveal}
-              cwd={markdownCwd}
-              actions={
-                (row.hasFooter ?? row.showActions) ? (
-                  <AssistantResponseActions
-                    message={row.message}
-                    controller={textReveal}
-                    relativeTime={formatMessageRelativeTime(
-                      row.message.completedAt ?? row.message.createdAt,
-                    )}
-                    isLatest={row.message.id === latestAssistantMessageId}
-                    showActions={row.showActions}
-                  />
-                ) : null
-              }
+            <AssistantCitationSource
+              messageId={row.message.id}
+              {...(citationThreadRef ? { threadRef: citationThreadRef } : {})}
+              itemKey={row.id}
+              request={readyCitationRequest}
+              listRef={legendListRef}
             >
-              {row.message.attachments?.length ? (
-                <MessageAttachments
-                  attachments={row.message.attachments}
-                  onExpand={onImageExpand}
-                  align="start"
-                />
-              ) : null}
-              <ProviderAuthenticationHelp
-                provider={selectedProvider}
-                message={row.message.text}
-                messageId={String(row.message.id)}
-                isStreaming={Boolean(row.message.streaming)}
-                isSuperseded={row.message.id !== latestAssistantMessageId}
-              />
-              <ScheduledTaskProposalCard
-                message={row.message.text}
-                workspaceRoot={markdownCwd}
-                isStreaming={Boolean(row.message.streaming)}
-              />
-              {(() => {
-                const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
-                if (!turnSummary) return null;
-                const checkpointFiles = turnSummary.files;
-                if (checkpointFiles.length === 0) return null;
-                const allDirectoriesExpanded =
-                  allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
-                // Small, recent turns open themselves; anything larger stays
-                // collapsed behind the scope summary until asked for.
-                const expanded =
-                  changedFilesExpandedByTurnId[turnSummary.turnId] ??
-                  shouldAutoExpandChangedFiles(
-                    checkpointFiles,
-                    turnSummary.turnId === latestTurnDiffTurnId,
-                  );
-                return (
-                  <ChangedFilesCard
-                    turnId={turnSummary.turnId}
-                    files={checkpointFiles}
-                    expanded={expanded}
-                    allDirectoriesExpanded={allDirectoriesExpanded}
-                    resolvedTheme={resolvedTheme}
-                    onExpandedChange={(next) =>
-                      onToggleChangedFilesExpanded(turnSummary.turnId, next)
-                    }
-                    onToggleAllDirectories={() => onToggleAllDirectories(turnSummary.turnId)}
-                    onOpenTurnDiff={onOpenTurnDiff}
+              <AssistantMessageBody
+                message={row.message}
+                controller={textReveal}
+                cwd={markdownCwd}
+                actions={
+                  (row.hasFooter ?? row.showActions) ? (
+                    <AssistantResponseActions
+                      message={row.message}
+                      controller={textReveal}
+                      relativeTime={formatMessageRelativeTime(
+                        row.message.completedAt ?? row.message.createdAt,
+                      )}
+                      isLatest={row.message.id === latestAssistantMessageId}
+                      showActions={row.showActions}
+                    />
+                  ) : null
+                }
+              >
+                {row.message.attachments?.length ? (
+                  <MessageAttachments
+                    attachments={row.message.attachments}
+                    onExpand={onImageExpand}
+                    align="start"
                   />
-                );
-              })()}
-            </AssistantMessageBody>
+                ) : null}
+                <ProviderAuthenticationHelp
+                  provider={selectedProvider}
+                  message={row.message.text}
+                  messageId={String(row.message.id)}
+                  isStreaming={Boolean(row.message.streaming)}
+                  isSuperseded={row.message.id !== latestAssistantMessageId}
+                />
+                <ScheduledTaskProposalCard
+                  message={row.message.text}
+                  workspaceRoot={markdownCwd}
+                  isStreaming={Boolean(row.message.streaming)}
+                />
+                {(() => {
+                  const turnSummary = turnDiffSummaryByAssistantMessageId.get(row.message.id);
+                  if (!turnSummary) return null;
+                  const checkpointFiles = turnSummary.files;
+                  if (checkpointFiles.length === 0) return null;
+                  const allDirectoriesExpanded =
+                    allDirectoriesExpandedByTurnId[turnSummary.turnId] ?? true;
+                  // Small, recent turns open themselves; anything larger stays
+                  // collapsed behind the scope summary until asked for.
+                  const expanded =
+                    changedFilesExpandedByTurnId[turnSummary.turnId] ??
+                    shouldAutoExpandChangedFiles(
+                      checkpointFiles,
+                      turnSummary.turnId === latestTurnDiffTurnId,
+                    );
+                  return (
+                    <ChangedFilesCard
+                      turnId={turnSummary.turnId}
+                      files={checkpointFiles}
+                      expanded={expanded}
+                      allDirectoriesExpanded={allDirectoriesExpanded}
+                      resolvedTheme={resolvedTheme}
+                      onExpandedChange={(next) =>
+                        onToggleChangedFilesExpanded(turnSummary.turnId, next)
+                      }
+                      onToggleAllDirectories={() => onToggleAllDirectories(turnSummary.turnId)}
+                      onOpenTurnDiff={onOpenTurnDiff}
+                    />
+                  );
+                })()}
+              </AssistantMessageBody>
+            </AssistantCitationSource>
           )}
 
           {row.kind === "proposed-plan" && (
@@ -1126,6 +1170,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       latestTurnDiffTurnId,
       onToggleChangedFilesExpanded,
       onToggleAllDirectories,
+      readyCitationRequest,
+      citationThreadRef,
     ],
   );
 
@@ -1137,10 +1183,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
               <EmptyAssistantIcon className="h-7 w-7" />
             </EmptyMedia>
-            <EmptyTitle className="text-base font-medium">
-              {t("assistant.chat.readyToAssist")}
-            </EmptyTitle>
-            <EmptyDescription>{t("assistant.chat.readyToAssistDesc")}</EmptyDescription>
+            <EmptyTitle className="text-base font-medium">Ready to assist</EmptyTitle>
+            <EmptyDescription>
+              Send a message to start the conversation and begin building.
+            </EmptyDescription>
           </EmptyHeader>
         </Empty>
       </div>
@@ -1149,12 +1195,23 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   return (
     <div
-      ref={timelineRootRef}
+      ref={(node) => {
+        timelineRootRef.current = node;
+        setTimelineViewportElement(node);
+      }}
       data-timeline-root="true"
       data-timeline-engine="legend-list"
       data-legend-list-recycle-items={recycleItems ? "true" : "false"}
+      data-assistant-citation-viewport="true"
       className="h-full min-h-0 w-full min-w-0 overflow-hidden"
     >
+      {onCiteAssistantText && citationThreadRef && (
+        <AssistantSelectionToolbar
+          viewport={timelineViewportElement}
+          threadRef={citationThreadRef}
+          onCite={onCiteAssistantText}
+        />
+      )}
       <TimelineRowRenderContext.Provider value={renderRowContent}>
         <LegendList<TimelineRow>
           ref={legendListRef}
@@ -1195,6 +1252,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           contentContainerClassName="mx-auto w-full min-w-0 max-w-3xl overflow-x-hidden"
           contentContainerStyle={contentContainerStyle}
           showsVerticalScrollIndicator={false}
+          onLoad={onCitationListLoad}
         />
       </TimelineRowRenderContext.Provider>
     </div>
@@ -1203,13 +1261,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
 type TimelineEntry = ReturnType<typeof deriveTimelineEntries>[number];
 type TimelineWorkEntry = Extract<TimelineEntry, { kind: "work" }>["entry"];
-// LegendList renders renderItem as a React component, not an ordinary callback.
-// A fresh inline function remounts every row when a tool/count changes.
+// LegendList calls renderItem as a regular function inside a useMemo hook in its Container.
+// Calling hooks directly inside renderItem violates the Rules of Hooks.
+// Returning a component element (<TimelineRowItem />) defers hook execution (useContext)
+// to React's element render phase outside of useMemo.
 const TimelineRowRenderContext = createContext<((row: TimelineRow) => ReactNode) | null>(null);
 
-function TimelineRowRenderer({ item }: LegendListRenderItemProps<TimelineRow>) {
+function TimelineRowItem({ item }: { item: TimelineRow }) {
   const renderRow = useContext(TimelineRowRenderContext);
   return <div key={`legend-row:${item.id}`}>{renderRow?.(item)}</div>;
+}
+
+function TimelineRowRenderer({ item }: LegendListRenderItemProps<TimelineRow>) {
+  "use no memo";
+  return <TimelineRowItem item={item} />;
 }
 
 function formatLiveElapsed(startIso: string, nowMs: number): string | null {
@@ -1396,7 +1461,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
         }
 
         return (
-          <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-inherit">
+          <div className="wrap-break-word whitespace-pre-wrap text-sm leading-normal text-inherit">
             {inlineNodes}
           </div>
         );
@@ -1424,7 +1489,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
     }
 
     return (
-      <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-inherit">
+      <div className="wrap-break-word whitespace-pre-wrap text-sm leading-normal text-inherit">
         {inlineNodes}
       </div>
     );
@@ -1435,7 +1500,7 @@ const UserMessageBody = memo(function UserMessageBody(props: {
   }
 
   return (
-    <div className="wrap-break-word whitespace-pre-wrap text-xs leading-normal text-inherit">
+    <div className="wrap-break-word whitespace-pre-wrap text-sm leading-normal text-inherit">
       {props.text}
     </div>
   );
@@ -1528,6 +1593,30 @@ function workEntryIcon(workEntry: TimelineWorkEntry): LucideIcon {
  * row does not already say. Echoing the command or path back at the reader is
  * not worth a chevron.
  */
+
+function WebsiteFavicon({ url, fallback }: { url: string; fallback: ReactNode }) {
+  const [hasError, setHasError] = useState(false);
+  const hostname = useMemo(() => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return null;
+    }
+  }, [url]);
+
+  if (hasError || !hostname) {
+    return <>{fallback}</>;
+  }
+
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=32`}
+      alt=""
+      className="size-3.5 shrink-0 rounded-sm object-contain"
+      onError={() => setHasError(true)}
+    />
+  );
+}
 
 const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
   compact?: boolean;
@@ -1693,7 +1782,14 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
           className={cn("flex size-5 shrink-0 items-center justify-center", iconConfig.className)}
           data-tool-icon={isCommand ? "terminal" : (workEntry.itemType ?? workEntry.requestKind)}
         >
-          <EntryIcon className="size-3.5" aria-hidden="true" />
+          {workEntry.toolIcon?._tag === "website" ? (
+            <WebsiteFavicon
+              url={workEntry.toolIcon.pageUrl}
+              fallback={<EntryIcon className="size-3.5" aria-hidden="true" />}
+            />
+          ) : (
+            <EntryIcon className="size-3.5" aria-hidden="true" />
+          )}
         </span>
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <p

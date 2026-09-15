@@ -49,6 +49,8 @@ import {
   getAssistantComposerDraft,
   useAssistantComposerDraftStore,
 } from "@/features/assistant/chat/composerDraftStore";
+import { appendReviewCommentsToPrompt } from "@/features/assistant/chat/reviewCommentContext";
+import { appendElementContextsToPrompt } from "@/features/browser/elementContext";
 import {
   reportMemoryUpdateOutcome,
   subscribeMemoryUpdateRequests,
@@ -669,6 +671,7 @@ export function useWorkbenchAssistantTileController(
     pendingUserInputs,
     selectedProvider,
     workspaceRoot: resolvedWorkspaceRoot,
+    workspaceId: input.workspaceId,
     isSending,
     sendInFlightRef,
     requestSend: requestSendFromAttachment,
@@ -1769,6 +1772,19 @@ export function useWorkbenchAssistantTileController(
     for (const annotation of composerPreviewAnnotationsSnapshot) {
       nextPrompt = appendPreviewAnnotationPrompt(nextPrompt, annotation);
     }
+    if (overridePrompt === undefined) {
+      const composerDraft = getAssistantComposerDraft(draftTargetKey);
+      const pendingReviewComments = composerDraft?.reviewComments ?? [];
+      const pendingElementContexts = composerDraft?.elementContexts ?? [];
+      if (pendingReviewComments.length > 0) {
+        nextPrompt = appendReviewCommentsToPrompt(nextPrompt, pendingReviewComments);
+        useAssistantComposerDraftStore.getState().clearReviewComments(draftTargetKey);
+      }
+      if (pendingElementContexts.length > 0) {
+        nextPrompt = appendElementContextsToPrompt(nextPrompt, pendingElementContexts);
+        useAssistantComposerDraftStore.getState().clearElementContexts(draftTargetKey);
+      }
+    }
     const hasImages = composerImages.length > 0;
     if (!nextPrompt && !hasImages && composerPreviewAnnotationsSnapshot.length === 0) {
       return;
@@ -2162,7 +2178,10 @@ export function useWorkbenchAssistantTileController(
     }
   };
 
-  const handleRevertToTurnCount = async (turnCount: number) => {
+  const handleRevertToTurnCount = async (
+    turnCount: number,
+    options?: { restoreFiles?: boolean; promptToRestore?: string },
+  ) => {
     if (
       selectedProvider === "antigravity" ||
       providerSnapshot?.supportsConversationRollback === false
@@ -2172,9 +2191,12 @@ export function useWorkbenchAssistantTileController(
       return;
     }
 
+    const restoreFiles = options?.restoreFiles ?? false;
     const api = ensureNativeApi();
     const confirmed = await api.dialogs.confirm(
-      `Revert this chat thread to the state before turn ${turnCount + 1}?`,
+      restoreFiles
+        ? `Revert this chat thread and files to the state before turn ${turnCount + 1}?`
+        : `Rewind conversation to turn ${turnCount + 1}? Your workspace files will not be changed.`,
     );
     if (!confirmed) {
       return;
@@ -2185,13 +2207,28 @@ export function useWorkbenchAssistantTileController(
 
     try {
       await validateConversationContext();
-      await getOrchestration().dispatchCommand({
-        type: "thread.checkpoint.revert",
-        commandId: newCommandId(),
-        threadId: thread.id,
-        turnCount,
-        createdAt: new Date().toISOString(),
-      });
+      if (restoreFiles) {
+        await getOrchestration().dispatchCommand({
+          type: "thread.checkpoint.revert",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          turnCount,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        await getOrchestration().dispatchCommand({
+          type: "thread.conversation.revert",
+          commandId: newCommandId(),
+          threadId: thread.id,
+          turnCount,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      if (options?.promptToRestore) {
+        setComposer(options.promptToRestore);
+        setComposerCursor(options.promptToRestore.length);
+      }
     } catch (error) {
       setSendError(toErrorMessage(error));
     } finally {
@@ -2349,6 +2386,7 @@ export function useWorkbenchAssistantTileController(
       onRemovePreviewAnnotation: removePreviewAnnotation,
       compactUnavailableReason: compactUnavailable,
       onCompact: handleCompact,
+      draftTargetKey,
       onSend: (overridePrompt?: string) => {
         void handleSend(overridePrompt);
       },

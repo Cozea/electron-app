@@ -1,3 +1,7 @@
+// First: error/tracing/profiling capture before any app module runs.
+// No-op without VITE_SENTRY_DSN.
+import './lib/monitoring/sentryRenderer'
+
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider } from "@/lib/router"

@@ -3,6 +3,7 @@ import { useMemo } from "react"
 import type { ProviderInteractionMode } from "@cozea/assistant-contracts"
 
 import {
+  deriveActivePlanState,
   derivePhase,
   deriveTimelineEntries,
   findLatestProposedPlan,
@@ -94,6 +95,10 @@ export function useAssistantThreadViewModel({
       }),
     [inferredCheckpointTurnCountByTurnId, timelineEntries, turnDiffSummaryByAssistantMessageId],
   ))
+  const activePlan = useMemo(
+    () => deriveActivePlanState(thread?.activities ?? [], activeTurn?.turnId),
+    [activeTurn?.turnId, thread?.activities],
+  )
   const activeProposedPlan = useMemo(
     () => findLatestProposedPlan(thread?.proposedPlans ?? [], activeTurn?.turnId ?? null),
     [activeTurn?.turnId, thread?.proposedPlans],
@@ -106,6 +111,7 @@ export function useAssistantThreadViewModel({
 
   return {
     activeTurn,
+    activePlan,
     latestTurnSettled,
     phase,
     isWorking,

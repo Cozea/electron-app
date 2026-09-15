@@ -36,10 +36,10 @@ function getSidebarStateFromCookie(): boolean | null {
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
-const SIDEBAR_MAC_TOP_INSET_PX = 36
-const SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS = [0, 160, 320] as const
+const SIDEBAR_MAC_TOP_INSET_PX = 40
+const SIDEBAR_LAYOUT_SYNC_TIMEOUTS_MS = [0, 180, 350, 420] as const
 export const SIDEBAR_TRANSITION_CLASS_NAME =
-  "duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+  "sidebar-transition motion-reduce:transition-none"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -264,11 +264,12 @@ function Sidebar({
   rootClassName?: string
   rootStyle?: React.CSSProperties
 }) {
-  const { state } = useSidebar()
+  const { state, open } = useSidebar()
   const windowChrome = useWindowChrome()
+  const isOffcanvas = collapsible === "offcanvas"
   const sideBoundary = side === "left" ? "bdry-r bdry-sidebar" : "bdry-l bdry-sidebar"
   const desktopRootWidth =
-    collapsible === "offcanvas" && state === "collapsed" ? "0px" : "var(--sidebar-width)"
+    isOffcanvas && state === "collapsed" ? "0px" : "var(--sidebar-width)"
   const shouldRenderWindowChromeInset = windowChromeAware && windowChrome.isMac
   const macWindowChromeInset = shouldRenderWindowChromeInset ? (
     windowChromeEndAddon ? (
@@ -342,8 +343,9 @@ function Sidebar({
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      data-open={open ? "true" : "false"}
       style={
-        collapsible === "offcanvas"
+        isOffcanvas
           ? {
               ...rootStyle,
               width: desktopRootWidth,
@@ -367,12 +369,20 @@ function Sidebar({
       />
       <div
         data-slot="sidebar-container"
+        data-open={open ? "true" : "false"}
+        data-side={side}
         className={cn(
-          "absolute inset-y-0 z-10 flex h-full w-(--sidebar-width) transition-[left,right,width]",
-          SIDEBAR_TRANSITION_CLASS_NAME,
+          "absolute inset-y-0 z-10 flex h-full w-(--sidebar-width)",
+          isOffcanvas
+            ? "t-panel-slide"
+            : cn("transition-[left,right,width]", SIDEBAR_TRANSITION_CLASS_NAME),
           side === "left"
-            ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-            : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
+            ? isOffcanvas
+              ? "left-0"
+              : "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
+            : isOffcanvas
+              ? "right-0"
+              : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"

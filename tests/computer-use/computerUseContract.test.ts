@@ -4,7 +4,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 import { computerUseCatalogue, patchComputerUseContract } from '../../scripts/patch-computer-use-contract.mjs'
-import { patchT3ComputerUseSource } from '../../scripts/prepare-t3-runtime.mjs'
+import { patchT3ComputerUseSource, patchT3ComputerUseTest } from '../../scripts/prepare-t3-runtime.mjs'
 
 // Reuse the JSON Schema validator already pinned in the build toolchain, without
 // adding a runtime dependency or resolving a different copy from the environment.
@@ -94,6 +94,82 @@ describe('Computer Use provider contract', () => {
       // The CLI must propagate the option, not only offer a read-only helper.
       expect(fs.readFileSync('scripts/prepare-t3-runtime.mjs', 'utf8')).toContain('patchT3ComputerUseSource({ checkOnly: options.checkOnly })')
     } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('aligns the T3 backend timeout above the broker action budget', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cozea-cu-timeout-'))
+    const sourcePath = path.join(dir, 'computerUse.ts')
+    const original = 'const COMPUTER_USE_TOOLS = [];\nfetch(url, { signal: AbortSignal.timeout(30_000) });\n'
+    try {
+      fs.writeFileSync(sourcePath, original)
+      expect(patchT3ComputerUseSource({ sourcePath })).toBe(true)
+      const patched = fs.readFileSync(sourcePath, 'utf8')
+      expect(patched).toContain('AbortSignal.timeout(40_000)')
+      expect(patched).not.toContain('AbortSignal.timeout(30_000)')
+      expect(patchT3ComputerUseSource({ sourcePath })).toBe(false)
+      expect(patchT3ComputerUseSource({ checkOnly: true, sourcePath })).toBe(false)
+      // And the broker budget it must exceed:
+      expect(fs.readFileSync('apps/desktop/electron/services/ComputerUseRuntimeService.ts', 'utf8')).toContain(
+        'CALL_TIMEOUT_MS = 35_000',
+      )
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('only promises observation budgets the embedded engine implements', () => {
+    // The staged cua-driver binary has no text_limit argument (verified
+    // against its strings table), so the contract must not advertise one:
+    // T3 would pass a model-supplied text_limit through to silent ignorance.
+    const state = computerUseCatalogue.tools.find((tool) => tool.name === 'get_app_state')!
+    const properties = state.inputSchema.properties as Record<string, unknown>
+    expect(properties.text_limit).toBeUndefined()
+    expect(properties.max_tree_nodes).toBeDefined()
+    expect(properties.max_tree_depth).toBeDefined()
+    const bundled = fs.readFileSync('vendor/t3code/apps/server/dist/bin.mjs', 'utf8')
+    expect(bundled).not.toContain('text_limit')
+  })
+
+  it('patches the stale vendor test expectations and is idempotent', () => {
+    const fixture = [
+      'it("mirrors the pinned open-computer-use v0.3.3 tool surface", () => {',
+      '  expect(COMPUTER_USE_TOOLS.map((tool) => tool.name)).toEqual(EXPECTED_TOOLS);',
+      'it("keeps state discovery read-only and actions non-open-world", () => {',
+      '  for (const name of EXPECTED_TOOLS) {',
+      '    expect(byName.get(name)?.annotations.openWorldHint).toBe(false);',
+      '    expect(byName.get(name)?.annotations.destructiveHint).toBe(false);',
+      '  }',
+      '  expect(properties?.click_method?.enum).toEqual([',
+      '    "auto",',
+      '    "accessibility",',
+      '    "app_post",',
+      '    "sky_click",',
+      '    "global",',
+      '  ]);',
+    ].join('\n')
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cozea-cu-testpatch-'))
+    const sourcePath = path.join(dir, 'computerUse.test.ts')
+    try {
+      fs.writeFileSync(sourcePath, fixture)
+      expect(() => patchT3ComputerUseTest({ checkOnly: true, sourcePath })).toThrow(/stale/i)
+      expect(patchT3ComputerUseTest({ sourcePath })).toBe(true)
+      const patched = fs.readFileSync(sourcePath, 'utf8')
+      expect(patched).toContain('mirrors the canonical Cozea computer-use tool surface')
+      expect(patched).toContain('.sort()).toEqual(EXPECTED_TOOLS)')
+      expect(patched).toContain('marks actions destructive')
+      expect(patched).toContain('destructiveHint).toBe(true)')
+      expect(patched).toContain('toEqual(["auto", "global"])')
+      expect(patchT3ComputerUseTest({ sourcePath })).toBe(false)
+      expect(patchT3ComputerUseTest({ checkOnly: true, sourcePath })).toBe(false)
+    } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('keeps the real pinned vendor test aligned with the v2 contract', () => {
+    const sourcePath = 'vendor/t3code/apps/server/src/mcp/toolkits/computerUse.test.ts'
+    expect(patchT3ComputerUseTest({ checkOnly: true, sourcePath })).toBe(false)
+    const source = fs.readFileSync(sourcePath, 'utf8')
+    expect(source).toContain('mirrors the canonical Cozea computer-use tool surface')
+    expect(source).not.toContain('open-computer-use v0.3.3')
   })
 
   it('retains MIT provenance consistently with the bundled notice and source headers', () => {

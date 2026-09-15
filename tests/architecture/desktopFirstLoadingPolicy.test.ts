@@ -73,8 +73,12 @@ describe('desktop-first loading architecture', () => {
   })
 
   it('registers lifecycle handling first and runtime shutdown after main bootstrap', () => {
-    const source = read('apps/desktop/electron/mainEntry.ts')
-    expect(source.trim().split('\n')).toEqual([
+    const imports = read('apps/desktop/electron/mainEntry.ts')
+      .trim()
+      .split('\n')
+      .filter((line) => line.startsWith("import '"))
+    expect(imports).toEqual([
+      "import './monitoring/sentryMain'",
       "import './registerAppLifecycle'",
       "import './desktopBootstrapMain'",
       "import './main'",

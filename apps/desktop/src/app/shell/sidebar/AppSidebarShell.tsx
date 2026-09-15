@@ -169,7 +169,7 @@ export function AppSidebarShell({
       collapsible="offcanvas"
       windowChromeAware
       windowChromeEndAddon={<ShellSidebarTrigger />}
-      rootClassName={cn("h-full min-w-0 overflow-hidden", className)}
+      rootClassName={cn("h-full min-w-0", className)}
       rootStyle={{ "--sidebar-width": `${width}px` } as React.CSSProperties}
       className="h-full min-w-0 z-20 sidebar-glass"
     >

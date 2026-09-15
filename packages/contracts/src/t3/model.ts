@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 53fc2f7efd2df38f0388d7fa94ec3456d6f2a33c; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -128,11 +128,11 @@ export const ModelCapabilities = Schema.Struct({
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;
 
-const CODEX_DRIVER_KIND = ProviderDriverKind.makeUnsafe("codex");
-const CLAUDE_DRIVER_KIND = ProviderDriverKind.makeUnsafe("claudeAgent");
-const CURSOR_DRIVER_KIND = ProviderDriverKind.makeUnsafe("cursor");
-const GROK_DRIVER_KIND = ProviderDriverKind.makeUnsafe("grok");
-const OPENCODE_DRIVER_KIND = ProviderDriverKind.makeUnsafe("opencode");
+const CODEX_DRIVER_KIND = ProviderDriverKind.make("codex");
+const CLAUDE_DRIVER_KIND = ProviderDriverKind.make("claudeAgent");
+const CURSOR_DRIVER_KIND = ProviderDriverKind.make("cursor");
+const GROK_DRIVER_KIND = ProviderDriverKind.make("grok");
+const OPENCODE_DRIVER_KIND = ProviderDriverKind.make("opencode");
 
 export const DEFAULT_MODEL = "gpt-5.6-sol";
 
@@ -157,7 +157,7 @@ export const DEFAULT_MODEL_BY_PROVIDER: Partial<Record<ProviderDriverKind, strin
   // Product slug, not an ACP model id. The Grok adapter treats it as "the session's current model".
   [GROK_DRIVER_KIND]: "grok-build",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
-  [ProviderDriverKind.makeUnsafe("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
+  [ProviderDriverKind.make("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
 };
 
 /** Per-provider text generation model defaults. */
@@ -165,7 +165,7 @@ export const DEFAULT_TEXT_GENERATION_MODEL_BY_PROVIDER: Partial<
   Record<ProviderDriverKind, string>
 > = {
   [CODEX_DRIVER_KIND]: DEFAULT_TEXT_GENERATION_MODEL,
-  [ProviderDriverKind.makeUnsafe("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
+  [ProviderDriverKind.make("antigravity")]: ANTIGRAVITY_DEFAULT_MODEL,
   [CLAUDE_DRIVER_KIND]: "claude-haiku-4-5",
   [CURSOR_DRIVER_KIND]: "composer-2",
   [OPENCODE_DRIVER_KIND]: "openai/gpt-5",
@@ -200,7 +200,7 @@ export const MODEL_SLUG_ALIASES_BY_PROVIDER: Partial<
 // ── Provider display names ────────────────────────────────────────────
 
 export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>> = {
-  [ProviderDriverKind.makeUnsafe("antigravity")]: "Antigravity",
+  [ProviderDriverKind.make("antigravity")]: "Antigravity",
   [CODEX_DRIVER_KIND]: "Codex",
   [CLAUDE_DRIVER_KIND]: "Claude",
   [CURSOR_DRIVER_KIND]: "Cursor",

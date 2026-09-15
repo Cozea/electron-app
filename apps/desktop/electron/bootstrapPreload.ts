@@ -1,3 +1,7 @@
+// First: captures preload-context errors (invisible to the renderer SDK
+// under contextIsolation). No-op without a configured DSN.
+import './monitoring/sentryPreload'
+
 import { contextBridge, ipcRenderer } from 'electron'
 
 import type {

@@ -22,6 +22,10 @@ export function patchT3ComputerUseSource(options?: {
   checkOnly?: boolean;
   sourcePath?: string;
 }): boolean;
+export function patchT3ComputerUseTest(options?: {
+  checkOnly?: boolean;
+  sourcePath?: string;
+}): boolean;
 export function patchT3ServerBundleComputerUse(source: string): {
   source: string;
   changed: boolean;

@@ -43,7 +43,7 @@ export class GitService {
    */
   async getStatus(cwd: string): Promise<ParsedGitStatus> {
     const res = await this.process.execute(
-      ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
+      ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"],
       { cwd },
     )
     return GitStatusParser.parsePorcelainV2(res.stdoutBuffer)

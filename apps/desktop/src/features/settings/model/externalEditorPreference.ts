@@ -4,14 +4,14 @@ import { resolveProjectSourcePath } from '@/features/projects/lib/projectSourceP
 
 export const PREVIEW_EDITOR_PREFERENCE_KEY = 'cozea.preview.editor'
 
-const SUPPORTED_EXTERNAL_EDITOR_IDS: ExternalEditorId[] = [
-  'vscode',
-  'vscode-insiders',
+export const T3_STYLE_EDITOR_ORDER: ReadonlyArray<ExternalEditorId> = [
   'cursor',
-  'windsurf',
-  'vscodium',
+  'vscode',
   'zed',
   'antigravity',
+  'windsurf',
+  'vscode-insiders',
+  'vscodium',
   'webstorm',
   'intellij-idea',
   'phpstorm',
@@ -23,6 +23,30 @@ const SUPPORTED_EXTERNAL_EDITOR_IDS: ExternalEditorId[] = [
   'datagrip',
   'finder',
 ]
+
+const SUPPORTED_EXTERNAL_EDITOR_IDS: ExternalEditorId[] = [...T3_STYLE_EDITOR_ORDER]
+
+export function orderDetectedEditors<T extends { id: ExternalEditorId }>(
+  availableEditors: ReadonlyArray<T>
+): T[] {
+  const byId = new Map(availableEditors.map((editor) => [editor.id, editor] as const))
+  const seen = new Set<ExternalEditorId>()
+  const ordered: T[] = []
+
+  for (const editorId of T3_STYLE_EDITOR_ORDER) {
+    const editor = byId.get(editorId)
+    if (!editor) continue
+    ordered.push(editor)
+    seen.add(editor.id)
+  }
+
+  for (const editor of availableEditors) {
+    if (seen.has(editor.id)) continue
+    ordered.push(editor)
+  }
+
+  return ordered
+}
 
 export function readStoredExternalEditorPreference(): ExternalEditorId | null {
   try {

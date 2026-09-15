@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 53fc2f7efd2df38f0388d7fa94ec3456d6f2a33c; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 
 export const RelayClientStatusSchema = Schema.Union([
@@ -55,7 +55,7 @@ export const RelayClientInstallFailureReasonSchema = Schema.Literals([
 ]);
 export type RelayClientInstallFailureReason = typeof RelayClientInstallFailureReasonSchema.Type;
 
-export class RelayClientInstallFailedError extends Schema.TaggedErrorClass<RelayClientInstallFailedError>()(
+export class RelayClientInstallFailedError extends Schema.TaggedError<RelayClientInstallFailedError>()(
   "RelayClientInstallFailedError",
   {
     reason: RelayClientInstallFailureReasonSchema,

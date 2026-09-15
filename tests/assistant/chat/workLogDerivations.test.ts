@@ -1104,4 +1104,38 @@ describe("deriveWorkLogEntries context window handling", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.label).toBe("Context compacted");
   });
+
+  it("preserves toolIcon from activity payload across lifecycle updates", () => {
+    const started = makeActivity({
+      id: "preview-start",
+      createdAt: "2026-09-05T00:00:00Z",
+      kind: "tool.started",
+      turnId: "turn-1",
+      payload: {
+        toolCallId: "call-preview",
+        itemType: "mcp_tool_call",
+        status: "inProgress",
+        toolIcon: { _tag: "website", pageUrl: "https://example.com/test" },
+      },
+    });
+    const completed = makeActivity({
+      id: "preview-complete",
+      createdAt: "2026-09-05T00:00:01Z",
+      kind: "tool.completed",
+      turnId: "turn-1",
+      payload: {
+        toolCallId: "call-preview",
+        itemType: "mcp_tool_call",
+        status: "completed",
+        detail: "Navigated to page",
+      },
+    });
+
+    const entries = deriveWorkLogEntries([started, completed], TurnId.makeUnsafe("turn-1"));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.toolIcon).toEqual({
+      _tag: "website",
+      pageUrl: "https://example.com/test",
+    });
+  });
 });

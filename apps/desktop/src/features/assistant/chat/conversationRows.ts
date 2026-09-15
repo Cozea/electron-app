@@ -6,7 +6,13 @@ import {
   workLogEntryIsToolLike,
   type GenerationStatusPhase,
 } from "./MessagesTimeline.logic";
-import { deriveToolPhase, isDiagnosticWorkEntry, summarizeToolPhase, toolRowId } from "./toolPhase";
+import {
+  deriveToolPhase,
+  isDiagnosticWorkEntry,
+  summarizeToolPhase,
+  toolIsRunning,
+  toolRowId,
+} from "./toolPhase";
 import type { ConversationActivityEntries } from "./conversationActivityEntries";
 import type { ProviderTaskActivity } from "./providerActivity";
 import type { ActivePlanState } from "./session-logic";
@@ -31,6 +37,7 @@ export type ConversationRow = RowIdentity &
         active: boolean;
         liveIds: ReadonlySet<string>;
         groupedEntries: WorkLogEntry[];
+        startedAt?: string | null;
       }
     | {
         kind: "message";
@@ -67,6 +74,7 @@ export interface ConversationRowsInput {
   expanded: Readonly<Record<string, boolean>>;
   activity?: ConversationActivityEntries;
   waitingFor?: "approval" | "question" | null;
+  workspaceRoot?: string;
 }
 
 export function stableWorkIdentity(entry: WorkLogEntry): string {
@@ -196,6 +204,14 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
             (work) => phase.liveIds.has(toolRowId(work)) || phase.trailingId === toolRowId(work),
           );
         const groupId = `work-group:${id}`;
+        const firstRunning = groupedEntries.find(toolIsRunning);
+        const startedAt = active
+          ? (firstRunning?.timelineOrigin?.createdAt ??
+            firstRunning?.createdAt ??
+            groupedEntries[0]?.timelineOrigin?.createdAt ??
+            groupedEntries[0]?.createdAt ??
+            input.activeWorkStartedAt)
+          : null;
         add(
           {
             kind: "work-toggle",
@@ -207,7 +223,8 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
             hiddenCount: groupedEntries.length,
             active,
             liveIds: phase.liveIds,
-            summary: summarizeToolPhase(groupedEntries, active),
+            summary: summarizeToolPhase(groupedEntries, active, input.workspaceRoot),
+            startedAt,
           },
           ids,
         );
@@ -280,6 +297,9 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
   // slot. Keep its row identity stable so the virtualizer updates that slot
   // instead of removing one measured row and inserting another.
   const lifecycleRowId = "active-turn-lifecycle-row";
+  const hasStreamingAssistantMessage = raw.some(
+    (r) => r.kind === "message" && r.message.role === "assistant" && Boolean(r.message.streaming),
+  );
   if (input.waitingFor) {
     result.push({
       kind: "input-waiting",
@@ -294,7 +314,7 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
         id: lifecycleRowId,
         createdAt: input.activeWorkStartedAt ?? "",
       });
-    } else if (!phase.active) {
+    } else if (!phase.active && !hasStreamingAssistantMessage) {
       result.push({
         kind: "turn-status",
         id: lifecycleRowId,
@@ -357,6 +377,7 @@ export function conversationRowsEqual(a: ConversationRow, b: ConversationRow): b
       a.expanded === b.expanded &&
       a.summary === b.summary &&
       a.active === b.active &&
+      a.startedAt === b.startedAt &&
       a.liveIds.size === b.liveIds.size &&
       [...a.liveIds].every((id) => b.liveIds.has(id)) &&
       sameEntries(a.groupedEntries, b.groupedEntries)

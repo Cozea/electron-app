@@ -1,5 +1,5 @@
 {
-  "pin": "f2df43a98bc42936dd2a031d832c8c4dae53398a",
+  "pin": "53fc2f7efd2df38f0388d7fa94ec3456d6f2a33c",
   "copied": [
     "assets.ts",
     "assistantCitations.ts",
@@ -64,9 +64,9 @@
     "ipc.ts": "8985e4e6eb5bd1c84f8ede0c97069f8aabad9812592e17cf4b5849a9647dd332",
     "keybindings.ts": "fa28f351ec35767c2d11afda22c5efc68dca4d94f3efa29ee65ae81c13f87803",
     "model.ts": "ca354559d43ad30bf6b846cf077f15f759230197438ef452c164823c644df820",
-    "orchestration.ts": "ae61fc439208d2ae7f5dafa546fa96653377ac028ea17fe888494a4af20e8b2b",
+    "orchestration.ts": "1c22d43b0a7026de709accc7cc112c89d5447326be7f288ea6f1056c5d7f2cdf",
     "preview.ts": "e4527948872557b08dd42ef3ced64e34a677f9a8813a7b41cf408faef915c732",
-    "previewAutomation.ts": "288e8e0e7b87a90c7baf6841fdfb4cd9fb58763677cb4545d31bca04df2bb409",
+    "previewAutomation.ts": "dab7ed5ba2704b3019c956cb410a027fab2d3e266679eb300fe9ccb816f78d58",
     "project.ts": "b6a03cadfcd47ac6a52a11aee75b0e137dd0954cf64ccf1ba146ecbde396adfc",
     "provider.ts": "f10dcb4a80a87017b200839d891095e61693e7860fd8855c5f6db08143132ae7",
     "providerInstance.ts": "0a1fea758707473021ff0e340015a464ff1af785a4bb842b8976a574acb0afaf",

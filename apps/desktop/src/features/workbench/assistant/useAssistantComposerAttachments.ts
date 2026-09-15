@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ClipboardEventHandler,
   type Dispatch,
@@ -30,6 +31,12 @@ import {
   previewAnnotationScreenshotFile,
 } from "@/features/browser/previewAnnotation"
 
+import {
+  isPasteAsTextShortcut,
+  nextPastedTextFileName,
+  pastedTextDisposition,
+} from "@/features/assistant/chat/textPaste"
+
 interface UseAssistantComposerAttachmentsInput {
   composer: string
   setComposer: Dispatch<SetStateAction<string>>
@@ -41,6 +48,7 @@ interface UseAssistantComposerAttachmentsInput {
   pendingUserInputs: readonly PendingUserInput[]
   selectedProvider: ProviderKind
   workspaceRoot: string | null
+  workspaceId?: string | null
   isSending: boolean
   sendInFlightRef: MutableRefObject<boolean>
   requestSend: () => Promise<void>
@@ -258,16 +266,89 @@ export function useAssistantComposerAttachments(
     ],
   )
 
+  const pastedTextNamesRef = useRef<Set<string>>(new Set())
+  const lastKeyboardModifiersRef = useRef<{
+    shiftKey: boolean
+    metaKey: boolean
+    ctrlKey: boolean
+    altKey: boolean
+  }>({
+    shiftKey: false,
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+  })
+
+  useEffect(() => {
+    const updateModifiers = (e: KeyboardEvent) => {
+      lastKeyboardModifiersRef.current = {
+        shiftKey: e.shiftKey,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+      }
+    }
+    window.addEventListener("keydown", updateModifiers, true)
+    window.addEventListener("keyup", updateModifiers, true)
+    return () => {
+      window.removeEventListener("keydown", updateModifiers, true)
+      window.removeEventListener("keyup", updateModifiers, true)
+    }
+  }, [])
+
   const handleComposerPaste: ClipboardEventHandler<HTMLElement> = useCallback(
     (event) => {
       const files = Array.from(event.clipboardData.files)
-      if (files.length === 0) return
-      const imageFiles = files.filter((file) => file.type.startsWith("image/"))
-      if (imageFiles.length === 0) return
-      event.preventDefault()
-      addComposerImages(imageFiles)
+      if (files.length > 0) {
+        const imageFiles = files.filter((file) => file.type.startsWith("image/"))
+        if (imageFiles.length > 0) {
+          event.preventDefault()
+          addComposerImages(imageFiles)
+          return
+        }
+      }
+
+      const plainText = event.clipboardData.getData("text/plain")
+      if (!plainText) return
+
+      const isMac =
+        typeof navigator !== "undefined" &&
+        (navigator.platform?.toLowerCase().includes("mac") ||
+          navigator.userAgent?.toLowerCase().includes("mac"))
+      const bypassAutoAttachment = isPasteAsTextShortcut(
+        lastKeyboardModifiersRef.current,
+        Boolean(isMac),
+      )
+
+      if (
+        pastedTextDisposition({
+          text: plainText,
+          canAttach: Boolean(workspaceRoot),
+          bypassAutoAttachment,
+        }) === "attachment" &&
+        workspaceRoot
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+
+        const fileName = nextPastedTextFileName(Array.from(pastedTextNamesRef.current))
+        pastedTextNamesRef.current.add(fileName)
+
+        if (window.electronAPI?.workspaceSync?.writeFiles && input.workspaceId) {
+          void window.electronAPI.workspaceSync.writeFiles({
+            workspaceId: input.workspaceId,
+            files: [{ path: fileName, content: plainText }],
+          })
+        }
+
+        const nextComposer = appendComposerMentions(composer, [fileName])
+        setComposer(nextComposer)
+        setComposerCursor(
+          clampCollapsedComposerCursor(nextComposer, Number.POSITIVE_INFINITY),
+        )
+      }
     },
-    [addComposerImages],
+    [addComposerImages, composer, input.workspaceId, setComposer, setComposerCursor, workspaceRoot],
   )
 
   return {

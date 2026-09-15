@@ -401,7 +401,7 @@ function AgentTimeLabel(props: { threadId?: string | null }) {
     <span
       className={cn(
         "text-[12px] ml-auto shrink-0",
-        "text-muted-foreground/40 group-hover:text-foreground/72 dark:group-hover:text-foreground/82 transition-colors"
+        "text-muted-foreground/40 group-hover/tile:text-foreground/72 dark:group-hover/tile:text-foreground/82 transition-colors"
       )}
     >
       {formatRelativeTimeLabel(timestamp)}
@@ -482,7 +482,7 @@ function AgentTileRow(props: {
       data-sidebar-tile-type="assistantChat"
       data-sidebar-tile-active={isActiveTile || undefined}
       data-sidebar-tile-activity={activity !== "idle" ? activity : undefined}
-      className={cn("relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS, isActiveTile && SIDEBAR_PILL_ACTIVE_CLASS)}
+      className={cn("group/tile relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS, isActiveTile && SIDEBAR_PILL_ACTIVE_CLASS)}
       onClick={onOpen}
     >
       <div className="absolute left-[16px] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">

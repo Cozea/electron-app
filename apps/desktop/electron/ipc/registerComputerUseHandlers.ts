@@ -15,11 +15,13 @@ export function registerComputerUseHandlers(
     async (_event, target: 'accessibility' | 'screenRecording') => {
       if (process.platform !== 'darwin') return
 
-      // The permission request originates from the same signed Cozea process
-      // that later calls Accessibility / ScreenCaptureKit through the loaded
-      // OpenComputerUseKit bridge. This keeps TCC ownership on Cozea rather
-      // than Terminal, Node, or a separately installed OCU app.
-      const granted = service.requestPermission(target)
+      // TCC grants attach to the embedded driver's own code identity
+      // (Developer ID Application: Cua AI, Inc.), because the supervised
+      // driver process — not Cozea — invokes the Accessibility and
+      // ScreenCapture APIs. The status check below queries the running
+      // embedded daemon; when a grant is missing, the user enables the
+      // driver's entry in System Settings.
+      const granted = await service.requestPermission(target)
       if (granted) return
 
       const url =

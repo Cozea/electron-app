@@ -67,6 +67,7 @@ export interface WorkLogEntry {
    * `result`, which is enough to show what was actually called.
    */
   toolData?: unknown;
+  toolIcon?: { _tag: "website"; pageUrl: string };
 }
 
 export interface PendingApproval {
@@ -92,6 +93,7 @@ export interface ActivePlanState {
   steps: Array<{
     step: string;
     status: "pending" | "inProgress" | "completed";
+    durationMs?: number;
   }>;
 }
 
@@ -399,9 +401,11 @@ export function deriveActivePlanState(
       }
       const status =
         record.status === "completed" || record.status === "inProgress" ? record.status : "pending";
+      const durationMs = typeof record.durationMs === "number" ? record.durationMs : undefined;
       return {
         step: record.step,
         status,
+        ...(durationMs !== undefined ? { durationMs } : {}),
       };
     })
     .filter(
@@ -410,6 +414,7 @@ export function deriveActivePlanState(
       ): step is {
         step: string;
         status: "pending" | "inProgress" | "completed";
+        durationMs?: number;
       } => step !== null,
     );
   if (steps.length === 0) {

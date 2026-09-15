@@ -163,7 +163,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
           direction: "outgoing",
           stage: "raw",
           payload:
-            '{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"session-1"},"id":"","headers":[]}\n',
+            '{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"session-1"},"id":""}\n',
         },
       ]);
     }),
@@ -203,7 +203,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       const outbound = yield* Queue.take(output);
       assert.deepEqual(yield* Schema.decodeEffect(Schema.fromJsonString(ExtRequest))(outbound), {
         jsonrpc: "2.0",
-        id: 1,
+        id: "1",
         method: "x/test",
         params: {
           hello: "world",
@@ -215,7 +215,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         input,
         yield* encodeJsonl(ExtResponse, {
           jsonrpc: "2.0",
-          id: 1,
+          id: "1",
           result: {
             ok: true,
           },
@@ -261,7 +261,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       const message = yield* Deferred.await(inboundRequest);
       assert.deepEqual(message, {
         _tag: "Request",
-        id: "0",
+        id: 0,
         tag: "session/request_permission",
         payload: {
           sessionId: "session-1",
@@ -293,7 +293,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         yield* Schema.decodeEffect(Schema.fromJsonString(RequestPermissionResponse))(outbound),
         {
           jsonrpc: "2.0",
-          id: 0,
+          id: "0",
           result: {
             outcome: {
               outcome: "selected",
@@ -315,7 +315,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       const lateResponse = yield* Deferred.make<unknown>();
 
       yield* transport.clientProtocol
-        .run((message) => Deferred.succeed(lateResponse, message).pipe(Effect.asVoid))
+        .run(0, (message) => Deferred.succeed(lateResponse, message).pipe(Effect.asVoid))
         .pipe(Effect.forkScoped);
 
       const response = yield* transport
@@ -324,7 +324,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       const outbound = yield* Queue.take(output);
       assert.deepEqual(yield* Schema.decodeEffect(Schema.fromJsonString(ExtRequest))(outbound), {
         jsonrpc: "2.0",
-        id: 1,
+        id: "1",
         method: "x/test",
         params: {
           hello: "world",
@@ -337,7 +337,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
         input,
         yield* encodeJsonl(ExtResponse, {
           jsonrpc: "2.0",
-          id: 1,
+          id: "1",
           result: {
             ok: true,
           },
@@ -371,7 +371,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       });
 
       yield* transport.clientProtocol
-        .run((message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
+        .run(0, (message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
         .pipe(Effect.forkScoped);
 
       const message = yield* Deferred.await(firstMessage);
@@ -405,7 +405,7 @@ it.layer(NodeServices.layer)("effect-acp protocol", (it) => {
       });
 
       yield* transport.clientProtocol
-        .run((message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
+        .run(0, (message) => Deferred.succeed(firstMessage, message).pipe(Effect.asVoid))
         .pipe(Effect.forkScoped);
 
       const message = yield* Deferred.await(firstMessage);

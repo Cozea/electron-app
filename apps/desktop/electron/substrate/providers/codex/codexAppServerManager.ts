@@ -20,7 +20,7 @@ import {
   ProviderInteractionMode,
 } from "@cozea/assistant-contracts";
 import { normalizeModelSlug } from "@cozea/assistant-shared/model";
-import { Effect, ServiceMap } from "effect";
+import { Context, Effect } from "effect";
 
 import {
   formatCodexCliUpgradeMessage,
@@ -527,7 +527,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
   private readonly sessions = new Map<ThreadId, CodexSessionContext>();
 
   private runPromise: (effect: Effect.Effect<unknown, never>) => Promise<unknown>;
-  constructor(services?: ServiceMap.ServiceMap<never>) {
+  constructor(services?: Context.Context<never>) {
     super();
     this.runPromise = services ? Effect.runPromiseWith(services) : Effect.runPromise;
   }

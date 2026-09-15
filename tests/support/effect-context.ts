@@ -1,1 +1,1 @@
-export { Service } from "effect/ServiceMap";
+export { Service } from "effect/Context";

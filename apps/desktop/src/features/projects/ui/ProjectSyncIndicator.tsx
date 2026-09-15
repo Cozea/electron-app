@@ -29,7 +29,7 @@ interface ProjectSyncIndicatorProps {
 }
 
 /** Match sidebar collapse control: muted, foreground when the control is hovered. */
-const INDICATOR_ICON_CLASS = "text-muted-foreground group-hover:text-foreground"
+const INDICATOR_ICON_CLASS = "text-muted-foreground group-hover/sync:text-foreground"
 /** Labels / counts: same base tone as the toggle (no hover on non-interactive text). */
 const INDICATOR_TEXT_CLASS = "text-muted-foreground"
 
@@ -248,7 +248,7 @@ export function ProjectSyncIndicator({
         <TooltipTrigger asChild>
           <div
             className={cn(
-              "group relative flex h-7 w-7 items-center justify-center rounded-md bg-muted/50 transition-colors duration-200 ease-out",
+              "group/sync relative flex h-7 w-7 items-center justify-center rounded-md bg-muted/50 transition-colors duration-200 ease-out",
               className,
             )}
             aria-label={`${displayState.label} - ${displayState.detail}`}
@@ -265,7 +265,7 @@ export function ProjectSyncIndicator({
                     "loader",
                     inheritPillTextColor
                       ? "text-current"
-                      : "text-muted-foreground group-hover:text-foreground",
+                      : "text-muted-foreground group-hover/sync:text-foreground",
                   )}
                 />
               ) : (
@@ -286,7 +286,7 @@ export function ProjectSyncIndicator({
       <TooltipTrigger asChild>
         <div
           className={cn(
-            "group flex items-center gap-2 px-1 py-1 transition-colors duration-200 ease-out",
+            "group/sync flex items-center gap-2 px-1 py-1 transition-colors duration-200 ease-out",
             className,
           )}
           aria-label={`${displayState.label} - ${displayState.detail}`}

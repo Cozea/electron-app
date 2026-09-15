@@ -259,9 +259,28 @@ export function ProjectSettingsPage({
         <div className="flex-1 min-h-0">
           <ScrollArea className="scroll-fade-y h-full">
             <div className="w-full min-h-full px-8 sm:px-10 pt-6 pb-12 mx-auto max-w-4xl">
-              <SettingsPageHeader
-                title={project.name}
-              />
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <SettingsPageHeader
+                  title={project.name}
+                  className="mb-0 min-w-0 flex-1"
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-xs"
+                  onClick={() => {
+                    void handleSave()
+                  }}
+                  disabled={!canSave}
+                >
+                  {isSaving ? (
+                    <div className="loader" />
+                  ) : (
+                    <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
+                  )}
+                  {isSaving ? t('settings.action.saving') : t('settings.action.save')}
+                </Button>
+              </div>
               <div className="w-full space-y-6">
                 <section>
                   <SettingsSectionTitle>{t('settings.section.general')}</SettingsSectionTitle>
@@ -434,25 +453,6 @@ export function ProjectSettingsPage({
                     </SettingsRow>
                   </SettingsDangerGroup>
                 </section>
-
-                <div className="flex justify-end pt-3">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-                    onClick={() => {
-                      void handleSave()
-                    }}
-                    disabled={!canSave}
-                  >
-                    {isSaving ? (
-                      <div className="loader" />
-                    ) : (
-                      <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
-                    )}
-                    {isSaving ? t('settings.action.saving') : t('settings.action.save')}
-                  </Button>
-                </div>
               </div>
             </div>
           </ScrollArea>

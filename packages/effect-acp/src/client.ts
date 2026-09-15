@@ -1,4 +1,4 @@
-import { ServiceMap } from "effect";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Stdio from "effect/Stdio";
 import * as Layer from "effect/Layer";
@@ -6,6 +6,7 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as RpcClient from "effect/unstable/rpc/RpcClient";
+import * as RpcMessage from "effect/unstable/rpc/RpcMessage";
 import * as RpcServer from "effect/unstable/rpc/RpcServer";
 import { ChildProcessSpawner } from "effect/unstable/process";
 
@@ -262,7 +263,7 @@ export interface AcpClientShape {
   ) => Effect.Effect<void>;
 }
 
-export class AcpClient extends ServiceMap.Service<AcpClient, AcpClientShape>()(
+export class AcpClient extends Context.Service<AcpClient, AcpClientShape>()(
   "effect-acp/AcpClient",
 ) {}
 
@@ -452,9 +453,9 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function (
     Effect.forkScoped,
   );
 
-  let nextRpcRequestId = 1n << 32n;
+  let nextRpcRequestId = 2 ** 32;
   const rpc = yield* RpcClient.make(AcpRpcs.AgentRpcs, {
-    generateRequestId: () => nextRpcRequestId++ as never,
+    generateRequestId: () => RpcMessage.RequestId(nextRpcRequestId++),
   }).pipe(Effect.provideService(RpcClient.Protocol, transport.clientProtocol));
 
   const shape: AcpClientShape = {

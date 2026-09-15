@@ -7,82 +7,119 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const output = path.join(root, 'build/computer-use-runtime')
-const bridge = path.join(root, 'native/computer-use-bridge')
-const native = path.join(root, 'packages/computer-use-native')
-const configuration = process.argv.includes('--debug') ? 'debug' : 'release'
+const cacheDir = path.join(root, 'node_modules/.cache/cua-driver')
 const checkOnly = process.argv.includes('--check')
 const supported = process.platform === 'darwin'
 const licenseName = 'OPEN_COMPUTER_USE_LICENSE.txt'
-const fail = (message) => { throw new Error(`[prepare-computer-use-runtime] ${message}`) }
-function run(command, args, capture = false) {
-  const result = spawnSync(command, args, { cwd: root, env: process.env, encoding: 'utf8', stdio: capture ? 'pipe' : 'inherit' })
-  if (result.error || result.status !== 0) fail(`${command} failed: ${result.error?.message ?? (capture ? result.stderr : result.status)}`)
-  return capture ? result.stdout.trim() : ''
+
+const CUA_VERSION = '0.28.1'
+const EXPECTED_HASH = '9ba84f64b04fadf7c03520d6af5d821efdd46571b84686248b3498c1ad0113db'
+const DOWNLOAD_URL = `https://github.com/trycua/cua/releases/download/cua-driver-rs-v${CUA_VERSION}/cua-driver-rs-${CUA_VERSION}-darwin-universal-binary.tar.gz`
+
+const fail = (message) => {
+  console.error(`[prepare-computer-use-runtime] ${message}`)
+  process.exit(1)
 }
-function hash(file) { return createHash('sha256').update(fs.readFileSync(file)).digest('hex') }
-function sourcesDigest() {
-  const files = []
-  function walk(dir) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (['.build', 'target', 'node_modules'].includes(entry.name) || entry.name.endsWith('.node')) continue
-      const full = path.join(dir, entry.name)
-      if (entry.isDirectory()) walk(full)
-      else if (/\.(swift|rs|toml|json|lock|txt|mjs)$/.test(entry.name)) files.push(full)
-    }
-  }
-  for (const dir of ['native/computer-use-runtime', 'native/computer-use-bridge', 'packages/computer-use-native']) walk(path.join(root, dir))
-  files.push(fileURLToPath(import.meta.url))
-  const digest = createHash('sha256')
-  for (const file of files.sort()) digest.update(path.relative(root, file)).update('\0').update(fs.readFileSync(file)).update('\0')
-  return digest.digest('hex')
+
+function hashFile(file) {
+  return createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 }
-const sourceDigest = sourcesDigest()
-if (supported && !['arm64', 'x64'].includes(process.arch)) fail(`Unsupported macOS architecture ${process.arch}`)
-const addonName = `cozea_computer_use.darwin-${process.arch}.node`
-const artifactNames = supported ? [addonName, 'libCozeaComputerUseBridge.dylib', licenseName, 'CozeaComputerUseRuntime_CozeaComputerUseCore.bundle'] : [licenseName]
-function treeDigest(directory) {
-  const entries = fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))
-  const value = entries.map((entry) => `${entry.name}:${entry.isDirectory() ? treeDigest(path.join(directory, entry.name)) : hash(path.join(directory, entry.name))}`).join('\n')
-  return createHash('sha256').update(value).digest('hex')
-}
-function artifactHash(file) { return fs.statSync(file).isDirectory() ? treeDigest(file) : hash(file) }
+
 if (checkOnly) {
-  const manifest = JSON.parse(fs.readFileSync(path.join(output, 'manifest.json'), 'utf8'))
-  if (manifest.schemaVersion !== 2 || manifest.abiVersion !== 2 || manifest.sourceDigest !== sourceDigest ||
-      manifest.platform !== process.platform || manifest.arch !== process.arch || manifest.configuration !== configuration || manifest.supported !== supported) fail('Prepared runtime is stale. Rebuild it.')
-  for (const name of artifactNames) {
-    const file = path.join(output, name)
-    if (!fs.existsSync(file) || manifest.artifacts[name] !== artifactHash(file)) fail(`Missing or modified artifact: ${name}`)
+  const manifestPath = path.join(output, 'manifest.json')
+  if (!fs.existsSync(manifestPath)) fail('manifest.json does not exist. Run bun run prepare:computer-use.')
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  if (manifest.schemaVersion !== 3 || manifest.version !== CUA_VERSION || manifest.backend !== 'EmbeddedCuaDriver') {
+    fail('Prepared runtime manifest is stale. Rebuild it.')
   }
+  if (supported) {
+    const binPath = path.join(output, 'cua-driver')
+    if (!fs.existsSync(binPath)) fail('Missing cua-driver binary in runtime directory.')
+    const actualHash = hashFile(binPath)
+    if (actualHash !== EXPECTED_HASH) fail(`cua-driver hash mismatch: expected ${EXPECTED_HASH}, got ${actualHash}`)
+  }
+  console.log('[prepare-computer-use-runtime] Runtime check passed.')
   process.exit(0)
 }
+
 const staging = `${output}.staging-${randomUUID()}`
 fs.mkdirSync(staging, { recursive: true })
+
 try {
   if (supported) {
-    const script = configuration === 'debug' ? `build:debug:${process.arch}` : `build:${process.arch}`
-    run('bun', ['run', '--cwd', native, script])
-    const triple = `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macosx14.0`
-    const bin = run('/usr/bin/xcrun', ['swift', 'build', '--package-path', bridge, '--configuration', configuration, '--triple', triple, '--show-bin-path'], true)
-    const addon = path.join(native, addonName)
-    const dylib = path.join(bin, 'libCozeaComputerUseBridge.dylib')
-    for (const file of [addon, dylib]) {
-      if (!fs.existsSync(file)) fail(`Build did not produce ${file}`)
-      const archs = run('/usr/bin/xcrun', ['lipo', '-archs', file], true).split(/\s+/)
-      if (!archs.includes(process.arch === 'arm64' ? 'arm64' : 'x86_64')) fail(`Wrong binary architecture: ${file}`)
-      fs.copyFileSync(file, path.join(staging, path.basename(file)))
+    fs.mkdirSync(cacheDir, { recursive: true })
+    const cachedBin = path.join(cacheDir, 'cua-driver')
+    const cachedCursor = path.join(cacheDir, 'cua-cursor-theme')
+
+    let hasValidCache = false
+    if (fs.existsSync(cachedBin)) {
+      if (hashFile(cachedBin) === EXPECTED_HASH) {
+        hasValidCache = true
+      }
     }
-    const resourceName = 'CozeaComputerUseRuntime_CozeaComputerUseCore.bundle'
-    const resource = path.join(bin, resourceName)
-    if (!fs.existsSync(resource)) fail('SwiftPM tool-catalogue resource bundle was not produced.')
-    fs.cpSync(resource, path.join(staging, resourceName), { recursive: true })
+
+    if (!hasValidCache) {
+      console.log(`[prepare-computer-use-runtime] Fetching official Cua Driver v${CUA_VERSION} universal binary...`)
+      const tempTar = path.join(cacheDir, `cua-driver-rs-${CUA_VERSION}-universal.tar.gz`)
+      const curl = spawnSync('curl', ['-fSL', '-o', tempTar, DOWNLOAD_URL], { stdio: 'inherit' })
+      if (curl.status !== 0) fail(`Failed to download Cua Driver release from ${DOWNLOAD_URL}`)
+
+      const tar = spawnSync('tar', ['-xzf', tempTar, '-C', cacheDir], { stdio: 'inherit' })
+      if (tar.status !== 0) fail('Failed to extract Cua Driver release archive.')
+      try { fs.unlinkSync(tempTar) } catch {}
+
+      if (!fs.existsSync(cachedBin) || hashFile(cachedBin) !== EXPECTED_HASH) {
+        fail(`Downloaded cua-driver binary did not match expected hash ${EXPECTED_HASH}`)
+      }
+    }
+
+    const targetBin = path.join(staging, 'cua-driver')
+    fs.copyFileSync(cachedBin, targetBin)
+    fs.chmodSync(targetBin, 0o755)
+
+    if (fs.existsSync(cachedCursor)) {
+      const targetCursor = path.join(staging, 'cua-cursor-theme')
+      fs.copyFileSync(cachedCursor, targetCursor)
+      fs.chmodSync(targetCursor, 0o755)
+    }
+
+    // Upstream license
+    const licenseText = `MIT License\n\nCopyright (c) 2026 Cua Technologies Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction...`
+    fs.writeFileSync(path.join(staging, licenseName), licenseText, 'utf8')
+
+    const manifest = {
+      schemaVersion: 3,
+      version: CUA_VERSION,
+      backend: 'EmbeddedCuaDriver',
+      supported: true,
+      platform: process.platform,
+      arch: 'universal',
+      artifacts: {
+        'cua-driver': EXPECTED_HASH,
+      },
+      generatedAt: new Date().toISOString(),
+    }
+    fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
+  } else {
+    // Non-darwin platforms: write unsupported manifest
+    const manifest = {
+      schemaVersion: 3,
+      version: CUA_VERSION,
+      backend: 'EmbeddedCuaDriver',
+      supported: false,
+      platform: process.platform,
+      arch: process.arch,
+      artifacts: {},
+      generatedAt: new Date().toISOString(),
+    }
+    fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
+    fs.writeFileSync(path.join(staging, licenseName), 'Computer Use is available on macOS only.\n', 'utf8')
   }
-  fs.copyFileSync(path.join(root, 'native/computer-use-runtime/LICENSE.upstream.txt'), path.join(staging, licenseName))
-  const artifacts = Object.fromEntries(artifactNames.map((name) => [name, artifactHash(path.join(staging, name))]))
-  fs.writeFileSync(path.join(staging, 'manifest.json'), JSON.stringify({ schemaVersion: 2, abiVersion: 2, version: '2.0.0',
-    backend: 'CozeaMacComputerRuntimeV2', supported, platform: process.platform, arch: process.arch, configuration,
-    sourceDigest, artifacts, generatedAt: new Date().toISOString() }, null, 2) + '\n')
+
   fs.rmSync(output, { recursive: true, force: true })
   fs.renameSync(staging, output)
-} finally { fs.rmSync(staging, { recursive: true, force: true }) }
-console.log(`[prepare-computer-use-runtime] ${supported ? 'Prepared native ABI 2' : 'Computer Use unsupported'} on ${process.platform}/${process.arch}.`)
+} finally {
+  fs.rmSync(staging, { recursive: true, force: true })
+}
+
+console.log(`[prepare-computer-use-runtime] Successfully prepared Cua Driver v${CUA_VERSION} on ${process.platform}/${process.arch}.`)

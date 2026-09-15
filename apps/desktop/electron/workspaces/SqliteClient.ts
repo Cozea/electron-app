@@ -17,12 +17,12 @@ import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import * as ServiceMap from "effect/ServiceMap";
+import * as Context from "effect/Context";
 import * as Stream from "effect/Stream";
 import * as Reactivity from "effect/unstable/reactivity/Reactivity";
 import * as Client from "@effect/sql/SqlClient";
 import type { Connection } from "@effect/sql/SqlConnection";
-import { SqlError } from "@effect/sql/SqlError";
+import { SqlError, classifySqliteError } from "@effect/sql/SqlError";
 import * as Statement from "@effect/sql/Statement";
 
 const ATTR_DB_SYSTEM_NAME = "db.system.name";
@@ -30,7 +30,7 @@ const ATTR_DB_SYSTEM_NAME = "db.system.name";
 export const TypeId: TypeId = "~local/sqlite-node/WorkspaceSqliteClient";
 export type TypeId = "~local/sqlite-node/WorkspaceSqliteClient";
 
-export const WorkspaceSqliteClient = ServiceMap.Service<Client.SqlClient>(
+export const WorkspaceSqliteClient = Context.Service<Client.SqlClient>(
   "cozea/workspaces/SqliteClient",
 );
 
@@ -99,7 +99,9 @@ const makeWithDatabase = (
           Effect.try({
             try: () => db.prepare(sql),
             catch: (cause) =>
-              new SqlError({ cause, message: "Failed to prepare statement" }),
+              new SqlError({
+                reason: classifySqliteError(cause, { message: "Failed to prepare statement" }),
+              }),
           }),
       });
 
@@ -110,7 +112,7 @@ const makeWithDatabase = (
       ) =>
         Effect.withFiber<ReadonlyArray<any>, SqlError>((fiber) => {
           statement.setReadBigInts(
-            Boolean(ServiceMap.get(fiber.services, Client.SafeIntegers)),
+            Boolean(Context.get(fiber.context, Client.SafeIntegers)),
           );
           try {
             if (hasRows(statement)) {
@@ -122,7 +124,9 @@ const makeWithDatabase = (
             );
           } catch (cause) {
             return Effect.fail(
-              new SqlError({ cause, message: "Failed to execute statement" }),
+              new SqlError({
+                reason: classifySqliteError(cause, { message: "Failed to execute statement" }),
+              }),
             );
           }
         });
@@ -149,8 +153,9 @@ const makeWithDatabase = (
               },
               catch: (cause) =>
                 new SqlError({
-                  cause,
-                  message: "Failed to execute statement",
+                  reason: classifySqliteError(cause, {
+                    message: "Failed to execute statement",
+                  }),
                 }),
             }),
           (statement) =>
@@ -187,7 +192,7 @@ const makeWithDatabase = (
     const acquirer = semaphore.withPermits(1)(Effect.succeed(connection));
     const transactionAcquirer = Effect.uninterruptibleMask((restore) => {
       const fiber = Fiber.getCurrent()!;
-      const scope = ServiceMap.getUnsafe(fiber.services, Scope.Scope);
+      const scope = Context.getUnsafe(fiber.context, Scope.Scope);
       return Effect.as(
         Effect.tap(restore(semaphore.take(1)), () =>
           Scope.addFinalizer(scope, semaphore.release(1)),
@@ -229,24 +234,24 @@ const makeMemory = (
 export const layerConfig = (
   config: Config.Wrap<SqliteClientConfig>,
 ): Layer.Layer<Client.SqlClient, Config.ConfigError> =>
-  Layer.effectServices(
+  Layer.effectContext(
     Config.unwrap(config)
       .asEffect()
       .pipe(
         Effect.flatMap(make),
         Effect.map((client) =>
-          ServiceMap.make(WorkspaceSqliteClient, client).pipe(
-            ServiceMap.add(Client.SqlClient, client),
+          Context.make(WorkspaceSqliteClient, client).pipe(
+            Context.add(Client.SqlClient, client),
           ),
         ),
       ),
   ).pipe(Layer.provide(Reactivity.layer));
 
 export const layer = (config: SqliteClientConfig): Layer.Layer<Client.SqlClient> =>
-  Layer.effectServices(
+  Layer.effectContext(
     Effect.map(make(config), (client) =>
-      ServiceMap.make(WorkspaceSqliteClient, client).pipe(
-        ServiceMap.add(Client.SqlClient, client),
+      Context.make(WorkspaceSqliteClient, client).pipe(
+        Context.add(Client.SqlClient, client),
       ),
     ),
   ).pipe(Layer.provide(Reactivity.layer));
@@ -254,10 +259,10 @@ export const layer = (config: SqliteClientConfig): Layer.Layer<Client.SqlClient>
 export const layerMemory = (
   config: SqliteMemoryClientConfig = {},
 ): Layer.Layer<Client.SqlClient> =>
-  Layer.effectServices(
+  Layer.effectContext(
     Effect.map(makeMemory(config), (client) =>
-      ServiceMap.make(WorkspaceSqliteClient, client).pipe(
-        ServiceMap.add(Client.SqlClient, client),
+      Context.make(WorkspaceSqliteClient, client).pipe(
+        Context.add(Client.SqlClient, client),
       ),
     ),
   ).pipe(Layer.provide(Reactivity.layer));

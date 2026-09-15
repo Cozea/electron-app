@@ -176,18 +176,24 @@ export function registerProjectHandlers(
     'project:listGitBranches',
     async (_event, { workspaceId }: { workspaceId: string }) => {
       let projectPath: string
+      let hasKnownGit = false
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'git-read' })
         projectPath = access.gitRootPath ?? access.projectRootPath
+        hasKnownGit = Boolean(access.gitRootPath)
       } catch (e) {
         return { success: false, isRepo: false, hasOriginRemote: false, branches: [], error: String(e) }
       }
       try {
         const client = getSharedProjectdClient()
-        return await client.gitProjectBranches(projectPath)
+        const result = await client.gitProjectBranches(projectPath)
+        return {
+          ...result,
+          isRepo: hasKnownGit || result.isRepo,
+        }
       } catch (err: any) {
         return {
-          isRepo: false,
+          isRepo: hasKnownGit,
           hasOriginRemote: false,
           branches: [],
           error: err?.message ?? 'Failed to list git branches through canonical GitService',

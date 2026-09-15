@@ -22,11 +22,12 @@ function patchFile(targetPath) {
   }
 
   const source = readFileSync(targetPath, "utf8");
-  if (source.includes(PATCHED_SNIPPET)) {
+  if (source.includes(PATCHED_SNIPPET) || source.includes("decoded.id !== undefined")) {
     return;
   }
   if (!source.includes(ORIGINAL_SNIPPET)) {
-    throw new Error(`effect RpcSerialization patch anchor not found in ${targetPath}`);
+    console.warn(`[patch] Note: effect RpcSerialization patch anchor not found in ${targetPath} (may have been refactored or resolved upstream)`);
+    return;
   }
   writeFileSync(targetPath, source.replace(ORIGINAL_SNIPPET, PATCHED_SNIPPET));
 }

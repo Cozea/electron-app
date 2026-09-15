@@ -1,4 +1,4 @@
-/** @generated from vendor/t3code/packages/contracts @ f2df43a98bc42936dd2a031d832c8c4dae53398a; run scripts/vendor/sync-t3-contracts.mjs */
+/** @generated from vendor/t3code/packages/contracts @ 53fc2f7efd2df38f0388d7fa94ec3456d6f2a33c; run scripts/vendor/sync-t3-contracts.mjs */
 import * as Schema from "effect/Schema";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
@@ -88,14 +88,14 @@ export interface VcsProcessExitFailure {
   readonly stderrTruncated: boolean;
 }
 
-export class VcsProcessSpawnError extends Schema.TaggedErrorClass<VcsProcessSpawnError>()(
+export class VcsProcessSpawnError extends Schema.TaggedError<VcsProcessSpawnError>()(
   "VcsProcessSpawnError",
   {
     operation: Schema.String,
     command: Schema.String,
     cwd: Schema.String,
     argumentCount: Schema.optional(NonNegativeInt),
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
@@ -110,7 +110,7 @@ export class VcsProcessSpawnError extends Schema.TaggedErrorClass<VcsProcessSpaw
   }
 }
 
-export class VcsProcessExitError extends Schema.TaggedErrorClass<VcsProcessExitError>()(
+export class VcsProcessExitError extends Schema.TaggedError<VcsProcessExitError>()(
   "VcsProcessExitError",
   {
     operation: Schema.String,
@@ -157,7 +157,7 @@ export class VcsProcessExitError extends Schema.TaggedErrorClass<VcsProcessExitE
   }
 }
 
-export class VcsProcessTimeoutError extends Schema.TaggedErrorClass<VcsProcessTimeoutError>()(
+export class VcsProcessTimeoutError extends Schema.TaggedError<VcsProcessTimeoutError>()(
   "VcsProcessTimeoutError",
   {
     operation: Schema.String,
@@ -186,12 +186,12 @@ const VcsProcessBoundaryErrorFields = {
   argumentCount: Schema.optional(NonNegativeInt),
 };
 
-export class VcsProcessStdinWriteError extends Schema.TaggedErrorClass<VcsProcessStdinWriteError>()(
+export class VcsProcessStdinWriteError extends Schema.TaggedError<VcsProcessStdinWriteError>()(
   "VcsProcessStdinWriteError",
   {
     ...VcsProcessBoundaryErrorFields,
     stdinBytes: NonNegativeInt,
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
@@ -199,12 +199,12 @@ export class VcsProcessStdinWriteError extends Schema.TaggedErrorClass<VcsProces
   }
 }
 
-export class VcsProcessOutputReadError extends Schema.TaggedErrorClass<VcsProcessOutputReadError>()(
+export class VcsProcessOutputReadError extends Schema.TaggedError<VcsProcessOutputReadError>()(
   "VcsProcessOutputReadError",
   {
     ...VcsProcessBoundaryErrorFields,
     stream: Schema.Literals(["stdout", "stderr", "exitCode"]),
-    cause: Schema.Defect,
+    cause: Schema.Defect(),
   },
 ) {
   override get message(): string {
@@ -212,7 +212,7 @@ export class VcsProcessOutputReadError extends Schema.TaggedErrorClass<VcsProces
   }
 }
 
-export class VcsProcessOutputLimitError extends Schema.TaggedErrorClass<VcsProcessOutputLimitError>()(
+export class VcsProcessOutputLimitError extends Schema.TaggedError<VcsProcessOutputLimitError>()(
   "VcsProcessOutputLimitError",
   {
     ...VcsProcessBoundaryErrorFields,
@@ -226,7 +226,7 @@ export class VcsProcessOutputLimitError extends Schema.TaggedErrorClass<VcsProce
   }
 }
 
-export class VcsProcessMissingExitCodeError extends Schema.TaggedErrorClass<VcsProcessMissingExitCodeError>()(
+export class VcsProcessMissingExitCodeError extends Schema.TaggedError<VcsProcessMissingExitCodeError>()(
   "VcsProcessMissingExitCodeError",
   VcsProcessBoundaryErrorFields,
 ) {
@@ -243,13 +243,13 @@ export const VcsOutputDecodeError = Schema.Union([
 ]);
 export type VcsOutputDecodeError = typeof VcsOutputDecodeError.Type;
 
-export class VcsRepositoryDetectionError extends Schema.TaggedErrorClass<VcsRepositoryDetectionError>()(
+export class VcsRepositoryDetectionError extends Schema.TaggedError<VcsRepositoryDetectionError>()(
   "VcsRepositoryDetectionError",
   {
     operation: Schema.String,
     cwd: Schema.String,
     detail: Schema.String,
-    cause: Schema.optional(Schema.Defect),
+    cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
@@ -257,7 +257,7 @@ export class VcsRepositoryDetectionError extends Schema.TaggedErrorClass<VcsRepo
   }
 }
 
-export class VcsUnsupportedOperationError extends Schema.TaggedErrorClass<VcsUnsupportedOperationError>()(
+export class VcsUnsupportedOperationError extends Schema.TaggedError<VcsUnsupportedOperationError>()(
   "VcsUnsupportedOperationError",
   {
     operation: Schema.String,

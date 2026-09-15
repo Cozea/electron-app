@@ -99,9 +99,9 @@
     "@cozea/pty": "workspace:*",
     "@cozea/substrate-client-runtime": "workspace:*",
     "@cozea/substrate-contracts": "workspace:*",
-    "@effect/platform-node": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/platform-node@8881a9b",
+    "@effect/platform-node": "4.0.0-rc.112",
     "@effect/sql": "workspace:*",
-    "@effect/sql-sqlite-bun": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/sql-sqlite-bun@8881a9b",
+    "@effect/sql-sqlite-bun": "4.0.0-rc.112",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource/inter": "^5.2.8",
     "@hugeicons/core-free-icons": "^4.1.1",
@@ -162,7 +162,7 @@
     "diff-match-patch": "^1.0.5",
     "dockview-react": "^7.0.4",
     "driver.js": "^1.8.0",
-    "effect": "https://pkg.pr.new/Effect-TS/effect-smol/effect@8881a9b",
+    "effect": "4.0.0-rc.112",
     "electron-updater": "^6.7.3",
     "electron-window-state": "^5.0.3",
     "get-port": "^5.1.1",
@@ -201,7 +201,7 @@
     "zustand": "^5.0.10"
   },
   "devDependencies": {
-    "@effect/vitest": "https://pkg.pr.new/Effect-TS/effect-smol/@effect/vitest@8881a9b",
+    "@effect/vitest": "4.0.0-rc.112",
     "@electron/osx-sign": "^2.3.0",
     "@railway/cli": "^4.29.0",
     "@tailwindcss/vite": "^4.1.18",
@@ -232,6 +232,9 @@
     "vitest": "^4.0.18"
   },
   "packageManager": "bun@1.4.0",
+  "overrides": {
+    "@effect/platform-node-shared": "4.0.0-rc.112"
+  },
   "patchedDependencies": {
     "dockview-core@7.0.4": "patches/dockview-core@7.0.4.patch"
   }

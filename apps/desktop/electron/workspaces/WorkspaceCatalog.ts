@@ -3,7 +3,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
-import * as ServiceMap from "effect/ServiceMap"
+import * as Context from "effect/Context"
 import * as SqlClient from "@effect/sql/SqlClient"
 
 import type {
@@ -335,7 +335,7 @@ export interface WorkspaceCatalogInterface {
   readonly setSetting: (key: string, value: string) => Effect.Effect<void>
 }
 
-export class WorkspaceCatalog extends ServiceMap.Service<WorkspaceCatalog, WorkspaceCatalogInterface>()(
+export class WorkspaceCatalog extends Context.Service<WorkspaceCatalog, WorkspaceCatalogInterface>()(
   "cozea/workspaces/WorkspaceCatalog",
 ) {}
 

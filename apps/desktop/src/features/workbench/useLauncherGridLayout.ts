@@ -9,7 +9,7 @@ import {
 
 export function useLauncherGridLayout(
   itemCount: number,
-  isSingletonEmpty: boolean = false,
+  maxRows: number = 2,
 ): [RefCallback<HTMLDivElement>, WorkbenchSelectionLauncherLayout] {
   const [layout, setLayout] = useState<WorkbenchSelectionLauncherLayout>(() =>
     computeWorkbenchSelectionLauncherLayout({
@@ -21,7 +21,7 @@ export function useLauncherGridLayout(
       columnGap: LAUNCHER_CONFIG.columnGap,
       rowGap: LAUNCHER_CONFIG.rowGap,
       maxColumns: LAUNCHER_CONFIG.maxColumns,
-      maxRows: isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY,
+      maxRows,
     }),
   )
 
@@ -31,7 +31,6 @@ export function useLauncherGridLayout(
     if (!viewport) return
     const recalculate = () => {
       const viewportRect = viewport.getBoundingClientRect()
-      const effectiveMaxRows = isSingletonEmpty ? 2 : Number.POSITIVE_INFINITY
       const nextLayout = computeWorkbenchSelectionLauncherLayout({
         width: viewportRect.width,
         height: viewportRect.height,
@@ -41,7 +40,7 @@ export function useLauncherGridLayout(
         columnGap: LAUNCHER_CONFIG.columnGap,
         rowGap: LAUNCHER_CONFIG.rowGap,
         maxColumns: LAUNCHER_CONFIG.maxColumns,
-        maxRows: effectiveMaxRows,
+        maxRows,
       })
       setLayout((current) =>
         areWorkbenchSelectionLauncherLayoutsEqual(current, nextLayout)
@@ -53,7 +52,7 @@ export function useLauncherGridLayout(
     const ro = new ResizeObserver(recalculate)
     ro.observe(viewport)
     return () => ro.disconnect()
-  }, [isSingletonEmpty, itemCount])
+  }, [itemCount, maxRows])
 
   return [ref, layout]
 }

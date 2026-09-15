@@ -132,6 +132,7 @@ Create a CircleCI context named `cozea-release` with these environment variables
 - `APPLE_TEAM_ID`
 - `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH` when runtime metadata signing is enabled
 - `COZEA_RUNTIME_SIGNING_PUBLIC_KEY` when runtime metadata verification material needs to be regenerated
+- Sentry (optional): `VITE_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — monitoring stays inert and source-map upload is skipped when these are unset
 
 `CSC_LINK` may be a URL, `file://` path, local path on the runner, or base64/base64-prefixed P12 payload. For CircleCI, prefer a masked base64 secret.
 

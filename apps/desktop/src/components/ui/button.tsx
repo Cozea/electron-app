@@ -25,6 +25,10 @@ const buttonVariants = cva(
           "border-transparent bg-secondary text-secondary-foreground [:active,[data-pressed]]:bg-secondary/80 [:hover,[data-pressed]]:bg-secondary/90",
         ghost:
           "border-transparent text-foreground data-pressed:bg-accent [:hover,[data-pressed]]:bg-accent",
+        "ghost-muted":
+          "border-transparent text-muted-foreground data-pressed:bg-accent [:hover,[data-pressed]]:bg-accent [:hover,[data-pressed]]:text-foreground",
+        glass:
+          "backdrop-blur-md bg-background/80 border-border/60 text-foreground shadow-sm [:hover,[data-pressed]]:border-border [:hover,[data-pressed]]:bg-background/90",
         link: "border-transparent underline-offset-4 [:hover,[data-pressed]]:underline",
       },
       size: {

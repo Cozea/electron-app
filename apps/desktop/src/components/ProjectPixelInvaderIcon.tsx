@@ -293,14 +293,38 @@ export const RETRO_ARCADE_COLORS: readonly string[] = [
   "var(--cozea-arcade-12)", // Yellow
 ]
 
-function hashString(str: string): number {
-  let hash = 0
+/**
+ * 32-bit MurmurHash3 implementation for uniform sprite and color distribution.
+ * Provides full avalanche properties so similar or sequential project names
+ * (e.g. test-a, test-b) receive distinctly varied sprites and colors.
+ */
+function hashString(str: string, seed = 0): number {
+  let h1 = seed >>> 0
+  const c1 = 0xcc9e2d51
+  const c2 = 0x1b873593
+
   for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i)
-    hash |= 0
+    let k1 = str.charCodeAt(i)
+    k1 = Math.imul(k1, c1)
+    k1 = (k1 << 15) | (k1 >>> 17)
+    k1 = Math.imul(k1, c2)
+
+    h1 ^= k1
+    h1 = (h1 << 13) | (h1 >>> 19)
+    h1 = (Math.imul(h1, 5) + 0xe6546b64) >>> 0
   }
-  return Math.abs(hash)
+
+  h1 ^= str.length
+  h1 ^= h1 >>> 16
+  h1 = Math.imul(h1, 0x85ebca6b) >>> 0
+  h1 ^= h1 >>> 13
+  h1 = Math.imul(h1, 0xc2b2ae35) >>> 0
+  h1 ^= h1 >>> 16
+
+  return h1 >>> 0
 }
+
+const COLOR_HASH_SEED = 0x9e3779b9
 
 interface PrecomputedSprite {
   id: string
@@ -371,7 +395,13 @@ export const ProjectPixelInvaderIcon = React.memo(function ProjectPixelInvaderIc
     return gathered
   }, [enabledSets, forceSetId])
 
-  const hash = React.useMemo(() => hashString(name || "project"), [name])
+  const { spriteHash, colorHash } = React.useMemo(() => {
+    const key = name || "project"
+    return {
+      spriteHash: hashString(key, 0),
+      colorHash: hashString(key, COLOR_HASH_SEED),
+    }
+  }, [name])
 
   // Every set disabled: fall back to the plain library folder icon. The folder
   // deliberately stays still even while the project is executing — the row's
@@ -386,11 +416,11 @@ export const ProjectPixelInvaderIcon = React.memo(function ProjectPixelInvaderIc
     )
   }
 
-  const spriteIndex = (forceSetId ? (sampleIndex ?? 0) : hash) % sprites.length
+  const spriteIndex = (forceSetId ? (sampleIndex ?? 0) : spriteHash) % sprites.length
   const sprite = sprites[spriteIndex]
   const colorIndex = forceSetId
-    ? spriteIndex % RETRO_ARCADE_COLORS.length
-    : Math.floor(hash / sprites.length) % RETRO_ARCADE_COLORS.length
+    ? (sampleIndex ?? spriteIndex) % RETRO_ARCADE_COLORS.length
+    : colorHash % RETRO_ARCADE_COLORS.length
   const color = colorOverride ?? RETRO_ARCADE_COLORS[colorIndex]
 
   // `style.color` exists for the keyframes: the glow and flare steps reach for

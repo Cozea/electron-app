@@ -158,10 +158,93 @@ export function patchT3ComputerUseSource({
     'Effect.catchCause((cause) => {\n                const error = Cause.squash(cause);\n                const message = error instanceof Error ? error.message : String(error);\n                return Effect.succeed(backendFailure(message || "Computer Use failed."));\n              })',
   );
 
+  // The T3 backend call must outlive the Electron broker's 35s action budget
+  // (CALL_TIMEOUT_MS) so the broker's authoritative timeout wins over a
+  // client-side fetch abort. The turn-ended call keeps its own shorter budget.
+  const timeoutMatches = code.match(/AbortSignal\.timeout\(30_000\)/g) ?? [];
+  if (timeoutMatches.length > 1) fail('Computer Use backend timeout anchor is ambiguous; review the T3 pin.');
+  if (timeoutMatches.length === 1) {
+    code = code.replace('AbortSignal.timeout(30_000)', 'AbortSignal.timeout(40_000)');
+  }
+
   if (code === originalCode) return false;
   if (checkOnly) fail("Computer Use source is stale; run preparation without --check to apply the v2 contract.");
   fs.writeFileSync(sourcePath, code);
   console.log("[prepare-t3-runtime] Patched Cozea Computer Use v2 contract and Effect compatibility.");
+  return true;
+}
+
+const COZEA_COMPUTER_USE_TEST_PATCHES = [
+  {
+    label: "vendor test names the canonical contract",
+    original: 'it("mirrors the pinned open-computer-use v0.3.3 tool surface", () => {',
+    patched: 'it("mirrors the canonical Cozea computer-use tool surface", () => {',
+  },
+  {
+    label: "vendor test tolerates catalogue ordering",
+    original:
+      "  expect(COMPUTER_USE_TOOLS.map((tool) => tool.name)).toEqual(EXPECTED_TOOLS);",
+    patched:
+      "  expect(COMPUTER_USE_TOOLS.map((tool) => tool.name).sort()).toEqual(EXPECTED_TOOLS);",
+  },
+  {
+    label: "vendor test matches v2 mutation annotations",
+    original: 'it("keeps state discovery read-only and actions non-open-world", () => {',
+    patched: 'it("keeps state discovery read-only and marks actions destructive", () => {',
+  },
+  {
+    label: "vendor test asserts v2 annotation values",
+    original: `  for (const name of EXPECTED_TOOLS) {
+    expect(byName.get(name)?.annotations.openWorldHint).toBe(false);
+    expect(byName.get(name)?.annotations.destructiveHint).toBe(false);
+  }`,
+    patched: `  for (const name of EXPECTED_TOOLS) {
+    const annotations = byName.get(name)?.annotations;
+    if (name === "list_apps" || name === "get_app_state") {
+      expect(annotations?.readOnlyHint).toBe(true);
+      expect(annotations?.destructiveHint).toBe(false);
+      expect(annotations?.openWorldHint).toBe(false);
+    } else {
+      expect(annotations?.readOnlyHint).toBe(false);
+      expect(annotations?.destructiveHint).toBe(true);
+      expect(annotations?.openWorldHint).toBe(true);
+    }
+  }`,
+  },
+  {
+    label: "vendor test matches the v2 click_method enum",
+    original: `  expect(properties?.click_method?.enum).toEqual([
+    "auto",
+    "accessibility",
+    "app_post",
+    "sky_click",
+    "global",
+  ]);`,
+    patched: `  expect(properties?.click_method?.enum).toEqual(["auto", "global"]);`,
+  },
+];
+
+export function patchT3ComputerUseTest({
+  checkOnly = false,
+  sourcePath = path.join(serverRoot, "src", "mcp", "toolkits", "computerUse.test.ts"),
+} = {}) {
+  if (!fs.existsSync(sourcePath)) {
+    if (checkOnly) fail("Computer Use test source is missing; prepare the pinned T3 checkout first.");
+    return false;
+  }
+  let code = fs.readFileSync(sourcePath, "utf8");
+  const originalCode = code;
+  for (const patch of COZEA_COMPUTER_USE_TEST_PATCHES) {
+    if (code.includes(patch.patched)) continue;
+    if (!code.includes(patch.original)) {
+      fail(`${patch.label} patch anchor is missing; refresh the Cozea T3 runtime patch.`);
+    }
+    code = code.replace(patch.original, patch.patched);
+  }
+  if (code === originalCode) return false;
+  if (checkOnly) fail("Computer Use test source is stale; run preparation without --check to apply the v2 contract.");
+  fs.writeFileSync(sourcePath, code);
+  console.log("[prepare-t3-runtime] Patched Cozea Computer Use v2 test expectations.");
   return true;
 }
 
@@ -198,6 +281,17 @@ export function patchT3ServerBundleComputerUse(source) {
   return { source: patchedSource, changed };
 }
 
+export function patchT3ServerBundleUpstreamBug(source) {
+  const target = "\tprojectQuestionToolInput(data, payload.title);\n";
+  if (!source.includes(target)) {
+    return { source, changed: false };
+  }
+  return {
+    source: source.replace(target, ""),
+    changed: true,
+  };
+}
+
 function applyCozeaT3RuntimePatches({ checkOnly }) {
   const source = fs.readFileSync(serverBundle, "utf8");
   const providerDefaults = patchT3ServerBundleProviderDefaults(source);
@@ -205,7 +299,11 @@ function applyCozeaT3RuntimePatches({ checkOnly }) {
   const mediaContainment = patchT3ServerBundleMediaContainment(providerUpdates.source);
   const compatibility = patchT3ServerBundleComputerUse(mediaContainment.source);
   const contract = patchComputerUseContract(compatibility.source);
-  const computerUse = { source: contract.source, changed: compatibility.changed || contract.changed };
+  const upstreamBug = patchT3ServerBundleUpstreamBug(contract.source);
+  const computerUse = {
+    source: upstreamBug.source,
+    changed: compatibility.changed || contract.changed || upstreamBug.changed,
+  };
   const changed =
     providerDefaults.changed ||
     providerUpdates.changed ||
@@ -281,6 +379,93 @@ export function sanitizePortableRuntimeSymlinks(runtimeRoot) {
   return removed;
 }
 
+export function prunePackagedRuntimeArtifacts(runtimeRoot, options = {}) {
+  const targetPlatform = options.platform ?? process.platform;
+  const targetArch = options.arch ?? process.arch;
+  const removed = [];
+
+  const nodeModulesRoot = path.join(runtimeRoot, "node_modules");
+  const pnpmStoreRoot = path.join(nodeModulesRoot, "pnpm-store");
+  if (!fs.existsSync(pnpmStoreRoot)) {
+    return removed;
+  }
+
+  const pruneDirectory = (dirPath) => {
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      removed.push(path.relative(runtimeRoot, dirPath));
+    }
+  };
+
+  // 1. Prune unused native prebuilds in node-pty.
+  // On darwin, win32-arm64 and win32-x64 prebuilds account for ~58 MB of unused Windows binaries.
+  const removeUnusedPrebuilds = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "prebuilds" && entryPath.includes("node-pty")) {
+          if (targetPlatform === "darwin") {
+            pruneDirectory(path.join(entryPath, "win32-arm64"));
+            pruneDirectory(path.join(entryPath, "win32-x64"));
+          } else if (targetPlatform === "win32") {
+            pruneDirectory(path.join(entryPath, "darwin-arm64"));
+            pruneDirectory(path.join(entryPath, "darwin-x64"));
+          }
+        } else {
+          removeUnusedPrebuilds(entryPath);
+        }
+      }
+    }
+  };
+  removeUnusedPrebuilds(nodeModulesRoot);
+
+  // 2. Prune unused foreign OS packages in pnpm-store:
+  // e.g. @ff-labs+fff-bin-*, @yuuang+ffi-rs-*, @msgpackr-extract+msgpackr-extract-*
+  const isForeignPackage = (name) => {
+    if (targetPlatform === "darwin") {
+      if (name.includes("linux-") || name.includes("win32-")) return true;
+      if (targetArch === "arm64" && options.dropOtherArch && name.includes("darwin-x64")) {
+        return true;
+      }
+    } else if (targetPlatform === "linux") {
+      if (name.includes("darwin-") || name.includes("win32-")) return true;
+    } else if (targetPlatform === "win32") {
+      if (name.includes("darwin-") || name.includes("linux-")) return true;
+    }
+    return false;
+  };
+
+  for (const entry of fs.readdirSync(pnpmStoreRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const pkgDir = path.join(pnpmStoreRoot, entry.name);
+    if (isForeignPackage(entry.name)) {
+      pruneDirectory(pkgDir);
+    }
+  }
+
+  // 3. Clean up broken symlinks resulting from removed optional foreign packages
+  const removeBrokenSymlinks = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        try {
+          fs.statSync(entryPath);
+        } catch {
+          fs.unlinkSync(entryPath);
+          removed.push(path.relative(runtimeRoot, entryPath));
+        }
+        continue;
+      }
+      if (entry.isDirectory()) {
+        removeBrokenSymlinks(entryPath);
+      }
+    }
+  };
+  removeBrokenSymlinks(nodeModulesRoot);
+
+  return removed;
+}
+
 export function parseGitlink(output) {
   const match = /^160000 commit ([0-9a-f]{40})\tvendor\/t3code\s*$/m.exec(output);
   if (!match) fail("Unable to resolve the vendor/t3code gitlink from HEAD.");
@@ -312,6 +497,9 @@ function run(command, args, options = {}) {
 }
 
 function expectedVendorPin() {
+  const staged = run("git", ["ls-files", "--stage", "--", "vendor/t3code"], { capture: true });
+  const stagedPin = staged ? staged.split(/\s+/)[1] : null;
+  if (stagedPin) return stagedPin;
   return parseGitlink(run("git", ["ls-tree", "HEAD", "--", "vendor/t3code"], { capture: true }));
 }
 
@@ -502,6 +690,11 @@ function preparePackagedRuntime(expectedPin, pnpmVersion) {
   };
   rewriteStoreLinks(nodeModulesRoot);
   sanitizePortableRuntimeSymlinks(packagedRuntimeRoot);
+  prunePackagedRuntimeArtifacts(packagedRuntimeRoot, {
+    platform: process.platform,
+    arch: process.arch,
+  });
+  sanitizePortableRuntimeSymlinks(packagedRuntimeRoot);
 
   const packagedBin = path.join(packagedRuntimeRoot, "dist", "bin.mjs");
   const result = spawnSync(process.execPath, [packagedBin, "--version"], {
@@ -549,6 +742,7 @@ export function main(argv = process.argv.slice(2)) {
   const expectedPin = expectedVendorPin();
   ensureVendorCheckout(expectedPin, options.checkOnly);
   patchT3ComputerUseSource({ checkOnly: options.checkOnly });
+  patchT3ComputerUseTest({ checkOnly: options.checkOnly });
   const sourceStamp = currentVendorSourceStamp(expectedPin);
   const pnpmVersion = readPnpmVersion();
   prepareSourceRuntime(expectedPin, sourceStamp, pnpmVersion, options);

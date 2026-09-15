@@ -804,7 +804,7 @@ export const deleteProject = mutation({
 })
 
 const PROJECT_PURGE_BATCH_SIZE = 64
-const PROJECT_PURGE_FINAL_STAGE = 31
+const PROJECT_PURGE_FINAL_STAGE = 32
 
 async function deleteRows<TableName extends TableNames>(
   ctx: MutationCtx,
@@ -1090,6 +1090,14 @@ async function deleteProjectPurgeStage(
           .take(limit),
       )
     case 30: {
+      const rows = await ctx.db
+        .query("collaborationSessionMetrics")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 31: {
       // Sessions go last, once nothing keyed by their ID remains.
       const rows = await ctx.db
         .query("collaborationSessions")

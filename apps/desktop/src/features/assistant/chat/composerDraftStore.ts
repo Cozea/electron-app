@@ -1,11 +1,15 @@
 import { type ModelSelection, type ProviderInteractionMode, type RuntimeMode } from "@cozea/assistant-contracts"
 import { create } from "zustand"
 import { createJSONStorage, persist } from "zustand/middleware"
+import type { ReviewCommentContext } from "./reviewCommentContext"
+import { type ElementContextDraft, elementContextDedupKey } from "@/features/browser/elementContext"
 
 export interface AssistantComposerDraftState {
   modelSelection?: ModelSelection
   runtimeMode?: RuntimeMode
   interactionMode?: ProviderInteractionMode
+  reviewComments?: ReadonlyArray<ReviewCommentContext>
+  elementContexts?: ReadonlyArray<ElementContextDraft>
 }
 
 interface AssistantComposerDraftStoreState {
@@ -15,6 +19,12 @@ interface AssistantComposerDraftStoreState {
   adoptDraft: (fromTargetKey: string, toTargetKey: string) => void
   clearDraft: (targetKey: string) => void
   clearDrafts: (targetKeys: readonly string[]) => void
+  addReviewComment: (targetKey: string, comment: ReviewCommentContext) => void
+  removeReviewComment: (targetKey: string, commentId: string) => void
+  clearReviewComments: (targetKey: string) => void
+  addElementContext: (targetKey: string, context: ElementContextDraft) => void
+  removeElementContext: (targetKey: string, contextId: string) => void
+  clearElementContexts: (targetKey: string) => void
 }
 
 export const useAssistantComposerDraftStore = create<AssistantComposerDraftStoreState>()(
@@ -92,6 +102,115 @@ export const useAssistantComposerDraftStore = create<AssistantComposerDraftStore
             changed = true
           }
           return changed ? { draftsByTargetKey: nextDrafts } : state
+        })
+      },
+      addReviewComment: (targetKey, comment) => {
+        if (!targetKey || !comment) return
+        set((state) => {
+          const existing = state.draftsByTargetKey[targetKey] ?? {}
+          const existingComments = existing.reviewComments ?? []
+          const filtered = existingComments.filter((entry) => entry.id !== comment.id)
+          return {
+            draftsByTargetKey: {
+              ...state.draftsByTargetKey,
+              [targetKey]: {
+                ...existing,
+                reviewComments: [...filtered, { ...comment }],
+              },
+            },
+          }
+        })
+      },
+      removeReviewComment: (targetKey, commentId) => {
+        if (!targetKey || !commentId) return
+        set((state) => {
+          const existing = state.draftsByTargetKey[targetKey]
+          if (!existing || !existing.reviewComments) return state
+          const filtered = existing.reviewComments.filter((entry) => entry.id !== commentId)
+          if (filtered.length === existing.reviewComments.length) return state
+          return {
+            draftsByTargetKey: {
+              ...state.draftsByTargetKey,
+              [targetKey]: {
+                ...existing,
+                reviewComments: filtered,
+              },
+            },
+          }
+        })
+      },
+      clearReviewComments: (targetKey) => {
+        if (!targetKey) return
+        set((state) => {
+          const existing = state.draftsByTargetKey[targetKey]
+          if (!existing || !existing.reviewComments || existing.reviewComments.length === 0) {
+            return state
+          }
+          return {
+            draftsByTargetKey: {
+              ...state.draftsByTargetKey,
+              [targetKey]: {
+                ...existing,
+                reviewComments: [],
+              },
+            },
+          }
+        })
+      },
+      addElementContext: (targetKey, context) => {
+        if (!targetKey || !context) return
+        set((state) => {
+          const existing = state.draftsByTargetKey[targetKey] ?? {}
+          const existingContexts = existing.elementContexts ?? []
+          const dedupKey = elementContextDedupKey(context)
+          if (existingContexts.some((entry) => elementContextDedupKey(entry) === dedupKey)) {
+            return state
+          }
+          return {
+            draftsByTargetKey: {
+              ...state.draftsByTargetKey,
+              [targetKey]: {
+                ...existing,
+                elementContexts: [...existingContexts, { ...context }],
+              },
+            },
+          }
+        })
+      },
+      removeElementContext: (targetKey, contextId) => {
+        if (!targetKey || !contextId) return
+        set((state) => {
+          const existing = state.draftsByTargetKey[targetKey]
+          if (!existing || !existing.elementContexts) return state
+          const filtered = existing.elementContexts.filter((entry) => entry.id !== contextId)
+          if (filtered.length === existing.elementContexts.length) return state
+          return {
+            draftsByTargetKey: {
+              ...state.draftsByTargetKey,
+              [targetKey]: {
+                ...existing,
+                elementContexts: filtered,
+              },
+            },
+          }
+        })
+      },
+      clearElementContexts: (targetKey) => {
+        if (!targetKey) return
+        set((state) => {
+          const existing = state.draftsByTargetKey[targetKey]
+          if (!existing || !existing.elementContexts || existing.elementContexts.length === 0) {
+            return state
+          }
+          return {
+            draftsByTargetKey: {
+              ...state.draftsByTargetKey,
+              [targetKey]: {
+                ...existing,
+                elementContexts: [],
+              },
+            },
+          }
         })
       },
     }),

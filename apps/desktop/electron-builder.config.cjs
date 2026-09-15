@@ -113,9 +113,9 @@ module.exports = {
       ],
     },
     {
-      // Open Computer Use is an app-owned runtime. macOS ships the in-process
-      // N-API + Swift bridge next to its dylib; Windows/Linux ship the exact
-      // pinned upstream worker. No runtime download or global CLI is required.
+      // Computer Use is an app-owned runtime. macOS ships the staged embedded Cua
+      // Driver binary (plus cursor theme, manifest, and license); other platforms
+      // ship an unsupported marker. No runtime download or global CLI is required.
       from: "../../build/computer-use-runtime",
       to: "computer-use-runtime",
       filter: ["**/*"],

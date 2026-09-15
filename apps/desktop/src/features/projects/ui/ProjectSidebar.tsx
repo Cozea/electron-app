@@ -965,10 +965,10 @@ export function ProjectSidebar({
         <button
           type="button"
           onClick={() => openCommandPalette()}
-          className="group flex h-8 w-full cursor-pointer items-center gap-2 rounded-search border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-sm text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="group/search flex h-8 w-full cursor-pointer items-center gap-2 rounded-search border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-sm text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={t('nav.search')}
         >
-          <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75 transition-colors group-hover:text-foreground" />
+          <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75 transition-colors group-hover/search:text-foreground" />
           <span className="font-normal">{t('nav.search')}</span>
           <kbd className="ml-auto pointer-events-none inline-flex select-none items-center gap-0.5 font-mono text-xs font-normal text-muted-foreground/50 tracking-wider">
             {isMac ? (

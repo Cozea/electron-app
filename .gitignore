@@ -79,6 +79,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.tsbuildinfo
+.pnpm-store/
+.pnpm-store
 
 # Local scratch output
 .artifacts/

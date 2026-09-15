@@ -175,15 +175,15 @@ export type ProviderOptionSelections = typeof ProviderOptionSelections.Type;
 export const ModelCapabilities = Schema.Struct({
   optionDescriptors: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
   reasoningEffortLevels: Schema.Array(EffortOption).pipe(
-    Schema.withDecodingDefault(() => []),
+    Schema.withDecodingDefault(Effect.succeed([])),
   ),
-  supportsFastMode: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
-  supportsThinkingToggle: Schema.Boolean.pipe(Schema.withDecodingDefault(() => false)),
+  supportsFastMode: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  supportsThinkingToggle: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   contextWindowOptions: Schema.Array(ContextWindowOption).pipe(
-    Schema.withDecodingDefault(() => []),
+    Schema.withDecodingDefault(Effect.succeed([])),
   ),
   promptInjectedEffortLevels: Schema.Array(TrimmedNonEmptyString).pipe(
-    Schema.withDecodingDefault(() => []),
+    Schema.withDecodingDefault(Effect.succeed([])),
   ),
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;

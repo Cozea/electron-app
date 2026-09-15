@@ -142,7 +142,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
       ref={props.triggerRef}
       data-chat-provider-model-picker="true"
       className={cn(
-        "inline-flex h-7 min-w-0 items-center justify-start gap-1 whitespace-nowrap rounded-full border border-transparent px-1.5 text-xs font-normal text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground",
+        "inline-flex h-7 min-w-0 items-center justify-start gap-1 whitespace-nowrap rounded-full border border-transparent px-1.5 text-sm font-normal text-muted-foreground transition-colors hover:bg-accent/80 hover:text-foreground",
         props.compact ? "max-w-xs shrink sm:max-w-md" : "max-w-sm shrink sm:max-w-lg sm:px-3",
         props.disabled && "pointer-events-none opacity-50",
         props.triggerClassName,
@@ -186,14 +186,14 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
           type="button"
           disabled={props.disabled}
           onClick={() => toggleView("capabilities")}
-          className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-0.5 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full px-0.5 text-sm text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={`Adjust capabilities. Current ${primaryTraitDescriptor?.label ?? "effort"}: ${currentEffortLabel}`}
         >
           <span>{currentEffortLabel}</span>
-          <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 opacity-70" />
+          <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3.5 shrink-0 opacity-70" />
         </button>
       ) : (
-        <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 opacity-70" />
+        <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3.5 shrink-0 opacity-70" />
       )}
 
       {isFastModeActive ? (

@@ -22,6 +22,8 @@ export interface GitFileStatus {
   indexOid?: string
 }
 
+export const MAX_STATUS_FILES = 5000
+
 export interface ParsedGitStatus {
   headOid: string | null
   headRef: string | null
@@ -32,10 +34,11 @@ export interface ParsedGitStatus {
   behind: number
   files: GitFileStatus[]
   clean: boolean
+  isTruncated?: boolean
 }
 
 export class GitStatusParser {
-  static parsePorcelainV2(outputBuffer: Buffer | string): ParsedGitStatus {
+  static parsePorcelainV2(outputBuffer: Buffer | string, maxFiles: number = MAX_STATUS_FILES): ParsedGitStatus {
     const raw = typeof outputBuffer === "string" ? outputBuffer : outputBuffer.toString("utf8")
     const tokens = raw.split("\0")
 
@@ -47,6 +50,7 @@ export class GitStatusParser {
     let ahead = 0
     let behind = 0
     const files: GitFileStatus[] = []
+    let isTruncated = false
 
     let i = 0
     while (i < tokens.length) {
@@ -90,6 +94,11 @@ export class GitStatusParser {
           }
         }
         continue
+      }
+
+      if (files.length >= maxFiles) {
+        isTruncated = true
+        break
       }
 
       // Changed tracked entry: "1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>"
@@ -230,6 +239,7 @@ export class GitStatusParser {
       behind,
       files,
       clean,
+      isTruncated,
     }
   }
 }
