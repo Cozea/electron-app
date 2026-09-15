@@ -226,14 +226,18 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1.5 text-xs text-muted-foreground transition-[background-color,color,transform] duration-150 active:scale-[0.98]"
             onClick={() => void refreshDiagnostics()}
             disabled={isLoadingDiagnostics}
           >
-            <HugeiconsIcon
-              icon={__RefreshHugeIcon}
-              className={`h-3 w-3 ${isLoadingDiagnostics ? 'animate-spin' : ''}`}
-            />
+            <span className="t-icon-swap size-3 shrink-0" data-state={isLoadingDiagnostics ? "loading" : "refresh"}>
+              <span className="t-icon flex items-center justify-center" data-icon="refresh">
+                <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3" />
+              </span>
+              <span className="t-icon flex items-center justify-center" data-icon="loading">
+                <div className="loader shrink-0 text-muted-foreground" />
+              </span>
+            </span>
             {t('settings.computerUse.refresh')}
           </Button>
         </div>

@@ -462,6 +462,7 @@ export function WorkbenchSelectionTile({
       isSpaciousSelectionSurface(surfaceMetrics.width, surfaceMetrics.height),
   )
   const useListView = !isFullScreenView
+  const [isExiting, setIsExiting] = useState(false)
   const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
@@ -537,21 +538,38 @@ export function WorkbenchSelectionTile({
   )
   const handleChooseOption = useCallback(
     (option: DevAppManifest) => {
+      setIsExiting(true)
       const publishedDevApp: PublishedDevAppLaunchSpec | undefined =
         option.launch.kind === "publishedDevApp" ? option.launch : undefined
       const developmentDevApp: DevelopmentDevAppLaunchSpec | undefined =
         option.launch.kind === "developmentDevApp" ? option.launch : undefined
-      onChoose({
-        appId: option.id,
-        ...(publishedDevApp ? { publishedDevApp } : {}),
-        ...(developmentDevApp ? { developmentDevApp } : {}),
-      })
+
+      const dispatch = () => {
+        onChoose({
+          appId: option.id,
+          ...(publishedDevApp ? { publishedDevApp } : {}),
+          ...(developmentDevApp ? { developmentDevApp } : {}),
+        })
+      }
+
+      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(dispatch)
+      } else {
+        dispatch()
+      }
     },
     [onChoose],
   )
 
   return (
-    <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
+    <div
+      ref={rootRef}
+      className={cn(
+        "flex h-full min-h-0 flex-col overflow-hidden bg-content-surface transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+        isExiting && "opacity-0 scale-[0.985] pointer-events-none",
+        className,
+      )}
+    >
       {/* Top centering spacer: smoothly expands in full-screen to center the cluster, collapses in list view */}
       <div
         className={cn(

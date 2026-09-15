@@ -382,12 +382,16 @@ export function AppStorePage() {
               aria-label={t("appStore.page.refresh")}
               disabled={refreshing}
               onClick={handleRefresh}
+              className="transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
             >
-              <HugeiconsIcon
-                icon={__RefreshHugeIcon}
-                className={cn("size-4", refreshing && "animate-spin")}
-                aria-hidden
-              />
+              <span className="t-icon-swap size-4 shrink-0" data-state={refreshing ? "loading" : "refresh"}>
+                <span className="t-icon flex items-center justify-center" data-icon="refresh">
+                  <HugeiconsIcon icon={__RefreshHugeIcon} className="size-4" aria-hidden />
+                </span>
+                <span className="t-icon flex items-center justify-center" data-icon="loading">
+                  <div className="loader shrink-0 text-muted-foreground" />
+                </span>
+              </span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>{t("appStore.page.refresh")}</TooltipContent>

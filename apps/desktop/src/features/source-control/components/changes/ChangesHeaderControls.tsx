@@ -96,15 +96,18 @@ export const ChangesHeaderControls = memo(function ChangesHeaderControls({
       <button
         type="button"
         onClick={() => setDiffStyle((prev) => (prev === 'split' ? 'unified' : 'split'))}
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+        className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground transition-[background-color,color,transform] duration-150 active:scale-[0.92] hover:bg-muted/70 hover:text-foreground"
         title={diffStyle === 'split' ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
         aria-label={diffStyle === 'split' ? t('changes.action.switchStacked') : t('changes.action.switchSplit')}
       >
-        {diffStyle === 'split' ? (
-          <StackedViewIcon className="h-[15px] w-auto" />
-        ) : (
-          <SplitViewIcon className="h-[15px] w-auto" />
-        )}
+        <span className="t-icon-swap size-4 shrink-0" data-state={diffStyle}>
+          <span className="t-icon flex items-center justify-center" data-icon="split">
+            <StackedViewIcon className="h-[15px] w-auto" />
+          </span>
+          <span className="t-icon flex items-center justify-center" data-icon="unified">
+            <SplitViewIcon className="h-[15px] w-auto" />
+          </span>
+        </span>
       </button>
 
       <button

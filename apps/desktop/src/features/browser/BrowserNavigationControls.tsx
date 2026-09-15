@@ -184,15 +184,19 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
               type="button"
               variant="ghost"
               size="icon"
-              className={navButtonClass}
+              className={cn(navButtonClass, "transition-[background-color,color,transform] duration-150 active:scale-[0.92]")}
               disabled={!hasWebContents}
               onClick={preview ? () => callTab(preview.refresh) : NOOP}
               aria-label={loading ? "Loading" : "Reload"}
             >
-              <HugeiconsIcon
-                icon={__RefreshHugeIcon}
-                className={cn("size-3.5", loading && "animate-spin")}
-              />
+              <span className="t-icon-swap size-3.5 shrink-0" data-state={loading ? "loading" : "reload"}>
+                <span className="t-icon flex items-center justify-center" data-icon="reload">
+                  <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3.5" />
+                </span>
+                <span className="t-icon flex items-center justify-center" data-icon="loading">
+                  <div className="loader shrink-0 text-muted-foreground" />
+                </span>
+              </span>
             </Button>
           </TooltipTrigger>
           <TooltipContent>{loading ? "Loading…" : "Reload"}</TooltipContent>

@@ -227,7 +227,14 @@ export function AssistantHistoryButton(props: AssistantHistoryButtonProps) {
             }
           }}
         >
-          <HugeiconsIcon icon={Clock01Icon} className={loading ? "size-3.5 animate-spin" : "size-3.5"} />
+          <span className="t-icon-swap size-3.5 shrink-0" data-state={loading ? "loading" : "history"}>
+            <span className="t-icon flex items-center justify-center" data-icon="history">
+              <HugeiconsIcon icon={Clock01Icon} className="size-3.5" />
+            </span>
+            <span className="t-icon flex items-center justify-center" data-icon="loading">
+              <div className="loader shrink-0 text-muted-foreground" />
+            </span>
+          </span>
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom">{loading ? "Loading chat history…" : "Chat history"}</TooltipContent>

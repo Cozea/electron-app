@@ -482,7 +482,7 @@ export function WorkbenchTileChrome({
       ) : null}
 
       <div
-        className={cn("min-h-0 flex-1", contentClassName)}
+        className={cn("min-h-0 flex-1 animate-in fade-in duration-150 ease-out", contentClassName)}
         data-workbench-pane-content="true"
       >
         {children}

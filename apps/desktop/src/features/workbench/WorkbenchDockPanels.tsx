@@ -432,12 +432,16 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
           )
         }}
         aria-label={viewMode === "code" ? "Switch to preview" : "Switch to code"}
-        className="h-7 w-7 p-0"
+        className="h-7 w-7 p-0 transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
       >
-        <HugeiconsIcon
-          icon={viewMode === "code" ? __ComputerVideoHugeIcon : __SquareTerminalHugeIcon}
-          className="h-4 w-4"
-        />
+        <span className="t-icon-swap size-4 shrink-0" data-state={viewMode === "code" ? "code" : "preview"}>
+          <span className="t-icon flex items-center justify-center" data-icon="preview">
+            <HugeiconsIcon icon={__SquareTerminalHugeIcon} className="size-4" />
+          </span>
+          <span className="t-icon flex items-center justify-center" data-icon="code">
+            <HugeiconsIcon icon={__ComputerVideoHugeIcon} className="size-4" />
+          </span>
+        </span>
       </Toggle>
     </div>
   )

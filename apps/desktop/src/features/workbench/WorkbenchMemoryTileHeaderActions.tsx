@@ -74,36 +74,41 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
         </button>
       ) : null}
 
-      {run.updating ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 rounded-md border-0 shadow-none"
-          aria-label={t("workbench.memory.update.stopWaiting")}
-          title={`${run.updating.agentName} ${t("workbench.memory.update.working")}`}
-          onClick={() => key && cancelProjectMemoryUpdate(key)}
-        >
-          <Spinner size="sm" aria-hidden />
-        </Button>
-      ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 rounded-md border-0 shadow-none"
-          disabled={!defaultAgent}
-          aria-label={t("workbench.memory.update.action")}
-          title={
-            defaultAgent
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-7 w-7 rounded-md border-0 shadow-none transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
+        disabled={!run.updating && !defaultAgent}
+        aria-label={
+          run.updating
+            ? t("workbench.memory.update.stopWaiting")
+            : t("workbench.memory.update.action")
+        }
+        title={
+          run.updating
+            ? `${run.updating.agentName} ${t("workbench.memory.update.working")}`
+            : defaultAgent
               ? `${t("workbench.memory.update.action")} — ${defaultAgent.name}`
               : t("workbench.memory.update.noAgents")
+        }
+        onClick={() => {
+          if (run.updating) {
+            if (key) cancelProjectMemoryUpdate(key)
+          } else if (defaultAgent) {
+            requestUpdate(defaultAgent)
           }
-          onClick={() => defaultAgent && requestUpdate(defaultAgent)}
-        >
-          <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3.5" />
-        </Button>
-      )}
+        }}
+      >
+        <span className="t-icon-swap size-3.5 shrink-0" data-state={run.updating ? "updating" : "idle"}>
+          <span className="t-icon flex items-center justify-center" data-icon="idle">
+            <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3.5" />
+          </span>
+          <span className="t-icon flex items-center justify-center" data-icon="updating">
+            <Spinner size="sm" aria-hidden />
+          </span>
+        </span>
+      </Button>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

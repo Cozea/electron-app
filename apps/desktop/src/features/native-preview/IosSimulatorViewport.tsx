@@ -447,8 +447,22 @@ export const IosSimulatorViewport = memo(function IosSimulatorViewport({
                   ))}
                 </SelectContent>
               </Select>
-              <Button size="icon" variant="outline" className="h-8 w-8 rounded-lg bg-background/85 backdrop-blur" onClick={onRefreshSimulators}>
-                <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8 rounded-lg bg-background/85 backdrop-blur transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
+                onClick={onRefreshSimulators}
+                disabled={simulatorsLoading}
+                aria-label="Refresh simulators"
+              >
+                <span className="t-icon-swap size-3.5 shrink-0" data-state={simulatorsLoading ? "loading" : "refresh"}>
+                  <span className="t-icon flex items-center justify-center" data-icon="refresh">
+                    <HugeiconsIcon icon={__RefreshCwHugeIcon} className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="t-icon flex items-center justify-center" data-icon="loading">
+                    <div className="loader shrink-0 text-muted-foreground" />
+                  </span>
+                </span>
               </Button>
             </div>
 

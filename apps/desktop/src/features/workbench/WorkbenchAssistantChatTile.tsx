@@ -219,7 +219,7 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    "relative h-7 w-7 rounded-md border-0 shadow-none hover:bg-accent",
+                    "relative h-7 w-7 rounded-md border-0 shadow-none hover:bg-accent transition-[background-color,color,transform] duration-150 active:scale-[0.92]",
                     viewMode === "artifacts" && "bg-accent text-foreground",
                   )}
                   aria-label={viewMode === "chat" ? "View artifacts" : "Back to chat"}
@@ -229,12 +229,16 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
                     setViewMode(viewMode === "chat" ? "artifacts" : "chat");
                   }}
                 >
-                  <HugeiconsIcon
-                    icon={viewMode === "chat" ? __ImageHugeIcon : __ChatHugeIcon}
-                    className="size-3.5"
-                  />
+                  <span className="t-icon-swap size-3.5 shrink-0" data-state={viewMode}>
+                    <span className="t-icon flex items-center justify-center" data-icon="chat">
+                      <HugeiconsIcon icon={__ImageHugeIcon} className="size-3.5" />
+                    </span>
+                    <span className="t-icon flex items-center justify-center" data-icon="artifacts">
+                      <HugeiconsIcon icon={__ChatHugeIcon} className="size-3.5" />
+                    </span>
+                  </span>
                   {viewMode === "chat" && artifacts.length > 0 ? (
-                    <span className="absolute right-1 top-1 flex size-1.5 rounded-full bg-primary" />
+                    <span className="absolute right-1 top-1 flex size-1.5 rounded-full bg-primary pointer-events-none" />
                   ) : null}
                 </Button>
               </TooltipTrigger>
