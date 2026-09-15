@@ -79,8 +79,8 @@ export function ProjectSettingsPage({
   )
   const isManager = memberRole === 'project_manager'
 
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
+  const [name, setName] = useState(() => project?.name ?? '')
+  const [description, setDescription] = useState(() => project?.description ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [showDevAppIdentityDialog, setShowDevAppIdentityDialog] = useState(false)
@@ -91,8 +91,8 @@ export function ProjectSettingsPage({
 
   useEffect(() => {
     if (!project) return
-    setName(project.name ?? '')
-    setDescription(project.description ?? '')
+    setName((current) => (current && current !== project.name ? current : project.name ?? ''))
+    setDescription((current) => (current && current !== project.description ? current : project.description ?? ''))
     setSaveError(null)
     setShowDevAppIdentityDialog(false)
     setDevAppIdentityError(null)

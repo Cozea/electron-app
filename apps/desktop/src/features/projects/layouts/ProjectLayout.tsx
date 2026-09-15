@@ -49,12 +49,9 @@ import {
 } from "@/lib/git/projectRepositoryIntegration";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 import { saveLastAppRoute } from "@/lib/settings/settingsReturnRoute";
+import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
+import { SettingsSidebar } from "@/features/settings/ui/SettingsSidebar";
 
-const LazySettingsSidebar = lazy(() =>
-  import("@/features/settings/ui/SettingsSidebar").then((module) => ({
-    default: module.SettingsSidebar,
-  })),
-);
 const LazyPresenceAvatarGroup = lazy(() =>
   import("@/components/presence/PresenceAvatarGroup").then((module) => ({
     default: module.PresenceAvatarGroup,
@@ -148,6 +145,7 @@ export function ProjectLayout({
   // including no-op clicks to the current URL.
   const pathname = useLocation({ select: (location) => location.pathname });
   const currentHref = useLocation({ select: (location) => location.href });
+  const search = useLocation({ select: (location) => location.search });
   const stateProjectId = useLocation({
     select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectId ?? null,
   });
@@ -271,6 +269,31 @@ export function ProjectLayout({
     if (isSettingsModeRoute) return;
     saveLastAppRoute(currentHref);
   }, [currentHref, isSettingsModeRoute]);
+
+  const openSettings = useCallback(() => {
+    if (isWorkbenchView) {
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.set("settings", "1");
+      navigate(`?${nextParams.toString()}`);
+    } else {
+      navigate("/projects/settings/account");
+    }
+  }, [isWorkbenchView, navigate]);
+
+  const closeSettings = useCallback(() => {
+    if (isWorkbenchView) {
+      const nextParams = new URLSearchParams(window.location.search);
+      nextParams.delete("settings");
+      navigate(`?${nextParams.toString()}`);
+    } else if (isSettingsModeRoute) {
+      navigate("/projects");
+    }
+  }, [isSettingsModeRoute, isWorkbenchView, navigate]);
+
+  const isSettingsOpen =
+    isSettingsModeRoute ||
+    (isWorkbenchView && new URLSearchParams(search).get("settings") === "1");
+
   const isStickySearchPage =
     pathname.endsWith("/store") ||
     pathname.includes("/settings/devapps");
@@ -562,9 +585,7 @@ export function ProjectLayout({
           {/* Persistent shell: route-mode switches swap only the content. */}
           <AppSidebarShell>
             {isSettingsModeRoute ? (
-              <Suspense fallback={<SidebarModeFallback />}>
-                <LazySettingsSidebar user={user} />
-              </Suspense>
+              <SettingsSidebar user={user} />
             ) : (
               <ProjectSidebar
                 user={user}
@@ -632,6 +653,15 @@ export function ProjectLayout({
             </div>
           </SidebarInset>
         </div>
+        <WorkbenchCommandPaletteHost
+          projectId={isWorkbenchView ? workspaceProjectId : null}
+          laneId={isWorkbenchView && activeLane?.id ? activeLane.id : "default"}
+          workspaceId={isWorkbenchView ? activeWorkspaceId : null}
+          projectRootPath={isWorkbenchView ? activeProjectRootPath : null}
+          openSettings={openSettings}
+          closeSettings={closeSettings}
+          isSettingsOpen={isSettingsOpen}
+        />
       </div>
     </SidebarProvider>
   );

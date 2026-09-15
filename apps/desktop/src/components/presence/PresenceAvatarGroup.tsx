@@ -147,13 +147,13 @@ export function PresenceAvatarGroup({
                     onClick={() => onUserClick?.(user)}
                     className={cn(
                       "relative cursor-pointer transition-transform hover:scale-110 hover:z-10",
-                      onUserClick && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-full"
+                      onUserClick && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-[6px]"
                     )}
                     style={{ zIndex: visibleUsers.length - index }}
                     title={onUserClick ? "Open this user in Changes" : undefined}
                   >
                     <Avatar
-                      className="h-6 w-6 border-2 border-border/70 bg-background"
+                      className="h-6 w-6 border-2 border-border/70 bg-background rounded-[6px]"
                     >
                       {user.avatarUrl ? (
                         <AvatarImage src={user.avatarUrl} alt={user.displayName} />
@@ -193,7 +193,7 @@ export function PresenceAvatarGroup({
           {hiddenCount > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Avatar className="h-6 w-6 border-2 border-background bg-muted cursor-pointer">
+                <Avatar className="h-6 w-6 border-2 border-background bg-muted cursor-pointer rounded-[6px]">
                   <AvatarFallback className="text-[10px] font-medium bg-muted text-muted-foreground">
                     +{hiddenCount}
                   </AvatarFallback>

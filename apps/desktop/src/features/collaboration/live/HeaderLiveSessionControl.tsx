@@ -223,7 +223,7 @@ function SessionStatusPill({
       type="button"
       variant="ghost"
       size="sm"
-      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0 shrink-0"
+      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-[background-color,color,transform] duration-150 active:scale-[0.98] titlebar-no-drag shadow-none border-0 shrink-0"
       aria-label={`Session on ${session.branchName} · merges into ${session.targetBranch}${autoGit?.title ? ` · ${autoGit.title}` : ""}`}
       aria-haspopup="menu"
       onClick={handleOpenSessionMenu}
@@ -354,7 +354,7 @@ function AudioControlPill({
         variant="ghost"
         data-live-session-mic-button
         className={cn(
-          "h-7 text-xs rounded-l-md rounded-r-none border-0 font-normal transition-colors",
+          "h-7 text-xs rounded-l-md rounded-r-none border-0 font-normal transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
           isMuted ? "w-8 p-0 justify-center" : "px-2 gap-1.5",
           isDenied
             ? "text-destructive hover:bg-destructive/10"
@@ -405,7 +405,7 @@ function AudioControlPill({
         type="button"
         size="sm"
         variant="ghost"
-        className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l border-border/40"
+        className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l border-border/40 transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
         title="Audio settings"
         aria-label="Select audio input device"
         aria-haspopup="menu"
@@ -467,7 +467,7 @@ export function HeaderLiveSessionControl({
             type="button"
             variant="ghost"
             size="sm"
-            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-colors titlebar-no-drag shadow-none border-0 shrink-0"
+            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-[background-color,color,transform] duration-150 active:scale-[0.98] titlebar-no-drag shadow-none border-0 shrink-0"
             title="Local session · No active live collaboration"
           >
             <span className="t-icon-swap size-4 shrink-0" data-state="inactive">
@@ -502,7 +502,7 @@ export function HeaderLiveSessionControl({
           <Button
             type="button"
             size="sm"
-            className="h-7 px-2.5 text-xs font-medium rounded-md shrink-0"
+            className="h-7 px-2.5 text-xs font-medium rounded-md shrink-0 transition-[background-color,color,transform] duration-150 active:scale-[0.98]"
             disabled={busy}
             onClick={live.join}
           >

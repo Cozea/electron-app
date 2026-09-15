@@ -119,7 +119,7 @@ export function ResponsiveHeaderRow({
                   size="icon"
                   aria-label="More header actions"
                   title="More header actions"
-                  className="responsive-header-overflow h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 ml-1.5 titlebar-no-drag"
+                  className="responsive-header-overflow h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 ml-1.5 titlebar-no-drag transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
                 >
                   <HugeiconsIcon icon={__MoreHorizontalHugeIcon} className="size-4" />
                 </Button>

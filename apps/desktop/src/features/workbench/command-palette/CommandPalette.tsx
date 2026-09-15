@@ -16,7 +16,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Input } from "@/components/ui/input"
 import { Kbd } from "@/components/ui/kbd"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -120,15 +119,16 @@ export function CommandPalette({
           <DialogDescription>Search and run workbench commands</DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center gap-2 border-b border-border/70 px-3">
+        <div className="flex items-center gap-2 border-b border-border/70 px-3 bg-transparent">
           <HugeiconsIcon icon={__SearchHugeIcon} className="size-4 shrink-0 text-muted-foreground" />
-          <Input
+          <input
             ref={inputRef}
+            type="text"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search commands…"
             aria-label="Search commands"
-            className="h-11 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+            className="h-11 flex-1 min-w-0 border-0 bg-transparent dark:bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/72 outline-none shadow-none focus:outline-none focus:ring-0 focus-visible:ring-0"
           />
           <Kbd className="shrink-0">Esc</Kbd>
         </div>

@@ -393,6 +393,7 @@ export const ProjectSidebarTreeItem = React.memo(
       <Collapsible open={isLanesOpen}>
         <div
           ref={projectRowRef}
+          data-row
           draggable
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
@@ -402,11 +403,12 @@ export const ProjectSidebarTreeItem = React.memo(
           onContextMenu={handleProjectMenuClick}
           onClick={handleProjectRowClick}
           className={cn(
-            "group/project-item relative flex min-h-7 cursor-pointer items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70 select-none",
+            "group/project-item relative z-10 flex min-h-7 cursor-pointer items-center gap-1 rounded-md pl-1.5 pr-1 text-sidebar-foreground/70 select-none",
             SIDEBAR_PILL_HOVER_CLASS,
+            "hover:bg-transparent",
             (selection.activeSelectionLevel === "project" ||
               (!isLanesOpen && context.isCurrentProject)) &&
-              SIDEBAR_PILL_ACTIVE_CLASS,
+              cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
             isDragging && "opacity-40",
             dropPosition === "before" && "before:pointer-events-none before:absolute before:inset-x-1 before:top-0 before:h-0.5 before:rounded-full before:bg-primary before:z-20",
             dropPosition === "after" && "after:pointer-events-none after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary after:z-20",

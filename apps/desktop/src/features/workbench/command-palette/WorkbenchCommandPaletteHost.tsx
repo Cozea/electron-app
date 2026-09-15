@@ -17,13 +17,13 @@ import {
 } from "./useWorkbenchCommandRegistry"
 
 export interface WorkbenchCommandPaletteHostProps {
-  readonly projectId: string | null
-  readonly laneId: string
-  readonly workspaceId: string | null
-  readonly projectRootPath: string | null
-  readonly openSettings: () => void
-  readonly closeSettings: () => void
-  readonly isSettingsOpen: boolean
+  readonly projectId?: string | null
+  readonly laneId?: string | null
+  readonly workspaceId?: string | null
+  readonly projectRootPath?: string | null
+  readonly openSettings?: () => void
+  readonly closeSettings?: () => void
+  readonly isSettingsOpen?: boolean
 }
 
 export function WorkbenchCommandPaletteHost(props: WorkbenchCommandPaletteHostProps) {
@@ -33,13 +33,13 @@ export function WorkbenchCommandPaletteHost(props: WorkbenchCommandPaletteHostPr
   const { keybindings, issues } = useKeybindingsConfig()
 
   const commands = useWorkbenchCommandRegistry({
-    projectId: props.projectId,
-    laneId: props.laneId,
-    workspaceId: props.workspaceId,
-    projectRootPath: props.projectRootPath,
+    projectId: props.projectId ?? null,
+    laneId: props.laneId ?? "default",
+    workspaceId: props.workspaceId ?? null,
+    projectRootPath: props.projectRootPath ?? null,
     openSettings: props.openSettings,
     closeSettings: props.closeSettings,
-    isSettingsOpen: props.isSettingsOpen,
+    isSettingsOpen: props.isSettingsOpen ?? false,
   })
 
   const handleOpenChange = useCallback((next: boolean) => {

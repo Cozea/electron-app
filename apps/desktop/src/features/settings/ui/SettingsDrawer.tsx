@@ -21,6 +21,7 @@ import {
 import { HugeiconsIcon } from '@hugeicons/react'
 import { ChevronDoubleCloseIcon as __ChevronLeftHugeIcon } from '@hugeicons/core-free-icons'
 import { useTranslation } from '@/lib/i18n'
+import { GlideMenu } from '@/components/primitives/GlideMenu'
 
 const Account = lazy(() => settingsModules.account().then((m) => ({ default: m.Account })))
 const Appearance = lazy(() => settingsModules.appearance().then((m) => ({ default: m.Appearance })))
@@ -102,43 +103,54 @@ export function SettingsDrawer() {
               <div
                 className="scroll-fade-y h-full overflow-y-auto scrollbar-hide px-2 py-3"
               >
-                {navSections.map((navSection, index) => (
-                  <div key={navSection.id} className={cn(index > 0 && 'mt-3')}>
-                    <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
-                      {navSection.label}
-                    </div>
-                    <div className="space-y-1">
-                      {navSection.items.map((item) => {
-                        const Icon = item.surface.icon
-                        const isActive =
-                          resolvedDrawerSurface?.surface.id === item.surface.id ||
-                          section === item.surface.id
+                <GlideMenu rowSelector="[data-row]">
+                  {navSections.map((navSection, index) => (
+                    <div key={navSection.id} className={cn(index > 0 && 'mt-3')}>
+                      <div className="px-2 py-1 text-xs font-medium text-sidebar-foreground/70">
+                        {navSection.label}
+                      </div>
+                      <div className="space-y-1">
+                        {navSection.items.map((item) => {
+                          const Icon = item.surface.icon
+                          const isActive =
+                            resolvedDrawerSurface?.surface.id === item.surface.id ||
+                            section === item.surface.id
 
-                        return (
-                          <button
-                            key={item.route}
-                            type="button"
-                            onClick={() => openFromRoute(item.route)}
-                            onMouseEnter={() => preloadSurface(item.route, item.surface.preload)}
-                            onFocus={() => preloadSurface(item.route, item.surface.preload)}
-                            onPointerDown={() => preloadSurface(item.route, item.surface.preload)}
-                            className={cn(
-                              SETTINGS_DRAWER_NAV_ROW_CLASS,
-                              isActive && SIDEBAR_PILL_ACTIVE_CLASS,
-                            )}
-                          >
-                            <Icon />
-                            <span>{item.label}</span>
-                          </button>
-                        )
-                      })}
+                          return (
+                            <button
+                              key={item.route}
+                              type="button"
+                              data-row
+                              onClick={() => openFromRoute(item.route)}
+                              onMouseEnter={() => preloadSurface(item.route, item.surface.preload)}
+                              onFocus={() => preloadSurface(item.route, item.surface.preload)}
+                              onPointerDown={() => preloadSurface(item.route, item.surface.preload)}
+                              className={cn(
+                                SETTINGS_DRAWER_NAV_ROW_CLASS,
+                                "relative z-10 hover:bg-transparent",
+                                isActive && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
+                              )}
+                            >
+                              <Icon />
+                              <span>{item.label}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </GlideMenu>
               </div>
             </div>
             <div className="mt-auto p-2 pb-3">
-              <button type="button" onClick={close} className={SETTINGS_DRAWER_NAV_ROW_CLASS}>
+              <button
+                type="button"
+                onClick={close}
+                className={cn(
+                  SETTINGS_DRAWER_NAV_ROW_CLASS,
+                  "transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
+                )}
+              >
                 <HugeiconsIcon icon={__ChevronLeftHugeIcon} className="h-4 w-4" />
                 <span>{t('common.back')}</span>
               </button>

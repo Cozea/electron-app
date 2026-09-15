@@ -77,10 +77,12 @@
   --panel-blur: 2px;
   --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
-  --sidebar-open-dur: var(--panel-open-dur);
-  --sidebar-close-dur: var(--panel-close-dur);
+  --sidebar-open-dur: 280ms;
+  --sidebar-close-dur: 280ms;
   --sidebar-blur: var(--panel-blur);
-  --sidebar-ease: var(--panel-ease);
+  --sidebar-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --sidebar-copy-duration: 180ms;
+  --sidebar-copy-offset: 8px;
 
   /* Transitions.dev — Icon swap tokens */
   --icon-swap-dur: 250ms;

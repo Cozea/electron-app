@@ -9,7 +9,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "[&_svg]:-mx-0.5 relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border font-medium text-sm outline-none transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+  "[&_svg]:-mx-0.5 relative inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-lg border font-medium text-sm outline-none transition-[background-color,color,border-color,box-shadow,transform] duration-150 active:scale-[0.98] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 pointer-coarse:after:min-w-11 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-64 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
   {
     variants: {
       variant: {
@@ -37,13 +37,13 @@ const buttonVariants = cva(
         lg: "h-9 px-[calc(--spacing(3.5)-1px)] text-base",
         xl: "h-10 px-[calc(--spacing(4)-1px)] text-lg [&_svg:not([class*='size-'])]:size-4.5",
         xs: "h-6 gap-1 rounded-md px-[calc(--spacing(2)-1px)] text-2xs leading-none before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
-        icon: "size-8",
-        "icon-sm": "size-7",
-        "icon-lg": "size-9",
+        icon: "size-8 active:scale-[0.92]",
+        "icon-sm": "size-7 active:scale-[0.92]",
+        "icon-lg": "size-9 active:scale-[0.94]",
         "icon-xl":
-          "size-10 [&_svg:not([class*='size-'])]:size-4.5",
+          "size-10 active:scale-[0.96] [&_svg:not([class*='size-'])]:size-4.5",
         "icon-xs":
-          "size-6 rounded-md before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
+          "size-6 rounded-md active:scale-[0.92] before:rounded-[calc(var(--radius-md)-1px)] [&_svg:not([class*='size-'])]:size-3.5",
       },
     },
     defaultVariants: {

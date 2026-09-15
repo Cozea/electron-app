@@ -24,7 +24,7 @@ export function ProjectShellTitleBarLeft() {
     >
       <SidebarTrigger
         aria-label="Expand sidebar"
-        className="h-7 w-7 shrink-0 rounded-md text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground"
+        className="h-7 w-7 shrink-0 rounded-md text-muted-foreground/75 hover:bg-muted/60 hover:text-foreground transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
       />
     </div>
   );

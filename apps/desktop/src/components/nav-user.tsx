@@ -16,6 +16,7 @@ import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useTranslation } from "@/lib/i18n"
+import { prewarmDestination } from "@/app/navigation/destinations"
 
 import {
   NAV_USER_THEME_OPTIONS,
@@ -55,8 +56,15 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
 
   const isTourActive = useProductTourStore((state) => state.isActive)
 
+  const handlePrewarmSettings = React.useCallback(() => {
+    void prewarmDestination("/projects/settings/account")
+    void import("@/features/settings/ui/SettingsSidebar")
+    void import("@/features/settings/Account")
+  }, [])
+
   const handleMenuClick = React.useCallback(
     async (event: React.MouseEvent<HTMLButtonElement>) => {
+      handlePrewarmSettings()
       const rect = event.currentTarget.getBoundingClientRect()
       const items: ContextMenuItem<NavUserMenuAction>[] = [
         {
@@ -111,6 +119,8 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
           type="button"
           className="[&_svg]:text-sidebar-foreground"
           data-tour="user-menu"
+          onPointerEnter={handlePrewarmSettings}
+          onFocus={handlePrewarmSettings}
           onClick={handleMenuClick}
           aria-label={t("nav.openUserMenu")}
           title={t("nav.openUserMenu")}

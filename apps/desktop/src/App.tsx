@@ -227,10 +227,6 @@ function AppContent() {
       !pathname.startsWith('/projects/new') &&
       !pathname.endsWith('/workbench')
 
-    if (!featureFlags.commonRoutePrewarm && !shouldWarmNewProject && !shouldWarmProjectEditor) {
-      return
-    }
-
     return scheduleIdleWarmup(() => {
       warmCommonNavigation()
       if (shouldWarmNewProject) {
@@ -243,6 +239,7 @@ function AppContent() {
         void import('./features/settings/Appearance')
         void import('./features/settings/Organizations')
         void import('./features/settings/DevAppSettings')
+        void import('./features/settings/ui/SettingsSidebar')
       }
     }, {
       delayMs: featureFlags.commonRoutePrewarm ? 250 : 3_500,

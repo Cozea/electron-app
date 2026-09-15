@@ -140,7 +140,7 @@ export function Appearance({ surface = "page", route: _route }: AppearanceProps)
                         className={cn(
                           "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-border/70 transition-all",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                          "hover:scale-[1.03] hover:border-border",
+                          "hover:scale-[1.03] hover:border-border active:scale-[0.94]",
                           isSelected && "border-foreground/10 ring-2 ring-foreground/30 ring-offset-2 ring-offset-background",
                         )}
                         style={{ background: themeItem.swatch }}

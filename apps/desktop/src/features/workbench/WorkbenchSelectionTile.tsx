@@ -25,11 +25,7 @@ import type { WorkbenchSelectionTile } from "@/lib/workbenchTileContract"
 import { ProjectPixelInvaderIcon } from "@/components/ProjectPixelInvaderIcon"
 import { Kbd } from "@/components/ui/kbd"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  devAppViewTransitionName,
-  prefersReducedMotion,
-  startViewTransition,
-} from "@/lib/viewTransition"
+import { prefersReducedMotion } from "@/lib/viewTransition"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
@@ -45,6 +41,7 @@ import {
   resolveWorkbenchSelectionCategory,
   type WorkbenchSelectionCategory,
 } from "@/features/workbench/model/workbenchSelectionCategories"
+import { GlideMenu } from "@/components/primitives/GlideMenu"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Search01Icon as __SearchHugeIcon, ShoppingBag01Icon as __ShoppingBagHugeIcon } from '@hugeicons/core-free-icons'
@@ -263,18 +260,17 @@ function SelectionLauncherButton({
     <button
       type="button"
       className={cn(
-        "group flex shrink-0 flex-col items-center gap-3 text-center transition-transform",
-        "hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group flex shrink-0 flex-col items-center gap-3 text-center transition-[transform,color] duration-150",
+        "hover:-translate-y-0.5 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
       style={{
         width: `${LAUNCHER_CONFIG.tileWidth}px`,
-        viewTransitionName: devAppViewTransitionName(option.id),
       }}
       title={option.description}
       onClick={() => onSelect(option)}
     >
       <div
-        className="shrink-0 overflow-hidden ring-1 ring-black/5 transition-transform group-hover:scale-[1.03]"
+        className="shrink-0 overflow-hidden ring-1 ring-black/5 transition-transform duration-150 group-hover:scale-[1.03]"
         style={{
           height: `${LAUNCHER_CONFIG.iconSize}px`,
           width: `${LAUNCHER_CONFIG.iconSize}px`,
@@ -311,16 +307,16 @@ function SelectionListButton({
   return (
     <button
       type="button"
+      data-row
       className={cn(
-        "group flex w-full items-center gap-4 bg-transparent px-4 py-3 text-left transition-colors",
-        "hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group relative z-10 flex w-full items-center gap-4 bg-transparent px-4 py-3 text-left transition-[transform,color] duration-150",
+        "active:scale-[0.99] hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       )}
-      style={{ viewTransitionName: devAppViewTransitionName(option.id) }}
       title={option.description}
       onClick={() => onSelect(option)}
     >
       <div
-        className="shrink-0 overflow-hidden ring-1 ring-black/5"
+        className="shrink-0 overflow-hidden ring-1 ring-black/5 transition-transform duration-150 group-hover:scale-[1.03]"
         style={{
           height: `${iconSize}px`,
           width: `${iconSize}px`,
@@ -465,23 +461,7 @@ export function WorkbenchSelectionTile({
     singletonEmptyWorkbench &&
       isSpaciousSelectionSurface(surfaceMetrics.width, surfaceMetrics.height),
   )
-  const targetListView = !isFullScreenView
-  // The rendered mode trails the measured one so the swap can go through a view
-  // transition. List rows and grid cells are different components, so nothing
-  // short of a snapshot can relate them; `devAppViewTransitionName` is what
-  // makes each app morph across the two rather than cross-fade as a new box.
-  const [useListView, setUseListView] = useState(targetListView)
-  const hasSettledInitialView = useRef(false)
-  useLayoutEffect(() => {
-    if (useListView === targetListView) return
-    // The first flip is the measurement arriving, not a resize the user made.
-    if (!hasSettledInitialView.current) {
-      hasSettledInitialView.current = true
-      setUseListView(targetListView)
-      return
-    }
-    startViewTransition(() => setUseListView(targetListView))
-  }, [targetListView, useListView])
+  const useListView = !isFullScreenView
   const [launcherViewportRef, launcherLayout] = useLauncherGridLayout(allOptions.length)
   const launcherPagerRef = useRef<HTMLDivElement | null>(null)
   const [currentPage, setCurrentPage] = useState(0)
@@ -551,7 +531,7 @@ export function WorkbenchSelectionTile({
         navigate("/projects/store")
         return
       }
-      startViewTransition(() => setActiveCategory(category))
+      setActiveCategory(category)
     },
     [navigate],
   )
@@ -569,135 +549,159 @@ export function WorkbenchSelectionTile({
     },
     [onChoose],
   )
-  // One width and one padding in both modes. Tying the bar to the grid's own
-  // column width aligned it with the icons, but made it re-step by a column's
-  // worth on every threshold -- and jump between 680px and 332px across the
-  // list/grid switch. 680 sits within 6px of the six-column grid, so the
-  // alignment survives where it is visible and the bar stops moving.
-  const sharedFilterBar = (
-    <SelectionFilterBar
-      isMac={isMac}
-      activeCategory={resolvedActiveCategory}
-      onCategoryChange={handleCategoryChange}
-      searchQuery={searchQuery}
-      onSearchQueryChange={setSearchQuery}
-      searchInputRef={searchInputRef}
-      categories={categories}
-      contentWidth={WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}
-      flush={false}
-    />
-  )
 
   return (
     <div ref={rootRef} className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-content-surface", className)}>
-      {useListView ? (
-        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-          {sharedFilterBar}
-          <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1 w-full" viewportClassName="px-3 md:px-6">
-            <div
-              className="mx-auto flex w-full flex-col divide-y divide-border/60 py-2"
-              style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
-            >
-              {filteredOptions.length > 0 ? (
-                filteredOptions.map((option) => (
-                  <SelectionListButton
-                    key={option.id}
-                    option={option}
-                    onSelect={handleChooseOption}
-                  />
-                ))
-              ) : (
-                <div className="px-3 py-4 text-xs text-muted-foreground">
-                  {emptyResultsMessage}
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-        </div>
-      ) : (
-        <div
-          data-tour="project-devapps"
-          className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden py-2"
-        >
-          <div className="flex w-full max-w-5xl flex-col items-stretch self-center px-6 pb-2 pt-0 md:px-10">
-            <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
-            {sharedFilterBar}
-          </div>
+      {/* Top centering spacer: smoothly expands in full-screen to center the cluster, collapses in list view */}
+      <div
+        className={cn(
+          "transition-[flex-grow,max-height] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          useListView ? "flex-grow-0 max-h-0" : "flex-grow max-h-[14vh] min-h-0",
+        )}
+      />
 
-          <div className="mx-auto flex w-full max-w-5xl flex-none flex-col px-3 md:px-6">
-            <div
-              ref={launcherViewportRef}
-              className="flex h-[238px] w-full flex-none flex-col overflow-hidden"
-            >
-              {filteredOptions.length > 0 ? (
-                <div
-                  ref={launcherPagerRef}
-                  className="h-full w-full flex-none overflow-x-auto overflow-y-hidden snap-x snap-mandatory scroll-smooth motion-reduce:scroll-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                >
-                  <div className="flex h-full">
-                    {pagedOptions.map((page, pageIndex) => {
-                      const pageColumns = Math.max(1, launcherLayout.columns)
-                      return (
-                        <div
-                          key={`selection-page-${pageIndex}`}
-                          className="flex min-w-full snap-start px-1 py-2"
-                        >
-                          <div
-                            className="grid w-full content-start justify-center"
-                            style={{
-                              gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
-                              gridAutoRows: `${densityConfig.cellHeight}px`,
-                              columnGap: `${densityConfig.columnGap}px`,
-                              rowGap: `${densityConfig.rowGap}px`,
-                              minHeight: `${2 * densityConfig.cellHeight + densityConfig.rowGap}px`,
-                            }}
-                          >
-                            {page.map((option) => (
-                              <SelectionLauncherButton
-                                key={option.id}
-                                option={option}
-                                onSelect={handleChooseOption}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      )
-                    })}
+      {/* Welcome Hero: smoothly collapses height and fades out when in list view */}
+      <div
+        className={cn(
+          "overflow-hidden transition-[max-height,opacity,margin,padding] duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          useListView
+            ? "max-h-0 opacity-0 pointer-events-none mb-0"
+            : "max-h-24 opacity-100 mb-2 flex justify-center",
+        )}
+      >
+        <WelcomeHero projectName={projectName} workspaceId={workspaceId} />
+      </div>
+
+      {/* Persistent Filter Bar: single component across both layouts with smooth position interpolation */}
+      <div className="w-full shrink-0">
+        <SelectionFilterBar
+          isMac={isMac}
+          activeCategory={resolvedActiveCategory}
+          onCategoryChange={handleCategoryChange}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          searchInputRef={searchInputRef}
+          categories={categories}
+          contentWidth={WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}
+          flush={false}
+        />
+      </div>
+
+      {/* Main Content Area: clean, non-chaotic cross-fade between list and grid */}
+      <div className={cn("relative min-h-0 w-full overflow-hidden", useListView ? "flex-1" : "shrink-0")}>
+        {useListView ? (
+          <div className="h-full w-full animate-in fade-in duration-150">
+            <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1 w-full" viewportClassName="px-3 md:px-6">
+              <GlideMenu
+                rowSelector="[data-row]"
+                highlightClassName="rounded-xl bg-secondary/60 dark:bg-muted/50"
+                className="mx-auto flex w-full flex-col py-2 [&>button:not(:first-of-type)]:border-t [&>button:not(:first-of-type)]:border-border/50"
+                style={{ maxWidth: `${WORKBENCH_SELECTION_LIST_CONTENT_MAX_WIDTH}px` }}
+              >
+                {filteredOptions.length > 0 ? (
+                  filteredOptions.map((option) => (
+                    <SelectionListButton
+                      key={option.id}
+                      option={option}
+                      onSelect={handleChooseOption}
+                    />
+                  ))
+                ) : (
+                  <div className="px-3 py-4 text-xs text-muted-foreground">
+                    {emptyResultsMessage}
                   </div>
-                </div>
-              ) : (
-                <div className="flex h-full w-full flex-none items-center justify-center px-2 py-8 text-xs text-muted-foreground">
-                  {emptyResultsMessage}
-                </div>
-              )}
-            </div>
+                )}
+              </GlideMenu>
+            </ScrollArea>
+          </div>
+        ) : (
+          <div
+            data-tour="project-devapps"
+            className="flex w-full flex-col items-center justify-center overflow-hidden py-1 animate-in fade-in duration-150"
+          >
+            <div className="mx-auto flex w-full max-w-5xl flex-none flex-col px-3 md:px-6">
+              <div
+                ref={launcherViewportRef}
+                className="flex h-[238px] w-full flex-none flex-col overflow-hidden"
+              >
+                {filteredOptions.length > 0 ? (
+                  <div
+                    ref={launcherPagerRef}
+                    className="h-full w-full flex-none overflow-x-auto overflow-y-hidden snap-x snap-mandatory scroll-smooth motion-reduce:scroll-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
+                    <div className="flex h-full">
+                      {pagedOptions.map((page, pageIndex) => {
+                        const pageColumns = Math.max(1, launcherLayout.columns)
+                        return (
+                          <div
+                            key={`selection-page-${pageIndex}`}
+                            className="flex min-w-full snap-start px-1 py-2"
+                          >
+                            <div
+                              className="grid w-full content-start justify-center"
+                              style={{
+                                gridTemplateColumns: `repeat(${pageColumns}, ${densityConfig.cellWidth}px)`,
+                                gridAutoRows: `${densityConfig.cellHeight}px`,
+                                columnGap: `${densityConfig.columnGap}px`,
+                                rowGap: `${densityConfig.rowGap}px`,
+                                minHeight: `${2 * densityConfig.cellHeight + densityConfig.rowGap}px`,
+                              }}
+                            >
+                              {page.map((option) => (
+                                <SelectionLauncherButton
+                                  key={option.id}
+                                  option={option}
+                                  onSelect={handleChooseOption}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex h-full w-full flex-none items-center justify-center px-2 py-8 text-xs text-muted-foreground">
+                    {emptyResultsMessage}
+                  </div>
+                )}
+              </div>
 
-            <div className="flex h-7 shrink-0 items-center justify-center">
-              {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
-                <div className="flex items-center justify-center gap-1">
-                  {pagedOptions.map((_, pageIndex) => (
-                    <button
-                      key={`selection-page-dot-${pageIndex}`}
-                      type="button"
-                      aria-label={`${t("workbench.selection.goToPage")} ${pageIndex + 1}`}
-                      aria-pressed={pageIndex === currentPage}
-                      className="flex size-5 items-center justify-center cursor-pointer p-0"
-                      onClick={() => handlePageSelect(pageIndex)}
-                    >
-                      <span
-                        className={cn(
-                          "h-2 w-2 rounded-full transition-all",
-                          pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
-                        )}
-                      />
-                    </button>
-                  ))}
-                </div>
-              ) : null}
+              <div className="flex h-7 shrink-0 items-center justify-center">
+                {filteredOptions.length > 0 && pagedOptions.length > 1 ? (
+                  <div className="flex items-center justify-center gap-1">
+                    {pagedOptions.map((_, pageIndex) => (
+                      <button
+                        key={`selection-page-dot-${pageIndex}`}
+                        type="button"
+                        aria-label={`${t("workbench.selection.goToPage")} ${pageIndex + 1}`}
+                        aria-pressed={pageIndex === currentPage}
+                        className="flex size-5 items-center justify-center cursor-pointer p-0"
+                        onClick={() => handlePageSelect(pageIndex)}
+                      >
+                        <span
+                          className={cn(
+                            "h-2 w-2 rounded-full transition-all",
+                            pageIndex === currentPage ? "bg-foreground scale-110" : "bg-border hover:bg-muted-foreground/50",
+                          )}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
+      {/* Bottom centering spacer: smoothly expands in full-screen to center the cluster, collapses in list view */}
+      <div
+        className={cn(
+          "transition-[flex-grow,max-height] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          useListView ? "flex-grow-0 max-h-0" : "flex-grow max-h-[18vh] min-h-0",
+        )}
+      />
     </div>
   )
 }

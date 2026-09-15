@@ -43,7 +43,6 @@ import {
 import { useActiveWorkspaceOrNull } from "@/contexts/workspace/ActiveWorkspaceContext";
 import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
-import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { buildPresentationInstanceKey } from "@shared/navigationRuntimeTypes";
 import type { ResolvedWorkbenchIdentity } from "@shared/navigationRuntimeTypes";
@@ -325,12 +324,6 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     replaceSearchParams(nextParams);
   };
 
-  const openSettingsOverlay = useCallback(() => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("settings", "1");
-    replaceSearchParams(nextParams);
-  }, [replaceSearchParams, searchParams]);
-
   useLayoutEffect(() => {
     if (!projectId || laneResolutionPending) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
@@ -531,18 +524,6 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
           ) : null}
         </div>
       </div>
-
-      {visible && projectId ? (
-        <WorkbenchCommandPaletteHost
-          projectId={projectId}
-          laneId={activeLaneId}
-          workspaceId={activeWorkbenchId}
-          projectRootPath={projectRootPath}
-          openSettings={openSettingsOverlay}
-          closeSettings={closeSettingsOverlay}
-          isSettingsOpen={isSettingsOpen}
-        />
-      ) : null}
     </div>
   );
 }

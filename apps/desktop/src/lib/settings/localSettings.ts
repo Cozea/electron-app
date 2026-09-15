@@ -8,6 +8,7 @@ export interface LocalAppSettings extends AppSettings {
 
 export const localSettings = createLocalSnapshot<LocalAppSettings>({
   read: () => window.electronAPI.settings.get(),
+  storageKey: 'cozea:local-settings',
   connect: () => {
     const refresh = () => { void localSettings.refresh().catch(() => undefined) }
     window.addEventListener('focus', refresh)

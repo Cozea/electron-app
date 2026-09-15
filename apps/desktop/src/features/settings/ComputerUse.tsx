@@ -87,6 +87,8 @@ const COMPUTER_USE_TOOLS = [
   },
 ] as const
 
+let cachedComputerUseDiagnostics: ComputerUseDiagnostics | null = null
+
 export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProps) {
   const { t } = useTranslation()
   const { data: savedSettings } = useLocalSettings()
@@ -97,7 +99,9 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
     [savedSettings?.disabledComputerUseTools],
   )
 
-  const [diagnostics, setDiagnostics] = React.useState<ComputerUseDiagnostics | null>(null)
+  const [diagnostics, setDiagnostics] = React.useState<ComputerUseDiagnostics | null>(
+    () => cachedComputerUseDiagnostics,
+  )
   const isSupported = diagnostics?.supported !== false
   const [isLoadingDiagnostics, setIsLoadingDiagnostics] = React.useState(false)
   const [isToggling, setIsToggling] = React.useState(false)
@@ -107,6 +111,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
     setIsLoadingDiagnostics(true)
     try {
       const result = await window.electronAPI.computerUse.getDiagnostics()
+      cachedComputerUseDiagnostics = result
       setDiagnostics(result)
     } catch {
       // Handled silently if main process hasn't reloaded yet
@@ -240,29 +245,38 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
               description="Allows inspection of UI hierarchies and element interaction."
             />
             <SettingsRowControl className="flex items-center gap-2">
-              <Badge
-                variant={diagnostics?.accessibility ? 'secondary' : 'destructive'}
-                className="gap-1.5"
-              >
-                <HugeiconsIcon
-                  icon={diagnostics?.accessibility ? __CheckHugeIcon : __AlertHugeIcon}
-                  className="h-3 w-3"
-                />
-                {diagnostics?.accessibility
-                  ? t('settings.computerUse.permissionGranted')
-                  : t('settings.computerUse.permissionMissing')}
-              </Badge>
-              {!diagnostics?.accessibility && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => void handleOpenPermission('accessibility')}
-                >
-                  <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
-                  {t('settings.computerUse.openSettings')}
-                </Button>
+              {diagnostics === null ? (
+                <Badge variant="outline" className="gap-1.5 text-muted-foreground font-normal">
+                  <HugeiconsIcon icon={__RefreshHugeIcon} className="h-3 w-3 animate-spin" />
+                  {t('common.loading')}
+                </Badge>
+              ) : (
+                <>
+                  <Badge
+                    variant={diagnostics.accessibility ? 'secondary' : 'destructive'}
+                    className="gap-1.5"
+                  >
+                    <HugeiconsIcon
+                      icon={diagnostics.accessibility ? __CheckHugeIcon : __AlertHugeIcon}
+                      className="h-3 w-3"
+                    />
+                    {diagnostics.accessibility
+                      ? t('settings.computerUse.permissionGranted')
+                      : t('settings.computerUse.permissionMissing')}
+                  </Badge>
+                  {!diagnostics.accessibility && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => void handleOpenPermission('accessibility')}
+                    >
+                      <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
+                      {t('settings.computerUse.openSettings')}
+                    </Button>
+                  )}
+                </>
               )}
             </SettingsRowControl>
           </SettingsRow>
@@ -273,29 +287,38 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
               description="Allows capturing window screenshots for visual layout verification."
             />
             <SettingsRowControl className="flex items-center gap-2">
-              <Badge
-                variant={diagnostics?.screenRecording ? 'secondary' : 'destructive'}
-                className="gap-1.5"
-              >
-                <HugeiconsIcon
-                  icon={diagnostics?.screenRecording ? __CheckHugeIcon : __AlertHugeIcon}
-                  className="h-3 w-3"
-                />
-                {diagnostics?.screenRecording
-                  ? t('settings.computerUse.permissionGranted')
-                  : t('settings.computerUse.permissionMissing')}
-              </Badge>
-              {!diagnostics?.screenRecording && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => void handleOpenPermission('screenRecording')}
-                >
-                  <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
-                  {t('settings.computerUse.openSettings')}
-                </Button>
+              {diagnostics === null ? (
+                <Badge variant="outline" className="gap-1.5 text-muted-foreground font-normal">
+                  <HugeiconsIcon icon={__RefreshHugeIcon} className="h-3 w-3 animate-spin" />
+                  {t('common.loading')}
+                </Badge>
+              ) : (
+                <>
+                  <Badge
+                    variant={diagnostics.screenRecording ? 'secondary' : 'destructive'}
+                    className="gap-1.5"
+                  >
+                    <HugeiconsIcon
+                      icon={diagnostics.screenRecording ? __CheckHugeIcon : __AlertHugeIcon}
+                      className="h-3 w-3"
+                    />
+                    {diagnostics.screenRecording
+                      ? t('settings.computerUse.permissionGranted')
+                      : t('settings.computerUse.permissionMissing')}
+                  </Badge>
+                  {!diagnostics.screenRecording && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => void handleOpenPermission('screenRecording')}
+                    >
+                      <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="h-3 w-3" />
+                      {t('settings.computerUse.openSettings')}
+                    </Button>
+                  )}
+                </>
               )}
             </SettingsRowControl>
           </SettingsRow>

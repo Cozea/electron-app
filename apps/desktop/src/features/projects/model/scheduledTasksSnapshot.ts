@@ -4,6 +4,7 @@ import { createLocalSnapshot } from '@/lib/localSnapshot'
 
 export const scheduledTasksSnapshot = createLocalSnapshot<ScheduledTasksSnapshot>({
   read: () => window.electronAPI.scheduledTasks.list(),
+  storageKey: 'cozea:scheduled-tasks',
   connect: () => {
     // Computer use is switched on in Settings, in another window pane; coming
     // back to this page is the moment to re-read whether it is on.

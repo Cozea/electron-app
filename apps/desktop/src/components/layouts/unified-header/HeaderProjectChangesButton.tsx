@@ -75,7 +75,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
         <Button
           type="button"
           variant="ghost"
-          className={`h-7 sm:h-7 gap-1 shrink-0 rounded-md px-2.5 shadow-none hover:bg-muted/40 hover:text-foreground ${isSidebarOpen ? "bg-muted/40 text-foreground" : "bg-transparent text-muted-foreground"}`}
+          className={`h-7 sm:h-7 gap-1 shrink-0 rounded-md px-2.5 shadow-none transition-[background-color,color,transform] duration-150 active:scale-[0.98] hover:bg-muted/40 hover:text-foreground ${isSidebarOpen ? "bg-muted/40 text-foreground" : "bg-transparent text-muted-foreground"}`}
           aria-label={isSidebarOpen ? "Close changes" : "Open changes"}
           onMouseEnter={prewarmChanges}
           onFocus={prewarmChanges}

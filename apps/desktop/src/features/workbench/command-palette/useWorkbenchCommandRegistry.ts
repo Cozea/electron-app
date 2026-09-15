@@ -1,4 +1,8 @@
 import { useMemo } from "react"
+import { useQuery } from "convex/react"
+import { api } from "../../../../../../convex/_generated/api"
+import { useAuth } from "@/contexts/AuthContext"
+import { useTheme } from "@/contexts/ThemeContext"
 
 import type { KeybindingCommand } from "@cozea/assistant-contracts"
 
@@ -16,12 +20,12 @@ import { toggleCommandPalette } from "./commandPaletteBus"
 
 export interface WorkbenchCommandRegistryContext {
   readonly projectId: string | null
-  readonly laneId: string
-  readonly workspaceId: string | null
-  readonly projectRootPath: string | null
-  readonly openSettings: () => void
-  readonly closeSettings: () => void
-  readonly isSettingsOpen: boolean
+  readonly laneId?: string | null
+  readonly workspaceId?: string | null
+  readonly projectRootPath?: string | null
+  readonly openSettings?: () => void
+  readonly closeSettings?: () => void
+  readonly isSettingsOpen?: boolean
 }
 
 function findActiveTileOfType(
@@ -52,43 +56,214 @@ export function useWorkbenchCommandRegistry(
 ): CommandPaletteCommand[] {
   const navigate = useNavigate()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
+  const { principalId } = useAuth()
+  const { setTheme } = useTheme()
+  const accessibleProjects = useQuery(
+    api.projects.listSummariesForCurrentUser,
+    principalId ? { principalId } : "skip",
+  )
 
   return useMemo(() => {
     const { projectId, laneId, workspaceId } = context
-    if (!projectId) return []
+
+    const navigationCommands: CommandPaletteCommand[] = [
+      {
+        id: "nav.projects",
+        title: "Navigation: Projects",
+        description: "Go to projects overview",
+        group: "Navigation",
+        searchTerms: ["projects", "home", "launch", "overview"],
+        run: () => {
+          void navigate("/projects")
+        },
+      },
+      {
+        id: "nav.store",
+        title: "Navigation: DevApps Store",
+        description: "Browse and install DevApps",
+        group: "Navigation",
+        searchTerms: ["devapps", "store", "marketplace", "apps"],
+        run: () => {
+          void navigate("/projects/store")
+        },
+      },
+      {
+        id: "nav.skills",
+        title: "Navigation: Agent Skills",
+        description: "View and manage agent skills",
+        group: "Navigation",
+        searchTerms: ["skills", "agent", "builds", "capabilities"],
+        run: () => {
+          void navigate("/projects/skills")
+        },
+      },
+      {
+        id: "nav.tasks",
+        title: "Navigation: Scheduled Tasks",
+        description: "View and configure scheduled tasks",
+        group: "Navigation",
+        searchTerms: ["scheduled", "tasks", "cron", "schedules"],
+        run: () => {
+          void navigate("/projects/skills?view=schedules")
+        },
+      },
+      {
+        id: "nav.inbox",
+        title: "Navigation: Inbox",
+        description: "View notifications and alerts",
+        group: "Navigation",
+        searchTerms: ["inbox", "notifications", "alerts", "messages"],
+        run: () => {
+          void navigate("/projects/inbox")
+        },
+      },
+      {
+        id: "nav.settingsAccount",
+        title: "Settings: Account",
+        description: "Device identity and account preferences",
+        group: "Settings",
+        searchTerms: ["account", "profile", "identity", "device", "settings"],
+        run: () => {
+          void navigate("/projects/settings/account")
+        },
+      },
+      {
+        id: "nav.settingsAppearance",
+        title: "Settings: Appearance",
+        description: "Themes, retro icons, and display",
+        group: "Settings",
+        searchTerms: ["appearance", "theme", "dark", "light", "colors", "icons", "settings"],
+        run: () => {
+          void navigate("/projects/settings/appearance")
+        },
+      },
+      {
+        id: "nav.settingsTooling",
+        title: "Settings: Tooling",
+        description: "AI providers, local runtimes, and tooling",
+        group: "Settings",
+        searchTerms: ["tooling", "providers", "ai", "models", "antigravity", "settings"],
+        run: () => {
+          void navigate("/projects/settings/tooling")
+        },
+      },
+      {
+        id: "nav.settingsOrganizations",
+        title: "Settings: Organizations",
+        description: "Organization memberships and device groups",
+        group: "Settings",
+        searchTerms: ["organizations", "orgs", "teams", "groups", "settings"],
+        run: () => {
+          void navigate("/projects/settings/organizations")
+        },
+      },
+      {
+        id: "nav.settingsDevApps",
+        title: "Settings: DevApps",
+        description: "Development apps and packages configuration",
+        group: "Settings",
+        searchTerms: ["devapps", "packages", "apps", "settings"],
+        run: () => {
+          void navigate("/projects/settings/devapps")
+        },
+      },
+      {
+        id: "theme.setDark",
+        title: "Theme: Dark",
+        description: "Switch to dark theme",
+        group: "Preferences",
+        searchTerms: ["theme", "dark", "mode", "color"],
+        run: () => {
+          setTheme("dark")
+        },
+      },
+      {
+        id: "theme.setLight",
+        title: "Theme: Light",
+        description: "Switch to light theme",
+        group: "Preferences",
+        searchTerms: ["theme", "light", "mode", "color"],
+        run: () => {
+          setTheme("light")
+        },
+      },
+      {
+        id: "theme.setSystem",
+        title: "Theme: System",
+        description: "Match system appearance",
+        group: "Preferences",
+        searchTerms: ["theme", "system", "auto", "mode", "color"],
+        run: () => {
+          setTheme("system")
+        },
+      },
+    ]
+
+    const projectCommands: CommandPaletteCommand[] = (accessibleProjects ?? []).map((p) => ({
+      id: `project.open.${p._id}`,
+      title: `Project: ${p.name}`,
+      description: `Open ${p.name} workbench`,
+      group: "Projects",
+      searchTerms: [p.name, p.slug ?? "", "project", "open", "switch"],
+      run: () => {
+        void navigate(buildProjectPath(String(p._id), "workbench"))
+      },
+    }))
+
+    const baseCommands: CommandPaletteCommand[] = [
+      {
+        id: "commandPalette.toggle",
+        keybindingCommand: "commandPalette.toggle",
+        title: commandLabel("commandPalette.toggle"),
+        group: "Actions",
+        searchTerms: ["commandPalette.toggle", commandLabel("commandPalette.toggle")],
+        run: () => {
+          toggleCommandPalette()
+        },
+      },
+      ...navigationCommands,
+      ...projectCommands,
+    ]
+
+    if (!projectId || !laneId) {
+      return baseCommands
+    }
+
+    const resolvedLaneId = laneId
+    const resolvedWorkspaceId = workspaceId ?? null
 
     const addOrFocusTile = (type: Extract<WorkbenchTileType, "terminal" | "assistantChat" | "browser" | "tasks" | "selection">) => {
       if (type === "selection" || type === "tasks") {
-        workbenchActions.addTile(projectId, laneId, type, undefined, workspaceId)
+        workbenchActions.addTile(projectId, resolvedLaneId, type, undefined, resolvedWorkspaceId)
         return
       }
-      const existing = findActiveTileOfType(projectId, laneId, workspaceId, type)
+      const existing = findActiveTileOfType(projectId, resolvedLaneId, resolvedWorkspaceId, type)
       if (type === "terminal" || type === "assistantChat" || type === "browser") {
         if (existing && type !== "assistantChat") {
           // Toggle: focus existing terminal/browser; for chat always allow new via chat.new
-          workbenchActions.setActiveTile(projectId, laneId, existing.id, workspaceId)
+          workbenchActions.setActiveTile(projectId, resolvedLaneId, existing.id, resolvedWorkspaceId)
           return
         }
       }
-      workbenchActions.addTile(projectId, laneId, type, undefined, workspaceId)
+      workbenchActions.addTile(projectId, resolvedLaneId, type, undefined, resolvedWorkspaceId)
     }
 
     const closeActiveOfType = (type: WorkbenchTileType) => {
       const workbench = selectProjectWorkbench(
         projectId,
-        laneId,
-        workspaceId,
+        resolvedLaneId,
+        resolvedWorkspaceId,
       )(useProjectWorkbenchStore.getState())
       if (!workbench) return
       const activeId = workbench.activeTileId
       const active = activeId ? workbench.tiles[activeId] : null
       if (active?.type === type) {
-        workbenchActions.removeTile(projectId, laneId, active.id, workspaceId)
+        workbenchActions.removeTile(projectId, resolvedLaneId, active.id, resolvedWorkspaceId)
         return
       }
-      const first = findActiveTileOfType(projectId, laneId, workspaceId, type)
+      const first = findActiveTileOfType(projectId, resolvedLaneId, resolvedWorkspaceId, type)
       if (first) {
-        workbenchActions.removeTile(projectId, laneId, first.id, workspaceId)
+        workbenchActions.removeTile(projectId, resolvedLaneId, first.id, resolvedWorkspaceId)
       }
     }
 
@@ -101,43 +276,40 @@ export function useWorkbenchCommandRegistry(
       run,
     })
 
-    const commands: CommandPaletteCommand[] = [
-      runKeybinding("commandPalette.toggle", () => {
-        toggleCommandPalette()
-      }),
+    const workbenchCommands: CommandPaletteCommand[] = [
       runKeybinding("terminal.toggle", () => {
-        const existing = findActiveTileOfType(projectId, laneId, workspaceId, "terminal")
+        const existing = findActiveTileOfType(projectId, resolvedLaneId, resolvedWorkspaceId, "terminal")
         if (existing) {
           const workbench = selectProjectWorkbench(
             projectId,
-            laneId,
-            workspaceId,
+            resolvedLaneId,
+            resolvedWorkspaceId,
           )(useProjectWorkbenchStore.getState())
           if (workbench?.activeTileId === existing.id) {
-            workbenchActions.removeTile(projectId, laneId, existing.id, workspaceId)
+            workbenchActions.removeTile(projectId, resolvedLaneId, existing.id, resolvedWorkspaceId)
           } else {
-            workbenchActions.setActiveTile(projectId, laneId, existing.id, workspaceId)
+            workbenchActions.setActiveTile(projectId, resolvedLaneId, existing.id, resolvedWorkspaceId)
           }
           return
         }
-        workbenchActions.addTile(projectId, laneId, "terminal", undefined, workspaceId)
+        workbenchActions.addTile(projectId, resolvedLaneId, "terminal", undefined, resolvedWorkspaceId)
       }),
       runKeybinding("terminal.new", () => {
-        workbenchActions.addTile(projectId, laneId, "terminal", undefined, workspaceId)
+        workbenchActions.addTile(projectId, resolvedLaneId, "terminal", undefined, resolvedWorkspaceId)
       }),
       runKeybinding("terminal.split", () => {
-        workbenchActions.addTile(projectId, laneId, "terminal", undefined, workspaceId)
+        workbenchActions.addTile(projectId, resolvedLaneId, "terminal", undefined, resolvedWorkspaceId)
       }),
       runKeybinding("terminal.close", () => {
         closeActiveOfType("terminal")
       }),
       runKeybinding("chat.new", () => {
-        workbenchActions.addTile(projectId, laneId, "assistantChat", undefined, workspaceId)
+        workbenchActions.addTile(projectId, resolvedLaneId, "assistantChat", undefined, resolvedWorkspaceId)
       }),
       runKeybinding("chat.newLocal", () => {
-        workbenchActions.addTile(projectId, laneId, "assistantChat", {
+        workbenchActions.addTile(projectId, resolvedLaneId, "assistantChat", {
           title: "Local chat",
-        }, workspaceId)
+        }, resolvedWorkspaceId)
       }),
       runKeybinding("diff.toggle", () => {
         void navigate(buildProjectPath(projectId, "changes"))
@@ -147,11 +319,11 @@ export function useWorkbenchCommandRegistry(
       }),
       runKeybinding("modelPicker.toggle", () => {
         window.dispatchEvent(new CustomEvent("cozea:toggle-model-picker"))
-        const chat = findActiveTileOfType(projectId, laneId, workspaceId, "assistantChat")
+        const chat = findActiveTileOfType(projectId, resolvedLaneId, resolvedWorkspaceId, "assistantChat")
         if (chat) {
-          workbenchActions.setActiveTile(projectId, laneId, chat.id, workspaceId)
+          workbenchActions.setActiveTile(projectId, resolvedLaneId, chat.id, resolvedWorkspaceId)
         } else {
-          workbenchActions.addTile(projectId, laneId, "assistantChat", undefined, workspaceId)
+          workbenchActions.addTile(projectId, resolvedLaneId, "assistantChat", undefined, resolvedWorkspaceId)
         }
       }),
       {
@@ -161,7 +333,7 @@ export function useWorkbenchCommandRegistry(
         group: "Workbench",
         searchTerms: ["settings", "preferences", "config"],
         run: () => {
-          context.openSettings()
+          context.openSettings?.()
         },
       },
       {
@@ -227,19 +399,20 @@ export function useWorkbenchCommandRegistry(
 
           workbenchActions.addTile(
             projectId,
-            laneId,
+            resolvedLaneId,
             "devAppPreview",
             {
               devAppPreviewRelativePath: relativePath,
             },
-            workspaceId,
+            resolvedWorkspaceId,
           )
         },
       },
     ]
 
-    return commands
+    return [...baseCommands, ...workbenchCommands]
   }, [
+    accessibleProjects,
     context.isSettingsOpen,
     context.laneId,
     context.openSettings,
@@ -247,6 +420,7 @@ export function useWorkbenchCommandRegistry(
     context.projectId,
     context.workspaceId,
     navigate,
+    setTheme,
     workbenchActions,
   ])
 }

@@ -12,7 +12,7 @@ import type { WorkbenchLaneSidebarSummary } from "@/lib/workbenchStore"
 
 /** Use on `<button>`/rows; pair with `SIDEBAR_PILL_ACTIVE_CLASS` when selected */
 export const SIDEBAR_PILL_HOVER_CLASS =
-  "transition-colors hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
+  "transition-[background-color,color,transform] duration-150 active:scale-[0.98] hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
 
 export const SIDEBAR_PILL_BASE_CLASS =
   `${SIDEBAR_PILL_HOVER_CLASS} rounded-md px-2 text-sm font-medium`

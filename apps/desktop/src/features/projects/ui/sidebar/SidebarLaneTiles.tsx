@@ -478,11 +478,17 @@ function AgentTileRow(props: {
   return (
     <button
       type="button"
+      data-row
       data-sidebar-tile-row={tile.id}
       data-sidebar-tile-type="assistantChat"
       data-sidebar-tile-active={isActiveTile || undefined}
       data-sidebar-tile-activity={activity !== "idle" ? activity : undefined}
-      className={cn("group/tile relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS, isActiveTile && SIDEBAR_PILL_ACTIVE_CLASS)}
+      className={cn(
+        "group/tile relative z-10 w-full hover:bg-transparent",
+        SIDEBAR_PILL_NESTED_ROW_CLASS,
+        "hover:bg-transparent",
+        isActiveTile && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
+      )}
       onClick={onOpen}
     >
       <div className="absolute left-[16px] top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
@@ -521,11 +527,17 @@ function SurfaceTileRow(props: {
   return (
     <button
       type="button"
+      data-row
       data-sidebar-tile-row={tile.id}
       data-sidebar-tile-type={tile.type}
       data-sidebar-tile-active={isActiveTile || undefined}
       data-sidebar-tile-activity={activity !== "idle" ? activity : undefined}
-      className={cn("relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS, isActiveTile && SIDEBAR_PILL_ACTIVE_CLASS)}
+      className={cn(
+        "relative z-10 w-full hover:bg-transparent",
+        SIDEBAR_PILL_NESTED_ROW_CLASS,
+        "hover:bg-transparent",
+        isActiveTile && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
+      )}
       onClick={onOpen}
     >
       <TileActivityIndicator
@@ -601,9 +613,10 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
       {hasHeadlessDevServer ? (
         <button
           type="button"
+          data-row
           data-sidebar-tile-type="devServer"
           data-sidebar-headless-dev-server
-          className={cn("relative w-full", SIDEBAR_PILL_NESTED_ROW_CLASS)}
+          className={cn("relative z-10 w-full hover:bg-transparent", SIDEBAR_PILL_NESTED_ROW_CLASS, "hover:bg-transparent")}
           onClick={() => onOpenLaneWorkbench({ openTile: "devServer" })}
           aria-label="Open running Dev Server"
         >

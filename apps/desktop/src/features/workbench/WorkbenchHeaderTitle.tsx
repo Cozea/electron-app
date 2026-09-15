@@ -30,7 +30,7 @@ export const WorkbenchHeaderTitle = memo(function WorkbenchHeaderTitle({
         {/* Lane/branch state is read from context inside the control so
             this element stays identity-stable while lanes settle. */}
         <WorkbenchHeaderBranchControl
-          triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-foreground shadow-none hover:bg-muted/60"
+          triggerClassName="h-7 min-h-7 min-w-0 shrink gap-1 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-foreground shadow-none hover:bg-muted/60 transition-[background-color,color,transform] duration-150 active:scale-[0.98]"
           trailing={null}
         />
       </div>

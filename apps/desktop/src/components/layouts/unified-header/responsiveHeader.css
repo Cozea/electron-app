@@ -8,3 +8,20 @@
 .responsive-header-group { display: flex; align-items: center; flex: none; width: max-content; margin-left: 6px; }
 .responsive-header-group:empty { margin-left: 0; }
 .responsive-header-popup .responsive-header-group { margin-left: 0; }
+
+/* Tactile micro-press for all buttons in the unified header */
+.responsive-header-row :where(button, [role="button"]):not(:disabled) {
+  transition-property: background-color, color, border-color, transform, box-shadow;
+  transition-duration: 150ms;
+}
+
+.responsive-header-row :where(button, [role="button"]):not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.responsive-header-row :where(button, [role="button"])[class*="w-7"]:not(:disabled):active,
+.responsive-header-row :where(button, [role="button"])[class*="w-5"]:not(:disabled):active,
+.responsive-header-row :where(button, [role="button"])[data-size*="icon"]:not(:disabled):active {
+  transform: scale(0.92);
+}
+

@@ -4,6 +4,7 @@ import { createLocalSnapshot } from '@/lib/localSnapshot'
 
 export const agentSkillsSnapshot = createLocalSnapshot<AgentSkillsSnapshot>({
   read: () => window.electronAPI.agentSkills.list(),
+  storageKey: 'cozea:agent-skills',
   connect: () => {
     const refresh = () => { void agentSkillsSnapshot.refresh().catch(() => undefined) }
     window.addEventListener('focus', refresh)

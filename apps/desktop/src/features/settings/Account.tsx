@@ -71,27 +71,30 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const removeAvatarMutation = useMutation(api.devicePrincipals.removeAvatar);
   const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
+  const initialDisplayName = profile?.displayName ?? user?.displayName ?? "";
+  const initialAvatarUrl = profile?.avatarUrl ?? user?.avatarUrl ?? null;
+
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({ pushNotifications: true });
-  const [deviceName, setDeviceName] = useState("")
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
-  const [pendingAvatarDataUrl, setPendingAvatarDataUrl] = useState<string | null>(null)
-  const [removeAvatar, setRemoveAvatar] = useState(false)
-  const [savedDeviceName, setSavedDeviceName] = useState("")
-  const [savingPresentation, setSavingPresentation] = useState(false)
-  const [processingAvatar, setProcessingAvatar] = useState(false)
-  const [presentationError, setPresentationError] = useState<string | null>(null)
+  const [deviceName, setDeviceName] = useState(() => initialDisplayName);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => initialAvatarUrl);
+  const [pendingAvatarDataUrl, setPendingAvatarDataUrl] = useState<string | null>(null);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [savedDeviceName, setSavedDeviceName] = useState(() => initialDisplayName);
+  const [savingPresentation, setSavingPresentation] = useState(false);
+  const [processingAvatar, setProcessingAvatar] = useState(false);
+  const [presentationError, setPresentationError] = useState<string | null>(null);
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (!profile) return;
     setUserPrefs({ pushNotifications: profile.preferences?.pushNotifications ?? true });
-    setDeviceName(profile.displayName)
-    setSavedDeviceName(profile.displayName)
-    setAvatarUrl(profile.avatarUrl)
-    setPendingAvatarDataUrl(null)
-    setRemoveAvatar(false)
-  }, [profile]);
+    setDeviceName((current) => (current && current !== user?.displayName ? current : profile.displayName || current || ""));
+    setSavedDeviceName(profile.displayName || "");
+    setAvatarUrl((current) => (current && current !== user?.avatarUrl ? current : profile.avatarUrl || current || null));
+    setPendingAvatarDataUrl(null);
+    setRemoveAvatar(false);
+  }, [profile, user?.avatarUrl, user?.displayName]);
 
   const identityKey = profile?.identityKey ?? user?.identityKey ?? "";
   const normalizedDeviceName = deviceName.trim()

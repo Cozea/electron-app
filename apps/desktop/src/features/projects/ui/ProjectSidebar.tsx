@@ -92,6 +92,8 @@ import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteC
 import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity";
 import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";
 import { openCommandPalette } from "@/features/workbench/command-palette/commandPaletteBus";
+import { GlideMenu } from "@/components/primitives/GlideMenu";
+import { prewarmDestination } from "@/app/navigation/destinations";
 
 const LazyProjectRenameDialog = React.lazy(() =>
   import("./ProjectRenameDialog").then((module) => ({
@@ -965,7 +967,7 @@ export function ProjectSidebar({
         <button
           type="button"
           onClick={() => openCommandPalette()}
-          className="group/search flex h-8 w-full cursor-pointer items-center gap-2 rounded-search border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-sm text-muted-foreground transition-colors hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="group/search flex h-8 w-full cursor-pointer items-center gap-2 rounded-search border border-border/50 bg-[var(--left-sidebar-search-surface)] px-2.5 text-sm text-muted-foreground transition-[background-color,border-color,transform] duration-150 active:scale-[0.99] hover:border-border/80 hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           aria-label={t('nav.search')}
         >
           <HugeiconsIcon icon={__SearchHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/75 transition-colors group-hover/search:text-foreground" />
@@ -985,16 +987,19 @@ export function ProjectSidebar({
 
       <SidebarContent className="gap-0 px-2 py-2">
           {!isOnCurrentProjectSubMenu && (
-            <div className="mb-4 space-y-1">
+            <GlideMenu rowSelector="[data-row]" className="mb-4 space-y-1">
               <button
                 type="button"
+                data-row
                 className={cn(
                   SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                  "px-1.5",
-                  isOnAppStore && SIDEBAR_PILL_ACTIVE_CLASS,
+                  "relative z-10 px-1.5 hover:bg-transparent",
+                  isOnAppStore && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
                   "[&>svg]:text-current",
                 )}
                 data-tour="nav-store"
+                onPointerEnter={() => void prewarmDestination("/projects/store")}
+                onFocus={() => void prewarmDestination("/projects/store")}
                 onClick={handleOpenMarketplace}
               >
                 <HugeiconsIcon icon={__ShoppingBagHugeIcon} />
@@ -1002,13 +1007,16 @@ export function ProjectSidebar({
               </button>
               <button
                 type="button"
+                data-row
                 className={cn(
                   SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                  "px-1.5",
-                  isOnAgentSkills && SIDEBAR_PILL_ACTIVE_CLASS,
+                  "relative z-10 px-1.5 hover:bg-transparent",
+                  isOnAgentSkills && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
                   "[&>svg]:text-current",
                 )}
                 data-tour="nav-builds"
+                onPointerEnter={() => void prewarmDestination("/projects/skills")}
+                onFocus={() => void prewarmDestination("/projects/skills")}
                 onClick={handleOpenAgentSkills}
               >
                 <HugeiconsIcon icon={__FolderLibraryHugeIcon} />
@@ -1016,29 +1024,41 @@ export function ProjectSidebar({
               </button>
               <button
                 type="button"
+                data-row
                 className={cn(
                   SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                  "px-1.5",
-                  isOnScheduledTasks && SIDEBAR_PILL_ACTIVE_CLASS,
+                  "relative z-10 px-1.5 hover:bg-transparent",
+                  isOnScheduledTasks && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
                   "[&>svg]:text-current",
                 )}
                 data-tour="nav-schedules"
+                onPointerEnter={() => {
+                  void prewarmDestination("/projects/skills")
+                  void prewarmDestination("/projects/tasks")
+                }}
+                onFocus={() => {
+                  void prewarmDestination("/projects/skills")
+                  void prewarmDestination("/projects/tasks")
+                }}
                 onClick={handleOpenScheduledTasks}
               >
                 <HugeiconsIcon icon={__ClockHugeIcon} />
                 <span className="truncate">{t('nav.scheduledTasks')}</span>
               </button>
-              <div className="relative">
+              <div className="relative z-10">
                 <button
                   type="button"
+                  data-row
                   className={cn(
                     SIDEBAR_NAV_ROW_BUTTON_CLASS,
-                    "px-1.5",
+                    "px-1.5 hover:bg-transparent",
                     inboxCount > 0 && "pr-8",
-                    isOnInbox && SIDEBAR_PILL_ACTIVE_CLASS,
+                    isOnInbox && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
                     "[&>svg]:text-current",
                   )}
                   data-tour="nav-inbox"
+                  onPointerEnter={() => void prewarmDestination("/projects/inbox")}
+                  onFocus={() => void prewarmDestination("/projects/inbox")}
                   onClick={handleOpenInbox}
                 >
                   <HugeiconsIcon icon={__InboxHugeIcon} />
@@ -1050,7 +1070,7 @@ export function ProjectSidebar({
                   </SidebarMenuBadge>
                 ) : null}
               </div>
-            </div>
+            </GlideMenu>
           )}
 
           <div className="mb-2.5 flex items-center justify-between pr-1.5">
@@ -1060,7 +1080,7 @@ export function ProjectSidebar({
             {!isOnCurrentProjectSettings ? (
               <button
                 type="button"
-                className="flex size-6 shrink-0 cursor-pointer items-center justify-center p-0 text-muted-foreground/75 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
+                className="flex size-6 shrink-0 cursor-pointer items-center justify-center p-0 text-muted-foreground/75 transition-[color,transform] duration-150 active:scale-[0.92] hover:text-foreground focus-visible:outline-none focus-visible:text-foreground"
                 data-tour="new-project"
                 onClick={(event) => void openProjectCreationMenu(event)}
                 aria-label={t('nav.newProject')}
@@ -1082,7 +1102,7 @@ export function ProjectSidebar({
             ) : null}
           </div>
 
-          <div className="space-y-1">
+          <GlideMenu rowSelector="[data-row]" className="space-y-1">
             {isOnCurrentProjectSettings && currentProjectId ? (
               PROJECT_SETTINGS_SECTIONS.map((section) => {
                 const isActive = currentProjectSettingsSection === section.id;
@@ -1091,7 +1111,12 @@ export function ProjectSidebar({
                   <button
                     key={section.id}
                     type="button"
-                    className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, isActive && SIDEBAR_PILL_ACTIVE_CLASS)}
+                    data-row
+                    className={cn(
+                      SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                      "relative z-10 px-1.5 hover:bg-transparent",
+                      isActive && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
+                    )}
                     onClick={() => {
                       navigate(`${buildProjectPath(currentProjectId)}/settings/${section.id}`);
                     }}
@@ -1165,7 +1190,7 @@ export function ProjectSidebar({
                 );
               })
             )}
-          </div>
+          </GlideMenu>
         </SidebarContent>
 
         <SidebarSeparator />

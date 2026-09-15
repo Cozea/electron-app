@@ -249,7 +249,7 @@ export function HeaderProjectShareButton({
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
-              className="inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag cursor-pointer"
+              className="inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag cursor-pointer transition-[background-color,color,transform] duration-150 active:scale-[0.98]"
               disabled={roleCheckPending || shareStatePending}
               aria-label={`Live session with ${inSession.length} participant${inSession.length === 1 ? "" : "s"}. Click to open Session Hub.`}
               onClick={() => {
@@ -386,7 +386,7 @@ export function HeaderProjectShareButton({
             {hasActiveSession ? (
               <Button
                 variant="ghost"
-                className="inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag cursor-pointer"
+                className="inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag cursor-pointer transition-[background-color,color,transform] duration-150 active:scale-[0.98]"
                 disabled={roleCheckPending || shareStatePending}
                 aria-label={`Live session with ${inSession.length} participant${inSession.length === 1 ? "" : "s"}. Click to open session menu.`}
               >
@@ -437,7 +437,7 @@ export function HeaderProjectShareButton({
             ) : (
               <Button
                 variant="ghost"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag"
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
                 disabled={roleCheckPending || shareStatePending}
                 aria-label="Share project"
                 title="Share project"

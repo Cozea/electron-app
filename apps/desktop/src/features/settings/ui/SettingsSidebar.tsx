@@ -21,6 +21,8 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon as __ArrowLeftHugeIcon } from '@hugeicons/core-free-icons'
 import { useTranslation } from '@/lib/i18n'
 import { getLastAppRoute } from "@/lib/settings/settingsReturnRoute"
+import { GlideMenu } from "@/components/primitives/GlideMenu"
+import { prewarmDestination } from "@/app/navigation/destinations"
 
 /** Content-only: renders inside the persistent AppSidebarShell. */
 interface SettingsSidebarProps {
@@ -39,12 +41,14 @@ function toProjectsPath(path: string): string {
 function SettingsSidebarNavRow({
   isActive,
   onClick,
+  onPrewarm,
   icon: Icon,
   label,
   dataTour,
 }: {
   isActive: boolean
   onClick: () => void
+  onPrewarm?: () => void
   icon: React.ComponentType<{ className?: string }>
   label: string
   dataTour?: string
@@ -52,8 +56,15 @@ function SettingsSidebarNavRow({
   return (
     <button
       type="button"
-      className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, isActive && SIDEBAR_PILL_ACTIVE_CLASS)}
+      data-row
+      className={cn(
+        SIDEBAR_NAV_ROW_BUTTON_CLASS,
+        "relative z-10 px-1.5 hover:bg-transparent",
+        isActive && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
+      )}
       data-tour={dataTour}
+      onPointerEnter={onPrewarm}
+      onFocus={onPrewarm}
       onClick={onClick}
     >
       <Icon />
@@ -93,7 +104,10 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
         <div className="mb-2">
           <button
             type="button"
-            className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
+            className={cn(
+              SIDEBAR_NAV_ROW_BUTTON_CLASS,
+              "transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
+            )}
             data-tour="settings-back"
             onClick={handleBack}
           >
@@ -102,31 +116,34 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
           </button>
         </div>
 
-        {navSections.map((section, index) => (
-          <SidebarGroup key={section.id} className={cn("px-0", index === 0 ? "py-0" : "py-2")}>
-            <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>{section.label}</SidebarGroupLabel>
-            <div className="space-y-1">
-              {section.items.map((item) => {
-                const href = toProjectsPath(item.route)
-                const isActive =
-                  location.pathname === href || location.pathname.startsWith(`${href}/`)
+        <GlideMenu rowSelector="[data-row]">
+          {navSections.map((section, index) => (
+            <SidebarGroup key={section.id} className={cn("px-0", index === 0 ? "py-0" : "py-2")}>
+              <SidebarGroupLabel className={SIDEBAR_GROUP_LABEL_CLASS}>{section.label}</SidebarGroupLabel>
+              <div className="space-y-1">
+                {section.items.map((item) => {
+                  const href = toProjectsPath(item.route)
+                  const isActive =
+                    location.pathname === href || location.pathname.startsWith(`${href}/`)
 
-                return (
-                  <SettingsSidebarNavRow
-                    key={item.surface.id}
-                    icon={item.surface.icon}
-                    label={item.label}
-                    isActive={isActive}
-                    // Matched on the route so the tour does not depend on a
-                    // surface id it cannot see from here.
-                    dataTour={href.endsWith("/organizations") ? "settings-organizations" : undefined}
-                    onClick={() => navigate(href, { replace: true })}
-                  />
-                )
-              })}
-            </div>
-          </SidebarGroup>
-        ))}
+                  return (
+                    <SettingsSidebarNavRow
+                      key={item.surface.id}
+                      icon={item.surface.icon}
+                      label={item.label}
+                      isActive={isActive}
+                      // Matched on the route so the tour does not depend on a
+                      // surface id it cannot see from here.
+                      dataTour={href.endsWith("/organizations") ? "settings-organizations" : undefined}
+                      onPrewarm={() => void prewarmDestination(href)}
+                      onClick={() => navigate(href, { replace: true })}
+                    />
+                  )
+                })}
+              </div>
+            </SidebarGroup>
+          ))}
+        </GlideMenu>
       </SidebarContent>
 
       {isSubRoute && parentSectionRoute ? (
@@ -135,7 +152,10 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
           <SidebarFooter className="gap-3 p-3">
             <button
               type="button"
-              className={SIDEBAR_NAV_ROW_BUTTON_CLASS}
+              className={cn(
+                SIDEBAR_NAV_ROW_BUTTON_CLASS,
+                "transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
+              )}
               onClick={() => navigate(parentSectionRoute)}
             >
               <HugeiconsIcon icon={__ArrowLeftHugeIcon} />

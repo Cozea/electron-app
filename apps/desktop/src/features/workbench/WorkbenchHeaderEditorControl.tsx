@@ -156,7 +156,7 @@ export function WorkbenchHeaderEditorControl({
             size="sm"
             variant="ghost"
             className={cn(
-              "h-7 px-2 text-xs border-0 font-normal transition-colors shrink-0",
+              "h-7 px-2 text-xs border-0 font-normal shrink-0 transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
               hasPicker ? "rounded-l-md rounded-r-none" : "rounded-md",
               adjacentOpenSidebar
                 ? "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -186,7 +186,7 @@ export function WorkbenchHeaderEditorControl({
               size="sm"
               variant="ghost"
               className={cn(
-                "h-7 w-5 p-0 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l transition-colors shrink-0",
+                "h-7 w-5 p-0 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l shrink-0 transition-[background-color,color,transform] duration-150 active:scale-[0.92]",
                 adjacentOpenSidebar
                   ? "border-sidebar-border/40 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   : "border-border/40 text-muted-foreground hover:text-foreground hover:bg-accent/60",

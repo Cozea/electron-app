@@ -9,10 +9,21 @@ export function createLocalSnapshot<T>(options: {
   read: () => Promise<T>
   connect?: (publish: (value: T) => void) => () => void
   maxAgeMs?: number
+  storageKey?: string
 }) {
-  let state: LocalSnapshot<T> = { data: null, error: null, refreshing: false }
+  const readCached = (): T | null => {
+    if (!options.storageKey || typeof window === 'undefined') return null
+    try {
+      const raw = window.localStorage.getItem(options.storageKey)
+      return raw ? JSON.parse(raw) as T : null
+    } catch {
+      return null
+    }
+  }
+
+  let state: LocalSnapshot<T> = { data: readCached(), error: null, refreshing: false }
   let revision = 0
-  let updatedAt = 0
+  let updatedAt = state.data !== null ? Date.now() : 0
   let pending: Promise<T> | null = null
   let disconnect: (() => void) | null = null
   const listeners = new Set<() => void>()
@@ -21,6 +32,13 @@ export function createLocalSnapshot<T>(options: {
     revision += 1
     updatedAt = Date.now()
     state = { data, error: null, refreshing: state.refreshing }
+    if (options.storageKey && typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(options.storageKey, JSON.stringify(data))
+      } catch {
+        // ignore quota errors
+      }
+    }
     notify()
   }
   const connect = () => {

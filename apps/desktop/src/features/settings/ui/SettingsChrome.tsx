@@ -118,7 +118,11 @@ export function SettingsRow({
 }) {
   return (
     <div
-      className={cn(rowBase, className)}
+      className={cn(
+        rowBase,
+        Boolean(onClick) && "cursor-pointer hover:bg-accent/30 active:scale-[0.99] transition-[background-color,transform] duration-150",
+        className,
+      )}
       onClick={onClick}
     >
       {children}
