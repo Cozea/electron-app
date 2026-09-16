@@ -8,9 +8,7 @@ const authContext = source("apps/desktop/src/contexts/AuthContext.tsx");
 const presence = source("apps/desktop/src/hooks/useProjectPresence.ts");
 const safeQuery = source("apps/desktop/src/hooks/useSafeConvexQuery.ts");
 const projectLayout = source("apps/desktop/src/features/projects/layouts/ProjectLayout.tsx");
-const shareButton = source(
-  "apps/desktop/src/components/layouts/unified-header/HeaderProjectShareButton.tsx",
-);
+const shareButtonTeam = source("apps/desktop/src/hooks/useProjectTeam.ts");
 const authenticatedFunctions = source("convex/lib/authenticatedFunctions.ts");
 const presenceFunctions = source("convex/projectPresence.ts");
 
@@ -77,8 +75,9 @@ describe("convex auth gating", () => {
 
   it("gates every authenticated query in the share button on principalId", () => {
     // All share-surface reads require a live authenticated device principal;
-    // cached shell presentation alone must never open cloud queries.
-    expect(shareButton).toContain(
+    // cached shell presentation alone must never open cloud queries. The reads
+    // live in useProjectTeam now; the invariant is unchanged, only the file.
+    expect(shareButtonTeam).toContain(
       'projectId && principalId ? { projectId, principalId: principalId } : "skip"',
     );
   });

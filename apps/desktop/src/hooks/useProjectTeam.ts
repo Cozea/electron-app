@@ -18,7 +18,7 @@ export function useProjectTeam(projectId: Id<"projects"> | null | undefined) {
   )
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    projectId && principalId ? { projectId, principalId } : "skip",
+    projectId && principalId ? { projectId, principalId: principalId } : "skip",
   )
   return { members, memberRole, principalId: principalId ?? null }
 }
