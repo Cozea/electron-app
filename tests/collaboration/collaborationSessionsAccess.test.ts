@@ -276,7 +276,7 @@ describe("collaborationSessions access control", () => {
     expect(await lifecycleOf(world, sessionId)).toBe("ACTIVE")
     await expect(runConvexHandler(sessions.close, world.owner.ctx, { sessionId })).rejects.toThrow(/desktop daemon/)
     expect(await lifecycleOf(world, sessionId)).toBe("ACTIVE")
-    await world.db.patch(sessionId, { lifecycle: "CLOSED" })
+    await runConvexHandler(sessions.close, world.owner.ctx, { sessionId, force: true })
     expect(await lifecycleOf(world, sessionId)).toBe("CLOSED")
 
     await expect(runConvexHandler(sessions.resume, world.owner.ctx, { sessionId })).rejects.toThrow(

@@ -19,6 +19,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Dialog,
   DialogContent,
@@ -176,12 +177,14 @@ export function SessionHubDialog({
               <Button
                 variant="destructive"
                 size="sm"
-                className="h-8 text-xs"
+                className="h-8 text-xs gap-1.5"
+                disabled={liveSession.busyAction !== null}
                 onClick={() => {
                   onOpenChange(false)
                   liveSession.end()
                 }}
               >
+                {liveSession.busyAction === "end" ? <Spinner size="xs" /> : null}
                 End session
               </Button>
             ) : null}

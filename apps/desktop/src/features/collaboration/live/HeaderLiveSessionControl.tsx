@@ -21,7 +21,6 @@ import { cn } from "@/lib/utils"
 import { SoundWaveCandles } from "../media/SoundWaveCandles"
 import type { SessionMediaController } from "../media/useSessionMedia"
 import { BinaryConflictDialog } from "../ui/BinaryConflictDialog"
-import { CloseSessionDialog } from "../ui/CloseSessionDialog"
 import { MergeSessionDialog } from "../ui/MergeSessionDialog"
 import { RebaseSessionDialog } from "../ui/RebaseSessionDialog"
 import { StructuralConflictDialog } from "../ui/StructuralConflictDialog"
@@ -500,16 +499,6 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
           publicSessionId={activeSession.publicSessionId}
           branchName={activeSession.branchName}
           targetBranch={activeSession.targetBranch}
-        />
-      )}
-
-      {activeSession && live.closeReview && (
-        <CloseSessionDialog
-          key={live.closeReview.reviewId}
-          review={live.closeReview}
-          busy={live.busyAction === "end"}
-          onCancel={live.cancelClose}
-          onConfirm={live.confirmClose}
         />
       )}
 

@@ -25,7 +25,7 @@ import { cleanConvexError } from "@/lib/convexError"
 import { appToast } from "@/lib/appToast"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
-import { findWorkspaceSession } from "../collaborationGate"
+import { findBranchSession, findWorkspaceSession } from "../collaborationGate"
 
 type SessionRole = "viewer" | "developer" | "project_manager"
 
@@ -62,9 +62,12 @@ export function LiveSessionShareSection({
   const workspaceId = sync?.workspaceId ?? null
 
   const sessions = useQuery(api.collaborationSessions.listByProject, { projectId })
-  // The Workbench decides the session. While no workspace is mounted there is
-  // no active session here rather than a branch-derived guess.
-  const activeSession = findWorkspaceSession(sessions, workspaceId)
+  // The Workbench decides the session. When in a regular workspace, fall back to the active branch's session.
+  const activeSession =
+    findWorkspaceSession(sessions, workspaceId) ??
+    (activeBranch ? findBranchSession(sessions, activeBranch) : null) ??
+    sessions?.[0] ??
+    null
   const sessionMembers = useQuery(
     api.collaborationSessions.listMembers,
     activeSession ? { sessionId: activeSession._id } : "skip",
@@ -72,6 +75,7 @@ export function LiveSessionShareSection({
   const invite = useMutation(api.collaborationSessions.inviteParticipant)
   const joinSession = useMutation(api.collaborationSessions.join)
   const leaveSessionMutation = useMutation(api.collaborationSessions.leave)
+  const endSessionMutation = useMutation(api.collaborationSessions.close)
 
   const [identityKey, setIdentityKey] = useState("")
   const [busy, setBusy] = useState<string | null>(null)
@@ -194,6 +198,36 @@ export function LiveSessionShareSection({
     })
   }
 
+  const handleEndActiveSession = async () => {
+    if (!activeSession) return
+    void run("end", async () => {
+      try {
+        if (window.electronAPI?.projectd?.sessions?.close) {
+          await window.electronAPI.projectd.sessions.close(activeSession.publicSessionId, {
+            reviewId: "direct",
+            allowUnpublishedGit: true,
+            allowUnresolvedConflicts: true,
+          })
+        }
+      } catch (err) {
+        console.warn("[LiveSessionShareSection] daemon close warning:", err)
+      }
+      await endSessionMutation({ sessionId: activeSession._id, force: true })
+      try {
+        if (window.electronAPI?.projectd?.sessions?.detach) {
+          await window.electronAPI.projectd.sessions.detach(activeSession.publicSessionId)
+        }
+      } catch (err) {
+        console.warn("[LiveSessionShareSection] detach warning:", err)
+      }
+      appToast.success({
+        title: "Collaboration ended",
+        description: `Live session on ${activeSession.branchName} has been closed for everyone.`,
+      })
+      return "Ended the live session."
+    })
+  }
+
   let body: ReactNode
   if (sessions === undefined) {
     body = <p className="text-xs text-muted-foreground">Loading…</p>
@@ -227,18 +261,32 @@ export function LiveSessionShareSection({
               {activeSession.lifecycle === "ACTIVE" ? "." : ` (${activeSession.lifecycle.toLowerCase()}).`}
             </p>
           </div>
-          {self?.status === "active" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 shrink-0"
-              disabled={busy !== null}
-              onClick={handleLeaveSession}
-            >
-              {busy === "leave" ? <Spinner size="xs" className="mr-1" /> : null}
-              Leave session
-            </Button>
-          ) : null}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {self?.status === "active" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground shrink-0"
+                disabled={busy !== null}
+                onClick={handleLeaveSession}
+              >
+                {busy === "leave" ? <Spinner size="xs" className="mr-1" /> : null}
+                Leave
+              </Button>
+            ) : null}
+            {canManageProject ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-7 px-2.5 text-xs shrink-0"
+                disabled={busy !== null}
+                onClick={handleEndActiveSession}
+              >
+                {busy === "end" ? <Spinner size="xs" className="mr-1" /> : null}
+                End session
+              </Button>
+            ) : null}
+          </div>
         </div>
         {canInvite ? (
           <>
@@ -323,6 +371,45 @@ export function LiveSessionShareSection({
                 {busy === `switch:${candidate.branchName}` ? <Spinner size="xs" className="mr-1" /> : null}
                 Open workbench
               </Button>
+              {canManageProject ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    void run(`end:${candidate.publicSessionId}`, async () => {
+                      try {
+                        if (window.electronAPI?.projectd?.sessions?.close) {
+                          await window.electronAPI.projectd.sessions.close(candidate.publicSessionId, {
+                            reviewId: "direct",
+                            allowUnpublishedGit: true,
+                            allowUnresolvedConflicts: true,
+                          })
+                        }
+                      } catch (err) {
+                        console.warn("[LiveSessionShareSection] daemon close warning:", err)
+                      }
+                      await endSessionMutation({ sessionId: candidate._id, force: true })
+                      try {
+                        if (window.electronAPI?.projectd?.sessions?.detach) {
+                          await window.electronAPI.projectd.sessions.detach(candidate.publicSessionId)
+                        }
+                      } catch (err) {
+                        console.warn("[LiveSessionShareSection] detach warning:", err)
+                      }
+                      appToast.success({
+                        title: "Collaboration ended",
+                        description: `Live session on ${candidate.branchName} has been closed.`,
+                      })
+                      return `Ended session on ${candidate.branchName}.`
+                    })
+                  }}
+                >
+                  {busy === `end:${candidate.publicSessionId}` ? <Spinner size="xs" className="mr-1" /> : null}
+                  End
+                </Button>
+              ) : null}
             </div>
           ))}
         </div>

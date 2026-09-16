@@ -1039,9 +1039,14 @@ export const finalizeLifecycleFromServer = publicMutation({
     const session = await ctx.db.query("collaborationSessions")
       .withIndex("by_public_session_id", (q) => q.eq("publicSessionId", args.publicSessionId)).first()
     if (!session) throw new ConvexError("Collaboration session not found")
+    if (session.lifecycle === "CLOSED") {
+      return { committed: true as const, revision: session.lifecycleRevision ?? 0, superseded: true }
+    }
     const caller = await ctx.db.get(args.principalId)
     const member = await getMembership(ctx, session._id, args.principalId)
-    if (!caller || caller.status !== "active" || member?.status !== "active" || member.role !== "project_manager" ||
+    const isSessionMgr = member?.status === "active" && member.role === "project_manager"
+    const isProjectMgr = await canManageProject(ctx, session.projectId, args.principalId)
+    if (!caller || caller.status !== "active" || (!isSessionMgr && !isProjectMgr) ||
       !(await canAccessProject(ctx, session.projectId, args.principalId))) {
       throw new ConvexError("An active session manager with project access is required")
     }
@@ -1085,12 +1090,23 @@ export const finalizeLifecycleFromServer = publicMutation({
 export const pause = mutation({
   args: {
     sessionId: v.id("collaborationSessions"),
+    force: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const caller = await requireAuthenticatedDevice(ctx)
     const session = await requireSession(ctx, args.sessionId)
     await requireSessionManager(ctx, session, caller)
     if (session.lifecycle === "PAUSED") {
+      return { success: true }
+    }
+    if (args.force) {
+      const now = Date.now()
+      await ctx.db.patch(session._id, {
+        lifecycle: "PAUSED",
+        pausedAt: now,
+        lifecycleRevision: (session.lifecycleRevision ?? 0) + 1,
+        updatedAt: now,
+      })
       return { success: true }
     }
 
@@ -1125,12 +1141,32 @@ export const resume = mutation({
 export const close = mutation({
   args: {
     sessionId: v.id("collaborationSessions"),
+    force: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const caller = await requireAuthenticatedDevice(ctx)
     const session = await requireSession(ctx, args.sessionId)
     await requireSessionManager(ctx, session, caller)
     if (session.lifecycle === "CLOSED") {
+      return { success: true }
+    }
+    if (args.force) {
+      const now = Date.now()
+      const revision = (session.lifecycleRevision ?? 0) + 1
+      await ctx.db.patch(session._id, {
+        lifecycle: "CLOSED",
+        lifecycleRevision: revision,
+        closedAt: now,
+        updatedAt: now,
+      })
+      const activeMembers = await ctx.db
+        .query("collaborationSessionMembers")
+        .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+        .filter((q) => q.eq(q.field("status"), "active"))
+        .collect()
+      for (const member of activeMembers) {
+        await ctx.db.patch(member._id, { status: "left", leftAt: now })
+      }
       return { success: true }
     }
 
