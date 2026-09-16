@@ -3,7 +3,6 @@ import type { AvailableExternalEditor, ExternalEditorId } from '@shared/electron
 import {
   orderDetectedEditors,
   resolvePreferredExternalEditorId,
-  T3_STYLE_EDITOR_ORDER,
 } from '@/features/settings/model/externalEditorPreference'
 import {
   getExternalEditorIcon,
@@ -14,7 +13,6 @@ import {
   CLIENT_FALLBACK_KEYBINDINGS,
 } from '@/lib/keybindings/defaults'
 import {
-  formatShortcutLabel,
   resolveShortcutCommand,
   shortcutLabelForCommand,
 } from '@/lib/keybindings/matchShortcut'
