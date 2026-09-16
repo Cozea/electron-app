@@ -10,7 +10,6 @@
 
 import { useState, type ReactNode } from "react"
 import { useMutation, useQuery } from "convex/react"
-
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
@@ -22,6 +21,7 @@ import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
 import { cleanConvexError } from "@/lib/convexError"
+import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { appToast } from "@/lib/appToast"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
@@ -74,23 +74,35 @@ export function LiveSessionShareSection({
   )
   const invite = useMutation(api.collaborationSessions.inviteParticipant)
   const joinSession = useMutation(api.collaborationSessions.join)
+  const updateAccessMode = useMutation(api.collaborationSessions.updateAccessMode)
   const leaveSessionMutation = useMutation(api.collaborationSessions.leave)
   const endSessionMutation = useMutation(api.collaborationSessions.close)
 
   const [identityKey, setIdentityKey] = useState("")
   const [busy, setBusy] = useState<string | null>(null)
-  const [message, setMessage] = useState<{ kind: "notice" | "error"; text: string } | null>(null)
+  const [message, setMessage] = useState<{ kind: "notice" | "error"; text: ReactNode } | null>(null)
 
-  const run = async (key: string, work: () => Promise<string>) => {
+  const run = async (key: string, work: () => Promise<string>, describeError?: (error: unknown) => ReactNode) => {
     setBusy(key)
     setMessage(null)
     try {
       setMessage({ kind: "notice", text: await work() })
     } catch (caught) {
-      setMessage({ kind: "error", text: cleanConvexError(caught, "Could not update the live session.") })
+      setMessage({
+        kind: "error",
+        text: describeError ? describeError(caught) : cleanConvexError(caught, "Could not update the live session."),
+      })
     } finally {
       setBusy(null)
     }
+  }
+
+  // Clone failures carry raw multi-line git output; when the repo is
+  // unreachable show the concise repo link instead.
+  const describeWorkbenchError = (repoUrl: string | null | undefined) => (caught: unknown) => {
+    const message = caught instanceof Error ? caught.message : null
+    const formatted = formatCloneErrorMessage(message, repoUrl)
+    return typeof formatted === "string" ? cleanConvexError(caught, "Could not open the Session Workbench") : formatted
   }
 
   const self = sessionMembers?.find((member) => member.isSelf)
@@ -129,11 +141,13 @@ export function LiveSessionShareSection({
   }
 
   const openSessionWorkbench = (candidate: NonNullable<typeof sessions>[number]) => {
-    void run(`switch:${candidate.branchName}`, async () => {
-      if (candidate.viewerMembership !== "active") {
-        await joinSession({ sessionId: candidate._id })
-      }
-      const result = await window.electronAPI.projectd.workbenches.ensureSession({
+    void run(
+      `switch:${candidate.branchName}`,
+      async () => {
+        if (candidate.viewerMembership !== "active") {
+          await joinSession({ sessionId: candidate._id })
+        }
+        const result = await window.electronAPI.projectd.workbenches.ensureSession({
         projectId: String(projectId),
         publicSessionId: candidate.publicSessionId,
         branchName: candidate.branchName,
@@ -154,7 +168,9 @@ export function LiveSessionShareSection({
         }),
       })
       return `Opened the Session Workbench for ${candidate.branchName}.`
-    })
+      },
+      describeWorkbenchError(candidate.repositoryUrl ?? null),
+    )
   }
 
   const handleLeaveSession = async () => {
@@ -288,6 +304,34 @@ export function LiveSessionShareSection({
             ) : null}
           </div>
         </div>
+        {canInvite && activeSession.accessMode ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2">
+            <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+              {activeSession.accessMode === "invite_only"
+                ? "Project session: everyone with access to this project can join."
+                : "Organization session: everyone in the project's organization can join."}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2.5 text-xs shrink-0"
+              disabled={busy !== null}
+              onClick={() => {
+                void run("access", async () => {
+                  const next =
+                    activeSession.accessMode === "invite_only" ? "organization_available" : "invite_only"
+                  await updateAccessMode({ sessionId: activeSession._id, accessMode: next })
+                  return next === "organization_available"
+                    ? "Session is now open to the whole organization."
+                    : "Session is now limited to this project."
+                })
+              }}
+            >
+              {busy === "access" ? <Spinner size="xs" className="mr-1" /> : null}
+              {activeSession.accessMode === "invite_only" ? "Open to organization" : "Make project-only"}
+            </Button>
+          </div>
+        ) : null}
         {canInvite ? (
           <>
             {invitable.length > 0 ? (

@@ -49,6 +49,7 @@ import {
   resolveProjectRecordedDefaultBranch,
   resolveProjectRepositoryIntegration,
 } from "@/lib/git/projectRepositoryIntegration";
+import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 import { saveLastAppRoute } from "@/lib/settings/settingsReturnRoute";
 import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
@@ -560,7 +561,7 @@ export function ProjectLayout({
             } else {
               appToast.error({
                 title: t("workspace.cloneFailed"),
-                description: cloneResult.error ?? undefined,
+                description: formatCloneErrorMessage(cloneResult.error ?? undefined, repoUrl),
               });
             }
             break;

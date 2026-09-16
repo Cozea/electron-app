@@ -10,7 +10,7 @@
  * remote, so invitees without a copy get one when they accept.
  */
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -77,6 +77,19 @@ export function StartCollaborationDialog({
 }: StartCollaborationDialogProps) {
   const navigate = useViewTransitionNavigate()
   const [accessMode, setAccessMode] = useState<AccessMode>("invite_only")
+  const accessModeTouchedRef = useRef(false)
+  const prevOpenRef = useRef(false)
+  const project = useQuery(api.projects.get, isOpen ? { projectId } : "skip")
+  const projectOrganizationId = project?.organizationId ?? null
+  // Organization sessions are the default: anyone in the org can join
+  // without a per-session invite. Projects outside an organization can only
+  // create project-scoped sessions until they are attached to one.
+  useEffect(() => {
+    if (isOpen && !prevOpenRef.current) accessModeTouchedRef.current = false
+    prevOpenRef.current = isOpen
+    if (!isOpen || accessModeTouchedRef.current || project === undefined) return
+    setAccessMode(projectOrganizationId ? "organization_available" : "invite_only")
+  }, [isOpen, project, projectOrganizationId])
   const { stage, error, startCollaboration, reset } = useCreateCollaborationSession()
   const sessions = useQuery(api.collaborationSessions.listByProject, isOpen ? { projectId } : "skip")
   const [settingUp, setSettingUp] = useState(false)
@@ -313,27 +326,44 @@ export function StartCollaborationDialog({
                     ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
                     : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70",
                 )}
-                onClick={() => setAccessMode("invite_only")}
+                onClick={() => {
+                  accessModeTouchedRef.current = true
+                  setAccessMode("invite_only")
+                }}
                 disabled={submitting}
               >
-                <span className="font-medium text-foreground text-sm">Invite only</span>
-                <span className="text-xs text-muted-foreground">Only devices you invite</span>
+                <span className="font-medium text-foreground text-sm">Project</span>
+                <span className="text-xs text-muted-foreground">Anyone on this project</span>
               </button>
               <button
                 type="button"
                 className={cn(
-                  "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition-all cursor-pointer",
+                  "flex flex-col items-start gap-1 rounded-lg border p-3 text-left text-sm transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50",
                   accessMode === "organization_available"
                     ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary/20"
                     : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70",
                 )}
-                onClick={() => setAccessMode("organization_available")}
-                disabled={submitting}
+                onClick={() => {
+                  accessModeTouchedRef.current = true
+                  setAccessMode("organization_available")
+                }}
+                disabled={submitting || !projectOrganizationId}
+                title={
+                  projectOrganizationId
+                    ? undefined
+                    : "Attach this project to an organization first (Project Settings → Organization)"
+                }
               >
                 <span className="font-medium text-foreground text-sm">Organization</span>
                 <span className="text-xs text-muted-foreground">Anyone in project org</span>
               </button>
             </div>
+            {project !== undefined && !projectOrganizationId ? (
+              <p className="text-xs text-muted-foreground">
+                This project isn&apos;t in an organization yet, so new sessions stay limited to this project.
+                Attach it to an organization in Project Settings to open sessions to the whole organization.
+              </p>
+            ) : null}
           </div>
 
           {/* Options */}

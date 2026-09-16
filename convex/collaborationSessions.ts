@@ -604,6 +604,45 @@ export const updateMemberRole = mutation({
   },
 })
 
+/** Managers can flip a session between invite-only and organization availability (Section 6.4). */
+export const updateAccessMode = mutation({
+  args: {
+    sessionId: v.id("collaborationSessions"),
+    accessMode: v.union(v.literal("invite_only"), v.literal("organization_available")),
+  },
+  handler: async (ctx, args) => {
+    const caller = await requireAuthenticatedDevice(ctx)
+    const session = await requireSession(ctx, args.sessionId)
+    if (isClosedOrClosing(session)) {
+      throw new ConvexError("Cannot change access for a closed collaboration session")
+    }
+    await requireSessionManager(ctx, session, caller)
+    if (session.accessMode === args.accessMode) {
+      return { sessionId: session._id, accessMode: session.accessMode }
+    }
+
+    const now = Date.now()
+    if (args.accessMode === "organization_available") {
+      const project = await ctx.db.get(session.projectId)
+      if (!project || project.status === "deleted" || !project.organizationId) {
+        throw new ConvexError("Only organization projects can make a session available to the organization")
+      }
+      await ctx.db.patch(session._id, {
+        accessMode: args.accessMode,
+        organizationId: project.organizationId,
+        updatedAt: now,
+      })
+    } else {
+      await ctx.db.patch(session._id, {
+        accessMode: args.accessMode,
+        organizationId: undefined,
+        updatedAt: now,
+      })
+    }
+    return { sessionId: session._id, accessMode: args.accessMode }
+  },
+})
+
 export const join = mutation({
   args: {
     sessionId: v.id("collaborationSessions"),
@@ -632,20 +671,34 @@ export const join = mutation({
       }
       memberId = existingMember._id
     } else if (session.accessMode === "invite_only") {
-      const invite = await findPendingInvitation(ctx, session._id, caller, now)
-      if (!invite) {
-        throw new ConvexError("Invitation required to join this invite-only session")
+      // Project-scoped sessions admit anyone with project access; invitations
+      // remain for devices outside the project (accepting still grants it).
+      if (await canAccessProject(ctx, session.projectId, caller._id)) {
+        const role = (await canEditProject(ctx, session.projectId, caller._id)) ? "developer" : "viewer"
+        memberId = await ctx.db.insert("collaborationSessionMembers", {
+          sessionId: session._id,
+          projectId: session.projectId,
+          principalId: caller._id,
+          role,
+          status: "active",
+          joinedAt: now,
+        })
+      } else {
+        const invite = await findPendingInvitation(ctx, session._id, caller, now)
+        if (!invite) {
+          throw new ConvexError("This device has no access to the project yet. Ask a session manager to invite it, then try again.")
+        }
+        await ensureProjectAccess(ctx, session.projectId, caller._id, invite.role, invite.createdByPrincipalId, now)
+        await ctx.db.patch(invite._id, { status: "accepted", resolvedAt: now })
+        memberId = await ctx.db.insert("collaborationSessionMembers", {
+          sessionId: session._id,
+          projectId: session.projectId,
+          principalId: caller._id,
+          role: invite.role,
+          status: "active",
+          joinedAt: now,
+        })
       }
-      await ensureProjectAccess(ctx, session.projectId, caller._id, invite.role, invite.createdByPrincipalId, now)
-      await ctx.db.patch(invite._id, { status: "accepted", resolvedAt: now })
-      memberId = await ctx.db.insert("collaborationSessionMembers", {
-        sessionId: session._id,
-        projectId: session.projectId,
-        principalId: caller._id,
-        role: invite.role,
-        status: "active",
-        joinedAt: now,
-      })
     } else {
       // Organization-available sessions admit members of the project's organization
       // and never grant project permissions they do not already have (Section 6.4).
