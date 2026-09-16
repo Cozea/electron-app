@@ -7,9 +7,6 @@ import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavi
 import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
-import { appToast } from "@/lib/appToast"
-import { cleanConvexError } from "@/lib/convexError"
-import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 
 export interface SwitchToSessionTarget {
@@ -21,17 +18,16 @@ export interface SwitchToSessionTarget {
 }
 
 /**
- * One-click switch to a live session's workbench: joins first when this
- * device is not an active member, then ensures and opens the session
- * workbench. Clone failures surface the concise repo link; everything else
- * keeps the cleaned server message.
+ * Single shared join-then-open flow for live sessions: joins first when this
+ * device is not an active member, then ensures and navigates to the session
+ * workbench. Throws on failure so callers keep their own error presentation.
  */
 export function useSwitchToSessionWorkbench(input: {
-  projectId: Id<"projects"> | null
+  projectId: string | null
   projectName?: string | null
   sourceWorkspaceId: string | null
 }): {
-  switchToSession: (target: SwitchToSessionTarget) => Promise<void>
+  openSessionWorkbench: (target: SwitchToSessionTarget) => Promise<void>
   switching: boolean
 } {
   const { projectId, projectName, sourceWorkspaceId } = input
@@ -40,16 +36,17 @@ export function useSwitchToSessionWorkbench(input: {
   const joinSession = useMutation(api.collaborationSessions.join)
   const [switching, setSwitching] = useState(false)
 
-  const switchToSession = useCallback(
+  const openSessionWorkbench = useCallback(
     async (target: SwitchToSessionTarget) => {
-      if (!projectId || switching) return
+      if (!projectId) throw new Error("Open this project first.")
+      if (switching) return
       setSwitching(true)
       try {
         if (target.viewerMembership !== "active") {
           await joinSession({ sessionId: target.sessionId })
         }
         const ensured = await window.electronAPI.projectd.workbenches.ensureSession({
-          projectId: String(projectId),
+          projectId,
           publicSessionId: target.publicSessionId,
           branchName: target.branchName,
           baseBranch: target.branchName,
@@ -61,23 +58,13 @@ export function useSwitchToSessionWorkbench(input: {
           setActive: true,
         })
         if (!ensured.success) throw new Error(ensured.error)
-        invalidateProjectWorkspaceResolution(String(projectId))
-        navigate(buildProjectPath(String(projectId), "workbench"), {
+        invalidateProjectWorkspaceResolution(projectId)
+        navigate(buildProjectPath(projectId, "workbench"), {
           state: buildProjectRouteNavigationState({
-            projectId: String(projectId),
+            projectId,
             projectName: projectName ?? null,
             preferredWorkspaceId: ensured.workspace.workspaceId,
           }),
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : null
-        const formatted = formatCloneErrorMessage(message, target.repositoryUrl ?? null)
-        appToast.error({
-          title: "Could not open the Session Workbench",
-          description:
-            typeof formatted === "string"
-              ? cleanConvexError(error, "Could not open the Session Workbench")
-              : formatted,
         })
       } finally {
         setSwitching(false)
@@ -86,5 +73,5 @@ export function useSwitchToSessionWorkbench(input: {
     [joinSession, navigate, projectId, projectName, route?.projectName, sourceWorkspaceId, switching],
   )
 
-  return { switchToSession, switching }
+  return { openSessionWorkbench, switching }
 }

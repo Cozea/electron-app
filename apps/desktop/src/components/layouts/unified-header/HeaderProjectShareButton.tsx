@@ -5,6 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { cleanConvexError as cleanError } from "@/lib/convexError"
+import { appToast } from "@/lib/appToast"
+import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { useAuth } from "@/contexts/AuthContext";
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
 import { LiveSessionShareSection } from "@/features/collaboration/ui/LiveSessionShareSection";
@@ -263,11 +265,32 @@ export function HeaderProjectShareButton({
     return sessions.find((candidate) => candidate.lifecycle !== "CLOSED") ?? null;
   }, [sessions, activeBranch]);
 
-  const { switchToSession, switching } = useSwitchToSessionWorkbench({
-    projectId,
+  const { openSessionWorkbench: switchToSessionWorkbench, switching } = useSwitchToSessionWorkbench({
+    projectId: projectId ? String(projectId) : null,
     projectName,
     sourceWorkspaceId: syncContext?.workspaceId ?? null,
   });
+
+  const handleSwitchToSession = (target: {
+    sessionId: LiveSessionRecord["_id"]
+    publicSessionId: string
+    branchName: string
+    repositoryUrl?: string | null
+    viewerMembership?: string | null
+  }) => {
+    headerOverflow?.dismiss();
+    void switchToSessionWorkbench(target).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : null;
+      const formatted = formatCloneErrorMessage(message, target.repositoryUrl ?? null);
+      appToast.error({
+        title: "Could not open the Session Workbench",
+        description:
+          typeof formatted === "string"
+            ? cleanError(error, "Could not open the Session Workbench")
+            : formatted,
+      });
+    });
+  };
 
   if (isSessionHub && liveSession?.session && projectId) {
     return (
@@ -421,8 +444,7 @@ export function HeaderProjectShareButton({
                 : `Live session on ${branchSession.branchName} — click to join`
             }
             onClick={() => {
-              headerOverflow?.dismiss();
-              void switchToSession({
+              handleSwitchToSession({
                 sessionId: branchSession._id,
                 publicSessionId: branchSession.publicSessionId,
                 branchName: branchSession.branchName,

@@ -19,16 +19,13 @@ import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/project
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
-import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useSwitchToSessionWorkbench } from "@/features/collaboration/live/useSwitchToSessionWorkbench"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
 import { findBranchSession, findOpenSessionById, findWorkspaceSession } from "../collaborationGate"
-import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import { useSessionMedia, type SessionMediaController } from "../media/useSessionMedia"
 import { cacheProjectSessions, readCachedProjectSessions } from "./liveSessionCache"
@@ -144,7 +141,6 @@ export function useLiveSession(input: {
   principalId: string | null
   activeBranch?: string | null
 }): LiveSessionController {
-  const navigate = useViewTransitionNavigate()
   const { enabled, sessions, workspaceId, projectId, activeBranch } = input
 
   useEffect(() => {
@@ -250,33 +246,11 @@ export function useLiveSession(input: {
     [],
   )
 
-  const ensureAndOpenSessionWorkbench = useCallback(
-    async (target: LiveSessionRecord) => {
-      if (!input.projectId) throw new Error("Open this project first.")
-      const ensured = await window.electronAPI.projectd.workbenches.ensureSession({
-        projectId: input.projectId,
-        publicSessionId: target.publicSessionId,
-        branchName: target.branchName,
-        baseBranch: target.branchName,
-        createBranch: false,
-        title: `${input.projectName ?? "Project"} · ${target.branchName}`,
-        sourceRepoUrl: target.repositoryUrl ?? null,
-        sourceWorkspaceId: workspaceId,
-        includeDirtyChanges: false,
-        setActive: true,
-      })
-      if (!ensured.success) throw new Error(ensured.error)
-      invalidateProjectWorkspaceResolution(input.projectId)
-      navigate(buildProjectPath(input.projectId, "workbench"), {
-        state: buildProjectRouteNavigationState({
-          projectId: input.projectId,
-          projectName: input.projectName ?? null,
-          preferredWorkspaceId: ensured.workspace.workspaceId,
-        }),
-      })
-    },
-    [input.projectId, input.projectName, navigate, workspaceId],
-  )
+  const ensureAndOpenSessionWorkbench = useSwitchToSessionWorkbench({
+    projectId,
+    projectName: input.projectName ?? null,
+    sourceWorkspaceId: workspaceId,
+  }).openSessionWorkbench
 
   const onSession = (
     action: LiveSessionAction,
@@ -358,7 +332,13 @@ export function useLiveSession(input: {
         "Could not join the session",
         async () => {
           await joinSession({ sessionId })
-          await ensureAndOpenSessionWorkbench(session)
+          await ensureAndOpenSessionWorkbench({
+            sessionId,
+            publicSessionId: session.publicSessionId,
+            branchName: session.branchName,
+            repositoryUrl: session.repositoryUrl,
+            viewerMembership: session.viewerMembership,
+          })
         },
         describeWorkbenchError(session.repositoryUrl),
       )
@@ -441,7 +421,13 @@ export function useLiveSession(input: {
           if (target.viewerMembership !== "active") {
             await joinSession({ sessionId: target._id })
           }
-          await ensureAndOpenSessionWorkbench(target)
+          await ensureAndOpenSessionWorkbench({
+            sessionId: target._id,
+            publicSessionId: target.publicSessionId,
+            branchName: target.branchName,
+            repositoryUrl: target.repositoryUrl,
+            viewerMembership: target.viewerMembership,
+          })
         },
         (error: unknown) => {
           const target = findOpenSessionById(sessions, publicSessionId)
