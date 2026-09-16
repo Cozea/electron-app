@@ -5,11 +5,10 @@ import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
 import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
 
 import { createHash } from 'node:crypto'
-import fs from 'node:fs'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit, runGitCommand } from '../gitRuntime'
+import { getGitRuntimeHealth, mergeTextWithGit, mergeTreeWithGit } from '../gitRuntime'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { GitChangesBroadcaster } from '../services/GitChangesBroadcaster'
 import { CheckpointWorkerClient } from '../services/CheckpointWorkerClient'
@@ -258,104 +257,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   )
 
   ipcMain.handle(
-    'workspaceSync:gitReadConflictFile',
-    async (_event, { workspaceId, filePath }: { workspaceId: string; filePath: string }) => {
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'git-read' })
-        const cwd = access.gitRootPath ?? access.projectRootPath
-
-        const runShow = async (stage: number) => {
-          const res = await runGitCommand(['show', `:${stage}:${filePath}`], { cwd })
-          return res.success ? res.stdout : null
-        }
-
-        const [baseContent, localContent, cloudContent] = await Promise.all([
-          runShow(1),
-          runShow(2),
-          runShow(3),
-        ])
-
-        const fullPath = path.resolve(cwd, filePath)
-        let currentContent = ''
-        if (fs.existsSync(fullPath)) {
-          currentContent = fs.readFileSync(fullPath, 'utf8')
-        }
-
-        return {
-          success: true,
-          baseContent,
-          localContent,
-          cloudContent,
-          currentContent,
-        }
-      } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitResolveConflictFile',
-    async (
-      _event,
-      { workspaceId, filePath, resolvedContent }: { workspaceId: string; filePath: string; resolvedContent: string }
-    ) => {
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'write-file' })
-        const cwd = access.gitRootPath ?? access.projectRootPath
-        const fullPath = path.resolve(cwd, filePath)
-
-        fs.writeFileSync(fullPath, resolvedContent, 'utf8')
-        await runGitCommand(['add', filePath], { cwd })
-
-        const diffRes = await runGitCommand(['diff', '--name-only', '--diff-filter=U'], { cwd })
-        const remaining = diffRes.stdout.split('\n').map((s) => s.trim()).filter(Boolean)
-
-        return {
-          success: true,
-          mergeCompleted: remaining.length === 0,
-          remainingConflictedPaths: remaining,
-        }
-      } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : String(e) }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitCaptureCheckpoint',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        checkpointId: string
-        authorName: string
-        authorEmail?: string
-      }
-    ) => {
-      let cwd: string | null
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        cwd = access.gitRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      if (!cwd) {
-        // Workspace has no git repository — checkpoints are git commits, so
-        // there is nothing to capture. Not an error: plain imported folders
-        // hit this on every persisted change batch.
-        return { success: true, skipped: 'no-git-root' }
-      }
-      return checkpointWorkerClient.captureCheckpoint({
-        cwd,
-        checkpointId: options.checkpointId,
-        authorName: options.authorName,
-        authorEmail: options.authorEmail,
-      })
-    }
-  )
-
-  ipcMain.handle(
     'workspaceSync:gitDiffCheckpoints',
     async (
       _event,
@@ -383,56 +284,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
   )
 
   ipcMain.handle(
-    'workspaceSync:gitReadCheckpointFilePair',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        fromCheckpointId?: string | null
-        toCheckpointId: string
-        filePath: string
-      }
-    ) => {
-      let cwd: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        cwd = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      return checkpointWorkerClient.readCheckpointFilePair({
-        cwd,
-        fromCheckpointId: options.fromCheckpointId,
-        toCheckpointId: options.toCheckpointId,
-        filePath: options.filePath,
-      })
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitDeleteCheckpointRefs',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        checkpointIds: string[]
-      }
-    ) => {
-      let cwd: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-write' })
-        cwd = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      return checkpointWorkerClient.deleteCheckpointRefs({
-        cwd,
-        checkpointIds: options.checkpointIds,
-      })
-    }
-  )
-
-  ipcMain.handle(
     'workspaceSync:gitDeleteAllCheckpointRefs',
     async (
       _event,
@@ -448,106 +299,6 @@ export function registerWorkspaceSyncHandlers(ipcMain: IpcMain): void {
         return { success: false, error: String(e) }
       }
       return checkpointWorkerClient.deleteAllCheckpointRefs({ cwd })
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitGetHeadDiffStats',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        authorName?: string
-      }
-    ) => {
-      let cwd: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        cwd = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      return checkpointWorkerClient.getHeadDiffStats({
-        cwd,
-        authorName: options.authorName,
-      })
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitListChanges',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        scope: 'current' | 'branch'
-        authorName?: string
-      }
-    ) => {
-      let cwd: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        cwd = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      return checkpointWorkerClient.listChanges({
-        cwd,
-        scope: options.scope,
-        authorName: options.authorName,
-      })
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitReadChangesPatch',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        scope: 'current' | 'branch'
-        filePath?: string
-        authorName?: string
-      }
-    ) => {
-      let cwd: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        cwd = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      return checkpointWorkerClient.readChangesPatch({
-        cwd,
-        scope: options.scope,
-        filePath: options.filePath,
-        authorName: options.authorName,
-      })
-    }
-  )
-
-  ipcMain.handle(
-    'workspaceSync:gitReadChanges',
-    async (
-      _event,
-      options: {
-        workspaceId: string
-        scope: 'current' | 'branch'
-        authorName?: string
-      }
-    ) => {
-      let cwd: string
-      try {
-        const access = await resolveAuthorizedWorkspaceAccess({ workspaceId: options.workspaceId, operation: 'git-read' })
-        cwd = access.gitRootPath ?? access.projectRootPath
-      } catch (e) {
-        return { success: false, error: String(e) }
-      }
-      return checkpointWorkerClient.readChanges({
-        cwd,
-        scope: options.scope,
-        authorName: options.authorName,
-      })
     }
   )
 

@@ -833,44 +833,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('workspaceSync:getGitRuntimeHealth', options ?? {}),
     gitStatus: (options: { workspaceId: string; remote?: string; branch?: string; debug?: boolean }) =>
       ipcRenderer.invoke('workspaceSync:gitStatus', options),
-    gitReadConflictFile: (options: { workspaceId: string; filePath: string }) =>
-      ipcRenderer.invoke('workspaceSync:gitReadConflictFile', options),
-    gitResolveConflictFile: (options: { workspaceId: string; filePath: string; resolvedContent: string }) =>
-      ipcRenderer.invoke('workspaceSync:gitResolveConflictFile', options),
-    gitCaptureCheckpoint: (options: {
-      workspaceId: string
-      checkpointId: string
-      authorName: string
-      authorEmail?: string
-    }) => ipcRenderer.invoke('workspaceSync:gitCaptureCheckpoint', options),
     gitDiffCheckpoints: (options: {
       workspaceId: string
       fromCheckpointId?: string | null
       toCheckpointId: string
       filePath?: string
     }) => ipcRenderer.invoke('workspaceSync:gitDiffCheckpoints', options),
-    gitReadCheckpointFilePair: (options: {
-      workspaceId: string
-      fromCheckpointId?: string | null
-      toCheckpointId: string
-      filePath: string
-    }) => ipcRenderer.invoke('workspaceSync:gitReadCheckpointFilePair', options),
-    gitDeleteCheckpointRefs: (options: { workspaceId: string; checkpointIds: string[] }) =>
-      ipcRenderer.invoke('workspaceSync:gitDeleteCheckpointRefs', options),
     gitDeleteAllCheckpointRefs: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('workspaceSync:gitDeleteAllCheckpointRefs', options),
-    gitGetHeadDiffStats: (options: { workspaceId: string; authorName?: string }) =>
-      ipcRenderer.invoke('workspaceSync:gitGetHeadDiffStats', options),
-    gitListChanges: (options: { workspaceId: string; scope: 'current' | 'branch'; authorName?: string }) =>
-      ipcRenderer.invoke('workspaceSync:gitListChanges', options),
-    gitReadChangesPatch: (options: {
-      workspaceId: string
-      scope: 'current' | 'branch'
-      filePath?: string
-      authorName?: string
-    }) => ipcRenderer.invoke('workspaceSync:gitReadChangesPatch', options),
-    gitReadChanges: (options: { workspaceId: string; scope: 'current' | 'branch'; authorName?: string }) =>
-      ipcRenderer.invoke('workspaceSync:gitReadChanges', options),
     subscribeGitChanges: (options: { workspaceId: string; scope: 'current' | 'branch' }) =>
       ipcRenderer.invoke('workspaceSync:subscribeGitChanges', options),
     unsubscribeGitChanges: (options: { workspaceId: string; scope: 'current' | 'branch' }) =>

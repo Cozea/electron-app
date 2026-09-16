@@ -2367,55 +2367,13 @@ export interface ElectronAPI {
       branch?: string
       debug?: boolean
     }) => Promise<GitSyncStatusResult>
-    gitReadConflictFile: (options: { workspaceId: string; filePath: string }) => Promise<GitConflictFileResult>
-    gitResolveConflictFile: (options: {
-      workspaceId: string
-      filePath: string
-      resolvedContent: string
-    }) => Promise<GitResolveConflictResult>
-    gitCaptureCheckpoint: (options: {
-      workspaceId: string
-      checkpointId: string
-      authorName: string
-      authorEmail?: string
-    }) => Promise<GitCheckpointCaptureResult>
     gitDiffCheckpoints: (options: {
       workspaceId: string
       fromCheckpointId?: string | null
       toCheckpointId: string
       filePath?: string
     }) => Promise<GitCheckpointDiffResult>
-    gitReadCheckpointFilePair: (options: {
-      workspaceId: string
-      fromCheckpointId?: string | null
-      toCheckpointId: string
-      filePath: string
-    }) => Promise<GitCheckpointFilePairResult>
-    gitDeleteCheckpointRefs: (options: {
-      workspaceId: string
-      checkpointIds: string[]
-    }) => Promise<GitCheckpointDeleteResult>
     gitDeleteAllCheckpointRefs: (options: { workspaceId: string }) => Promise<GitCheckpointDeleteResult>
-    gitGetHeadDiffStats: (options: {
-      workspaceId: string
-      authorName?: string
-    }) => Promise<GitCheckpointHeadStatsResult>
-    gitListChanges: (options: {
-      workspaceId: string
-      scope: GitChangesScope
-      authorName?: string
-    }) => Promise<GitChangesListResult>
-    gitReadChangesPatch: (options: {
-      workspaceId: string
-      scope: GitChangesScope
-      filePath?: string
-      authorName?: string
-    }) => Promise<GitChangesPatchResult>
-    gitReadChanges: (options: {
-      workspaceId: string
-      scope: GitChangesScope
-      authorName?: string
-    }) => Promise<GitChangesResult>
     subscribeGitChanges: (options: { workspaceId: string; scope: GitChangesScope }) => Promise<GitChangesSnapshot>
     unsubscribeGitChanges: (options: { workspaceId: string; scope: GitChangesScope }) => Promise<{ success: boolean }>
     onGitChangesUpdated: (callback: (snapshot: GitChangesSnapshot) => void) => () => void
