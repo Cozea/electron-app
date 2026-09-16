@@ -360,26 +360,6 @@ export function registerDevServerHandlers(
     },
   )
 
-  ipcMain.handle(
-    'devServer:resize',
-    (): { success: boolean } => {
-      // No-op for process-based server
-      return { success: true }
-    }
-  )
-
-  ipcMain.handle(
-    'devServer:isRunning',
-    async (_event, { workspaceId, laneId }: { workspaceId: string; laneId?: string | null }): Promise<boolean> => {
-      try {
-        await resolveAuthorizedWorkspaceAccess({ workspaceId, laneId, operation: 'dev-server-start' })
-        return service.isRunning(workspaceId, laneId)
-      } catch {
-        return false
-      }
-    }
-  )
-
   // Source-of-truth snapshot for renderer reconciliation: the renderer mirror
   // (devServerRunStore) re-syncs from this on mount/focus instead of trusting
   // whatever events it happened to be mounted for.

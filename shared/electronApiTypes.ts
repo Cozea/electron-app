@@ -2478,13 +2478,6 @@ export interface ElectronAPI {
       terminalId: string
     }) => Promise<{ success: boolean; ownsRuntime: boolean; error?: string }>
     stop: (options: { workspaceId: string; laneId?: string | null }) => Promise<{ success: boolean; error?: string }>
-    resize: (options: {
-      workspaceId: string
-      laneId?: string | null
-      cols: number
-      rows: number
-    }) => Promise<{ success: boolean }>
-    isRunning: (options: { workspaceId: string; laneId?: string | null }) => Promise<boolean>
     getState: (options: { workspaceId: string; laneId?: string | null }) => Promise<DevServerProcessState>
     onStateChange: (callback: (data: DevServerProcessStateEvent) => void) => () => void
     onOutput: (callback: (data: DevServerOutputEvent) => void) => () => void
@@ -2497,11 +2490,9 @@ export interface ElectronAPI {
     input: (options: { terminalId: string; data: string }) => Promise<boolean>
     resize: (options: { terminalId: string; cols: number; rows: number }) => Promise<{ success: boolean }>
     kill: (options: { terminalId: string }) => Promise<{ success: boolean }>
-    getProfiles: () => Promise<TerminalProfile[]>
     list: (options: { workspaceId: string }) => Promise<string[]>
     getInfo: (options: { terminalId: string }) => Promise<TerminalInfo | null>
     getSnapshot: (options: { terminalId: string }) => Promise<TerminalSnapshot | null>
-    getOutputEventsSince: (options: { terminalId: string; afterSequence: number }) => Promise<TerminalOutputEvent[]>
     onOutput: (callback: (data: TerminalOutputEvent) => void) => () => void
     onOutputForTerminal: (terminalId: string, callback: (data: TerminalOutputEvent) => void) => () => void
     onExit: (callback: (data: TerminalExitEvent) => void) => () => void

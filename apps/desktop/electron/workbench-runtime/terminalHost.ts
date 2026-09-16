@@ -1052,10 +1052,6 @@ export class TerminalRuntimeHost extends EventEmitter {
     return this.terminalHistory.get(trimmedId) ?? null
   }
 
-  public getProfiles(): TerminalProfile[] {
-    return this.detectTerminalProfiles()
-  }
-
   public killAll(): void {
     for (const terminal of this.terminals.values()) {
       try {

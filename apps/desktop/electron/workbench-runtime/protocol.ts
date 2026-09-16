@@ -5,7 +5,6 @@ import type {
   TerminalExitEvent,
   TerminalInfo,
   TerminalOutputEvent,
-  TerminalProfile,
   TerminalSnapshot,
 } from '../../../../shared/electronApiTypes'
 
@@ -16,7 +15,6 @@ export type WorkbenchRuntimeMethod =
   | 'terminal.input'
   | 'terminal.resize'
   | 'terminal.kill'
-  | 'terminal.getProfiles'
   | 'terminal.list'
   | 'terminal.getInfo'
   | 'terminal.getSnapshot'
@@ -142,7 +140,6 @@ export interface WorkbenchRuntimeMethodResultMap {
   'terminal.input': boolean
   'terminal.resize': { success: boolean }
   'terminal.kill': { success: boolean }
-  'terminal.getProfiles': TerminalProfile[]
   'terminal.list': string[]
   'terminal.getInfo': TerminalInfo | null
   'terminal.getSnapshot': TerminalSnapshot | null
