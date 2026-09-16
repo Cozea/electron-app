@@ -18,6 +18,16 @@ export type VcsStatusSnapshotListener = (
   snapshot: GitChangesSnapshot,
 ) => void;
 
+/**
+ * Which scopes currently have someone watching a path.
+ *
+ * The fan-out layer already knows this, so it answers rather than this class
+ * keeping a second tally that could drift from it.
+ */
+export type ScopeInterestProvider = (
+  projectPath: string,
+) => readonly GitChangesScope[];
+
 function normalizeProjectPath(projectPath: string): string {
   return path.resolve(projectPath);
 }
@@ -34,6 +44,7 @@ export class VcsStatusBroadcaster {
   private readonly pendingRefreshTimers = new Map<string, NodeJS.Timeout>();
   private readonly inflightRefreshes = new Map<string, Promise<GitChangesSnapshot>>();
   private readonly workspaceIdByPath = new Map<string, string>();
+  private scopeInterest: ScopeInterestProvider | null = null;
 
   static getInstance(): VcsStatusBroadcaster {
     if (!VcsStatusBroadcaster.instance) {
@@ -65,10 +76,25 @@ export class VcsStatusBroadcaster {
     return this.snapshotsByKey.get(buildCacheKey(normalizeProjectPath(projectPath), scope)) ?? null;
   }
 
-  /** Invalidate and schedule refresh for all scopes on a repo path. */
+  /**
+   * Teach the broadcaster which scopes are worth recomputing. Without one, every
+   * scope is refreshed, which is what callers outside the Changes fan-out get.
+   */
+  setScopeInterestProvider(provider: ScopeInterestProvider | null): void {
+    this.scopeInterest = provider;
+  }
+
+  /**
+   * Invalidate and schedule a refresh for the scopes someone is watching.
+   *
+   * Branch scope costs a `merge-base` and two diffs, so recomputing it for a
+   * page nobody has open is work thrown away: a single file save used to
+   * trigger it.
+   */
   invalidateProjectPath(projectPath: string): void {
     const normalized = normalizeProjectPath(projectPath);
-    for (const scope of ["current", "branch"] as const) {
+    const scopes = this.scopeInterest?.(normalized) ?? (["current", "branch"] as const);
+    for (const scope of scopes) {
       this.scheduleRefresh(normalized, scope, INVALIDATION_DEBOUNCE_MS);
     }
   }

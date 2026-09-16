@@ -72,6 +72,30 @@ export class GitChangesBroadcaster {
         this.publishDirtyStateForPath(projectPath, snapshot)
       }
     })
+    this.statusBroadcaster.setScopeInterestProvider((projectPath) => this.activeScopesFor(projectPath))
+  }
+
+  /**
+   * The scopes with a live subscriber for this path, read off the subscription
+   * maps themselves so there is no second tally to keep in step with them.
+   */
+  private activeScopesFor(projectPath: string): GitChangesScope[] {
+    const scopes = new Set<GitChangesScope>()
+
+    for (const [key, subscribers] of this.subscriptionsByKey.entries()) {
+      if (subscribers.size === 0) continue
+      const [subscribedPath, scope] = key.split('\0')
+      if (subscribedPath === projectPath) {
+        scopes.add(scope as GitChangesScope)
+      }
+    }
+
+    // Header dirty state is the 'current' snapshot under another name.
+    if ((this.dirtyStateSubsByPath.get(projectPath)?.size ?? 0) > 0) {
+      scopes.add('current')
+    }
+
+    return Array.from(scopes)
   }
 
   async subscribe(
@@ -132,14 +156,18 @@ export class GitChangesBroadcaster {
   }
 
   invalidateFilePath(filePath: string): void {
+    // One invalidation per repository, not one per subscribed scope: the
+    // broadcaster narrows to the watched scopes itself, and asking twice for
+    // the same path only reset the same debounce timer.
+    const invalidated = new Set<string>()
+
     for (const key of this.subscriptionsByKey.keys()) {
       const projectPath = key.split('\0')[0]
-      const scope = key.split('\0')[1] as GitChangesScope
-      if (!pathIsWithinRoot(filePath, projectPath)) {
+      if (invalidated.has(projectPath) || !pathIsWithinRoot(filePath, projectPath)) {
         continue
       }
+      invalidated.add(projectPath)
       this.statusBroadcaster.invalidateProjectPath(projectPath)
-      void scope
     }
   }
 
