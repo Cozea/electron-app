@@ -8,6 +8,7 @@ import path from "node:path";
 
 import type { GitChangesScope, GitChangesSnapshot } from "../../../../../shared/electronApiTypes";
 import { getChangesCheckpointReads } from "./checkpointsFacade";
+import { countDiffLines } from "./diffStats";
 
 const INVALIDATION_DEBOUNCE_MS = 250;
 
@@ -130,17 +131,16 @@ export class VcsStatusBroadcaster {
     const refreshPromise = (async () => {
       try {
         const reads = getChangesCheckpointReads();
-        const [result, statsResult] = await Promise.all([
-          reads.readChanges({ cwd: projectPath, scope }),
-          scope === "current"
-            ? reads.getHeadDiffStats({ cwd: projectPath, authorName: "Cozea" })
-            : Promise.resolve({
-                success: true as const,
-                additions: 0,
-                deletions: 0,
-                changedFiles: 0,
-              }),
-        ]);
+        const result = await reads.readChanges({ cwd: projectPath, scope });
+        // The patch is already in hand, so the header's counts are a string
+        // scan rather than a second trip through Git. Asking separately also
+        // let the working tree move between the two answers, which is how the
+        // file list and the line counts could end up describing different
+        // moments. Branch scope reported no counts before and still does.
+        const stats =
+          result.success && scope === "current"
+            ? countDiffLines(result.diff ?? "")
+            : { additions: 0, deletions: 0 };
 
         const snapshot: GitChangesSnapshot = {
           workspaceId,
@@ -152,8 +152,8 @@ export class VcsStatusBroadcaster {
           error: result.success ? null : (result.error ?? "Failed to compute git changes"),
           baseRef: result.baseRef,
           headRef: result.headRef,
-          additions: statsResult.success ? statsResult.additions : 0,
-          deletions: statsResult.success ? statsResult.deletions : 0,
+          additions: stats.additions,
+          deletions: stats.deletions,
         };
 
         const existing = this.snapshotsByKey.get(key);

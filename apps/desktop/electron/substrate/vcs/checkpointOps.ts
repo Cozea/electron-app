@@ -16,6 +16,7 @@ import {
   checkpointRefForGroupId,
   migrateLegacyT3CheckpointRefs,
 } from './checkpointRefs'
+import { countDiffLines } from './diffStats'
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 const DEFAULT_AUTHOR_EMAIL = 'cozea@users.noreply.github.com'
@@ -300,29 +301,6 @@ async function resolveDiffEndpoints(input: {
   return {
     fromCommit: headCommit ?? EMPTY_TREE_SHA,
     toCommit,
-  }
-}
-
-function parseShortstat(stdout: string): GitCheckpointHeadStatsResult {
-  const line = stdout.trim()
-  if (!line) {
-    return {
-      success: true,
-      additions: 0,
-      deletions: 0,
-      changedFiles: 0,
-    }
-  }
-
-  const changedFilesMatch = line.match(/(\d+)\s+files?\s+changed/)
-  const additionsMatch = line.match(/(\d+)\s+insertions?\(\+\)/)
-  const deletionsMatch = line.match(/(\d+)\s+deletions?\(-\)/)
-
-  return {
-    success: true,
-    changedFiles: changedFilesMatch ? Number.parseInt(changedFilesMatch[1], 10) : 0,
-    additions: additionsMatch ? Number.parseInt(additionsMatch[1], 10) : 0,
-    deletions: deletionsMatch ? Number.parseInt(deletionsMatch[1], 10) : 0,
   }
 }
 
@@ -734,25 +712,29 @@ async function readCurrentWorkingTreeChanges(cwd: string): Promise<{
   }
 }
 
+/**
+ * How far the working tree has moved from HEAD, in lines.
+ *
+ * This reads the tree the same way the Changes list does and counts the patch
+ * it already produced. It used to build a throwaway commit instead — a temp
+ * index, `read-tree HEAD`, `add -A` over the whole working tree, `write-tree`
+ * and `commit-tree` — five subprocesses and a full tree walk to render a number
+ * in the header.
+ *
+ * `authorName` is kept for the checkpoint-worker protocol's shape; nothing is
+ * committed here, so no identity is needed.
+ */
 export async function getHeadDiffStats(
   cwd: string,
-  authorName = 'Cozea',
+  _authorName = 'Cozea',
 ): Promise<GitCheckpointHeadStatsResult> {
   try {
-    const syntheticCommit = await createSyntheticCommit({
-      cwd,
-      authorName,
-    })
-    const headCommit = await resolveHeadCommit(cwd)
-    const diffTarget = headCommit ?? EMPTY_TREE_SHA
-    const result = await assertGitSuccess(
-      {
-        cwd,
-        args: ['diff', '--shortstat', diffTarget, syntheticCommit],
-      },
-      'Failed to compute head diff stats.',
-    )
-    return parseShortstat(result.stdout)
+    const { files, diff } = await readCurrentWorkingTreeChanges(cwd)
+    return {
+      success: true,
+      ...countDiffLines(diff),
+      changedFiles: files.length,
+    }
   } catch (error) {
     return {
       success: false,
