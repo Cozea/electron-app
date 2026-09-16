@@ -22,6 +22,7 @@ import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery";
 import { resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
 import { LiveSessionBar } from "@/features/collaboration/live/LiveSessionBar";
 import { HeaderLiveSessionControl } from "@/features/collaboration/live/HeaderLiveSessionControl";
+import { CloseSessionDialog } from "@/features/collaboration/ui/CloseSessionDialog";
 import { useLiveSession } from "@/features/collaboration/live/useLiveSession";
 import { readCachedProjectSessions } from "@/features/collaboration/live/liveSessionCache";
 import { buildLegacyProjectPath, buildProjectPath } from "@/contexts/project/projectRoutes";
@@ -659,6 +660,15 @@ export function ProjectLayout({
           closeSettings={closeSettings}
           isSettingsOpen={isSettingsOpen}
         />
+        {liveSession.closeReview && (
+          <CloseSessionDialog
+            key={liveSession.closeReview.reviewId}
+            review={liveSession.closeReview}
+            busy={liveSession.busyAction === "end"}
+            onCancel={liveSession.cancelClose}
+            onConfirm={liveSession.confirmClose}
+          />
+        )}
       </div>
     </SidebarProvider>
   );

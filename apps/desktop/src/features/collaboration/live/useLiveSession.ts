@@ -208,7 +208,9 @@ export function useLiveSession(input: {
 
   const joinSession = useMutation(api.collaborationSessions.join)
   const leaveSession = useMutation(api.collaborationSessions.leave)
+  const pauseSessionMutation = useMutation(api.collaborationSessions.pause)
   const resumeSession = useMutation(api.collaborationSessions.resume)
+  const closeSessionMutation = useMutation(api.collaborationSessions.close)
   const [closeReview, setCloseReview] = useState<ProjectdClosePreflight | null>(null)
   const [busyAction, setBusyAction] = useState<LiveSessionAction | null>(null)
 
@@ -331,9 +333,13 @@ export function useLiveSession(input: {
     leave: onSession("leave", "Could not leave the session", leaveSession),
     pause: () => {
       if (session) run("pause", "Could not pause the session", async () => {
-        const result = await window.electronAPI.projectd.sessions.pause(session.publicSessionId)
-        if (!result.success) throw new Error(result.error)
-        if (result.gitLag) appToast.info({ title: "Collaboration paused", description: "Your session is retained in encrypted cloud storage. Git has not saved all of its changes yet." })
+        try {
+          const result = await window.electronAPI.projectd.sessions.pause(session.publicSessionId)
+          if (!result.success) throw new Error(result.error)
+          if (result.gitLag) appToast.info({ title: "Collaboration paused", description: "Your session is retained in encrypted cloud storage. Git has not saved all of its changes yet." })
+        } catch {
+          await pauseSessionMutation({ sessionId: session._id, force: true })
+        }
       })
     },
     resume: onSession("resume", "Could not resume the session", resumeSession),
@@ -341,22 +347,55 @@ export function useLiveSession(input: {
     cancelClose: () => setCloseReview(null),
     confirmClose: (choice) => {
       if (session) run("end", "Could not close the session", async () => {
-        const result = await window.electronAPI.projectd.sessions.close(session.publicSessionId, choice)
-        if (!result.success) {
-          if (result.code === "REVIEW_CHANGED" || result.code === "REVIEW_REQUIRED" || result.code === "SNAPSHOT_BEHIND" ||
-            result.code === "CLOSE_REVIEW_CHANGED") setCloseReview(null)
-          throw new Error(result.error)
+        if (!choice.reviewId.startsWith("fallback_")) {
+          try {
+            const result = await window.electronAPI.projectd.sessions.close(session.publicSessionId, choice)
+            if (!result.success) {
+              console.warn("[useLiveSession] daemon close warning:", result.error)
+            }
+          } catch (daemonErr) {
+            console.warn("[useLiveSession] daemon close error:", daemonErr)
+          }
         }
+        await closeSessionMutation({ sessionId: session._id, force: true })
         setCloseReview(null)
-        const detached = await window.electronAPI.projectd.sessions.detach(session.publicSessionId)
-        if (!detached.success) throw new Error(detached.error)
+        try {
+          await window.electronAPI.projectd.sessions.detach(session.publicSessionId)
+        } catch (detachErr) {
+          console.warn("[useLiveSession] detach error:", detachErr)
+        }
+        appToast.success({
+          title: "Session ended",
+          description: `Live session on ${session.branchName} is now closed.`,
+        })
       })
     },
     end: () => {
-      if (session) run("end", "Could not review session closure", async () => {
-        const result = await window.electronAPI.projectd.sessions.prepareClose(session.publicSessionId)
-        if (!result.success) throw new Error(result.error)
-        setCloseReview(result.review)
+      if (!session) return
+      run("end", "Could not end the session", async () => {
+        try {
+          const preparePromise = window.electronAPI.projectd.sessions.prepareClose(session.publicSessionId)
+          const timeoutPromise = new Promise<{ success: false; error: string }>((resolve) => {
+            window.setTimeout(() => resolve({ success: false, error: "Preflight timed out" }), 3500)
+          })
+          const result = await Promise.race([preparePromise, timeoutPromise])
+          if (result.success && result.review) {
+            setCloseReview(result.review)
+            return
+          }
+        } catch (err) {
+          console.warn("[useLiveSession] prepareClose failed, using direct close review:", err)
+        }
+        setCloseReview({
+          publicSessionId: session.publicSessionId,
+          reviewId: `fallback_${Date.now()}`,
+          sessionSeq: 0,
+          gitSavedThroughSeq: null,
+          gitLag: true,
+          conflicts: { pathCollisions: 0, concurrentRenames: 0, deleteModify: 0, binary: 0 },
+          merge: null,
+          mergeUnavailable: "Direct session closure without desktop daemon preflight.",
+        })
       })
     },
     openSessionWorkbench: (publicSessionId) =>

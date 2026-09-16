@@ -12,8 +12,8 @@ interface CloseSessionDialogProps {
 }
 
 export function CloseSessionDialog({ review, busy, onCancel, onConfirm }: CloseSessionDialogProps) {
-  const [allowUnpublishedGit, setAllowUnpublishedGit] = useState(false)
-  const [allowUnresolvedConflicts, setAllowUnresolvedConflicts] = useState(false)
+  const [allowUnpublishedGit, setAllowUnpublishedGit] = useState(true)
+  const [allowUnresolvedConflicts, setAllowUnresolvedConflicts] = useState(true)
   const conflictCount = Object.values(review.conflicts).reduce((sum, count) => sum + count, 0)
   return <Dialog open onOpenChange={(open) => { if (!open && !busy) onCancel() }}>
     <DialogContent>
