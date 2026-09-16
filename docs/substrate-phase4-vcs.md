@@ -8,7 +8,7 @@ Companion plans: `docs/t3code-upgrade-path.md` §3.8, `docs/t3code-implementatio
 
 | Flag | Env | Default |
 | --- | --- | --- |
-| `cozea.substrate.vcs` | `COZEA_SUBSTRATE_VCS=1` | **off** |
+| `cozea.substrate.vcs` | `COZEA_SUBSTRATE_VCS=0` disables | **on** |
 
 ## Layout
 
