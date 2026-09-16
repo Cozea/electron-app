@@ -39,11 +39,14 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   AddTeamIcon as __AddTeamHugeIcon,
   Copy01Icon as __CopyHugeIcon,
+  GitBranchIcon as __GitBranchHugeIcon,
   Link01Icon as __LinkHugeIcon,
   Refresh01Icon as __RefreshHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
 } from '@hugeicons/core-free-icons'
-import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
+import type { LiveSessionContext, LiveSessionRecord } from "@/features/collaboration/live/useLiveSession";
+import { useSwitchToSessionWorkbench } from "@/features/collaboration/live/useSwitchToSessionWorkbench";
+import { findBranchSession } from "@/features/collaboration/collaborationGate";
 import { SessionHubDialog } from "@/features/collaboration/ui/SessionHubDialog";
 
 type ProjectRole = "project_manager" | "developer" | "designer" | "viewer";
@@ -70,12 +73,18 @@ export function HeaderProjectShareButton({
   liveSessionMembers,
   liveSession,
   onlinePrincipalIds,
+  sessions,
+  activeBranch,
 }: {
   projectId: Id<"projects"> | null;
   projectName?: string | null;
   liveSessionMembers?: LiveSessionMember[];
   liveSession?: LiveSessionContext | null;
   onlinePrincipalIds?: Set<string>;
+  /** All non-hidden sessions in the project; lets the button show a live session this device hasn't joined. */
+  sessions?: readonly LiveSessionRecord[];
+  /** Branch the folder has checked out; the session button prefers its session. */
+  activeBranch?: string | null;
 }) {
   const { principalId, user } = useAuth();
   const syncContext = useOptionalProjectSyncContext();
@@ -242,6 +251,24 @@ export function HeaderProjectShareButton({
 
   const isSessionHub = Boolean(hasActiveSession && liveSession?.session && projectId);
 
+  // A session can be live on this branch while nobody is present (or this
+  // device hasn't joined): the presence-based button above would still read
+  // "Share". Surface the session itself with a one-click switch instead.
+  const branchSession = useMemo<LiveSessionRecord | null>(() => {
+    if (!sessions || sessions.length === 0) return null;
+    if (activeBranch) {
+      const match = findBranchSession(sessions, activeBranch);
+      if (match) return match;
+    }
+    return sessions.find((candidate) => candidate.lifecycle !== "CLOSED") ?? null;
+  }, [sessions, activeBranch]);
+
+  const { switchToSession, switching } = useSwitchToSessionWorkbench({
+    projectId,
+    projectName,
+    sourceWorkspaceId: syncContext?.workspaceId ?? null,
+  });
+
   if (isSessionHub && liveSession?.session && projectId) {
     return (
       <>
@@ -376,6 +403,54 @@ export function HeaderProjectShareButton({
 
   return (
     <>
+    {branchSession ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag transition-[background-color,color,transform] duration-150 active:scale-[0.92] cursor-pointer"
+            disabled={switching}
+            aria-label={
+              branchSession.viewerMembership === "active"
+                ? `Live session on ${branchSession.branchName}. Click to switch.`
+                : `Live session on ${branchSession.branchName}. Click to join.`
+            }
+            title={
+              branchSession.viewerMembership === "active"
+                ? `Live session on ${branchSession.branchName} — click to switch`
+                : `Live session on ${branchSession.branchName} — click to join`
+            }
+            onClick={() => {
+              headerOverflow?.dismiss();
+              void switchToSession({
+                sessionId: branchSession._id,
+                publicSessionId: branchSession.publicSessionId,
+                branchName: branchSession.branchName,
+                repositoryUrl: branchSession.repositoryUrl,
+                viewerMembership: branchSession.viewerMembership,
+              });
+            }}
+          >
+            {switching ? (
+              <Spinner size="sm" className="text-muted-foreground" />
+            ) : (
+              <span className="relative flex items-center justify-center">
+                <HugeiconsIcon icon={__GitBranchHugeIcon} className="size-4 shrink-0" />
+                <span
+                  className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 ring-2 ring-background"
+                  aria-hidden="true"
+                />
+              </span>
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end">
+          {branchSession.viewerMembership === "active"
+            ? `Live session on ${branchSession.branchName} — click to switch`
+            : `Live session on ${branchSession.branchName} — click to join`}
+        </TooltipContent>
+      </Tooltip>
+    ) : null}
     <Dialog open={open} onOpenChange={(next) => {
       setOpen(next);
       if (next) headerOverflow?.dismiss();

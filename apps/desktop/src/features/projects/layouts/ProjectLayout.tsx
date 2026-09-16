@@ -445,6 +445,8 @@ export function ProjectLayout({
       liveSession.session && liveSession.membership === "active"
         ? liveSession
         : undefined,
+    sessions: effectiveSessions,
+    activeBranch,
     projectId: collaborationProjectId,
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,
