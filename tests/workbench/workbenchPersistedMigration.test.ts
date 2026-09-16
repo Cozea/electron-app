@@ -96,46 +96,6 @@ describe("persisted workbench migration", () => {
     expect(restored?.activeTileId).not.toBe("securityScan-1")
   })
 
-  it("drops legacy benches shadowed by a workspace-scoped bench for the same lane", () => {
-    const migrated = migratePersistedWorkbenchState({
-      workbenches: {
-        legacy: bench({ projectId: "p1", tiles: [{ id: "t1", type: "terminal" }] }),
-        scoped: bench({
-          projectId: "p1",
-          workspaceId: "lws_abc",
-          tiles: [{ id: "t2", type: "assistantChat" }],
-        }),
-      },
-    })
-
-    const keys = Object.keys(migrated.workbenches)
-    expect(keys).toHaveLength(1)
-    expect(keys[0]).toContain("lws_abc")
-  })
-
-  it("drops empty or selection-only legacy benches", () => {
-    const migrated = migratePersistedWorkbenchState({
-      workbenches: {
-        empty: bench({ projectId: "p2" }),
-        selectionOnly: bench({ projectId: "p3", tiles: [{ id: "s1", type: "selection" }] }),
-      },
-    })
-
-    expect(Object.keys(migrated.workbenches)).toHaveLength(0)
-  })
-
-  it("keeps tiled legacy benches that have no workspace-scoped shadow", () => {
-    const migrated = migratePersistedWorkbenchState({
-      workbenches: {
-        legacy: bench({ projectId: "p4", tiles: [{ id: "t1", type: "terminal" }] }),
-      },
-    })
-
-    const keys = Object.keys(migrated.workbenches)
-    expect(keys).toHaveLength(1)
-    expect(migrated.workbenches[keys[0]!]!.order).toEqual(["t1"])
-  })
-
   it("keeps workspace-scoped benches for multiple workspaces of one project", () => {
     const migrated = migratePersistedWorkbenchState({
       workbenches: {

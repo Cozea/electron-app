@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 
-import { featureFlags } from '@/lib/featureFlags'
 import { useBrowserSurfaceRegistry } from './browserSurfaceRegistry'
 
 const LazyElectronBrowserHost = lazy(() =>
@@ -11,7 +10,7 @@ export function ElectronBrowserHostGate() {
   const hasBrowserSurfaces = useBrowserSurfaceRegistry(
     (state) => Object.keys(state.byTabId).length > 0,
   )
-  const shouldLoad = featureFlags.lazyRendererHosts ? hasBrowserSurfaces : true
+  const shouldLoad = hasBrowserSurfaces
 
   if (!shouldLoad) return null
 

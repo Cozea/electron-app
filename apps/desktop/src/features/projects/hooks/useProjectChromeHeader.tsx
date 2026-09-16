@@ -4,7 +4,7 @@ import { useShallow } from "zustand/react/shallow";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useProjectHeaderStore } from "@/lib/projectHeaderStore";
 import type { LiveSessionMember } from "@/features/collaboration/live/liveSessionModel";
-import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
+import type { LiveSessionContext, LiveSessionRecord } from "@/features/collaboration/live/useLiveSession";
 import { WorkbenchHeaderTitle } from "@/features/workbench/WorkbenchHeaderTitle";
 
 interface UseProjectChromeHeaderArgs {
@@ -14,6 +14,10 @@ interface UseProjectChromeHeaderArgs {
   liveSessionControl?: ReactNode | null;
   liveSessionMembers?: LiveSessionMember[];
   liveSession?: LiveSessionContext | null;
+  /** All non-hidden project sessions; lets the share slot show a session nobody has joined. */
+  sessions?: readonly LiveSessionRecord[];
+  /** Branch the folder has checked out; the session slot prefers its session. */
+  activeBranch?: string | null;
   /** Current route project for the changes/share/inbox strip. */
   projectId: Id<"projects"> | null;
   projectName: string | null;
@@ -35,6 +39,8 @@ export function useProjectChromeHeader({
   liveSessionControl,
   liveSessionMembers,
   liveSession,
+  sessions,
+  activeBranch,
   projectId,
   projectName,
   editorProjectPath,
@@ -73,6 +79,8 @@ export function useProjectChromeHeader({
       liveSessionControl: isSettingsModeRoute ? undefined : (liveSessionControl ?? undefined),
       liveSessionMembers: isSettingsModeRoute ? undefined : liveSessionMembers,
       liveSession: isSettingsModeRoute ? undefined : (liveSession ?? undefined),
+      sessions: isSettingsModeRoute ? undefined : sessions,
+      activeBranch: isSettingsModeRoute ? undefined : (activeBranch ?? null),
       onlinePrincipalIds: isSettingsModeRoute ? undefined : onlinePrincipalIds,
       rightAddon: rightFromPage ?? undefined,
       hideShare: hideShare || isSettingsModeRoute || !isWorkbenchView || !projectId,
@@ -98,6 +106,8 @@ export function useProjectChromeHeader({
     liveSessionControl,
     liveSessionMembers,
     liveSession,
+    sessions,
+    activeBranch,
     onlinePrincipalIds,
     projectId,
     projectName,

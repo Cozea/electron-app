@@ -24,7 +24,6 @@ import {
   applyDesktopBootstrapRoute,
   initializeDesktopBootstrap,
 } from './app/bootstrap/desktopBootstrap'
-import { featureFlags } from './lib/featureFlags'
 import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
 import { ProductionNavigationRuntimeApp } from './app/navigation/ProductionNavigationRuntimeApp'
 
@@ -71,18 +70,16 @@ async function prewarmRestoredWorkbench(bootstrap: DesktopBootstrapSnapshot): Pr
     import('./features/projects/pages/ProjectWorkbenchPage'),
   ]
 
-  if (featureFlags.lazyRendererHosts) {
-    if (restoredTileTypes.has('terminal') || restoredTileTypes.has('devServer')) {
-      warmups.push(import('./features/terminal/TerminalViewHost'))
-    }
-    if (
-      restoredTileTypes.has('browser') ||
-      restoredTileTypes.has('devServer') ||
-      restoredTileTypes.has('devAppPreview') ||
-      restoredTileTypes.has('orgDevApp')
-    ) {
-      warmups.push(import('./features/browser/ElectronBrowserHost'))
-    }
+  if (restoredTileTypes.has('terminal') || restoredTileTypes.has('devServer')) {
+    warmups.push(import('./features/terminal/TerminalViewHost'))
+  }
+  if (
+    restoredTileTypes.has('browser') ||
+    restoredTileTypes.has('devServer') ||
+    restoredTileTypes.has('devAppPreview') ||
+    restoredTileTypes.has('orgDevApp')
+  ) {
+    warmups.push(import('./features/browser/ElectronBrowserHost'))
   }
 
   await Promise.all(warmups)
@@ -107,7 +104,6 @@ async function startRenderer(): Promise<void> {
   }
 
   if (
-    featureFlags.commonRoutePrewarm &&
     window.location.pathname.endsWith('/workbench')
   ) {
     await prewarmRestoredWorkbench(bootstrap)

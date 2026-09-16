@@ -5,7 +5,10 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { cleanConvexError as cleanError } from "@/lib/convexError"
+import { appToast } from "@/lib/appToast"
+import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { useAuth } from "@/contexts/AuthContext";
+import { useProjectTeam } from "@/hooks/useProjectTeam";
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
 import { LiveSessionShareSection } from "@/features/collaboration/ui/LiveSessionShareSection";
 import { StartCollaborationDialog } from "@/features/collaboration/ui/StartCollaborationDialog";
@@ -39,11 +42,14 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   AddTeamIcon as __AddTeamHugeIcon,
   Copy01Icon as __CopyHugeIcon,
+  GitBranchIcon as __GitBranchHugeIcon,
   Link01Icon as __LinkHugeIcon,
   Refresh01Icon as __RefreshHugeIcon,
   Delete02Icon as __DeleteHugeIcon,
 } from '@hugeicons/core-free-icons'
-import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
+import type { LiveSessionContext, LiveSessionRecord } from "@/features/collaboration/live/useLiveSession";
+import { useSwitchToSessionWorkbench } from "@/features/collaboration/live/useSwitchToSessionWorkbench";
+import { findBranchSession } from "@/features/collaboration/collaborationGate";
 import { SessionHubDialog } from "@/features/collaboration/ui/SessionHubDialog";
 
 type ProjectRole = "project_manager" | "developer" | "designer" | "viewer";
@@ -70,23 +76,22 @@ export function HeaderProjectShareButton({
   liveSessionMembers,
   liveSession,
   onlinePrincipalIds,
+  sessions,
+  activeBranch,
 }: {
   projectId: Id<"projects"> | null;
   projectName?: string | null;
   liveSessionMembers?: LiveSessionMember[];
   liveSession?: LiveSessionContext | null;
   onlinePrincipalIds?: Set<string>;
+  /** All non-hidden sessions in the project; lets the button show a live session this device hasn't joined. */
+  sessions?: readonly LiveSessionRecord[];
+  /** Branch the folder has checked out; the session button prefers its session. */
+  activeBranch?: string | null;
 }) {
   const { principalId, user } = useAuth();
   const syncContext = useOptionalProjectSyncContext();
-  const memberRole = useQuery(
-    api.projectMembers.getMemberRole,
-    projectId && principalId ? { projectId, principalId: principalId } : "skip",
-  );
-  const members = useQuery(
-    api.projectMembers.listMembers,
-    projectId && principalId ? { projectId, viewerPrincipalId: principalId } : "skip",
-  );
+  const { members, memberRole } = useProjectTeam(projectId);
   const pendingEnrollments = useQuery(
     api.projectDeviceEnrollments.listForProject,
     projectId && principalId && memberRole === "project_manager" ? { projectId } : "skip",
@@ -242,6 +247,45 @@ export function HeaderProjectShareButton({
 
   const isSessionHub = Boolean(hasActiveSession && liveSession?.session && projectId);
 
+  // A session can be live on this branch while nobody is present (or this
+  // device hasn't joined): the presence-based button above would still read
+  // "Share". Surface the session itself with a one-click switch instead.
+  const branchSession = useMemo<LiveSessionRecord | null>(() => {
+    if (!sessions || sessions.length === 0) return null;
+    if (activeBranch) {
+      const match = findBranchSession(sessions, activeBranch);
+      if (match) return match;
+    }
+    return sessions.find((candidate) => candidate.lifecycle !== "CLOSED") ?? null;
+  }, [sessions, activeBranch]);
+
+  const { openSessionWorkbench: switchToSessionWorkbench, switching } = useSwitchToSessionWorkbench({
+    projectId: projectId ? String(projectId) : null,
+    projectName,
+    sourceWorkspaceId: syncContext?.workspaceId ?? null,
+  });
+
+  const handleSwitchToSession = (target: {
+    sessionId: LiveSessionRecord["_id"]
+    publicSessionId: string
+    branchName: string
+    repositoryUrl?: string | null
+    viewerMembership?: string | null
+  }) => {
+    headerOverflow?.dismiss();
+    void switchToSessionWorkbench(target).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : null;
+      const formatted = formatCloneErrorMessage(message, target.repositoryUrl ?? null);
+      appToast.error({
+        title: "Could not open the Session Workbench",
+        description:
+          typeof formatted === "string"
+            ? cleanError(error, "Could not open the Session Workbench")
+            : formatted,
+      });
+    });
+  };
+
   if (isSessionHub && liveSession?.session && projectId) {
     return (
       <>
@@ -376,6 +420,53 @@ export function HeaderProjectShareButton({
 
   return (
     <>
+    {branchSession ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag transition-[background-color,color,transform] duration-150 active:scale-[0.92] cursor-pointer"
+            disabled={switching}
+            aria-label={
+              branchSession.viewerMembership === "active"
+                ? `Live session on ${branchSession.branchName}. Click to switch.`
+                : `Live session on ${branchSession.branchName}. Click to join.`
+            }
+            title={
+              branchSession.viewerMembership === "active"
+                ? `Live session on ${branchSession.branchName} — click to switch`
+                : `Live session on ${branchSession.branchName} — click to join`
+            }
+            onClick={() => {
+              handleSwitchToSession({
+                sessionId: branchSession._id,
+                publicSessionId: branchSession.publicSessionId,
+                branchName: branchSession.branchName,
+                repositoryUrl: branchSession.repositoryUrl,
+                viewerMembership: branchSession.viewerMembership,
+              });
+            }}
+          >
+            {switching ? (
+              <Spinner size="sm" className="text-muted-foreground" />
+            ) : (
+              <span className="relative flex items-center justify-center">
+                <HugeiconsIcon icon={__GitBranchHugeIcon} className="size-4 shrink-0" />
+                <span
+                  className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 ring-2 ring-background"
+                  aria-hidden="true"
+                />
+              </span>
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="end">
+          {branchSession.viewerMembership === "active"
+            ? `Live session on ${branchSession.branchName} — click to switch`
+            : `Live session on ${branchSession.branchName} — click to join`}
+        </TooltipContent>
+      </Tooltip>
+    ) : null}
     <Dialog open={open} onOpenChange={(next) => {
       setOpen(next);
       if (next) headerOverflow?.dismiss();

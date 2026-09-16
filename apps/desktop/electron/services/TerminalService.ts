@@ -604,11 +604,6 @@ export class TerminalService {
       return { success: this.killTerminal(options.terminalId) }
     })
 
-    ipcMain.handle('terminal:getProfiles', async (event) => {
-      this.registerOutputTarget(event.sender)
-      return await this.runtimeClient.request('terminal.getProfiles', {})
-    })
-
     ipcMain.handle('terminal:list', (event, options: { workspaceId: string }) => {
       this.registerOutputTarget(event.sender)
       return this.listTerminalIds(options.workspaceId)
@@ -636,11 +631,6 @@ export class TerminalService {
         return snapshot
       }
       return this.getTerminalSnapshot(options.terminalId)
-    })
-
-    ipcMain.handle('terminal:getOutputEventsSince', (event, options: { terminalId: string; afterSequence: number }) => {
-      this.registerOutputTarget(event.sender)
-      return this.getOutputEventsSince(options.terminalId, options.afterSequence)
     })
   }
 

@@ -4,6 +4,8 @@ import { useViewTransitionNavigate } from '@/lib/navigation'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
+import { useProjectTeam } from '@/hooks/useProjectTeam'
+import { useMyOrganizations } from '@/hooks/useMyOrganizations'
 import { SessionRecoveryPanel } from '@/features/settings/ui/SessionRecoveryPanel'
 import { useTranslation } from '@/lib/i18n'
 import { featureFlags } from '@/lib/featureFlags'
@@ -73,15 +75,10 @@ export function ProjectSettingsPage({
   const removeProject = useMutation(api.projects.deleteProject)
   const attachProjectToOrg = useMutation(api.organizations.attachProject)
   const createAndAttachProjectOrg = useMutation(api.organizations.createAndAttachProject)
-  const myOrgs = useQuery(api.organizations.listMine, principalId ? {} : 'skip')
+  const myOrgs = useMyOrganizations()
   const projectOrg = myOrgs?.find((org) => String(org.organizationId) === String(project?.organizationId)) ?? null
 
-  const memberRole = useQuery(
-    api.projectMembers.getMemberRole,
-    project?._id && principalId
-      ? { projectId: project._id, principalId: principalId }
-      : 'skip'
-  )
+  const { memberRole } = useProjectTeam(project?._id)
   const isManager = memberRole === 'project_manager'
 
   const [name, setName] = useState(() => project?.name ?? '')

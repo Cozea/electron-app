@@ -9,7 +9,7 @@ import { HeaderProjectChangesButton } from "./unified-header/HeaderProjectChange
 import { WorkbenchHeaderEditorControl } from "@/features/workbench/WorkbenchHeaderEditorControl";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 import type { LiveSessionMember } from "@/features/collaboration/live/liveSessionModel";
-import type { LiveSessionContext } from "@/features/collaboration/live/useLiveSession";
+import type { LiveSessionContext, LiveSessionRecord } from "@/features/collaboration/live/useLiveSession";
 
 import { ResponsiveHeaderRow, type HeaderActionGroup } from "./unified-header/ResponsiveHeaderRow";
 
@@ -23,6 +23,10 @@ interface UnifiedHeaderProps {
   liveSessionMembers?: LiveSessionMember[];
   liveSession?: LiveSessionContext;
   onlinePrincipalIds?: Set<string>;
+  /** All non-hidden project sessions; lets the share slot show a live session nobody has joined. */
+  sessions?: readonly LiveSessionRecord[];
+  /** Branch the folder has checked out; the session slot prefers its session. */
+  activeBranch?: string | null;
   rightAddon?: ReactNode;
   className?: string;
   /** `fixed` spans the viewport (legacy). `embedded` stays in layout flow (e.g. inside `SidebarInset`) so it clears the sidebar. */
@@ -48,6 +52,8 @@ export function UnifiedHeader({
   liveSessionMembers,
   liveSession,
   onlinePrincipalIds,
+  sessions,
+  activeBranch,
   rightAddon,
   className,
   layoutMode = "fixed",
@@ -120,9 +126,14 @@ export function UnifiedHeader({
       const hasActiveSession = Boolean(
         liveSessionMembers && liveSessionMembers.some((m) => m.status === "active")
       );
+      const hasLiveBranchSession = Boolean(
+        sessions?.some(
+          (s) => s.lifecycle !== "CLOSED" && (!activeBranch || s.branchName === activeBranch),
+        ),
+      );
       groups.push({
         id: "share",
-        label: hasActiveSession ? "Session members & access" : "Share project",
+        label: hasActiveSession ? "Session members & access" : hasLiveBranchSession ? "Live session" : "Share project",
         priority: 20,
         content: (
           <HeaderProjectShareButton
@@ -131,6 +142,8 @@ export function UnifiedHeader({
             liveSessionMembers={liveSessionMembers}
             liveSession={liveSession}
             onlinePrincipalIds={onlinePrincipalIds}
+            sessions={sessions}
+            activeBranch={activeBranch}
           />
         ),
       });

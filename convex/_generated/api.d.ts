@@ -9,15 +9,12 @@
  */
 
 import type * as activity from "../activity.js";
-import type * as clean from "../clean.js";
 import type * as collaborationSessionMedia from "../collaborationSessionMedia.js";
 import type * as collaborationSessionMetrics from "../collaborationSessionMetrics.js";
 import type * as collaborationSessions from "../collaborationSessions.js";
 import type * as crons from "../crons.js";
-import type * as deployments from "../deployments.js";
 import type * as devApps from "../devApps.js";
 import type * as devicePrincipals from "../devicePrincipals.js";
-import type * as fileTombstones from "../fileTombstones.js";
 import type * as lib_authenticatedFunctions from "../lib/authenticatedFunctions.js";
 import type * as lib_devAppReferenceResolution from "../lib/devAppReferenceResolution.js";
 import type * as lib_deviceAuth from "../lib/deviceAuth.js";
@@ -27,18 +24,13 @@ import type * as lib_orgAccess from "../lib/orgAccess.js";
 import type * as lib_planNames from "../lib/planNames.js";
 import type * as lib_projectAccess from "../lib/projectAccess.js";
 import type * as lib_projectGitMetadata from "../lib/projectGitMetadata.js";
-import type * as lib_projectPagination from "../lib/projectPagination.js";
 import type * as lib_projectSharing from "../lib/projectSharing.js";
 import type * as lib_sessionLifecycle from "../lib/sessionLifecycle.js";
 import type * as lib_storageHash from "../lib/storageHash.js";
 import type * as lib_usagePeriods from "../lib/usagePeriods.js";
-import type * as lib_workspaceLimits from "../lib/workspaceLimits.js";
 import type * as lib_workspaceProjectAccess from "../lib/workspaceProjectAccess.js";
 import type * as organizations from "../organizations.js";
-import type * as projectAssets from "../projectAssets.js";
 import type * as projectDeviceEnrollments from "../projectDeviceEnrollments.js";
-import type * as projectFileLocks from "../projectFileLocks.js";
-import type * as projectFiles from "../projectFiles.js";
 import type * as projectJoinLinks from "../projectJoinLinks.js";
 import type * as projectMembers from "../projectMembers.js";
 import type * as projectPresence from "../projectPresence.js";
@@ -55,15 +47,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   activity: typeof activity;
-  clean: typeof clean;
   collaborationSessionMedia: typeof collaborationSessionMedia;
   collaborationSessionMetrics: typeof collaborationSessionMetrics;
   collaborationSessions: typeof collaborationSessions;
   crons: typeof crons;
-  deployments: typeof deployments;
   devApps: typeof devApps;
   devicePrincipals: typeof devicePrincipals;
-  fileTombstones: typeof fileTombstones;
   "lib/authenticatedFunctions": typeof lib_authenticatedFunctions;
   "lib/devAppReferenceResolution": typeof lib_devAppReferenceResolution;
   "lib/deviceAuth": typeof lib_deviceAuth;
@@ -73,18 +62,13 @@ declare const fullApi: ApiFromModules<{
   "lib/planNames": typeof lib_planNames;
   "lib/projectAccess": typeof lib_projectAccess;
   "lib/projectGitMetadata": typeof lib_projectGitMetadata;
-  "lib/projectPagination": typeof lib_projectPagination;
   "lib/projectSharing": typeof lib_projectSharing;
   "lib/sessionLifecycle": typeof lib_sessionLifecycle;
   "lib/storageHash": typeof lib_storageHash;
   "lib/usagePeriods": typeof lib_usagePeriods;
-  "lib/workspaceLimits": typeof lib_workspaceLimits;
   "lib/workspaceProjectAccess": typeof lib_workspaceProjectAccess;
   organizations: typeof organizations;
-  projectAssets: typeof projectAssets;
   projectDeviceEnrollments: typeof projectDeviceEnrollments;
-  projectFileLocks: typeof projectFileLocks;
-  projectFiles: typeof projectFiles;
   projectJoinLinks: typeof projectJoinLinks;
   projectMembers: typeof projectMembers;
   projectPresence: typeof projectPresence;

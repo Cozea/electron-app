@@ -174,24 +174,6 @@ export const updatePresence = mutation({
 })
 
 /**
- * List all active media presence records for a session.
- */
-export const listSessionPresence = query({
-  args: {
-    sessionId: v.id("collaborationSessions"),
-  },
-  handler: async (ctx, args) => {
-    const access = await getCallerWithSessionAccess(ctx, args.sessionId)
-    if (!access) return []
-
-    return await ctx.db
-      .query("collaborationSessionPresence")
-      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
-      .collect()
-  },
-})
-
-/**
  * Leave media session, cleanly cleaning up presence and pending signals.
  */
 export const leaveMediaSession = mutation({

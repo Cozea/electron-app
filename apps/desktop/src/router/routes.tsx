@@ -68,13 +68,6 @@ const TasksPage = createLazyRouteComponent(
     })),
   "routeLoading.tasks",
 );
-const ProjectConflictsPage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/ProjectConflictsPage").then((module) => ({
-      default: module.ProjectConflictsPage,
-    })),
-  "routeLoading.conflicts",
-);
 const ProjectTeamPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectTeamPage").then((module) => ({
@@ -383,12 +376,6 @@ const projectTeamRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/team",
   component: ProjectTeamPage,
-});
-
-const projectConflictsRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/conflicts",
-  component: ProjectConflictsPage,
 });
 
 const projectSettingsRoute = createRoute({
@@ -703,7 +690,6 @@ export const routeTree = rootRoute.addChildren([
       projectVersionControlRoute,
       projectTasksRoute,
       projectTeamRoute,
-      projectConflictsRoute,
       projectSettingsRoute,
       projectSettingsTeamRoute,
       projectSettingsSectionRoute,

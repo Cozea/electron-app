@@ -954,10 +954,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     attachSurface: (options: { workspaceId: string; laneId?: string | null; terminalId: string }) =>
       ipcRenderer.invoke('devServer:attachSurface', options),
     stop: (options: { workspaceId: string; laneId?: string | null }) => ipcRenderer.invoke('devServer:stop', options),
-    resize: (options: { workspaceId: string; laneId?: string | null; cols: number; rows: number }) =>
-      ipcRenderer.invoke('devServer:resize', options),
-    isRunning: (options: { workspaceId: string; laneId?: string | null }) =>
-      ipcRenderer.invoke('devServer:isRunning', options),
     getState: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:getState', options),
     onStateChange: (
@@ -998,12 +994,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resize: (options: { terminalId: string; cols: number; rows: number }) =>
       ipcRenderer.invoke('terminal:resize', options),
     kill: (options: { terminalId: string }) => ipcRenderer.invoke('terminal:kill', options),
-    getProfiles: () => ipcRenderer.invoke('terminal:getProfiles'),
     list: (options: { workspaceId: string }) => ipcRenderer.invoke('terminal:list', options),
     getInfo: (options: { terminalId: string }) => ipcRenderer.invoke('terminal:getInfo', options),
     getSnapshot: (options: { terminalId: string }) => ipcRenderer.invoke('terminal:getSnapshot', options),
-    getOutputEventsSince: (options: { terminalId: string; afterSequence: number }) =>
-      ipcRenderer.invoke('terminal:getOutputEventsSince', options),
     onOutput: (callback: (data: TerminalOutputEvent) => void) => terminalOutputBridge.onOutput(callback),
     onOutputForTerminal: (terminalId: string, callback: (data: TerminalOutputEvent) => void) =>
       terminalOutputBridge.onOutputForTerminal(terminalId, callback),

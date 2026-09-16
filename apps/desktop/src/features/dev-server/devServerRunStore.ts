@@ -112,24 +112,22 @@ export const DEFAULT_DEV_SERVER_RUN: DevServerRunState = Object.freeze({
 const MAX_TIMELINE_EVENTS = 80
 const OUTPUT_TIMELINE_INTERVAL_MS = 1500
 const RESTART_DELAY_MS = 500
-// Must match DevServerService's DEFAULT_LANE_ID — run keys are shared
-// vocabulary between this mirror and the main-process registry.
-const DEFAULT_LANE_ID = 'collab'
-
-export function buildDevServerRunKey(workspaceId: string, laneId?: string | null): string {
-  const trimmed = laneId?.trim()
-  return `${workspaceId}::${trimmed && trimmed.length > 0 ? trimmed : DEFAULT_LANE_ID}`
+// Runs are keyed by working copy, not by lane — mirroring DevServerService's
+// buildRunKey. A branch lane is a view of one checkout, so every lane of a
+// workspace shares one mirror entry; lane is accepted for call-site
+// compatibility and ignored.
+export function buildDevServerRunKey(workspaceId: string, _laneId?: string | null): string {
+  return workspaceId
 }
 
 export function clearDevServerRunsForWorkspace(workspaceId: string): void {
   const normalizedWorkspaceId = workspaceId.trim()
   if (!normalizedWorkspaceId) return
 
-  const prefix = `${normalizedWorkspaceId}::`
   const keys = new Set([
     ...Object.keys(runtime.store.getState().runs),
     ...Object.keys(runtime.store.getState().contexts),
-  ].filter((key) => key.startsWith(prefix)))
+  ].filter((key) => key === normalizedWorkspaceId))
   if (keys.size === 0) return
 
   runtime.store.setState((state) => ({

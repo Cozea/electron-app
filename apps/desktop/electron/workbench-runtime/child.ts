@@ -80,13 +80,6 @@ async function handleRequest(request: WorkbenchRuntimeRequest): Promise<Workbenc
           result: { success: host.killTerminal(params.terminalId) },
         }
       }
-      case 'terminal.getProfiles':
-        return {
-          type: 'response',
-          id: request.id,
-          ok: true,
-          result: host.getProfiles(),
-        }
       case 'terminal.list': {
         const params = request.params as WorkbenchRuntimeTerminalListParams
         return {

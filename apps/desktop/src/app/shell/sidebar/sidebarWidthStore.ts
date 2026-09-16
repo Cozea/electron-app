@@ -25,15 +25,6 @@ export const useSidebarWidthStore = create<SidebarWidthState>()(
       name: "cozea-sidebar-widths",
       version: 1,
       storage: createJSONStorage(() => window.localStorage),
-      migrate: (persisted) => {
-        // v0 stored per-surface widths; carry over whatever the user had.
-        const legacy = persisted as { widths?: Record<string, number>; width?: number | null }
-        if (typeof legacy?.width === "number") return { width: clampSidebarWidth(legacy.width) }
-        const values = Object.values(legacy?.widths ?? {}).filter(
-          (value): value is number => typeof value === "number",
-        )
-        return { width: values.length > 0 ? clampSidebarWidth(values[0]!) : null }
-      },
     },
   ),
 )

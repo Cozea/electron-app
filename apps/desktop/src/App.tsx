@@ -14,7 +14,6 @@ import { useSettingsDrawerStore } from '@/features/settings/model/settingsDrawer
 import { WorkspaceRuntimeHostsGate } from '@/features/workspace/WorkspaceRuntimeHostsGate'
 import { TerminalViewHostGate } from '@/features/terminal/TerminalViewHostGate'
 import { AppAgentRuntimeHost } from '@/substrate/AppAgentRuntimeHost'
-import { featureFlags } from '@/lib/featureFlags'
 
 const LazyDeviceSessionRecovery = lazy(() =>
   import('./pages/DeviceSessionRecovery').then((module) => ({
@@ -222,28 +221,22 @@ function AppContent() {
   useEffect(() => {
     if (!isAuthenticated || isLoading || needsOnboarding) return
     const shouldWarmNewProject = pathname === "/projects" || pathname === "/projects/"
-    const shouldWarmProjectEditor =
-      pathname.startsWith('/projects/') &&
-      !pathname.startsWith('/projects/new') &&
-      !pathname.endsWith('/workbench')
 
     return scheduleIdleWarmup(() => {
       warmCommonNavigation()
       if (shouldWarmNewProject) {
         void import('./pages/NewProject')
       }
-      if (featureFlags.commonRoutePrewarm || shouldWarmProjectEditor) {
-        void import('./features/projects/pages/ProjectWorkbenchPage')
-        void import('./features/tasks/pages/TasksPage')
-        void import('./features/settings/Account')
-        void import('./features/settings/Appearance')
-        void import('./features/settings/Organizations')
-        void import('./features/settings/DevAppSettings')
-        void import('./features/settings/ui/SettingsSidebar')
-      }
+      void import('./features/projects/pages/ProjectWorkbenchPage')
+      void import('./features/tasks/pages/TasksPage')
+      void import('./features/settings/Account')
+      void import('./features/settings/Appearance')
+      void import('./features/settings/Organizations')
+      void import('./features/settings/DevAppSettings')
+      void import('./features/settings/ui/SettingsSidebar')
     }, {
-      delayMs: featureFlags.commonRoutePrewarm ? 250 : 3_500,
-      timeoutMs: featureFlags.commonRoutePrewarm ? 3_000 : 12_000,
+      delayMs: 250,
+      timeoutMs: 3_000,
     })
   }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
@@ -260,7 +253,7 @@ function AppContent() {
       void import('@/features/settings/Tooling').then((module) =>
         module.prewarmToolingSettings?.()
       )
-    }, { delayMs: featureFlags.commonRoutePrewarm ? 750 : 6_000, timeoutMs: 15_000 })
+    }, { delayMs: 750, timeoutMs: 15_000 })
   }, [isAuthenticated, isLoading, pathname, needsOnboarding])
 
   if (isLoading) {

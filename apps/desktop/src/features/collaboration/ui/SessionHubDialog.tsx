@@ -13,10 +13,8 @@ import {
   Share01Icon,
 } from "@hugeicons/core-free-icons"
 
-import { useQuery } from "convex/react"
-import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
-import { useAuth } from "@/contexts/AuthContext"
+import { useProjectTeam } from "@/hooks/useProjectTeam"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -57,11 +55,7 @@ export function SessionHubDialog({
   canManage,
   onStartSession,
 }: SessionHubDialogProps) {
-  const { principalId } = useAuth()
-  const projectMembers = useQuery(
-    api.projectMembers.listMembers,
-    projectId && principalId ? { projectId, viewerPrincipalId: principalId } : "skip",
-  )
+  const { members: projectMembers } = useProjectTeam(projectId)
   const [activeTab, setActiveTab] = useState<"dashboard" | "share">("dashboard")
 
   const metrics = useSessionMetrics({

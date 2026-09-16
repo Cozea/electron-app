@@ -16,15 +16,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/contexts/AuthContext"
-import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext"
 import { cleanConvexError } from "@/lib/convexError"
-import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { appToast } from "@/lib/appToast"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
+import { useSwitchToSessionWorkbench } from "@/features/collaboration/live/useSwitchToSessionWorkbench"
 import { cn } from "@/lib/utils"
+import { useProjectSessions } from "@/features/collaboration/hooks/useProjectSessions"
 import { findBranchSession, findWorkspaceSession } from "../collaborationGate"
 
 type SessionRole = "viewer" | "developer" | "project_manager"
@@ -55,13 +54,12 @@ export function LiveSessionShareSection({
   onLeaveSession?: () => void
 }) {
   const { principalId } = useAuth()
-  const navigate = useViewTransitionNavigate()
   const sync = useOptionalProjectSyncContext()
   const route = useOptionalProjectRouteContext()
   const activeBranch = sync?.activeBranch ?? null
   const workspaceId = sync?.workspaceId ?? null
 
-  const sessions = useQuery(api.collaborationSessions.listByProject, { projectId })
+  const sessions = useProjectSessions(projectId)
   // The Workbench decides the session. When in a regular workspace, fall back to the active branch's session.
   const activeSession =
     findWorkspaceSession(sessions, workspaceId) ??
@@ -73,8 +71,12 @@ export function LiveSessionShareSection({
     activeSession ? { sessionId: activeSession._id } : "skip",
   )
   const invite = useMutation(api.collaborationSessions.inviteParticipant)
-  const joinSession = useMutation(api.collaborationSessions.join)
   const updateAccessMode = useMutation(api.collaborationSessions.updateAccessMode)
+  const { openSessionWorkbench: switchToSessionWorkbench } = useSwitchToSessionWorkbench({
+    projectId,
+    projectName: route?.projectName ?? null,
+    sourceWorkspaceId: workspaceId,
+  })
   const leaveSessionMutation = useMutation(api.collaborationSessions.leave)
   const endSessionMutation = useMutation(api.collaborationSessions.close)
 
@@ -144,30 +146,14 @@ export function LiveSessionShareSection({
     void run(
       `switch:${candidate.branchName}`,
       async () => {
-        if (candidate.viewerMembership !== "active") {
-          await joinSession({ sessionId: candidate._id })
-        }
-        const result = await window.electronAPI.projectd.workbenches.ensureSession({
-        projectId: String(projectId),
-        publicSessionId: candidate.publicSessionId,
-        branchName: candidate.branchName,
-        baseBranch: candidate.branchName,
-        createBranch: false,
-        title: `${route?.projectName ?? "Project"} · ${candidate.branchName}`,
-        sourceRepoUrl: candidate.repositoryUrl ?? null,
-        sourceWorkspaceId: workspaceId,
-        includeDirtyChanges: false,
-        setActive: true,
-      })
-      if (!result.success) throw new Error(result.error)
-      navigate(buildProjectPath(String(projectId), "workbench"), {
-        state: buildProjectRouteNavigationState({
-          projectId: String(projectId),
-          projectName: route?.projectName ?? null,
-          preferredWorkspaceId: result.workspace.workspaceId,
-        }),
-      })
-      return `Opened the Session Workbench for ${candidate.branchName}.`
+        await switchToSessionWorkbench({
+          sessionId: candidate._id,
+          publicSessionId: candidate.publicSessionId,
+          branchName: candidate.branchName,
+          repositoryUrl: candidate.repositoryUrl,
+          viewerMembership: candidate.viewerMembership,
+        })
+        return `Opened the Session Workbench for ${candidate.branchName}.`
       },
       describeWorkbenchError(candidate.repositoryUrl ?? null),
     )

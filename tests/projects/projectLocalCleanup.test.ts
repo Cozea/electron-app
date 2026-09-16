@@ -12,7 +12,6 @@ const closeRuntime = vi.fn()
 const collectAssistantProjectIdsForDeletion = vi.fn(() => ["assistant-project-1"])
 const deleteAssistantProjectsForDeletedWorkspace = vi.fn(async () => undefined)
 const releaseDevServerSurfaceLease = vi.fn()
-const removeLocalProjectDevApp = vi.fn()
 const removeProjectWorkbench = vi.fn()
 const resetDevServerRuns = vi.fn()
 const resetTerminalProject = vi.fn()
@@ -26,10 +25,6 @@ vi.mock("@/features/assistant/history/assistantDraftRepository", () => ({
 }))
 vi.mock("@/features/assistant/history/assistantHistoryStore", () => ({
   useAssistantHistoryStore: { getState: () => ({ projects: {}, conversations: {}, forgetProject: forgetHistoryProject }) },
-}))
-
-vi.mock("@/features/devapps/localProjectDevAppStore", () => ({
-  removeLocalProjectDevApp,
 }))
 
 vi.mock("@/features/assistant/chat/composerDraftStore", () => ({
@@ -260,7 +255,6 @@ describe("cleanupDeletedProjectLocally", () => {
     expect(removeProjectDrafts).toHaveBeenCalledWith("project_1")
     expect(forgetHistoryProject).toHaveBeenCalledWith("project_1")
     expect(clearPersistedWorkbenchLayoutsForProject).toHaveBeenCalledWith("project_1")
-    expect(removeLocalProjectDevApp).toHaveBeenCalledWith("project_1")
     expect(clearPersistedProjectSidebarEntry).toHaveBeenCalledWith("project_1")
     expect(clearLastWorkbenchRoutesForProject).toHaveBeenCalledWith("project_1")
     expect(clearRecentProjectOpenSync).toHaveBeenCalledWith("project_1")

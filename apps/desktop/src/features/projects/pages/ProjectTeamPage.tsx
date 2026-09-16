@@ -4,6 +4,7 @@ import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { api } from '../../../../../../convex/_generated/api'
 import { cleanConvexError as cleanError } from "@/lib/convexError"
 import { useAuth } from '@/contexts/AuthContext'
+import { useProjectTeam } from '@/hooks/useProjectTeam'
 import { useProjectHeader } from '@/lib/useProjectHeader'
 import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
 import { Badge } from '@/components/ui/badge'
@@ -54,14 +55,7 @@ export function ProjectTeamPage() {
   const { project } = useAccessibleProject()
   useProjectHeader(null)
 
-  const memberRole = useQuery(
-    api.projectMembers.getMemberRole,
-    project?._id && principalId ? { projectId: project._id, principalId: principalId } : 'skip',
-  )
-  const members = useQuery(
-    api.projectMembers.listMembers,
-    project?._id && principalId ? { projectId: project._id, viewerPrincipalId: principalId } : 'skip',
-  )
+  const { members, memberRole } = useProjectTeam(project?._id)
   const pending = useQuery(
     api.projectDeviceEnrollments.listForProject,
     project?._id && principalId && memberRole === 'project_manager'

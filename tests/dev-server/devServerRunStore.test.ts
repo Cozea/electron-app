@@ -232,11 +232,11 @@ function freshWorkspace(): string {
 }
 
 describe('buildDevServerRunKey', () => {
-  it('normalizes missing/blank lanes to the collab default used by main', () => {
-    expect(buildDevServerRunKey('ws-a')).toBe('ws-a::collab')
-    expect(buildDevServerRunKey('ws-a', null)).toBe('ws-a::collab')
-    expect(buildDevServerRunKey('ws-a', '  ')).toBe('ws-a::collab')
-    expect(buildDevServerRunKey('ws-a', 'lane-7')).toBe('ws-a::lane-7')
+  it('keys runs by working copy and ignores the lane like the main registry', () => {
+    expect(buildDevServerRunKey('ws-a')).toBe('ws-a')
+    expect(buildDevServerRunKey('ws-a', null)).toBe('ws-a')
+    expect(buildDevServerRunKey('ws-a', '  ')).toBe('ws-a')
+    expect(buildDevServerRunKey('ws-a', 'lane-7')).toBe('ws-a')
   })
 })
 

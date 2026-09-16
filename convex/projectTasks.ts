@@ -263,21 +263,6 @@ export const listForProject = query({
   },
 })
 
-export const listSharedStatesForProject = query({
-  args: {
-    projectId: v.id("projects"),
-    viewerPrincipalId: v.id("devicePrincipals"),
-  },
-  handler: async (ctx, args) => {
-    await getAccessibleProject(ctx, args.projectId, args.viewerPrincipalId)
-
-    return await ctx.db
-      .query("projectTaskStates")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .collect()
-  },
-})
-
 export const getOverlayTaskState = query({
   args: {
     projectId: v.id("projects"),
@@ -318,51 +303,6 @@ export const getOverlayTaskState = query({
           status: state.status,
         }
       : null
-  },
-})
-
-export const listInboxForUser = query({
-  args: {
-    principalId: v.id("devicePrincipals"),
-  },
-  handler: async (ctx, args) => {
-    const notifications = await ctx.db
-      .query("projectTaskNotifications")
-      .withIndex("by_principal_and_created", (q) => q.eq("principalId", args.principalId))
-      .order("desc")
-      .take(24)
-
-    const enriched = await Promise.all(
-      notifications.map(async (notification) => {
-        const [project, actor] = await Promise.all([
-          ctx.db.get(notification.projectId),
-          notification.actorPrincipalId ? ctx.db.get(notification.actorPrincipalId) : Promise.resolve(null),
-        ])
-
-        if (!project || project.status === "deleted") {
-          return null
-        }
-
-        return {
-          ...notification,
-          project: {
-            id: project._id,
-            name: project.name,
-            slug: project.slug,
-          },
-          actor: actor
-            ? {
-                id: actor._id,
-                identityKey: actor.identityKey,
-                displayName: actor.displayName,
-                avatarUrl: actor.avatarStorageId ? await ctx.storage.getUrl(actor.avatarStorageId) : null,
-              }
-            : null,
-        }
-      })
-    )
-
-    return enriched.filter((item): item is Exclude<(typeof enriched)[number], null> => item !== null)
   },
 })
 
@@ -686,27 +626,5 @@ export const migrateLocalBoardState = mutation({
       importedManualTaskCount,
       importedSharedStateCount,
     }
-  },
-})
-
-export const dismissInboxItems = mutation({
-  args: {
-    principalId: v.id("devicePrincipals"),
-    notificationIds: v.array(v.id("projectTaskNotifications")),
-  },
-  handler: async (ctx, args) => {
-    let removedCount = 0
-
-    for (const notificationId of args.notificationIds) {
-      const notification = await ctx.db.get(notificationId)
-      if (!notification || notification.principalId !== args.principalId) {
-        continue
-      }
-
-      await ctx.db.delete(notificationId)
-      removedCount += 1
-    }
-
-    return { removedCount }
   },
 })

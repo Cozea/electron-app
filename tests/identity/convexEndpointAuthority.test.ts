@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs"
+import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -27,17 +27,12 @@ describe("Convex endpoint authority boundary", () => {
   })
 
   it("keeps the historical destructive cleanup off the public API", () => {
-    const source = readFileSync(join(convexRoot, "clean.ts"), "utf8")
-    expect(source).toContain("internalMutation")
-    expect(source).not.toMatch(/=\s*mutation\s*\(/)
+    // clean.ts was deleted outright: no destructive cleanup endpoint exists at all.
+    expect(existsSync(join(convexRoot, "clean.ts"))).toBe(false)
   })
 
   it("marks every deployment endpoint as server-only and secret-protected", () => {
-    const source = readFileSync(join(convexRoot, "deployments.ts"), "utf8")
-    const names = [...source.matchAll(/export const (\w+)\s*=\s*(?:query|mutation)\s*\(/g)]
-      .map((match) => match[1])
-    expect(names.length).toBeGreaterThan(0)
-    expect(names.every((name) => name.endsWith("ForServer"))).toBe(true)
-    expect((source.match(/serverSecret:\s*v\.string\(\)/g) ?? []).length).toBe(names.length)
+    // deployments.ts was deleted outright: no deployment endpoint exists at all.
+    expect(existsSync(join(convexRoot, "deployments.ts"))).toBe(false)
   })
 })

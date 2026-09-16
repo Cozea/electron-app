@@ -19,14 +19,8 @@ import {
 } from "./lib/projectAccess"
 import {
   buildGitRepositoryMetadata,
-  type GitSyncStateMetadata,
   generateSlug,
 } from "./lib/projectGitMetadata"
-import {
-  buildProjectsPageResult,
-  normalizeProjectsPageSize,
-  type ProjectsPageResult,
-} from "./lib/projectPagination"
 import { isOrgMember } from "./lib/orgAccess"
 
 type RepoSourceInput = {
@@ -71,7 +65,6 @@ async function listCollaboratorProjectsForUser(
 ): Promise<
   Array<
     Doc<"projects"> & {
-      localPath?: string
       role: Doc<"projectMembers">["role"]
     }
   >
@@ -90,7 +83,6 @@ async function listCollaboratorProjectsForUser(
 
       return {
         ...project,
-        localPath: membership.localPath ?? undefined,
         role: membership.role,
       }
     }),
@@ -99,7 +91,6 @@ async function listCollaboratorProjectsForUser(
   const dedupedProjects = new Map<
     string,
     Doc<"projects"> & {
-      localPath?: string
       role: Doc<"projectMembers">["role"]
     }
   >()
@@ -413,44 +404,12 @@ export const listSummariesForCurrentUser = query({
       template: project.template ?? null,
       updatedAt: project.updatedAt,
       createdBy: project.createdBy ?? null,
-      localPath: project.localPath ?? null,
       repo: project.repo ?? null,
       sourceControl: project.sourceControl ?? null,
       gitRepository: project.gitRepository ?? null,
       importedFrom: project.importedFrom ?? null,
       organizationId: project.organizationId ?? null,
     }))
-  },
-})
-
-export const listPageForCurrentUser = query({
-  args: {
-    principalId: v.id("devicePrincipals"),
-    statusFilter: v.union(
-      v.literal("all"),
-      v.literal("active"),
-      v.literal("draft"),
-      v.literal("building"),
-      v.literal("archived"),
-    ),
-    sortBy: v.union(v.literal("last_modified"), v.literal("name"), v.literal("created")),
-    page: v.optional(v.number()),
-    pageSize: v.optional(v.number()),
-  },
-  handler: async (ctx, args): Promise<ProjectsPageResult> => {
-    const projects = await listCollaboratorProjectsForUser(ctx, args.principalId)
-    const memberPathMap = new Map(
-      projects.map((project) => [String(project._id), project.localPath ?? null]),
-    )
-
-    return buildProjectsPageResult(ctx, {
-      projects,
-      memberPathMap,
-      statusFilter: args.statusFilter,
-      sortBy: args.sortBy,
-      page: args.page,
-      pageSize: normalizeProjectsPageSize(args.pageSize),
-    })
   },
 })
 
@@ -631,70 +590,6 @@ export const getArtifacts = query({
   },
 })
 
-/**
- * Records the remote repository a local flow attached to the project (e.g.
- * "create GitHub repo" during project creation). Builds the canonical
- * gitRepository metadata from the same URL so the two descriptors agree.
- */
-export const setSourceControl = mutation({
-  args: {
-    projectId: v.id("projects"),
-    principalId: v.id("devicePrincipals"),
-    provider: v.string(),
-    repoUrl: v.string(),
-    defaultBranch: v.optional(v.string()),
-    visibility: v.optional(v.string()),
-    workingCopyMode: v.optional(v.union(v.literal("managed"), v.literal("attached"))),
-    setupMode: v.optional(v.union(v.literal("personal"), v.literal("organization"))),
-  },
-  handler: async (ctx, args) => {
-    const project = await ctx.db.get(args.projectId)
-    if (!project || project.status === "deleted") {
-      throw new ConvexError("Project not found")
-    }
-
-    const canEdit = await canEditProject(ctx, args.projectId, args.principalId)
-    if (!canEdit) {
-      throw new ConvexError("You do not have permission to edit this project")
-    }
-
-    const repoUrl = args.repoUrl.trim()
-    if (!repoUrl) {
-      throw new ConvexError("Repository URL is required")
-    }
-
-    const gitRepository = buildGitRepositoryMetadata({
-      provider: args.provider,
-      repoUrl,
-      defaultBranch: args.defaultBranch,
-    })
-
-    await ctx.db.patch(args.projectId, {
-      sourceControl: {
-        ...project.sourceControl,
-        provider: args.provider,
-        repoUrl,
-        defaultBranch: args.defaultBranch ?? project.sourceControl?.defaultBranch,
-        visibility: args.visibility ?? project.sourceControl?.visibility,
-        workingCopyMode: args.workingCopyMode ?? project.sourceControl?.workingCopyMode,
-        setupMode: args.setupMode ?? project.sourceControl?.setupMode,
-      },
-      gitRepository,
-      repo: buildCanonicalRepo({
-        provider: args.provider,
-        repoUrl,
-        defaultBranch: args.defaultBranch ?? project.sourceControl?.defaultBranch,
-        visibility: args.visibility ?? project.sourceControl?.visibility,
-        workingCopyMode: args.workingCopyMode ?? project.sourceControl?.workingCopyMode,
-        setupMode: args.setupMode ?? project.sourceControl?.setupMode,
-      }),
-      updatedAt: Date.now(),
-    })
-
-    return { ok: true }
-  },
-})
-
 export const updateStatus = mutation({
   args: {
     projectId: v.id("projects"),
@@ -866,28 +761,6 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 2: {
-      const rows = await ctx.db
-        .query("projectFiles")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      for (const row of rows) {
-        await ctx.storage.delete(row.storageId)
-        await ctx.db.delete(row._id)
-      }
-      return rows.length
-    }
-    case 3: {
-      const rows = await ctx.db
-        .query("projectAssets")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      for (const row of rows) {
-        if (row.storageId) await ctx.storage.delete(row.storageId)
-        await ctx.db.delete(row._id)
-      }
-      return rows.length
-    }
     case 4: {
       // This legacy table has no project-prefixed index. Keep the scan bounded;
       // a future schema migration can add one without changing purge semantics.
@@ -917,14 +790,6 @@ async function deleteProjectPurgeStage(
     case 7: {
       const rows = await ctx.db
         .query("projectArtifacts")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 8: {
-      const rows = await ctx.db
-        .query("projectSyncState")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
@@ -986,22 +851,6 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 17: {
-      const rows = await ctx.db
-        .query("projectFileLocks")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 18: {
-      const rows = await ctx.db
-        .query("fileTombstones")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
     case 19: {
       const rows = await ctx.db
         .query("projectCollabRoomKeys")
@@ -1037,14 +886,6 @@ async function deleteProjectPurgeStage(
     case 23: {
       const rows = await ctx.db
         .query("projectPresence")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 24: {
-      const rows = await ctx.db
-        .query("deploymentJobs")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
@@ -1167,72 +1008,5 @@ export const resumeDeletedProjectPurge = internalMutation({
       stage: 0,
     })
     return { scheduled: true }
-  },
-})
-
-export const setProjectGitStorageMetricsForServer = mutation({
-  args: {
-    projectId: v.id("projects"),
-    serverSecret: v.string(),
-    metrics: v.object({
-      repoBytes: v.optional(v.number()),
-      lastRepoSizeAt: v.optional(v.number()),
-      lastFetchedCommit: v.optional(v.string()),
-      lastPushedCommit: v.optional(v.string()),
-      lastFetchAt: v.optional(v.number()),
-      lastPushAt: v.optional(v.number()),
-      // null clears a previously recorded error; undefined leaves it as-is.
-      errorMessage: v.optional(v.union(v.string(), v.null())),
-    }),
-  },
-  handler: async (ctx, args) => {
-    const expected = process.env.AI_GATEWAY_SECRET
-    if (!expected || args.serverSecret !== expected) {
-      throw new ConvexError("Unauthorized")
-    }
-
-    const project = await ctx.db.get(args.projectId)
-    if (!project || project.status === "deleted") {
-      throw new ConvexError("Project not found")
-    }
-
-    // Machine-written metrics live in their own table: background syncs never
-    // touch the project doc, so list subscriptions stay quiet. Legacy inline
-    // gitSyncState is frozen and used only as a read fallback.
-    const existing = await ctx.db
-      .query("projectSyncState")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .first()
-    const previous = existing?.gitSyncState ?? project.gitSyncState
-
-    const nextState: GitSyncStateMetadata = {
-      accessState: previous?.accessState ?? "unknown",
-      lastFetchedCommit: args.metrics.lastFetchedCommit ?? previous?.lastFetchedCommit,
-      lastPushedCommit: args.metrics.lastPushedCommit ?? previous?.lastPushedCommit,
-      lastFetchAt: args.metrics.lastFetchAt ?? previous?.lastFetchAt,
-      lastPushAt: args.metrics.lastPushAt ?? previous?.lastPushAt,
-      repoBytes: args.metrics.repoBytes ?? previous?.repoBytes,
-      lastRepoSizeAt: args.metrics.lastRepoSizeAt ?? previous?.lastRepoSizeAt,
-      errorMessage:
-        args.metrics.errorMessage === null
-          ? undefined
-          : args.metrics.errorMessage ?? previous?.errorMessage,
-      migratedFromReplicaAt: previous?.migratedFromReplicaAt,
-    }
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        gitSyncState: nextState,
-        updatedAt: Date.now(),
-      })
-    } else {
-      await ctx.db.insert("projectSyncState", {
-        projectId: args.projectId,
-        gitSyncState: nextState,
-        updatedAt: Date.now(),
-      })
-    }
-
-    return { ok: true }
   },
 })

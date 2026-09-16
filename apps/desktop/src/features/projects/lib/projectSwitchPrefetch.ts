@@ -41,10 +41,8 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
     try {
       const tasks: Array<Promise<unknown>> = []
 
-      if (featureFlags.commonRoutePrewarm) {
-        tasks.push(import("@/features/projects/pages/ProjectWorkbenchPage"))
-        tasks.push(import("@/features/projects/pages/ProjectWorkbenchSurface"))
-      }
+      tasks.push(import("@/features/projects/pages/ProjectWorkbenchPage"))
+      tasks.push(import("@/features/projects/pages/ProjectWorkbenchSurface"))
 
       if (input.principalId) {
         tasks.push(

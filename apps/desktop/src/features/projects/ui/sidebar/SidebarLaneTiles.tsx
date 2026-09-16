@@ -84,7 +84,7 @@ function SurfaceTileGlyph(props: {
   if (definition.fallbackIcon === "devServer" && props.devAppId) {
     return (
       <span className={SIDEBAR_APP_ICON_CLASS}>
-        <ProjectDevAppIcon publicationId={props.devAppId} name={props.title} />
+        <ProjectDevAppIcon name={props.title} />
       </span>
     )
   }

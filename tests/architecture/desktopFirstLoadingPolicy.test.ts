@@ -68,8 +68,10 @@ describe('desktop-first loading architecture', () => {
 
     expect(bootstrap).toContain('applyDesktopBootstrapRoute')
     expect(bootstrap).toContain('/workbench')
-    expect(launch).toContain('const shouldUseLegacyRestore = !featureFlags.desktopBootstrap')
-    expect(launch).toContain('api.projects.getAccessibleById')
+    // The flag-gated legacy restore rollback is gone: mounting /projects only
+    // clears the stale restore target so next launch does not bounce back.
+    expect(launch).not.toContain('shouldUseLegacyRestore')
+    expect(launch).toContain('clearLastWorkbenchRoute')
   })
 
   it('registers lifecycle handling first and runtime shutdown after main bootstrap', () => {

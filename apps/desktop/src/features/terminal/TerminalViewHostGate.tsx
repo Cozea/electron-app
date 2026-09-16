@@ -1,6 +1,5 @@
 import { lazy, Suspense } from 'react'
 
-import { featureFlags } from '@/lib/featureFlags'
 import { useTerminalViewKeepAlive } from './terminalViewKeepAlive'
 
 const LazyTerminalViewHost = lazy(() =>
@@ -11,7 +10,7 @@ export function TerminalViewHostGate() {
   const hasTerminalViews = useTerminalViewKeepAlive(
     (state) => Object.keys(state.views).length > 0,
   )
-  const shouldLoad = featureFlags.lazyRendererHosts ? hasTerminalViews : true
+  const shouldLoad = hasTerminalViews
 
   if (!shouldLoad) return null
 

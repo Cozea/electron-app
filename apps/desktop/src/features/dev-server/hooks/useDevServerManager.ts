@@ -43,7 +43,7 @@ interface UseDevServerManagerOptions {
  * Thin facade over devServerRunStore. The run state lives in the keyed store
  * (fed by the app-level event bridge and reconciled against the main
  * process), so any component — tile body, dock header, status indicators —
- * reads the same truth; this hook just scopes it to one workspace::lane key
+ * reads the same truth; this hook just scopes it to one workspace run key
  * and contributes the mounted tile's launch context.
  */
 export function useDevServerManager({

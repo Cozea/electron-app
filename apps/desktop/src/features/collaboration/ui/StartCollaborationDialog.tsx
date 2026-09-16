@@ -35,6 +35,7 @@ import { appToast } from "@/lib/appToast"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { useCreateCollaborationSession } from "../hooks/useCreateCollaborationSession"
+import { useProjectSessions } from "../hooks/useProjectSessions"
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { planLiveSessionStart } from "../live/liveSessionModel"
 import {
@@ -91,7 +92,7 @@ export function StartCollaborationDialog({
     setAccessMode(projectOrganizationId ? "organization_available" : "invite_only")
   }, [isOpen, project, projectOrganizationId])
   const { stage, error, startCollaboration, reset } = useCreateCollaborationSession()
-  const sessions = useQuery(api.collaborationSessions.listByProject, isOpen ? { projectId } : "skip")
+  const sessions = useProjectSessions(projectId, isOpen)
   const [settingUp, setSettingUp] = useState(false)
   const submitting = stage === "creating_session" || settingUp
   const [repositoryUrl, setRepositoryUrl] = useState<string | null>(null)
