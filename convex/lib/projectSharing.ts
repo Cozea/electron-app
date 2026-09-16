@@ -1,5 +1,7 @@
+import { ConvexError } from "convex/values"
 import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
+import { canManageProject } from "./projectAccess"
 
 type ProjectSharingCtx = Pick<QueryCtx | MutationCtx, "db">
 
@@ -19,9 +21,9 @@ export async function requireProjectManagerMembership(
   principalId: Id<"devicePrincipals">,
   errorMessage = "Only project managers can manage project sharing",
 ) {
-  const membership = await getProjectMembership(ctx, projectId, principalId)
-  if (!membership || membership.role !== "project_manager") throw new Error(errorMessage)
-  return membership
+  const canManage = await canManageProject(ctx, projectId, principalId)
+  if (!canManage) throw new ConvexError(errorMessage)
+  return await getProjectMembership(ctx, projectId, principalId)
 }
 
 export async function getProjectShareScope(
