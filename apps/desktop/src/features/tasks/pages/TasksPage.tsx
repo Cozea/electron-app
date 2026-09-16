@@ -53,6 +53,9 @@ import {
   useAuth,
 } from '@/contexts/AuthContext';
 import {
+  useProjectTeam,
+} from '@/hooks/useProjectTeam';
+import {
   useAccessibleProject,
 } from '@/contexts/project/useAccessibleProject';
 
@@ -242,12 +245,7 @@ export function TasksPage({
   const setManualTaskCheckedMarkers = useMutation(api.projectTasks.setManualTaskCheckedMarkers)
   const migrateLocalBoardState = useMutation(api.projectTasks.migrateLocalBoardState)
 
-  const projectMembers = useQuery(
-    api.projectMembers.listMembers,
-    project?._id && principalId
-      ? { projectId: project._id, viewerPrincipalId: principalId }
-      : 'skip',
-  )
+  const { members: projectMembers } = useProjectTeam(project?._id)
   const sharedManualTasks = useQuery(
     api.projectTasks.listForProject,
     project?._id && principalId

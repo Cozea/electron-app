@@ -8,6 +8,7 @@ import { cleanConvexError as cleanError } from "@/lib/convexError"
 import { appToast } from "@/lib/appToast"
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { useAuth } from "@/contexts/AuthContext";
+import { useProjectTeam } from "@/hooks/useProjectTeam";
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
 import { LiveSessionShareSection } from "@/features/collaboration/ui/LiveSessionShareSection";
 import { StartCollaborationDialog } from "@/features/collaboration/ui/StartCollaborationDialog";
@@ -90,14 +91,7 @@ export function HeaderProjectShareButton({
 }) {
   const { principalId, user } = useAuth();
   const syncContext = useOptionalProjectSyncContext();
-  const memberRole = useQuery(
-    api.projectMembers.getMemberRole,
-    projectId && principalId ? { projectId, principalId: principalId } : "skip",
-  );
-  const members = useQuery(
-    api.projectMembers.listMembers,
-    projectId && principalId ? { projectId, viewerPrincipalId: principalId } : "skip",
-  );
+  const { members, memberRole } = useProjectTeam(projectId);
   const pendingEnrollments = useQuery(
     api.projectDeviceEnrollments.listForProject,
     projectId && principalId && memberRole === "project_manager" ? { projectId } : "skip",

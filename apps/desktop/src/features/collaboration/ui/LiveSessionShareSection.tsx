@@ -23,6 +23,7 @@ import { appToast } from "@/lib/appToast"
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { useSwitchToSessionWorkbench } from "@/features/collaboration/live/useSwitchToSessionWorkbench"
 import { cn } from "@/lib/utils"
+import { useProjectSessions } from "@/features/collaboration/hooks/useProjectSessions"
 import { findBranchSession, findWorkspaceSession } from "../collaborationGate"
 
 type SessionRole = "viewer" | "developer" | "project_manager"
@@ -58,7 +59,7 @@ export function LiveSessionShareSection({
   const activeBranch = sync?.activeBranch ?? null
   const workspaceId = sync?.workspaceId ?? null
 
-  const sessions = useQuery(api.collaborationSessions.listByProject, { projectId })
+  const sessions = useProjectSessions(projectId)
   // The Workbench decides the session. When in a regular workspace, fall back to the active branch's session.
   const activeSession =
     findWorkspaceSession(sessions, workspaceId) ??

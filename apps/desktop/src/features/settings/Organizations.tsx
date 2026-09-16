@@ -13,6 +13,7 @@ import { api } from "../../../../../convex/_generated/api"
 import type { Id } from "../../../../../convex/_generated/dataModel"
 import { cleanConvexError } from "@/lib/convexError"
 import { useAuth } from "@/contexts/AuthContext"
+import { useMyOrganizations } from "@/hooks/useMyOrganizations"
 import {
   SettingsGroup,
   SettingsPageBody,
@@ -269,10 +270,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
     [searchParams, setSearchParams],
   )
 
-  const orgs = useQuery(
-    api.organizations.listMine,
-    principalId ? {} : "skip",
-  )
+  const orgs = useMyOrganizations()
   const [selectedOrgId, setSelectedOrgId] = useState<Id<"organizations"> | null>(null)
   const activeOrgId = selectedOrgId ?? orgs?.[0]?.organizationId ?? null
 

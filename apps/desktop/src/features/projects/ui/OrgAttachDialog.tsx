@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
-import { useQuery } from "convex/react"
 
-import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
-import { useAuth } from "@/contexts/AuthContext"
+import { useMyOrganizations } from "@/hooks/useMyOrganizations"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -38,11 +36,7 @@ export function OrgAttachDialog({
   confirmCreateLabel = "Create & Publish",
 }: OrgAttachDialogProps) {
   const { t } = useTranslation()
-  const { principalId } = useAuth()
-  const orgs = useQuery(
-    api.organizations.listMine,
-    principalId ? {} : "skip",
-  )
+  const orgs = useMyOrganizations()
   const hasExistingOrgs = (orgs ?? []).length > 0
   const [mode, setMode] = useState<"existing" | "create">("existing")
   const [name, setName] = useState(`${projectName} Org`)
