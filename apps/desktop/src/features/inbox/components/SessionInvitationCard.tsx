@@ -15,6 +15,7 @@ import { useMutation } from "convex/react"
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { getDeviceInitials } from "@/lib/devicePresentation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -109,7 +110,7 @@ export function SessionInvitationCard({
       <div className="flex items-start gap-3 sm:items-center">
         <Avatar className="size-10 shrink-0 rounded-lg">
           <AvatarFallback className="rounded-lg text-xs font-medium">
-            {item.projectName.slice(0, 2).toUpperCase()}
+            {getDeviceInitials(item.projectName)}
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1 space-y-1">

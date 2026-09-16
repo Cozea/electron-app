@@ -21,14 +21,6 @@ export interface GitSyncStateMetadata {
   migratedFromReplicaAt?: number
 }
 
-export interface ProjectTeamSeedMember {
-  email: string
-  name?: string
-  role: "project_manager" | "developer" | "designer" | "viewer"
-  isCurrentUser?: boolean
-  profileImageUrl?: string | null
-}
-
 export function generateSlug(name: string): string {
   return name
     .toLowerCase()

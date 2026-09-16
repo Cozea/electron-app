@@ -1,8 +1,5 @@
 import * as React from "react"
-import { useQuery } from "convex/react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-
-import { api } from "../../../../convex/_generated/api"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useProductTourStore } from "@/features/tour/productTourStore"
 import {
@@ -32,26 +29,22 @@ type NavUserMenuAction =
   | "separator-top"
   | "separator-bottom"
 
+import { getDeviceInitials as initials } from "@/lib/devicePresentation"
+
 type DevicePresentation = {
   displayName?: string | null
   avatarUrl?: string | null
 }
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return "D"
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
-}
-
-export function NavUser({ user }: { user: DevicePresentation | null | undefined }) {
+export function NavUser({ user: userProp }: { user?: DevicePresentation | null | undefined }) {
   const { theme, setTheme } = useTheme()
-  const { principalId } = useAuth()
+  const { user: authUser } = useAuth()
+  const user = userProp ?? authUser
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
-  const principal = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip")
 
-  const menuTitle = principal?.displayName?.trim() || user?.displayName?.trim() || t("nav.thisComputer")
-  const avatarUrl = principal?.avatarUrl ?? user?.avatarUrl ?? null
+  const menuTitle = user?.displayName?.trim() || t("nav.thisComputer")
+  const avatarUrl = user?.avatarUrl ?? null
   const menuSummarySublabel = t("nav.localComputer")
 
   const isTourActive = useProductTourStore((state) => state.isActive)

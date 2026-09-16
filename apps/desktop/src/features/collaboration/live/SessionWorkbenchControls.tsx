@@ -45,15 +45,7 @@ const TONE_DOT: Record<LiveSessionSyncView["tone"], string> = {
 const MAX_AVATARS = 4
 const BAR_BUTTON = "h-6 px-2 text-xs"
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  return (
-    parts
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("") || "?"
-  )
-}
+import { getDeviceInitials as initials } from "@/lib/devicePresentation"
 
 export interface SessionWorkbenchControlsProps {
   branchName: string

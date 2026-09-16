@@ -41,10 +41,7 @@ const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
 
 
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('') || 'D'
-}
+import { getDeviceInitials as initials } from '@/lib/devicePresentation'
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString()

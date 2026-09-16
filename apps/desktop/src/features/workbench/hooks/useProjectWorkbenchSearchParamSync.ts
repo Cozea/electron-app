@@ -62,7 +62,6 @@ export function buildClosedChangesSearchParams(
   const nextParams = new URLSearchParams(searchParams)
   nextParams.delete("changes")
   nextParams.delete("openTile")
-  nextParams.delete("userId")
   return nextParams
 }
 

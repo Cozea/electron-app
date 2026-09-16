@@ -27,34 +27,8 @@ interface PresenceAvatarGroupProps {
   onUserClick?: (user: PresenceUser) => void
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2)
-}
-
-export function getUserColor(principalId: string): string {
-  // Generate a consistent color based on principalId
-  const colors = [
-    "#ef4444", // red
-    "#f97316", // orange
-    "#eab308", // yellow
-    "#22c55e", // green
-    "#14b8a6", // teal
-    "#0ea5e9", // sky
-    "#6366f1", // indigo
-    "#a855f7", // purple
-    "#ec4899", // pink
-  ]
-  let hash = 0
-  for (let i = 0; i < principalId.length; i++) {
-    hash = principalId.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return colors[Math.abs(hash) % colors.length]
-}
+import { getDeviceInitials as getInitials, getDeviceColor as getUserColor } from "@/lib/devicePresentation"
+export { getUserColor }
 
 function formatTabName(tab?: string): string {
   if (!tab) return "Project"
