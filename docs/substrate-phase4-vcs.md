@@ -64,9 +64,16 @@ Companion plans: `docs/t3code-upgrade-path.md` §3.8, `docs/t3code-implementatio
 **Overlay contract (keep):**
 
 - Sync journal enqueue/ack (`workspaceSync:*`)
-- Conflict read/resolve + `gitRuntime` merge-tree
+- `gitRuntime` merge-tree / merge-file previews
 - Salvage/reclone / shared-main health
 - Lane → collab merge
+
+> **Retired 2026-09-16.** This list used to name "Conflict read/resolve". The
+> page that used it, `ProjectConflictsPage.tsx`, has since been deleted, and no
+> renderer code referenced `gitReadConflictFile` or `gitResolveConflictFile`, so
+> both IPC channels were removed along with seven other Git channels that had no
+> caller. The merge-tree preview path above is unaffected. See
+> `docs/git-subsystem-fragmentation.md`.
 
 **Must call** `invalidateVcsStatus(projectPath)` after cwd-mutating collab ops (pull/replay/restore/commit/…). Do not call raw `git push` paths that skip `evaluatePushSafety` / `GitVcsDriver.pushCurrentBranch`.
 
