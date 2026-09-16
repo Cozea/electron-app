@@ -33,6 +33,7 @@ import { loadGitBranchesCompat } from "@/features/workbench/branch-control/workb
 import { appToast } from "@/lib/appToast"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { useCreateCollaborationSession } from "../hooks/useCreateCollaborationSession"
+import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { planLiveSessionStart } from "../live/liveSessionModel"
 import {
   describeSessionRepository,
@@ -192,6 +193,7 @@ export function StartCollaborationDialog({
       })
       if (!ensured.success) throw new Error(ensured.error)
 
+      invalidateProjectWorkspaceResolution(String(projectId))
       appToast.success({
         title: "Live session started",
         description: `The Session Workbench for ${plan.branch} is ready. Invite people from Share.`,

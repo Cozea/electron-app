@@ -245,7 +245,7 @@ export function HeaderProjectShareButton({
   if (isSessionHub && liveSession?.session && projectId) {
     return (
       <>
-        <Tooltip open={hubOpen ? false : undefined}>
+        <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
@@ -380,7 +380,7 @@ export function HeaderProjectShareButton({
       setOpen(next);
       if (next) headerOverflow?.dismiss();
     }}>
-      <Tooltip open={open ? false : undefined}>
+      <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
             {hasActiveSession ? (

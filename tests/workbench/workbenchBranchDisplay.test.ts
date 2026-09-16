@@ -7,6 +7,8 @@ import {
   WORKBENCH_SELECT_BRANCH_LABEL,
   getStatusSummary,
   getWorkspaceGitStatusSummary,
+  humanizeGitError,
+  parseBranchCheckoutConflict,
   resolveDisplayedWorkbenchBranch,
   resolveWorkbenchBranchAriaLabel,
   resolveWorkbenchBranchChromeLabel,
@@ -264,5 +266,49 @@ describe("getWorkspaceGitStatusSummary", () => {
         upstreamBranch: "origin/main",
       }),
     ).toBe("local changes")
+  })
+})
+
+describe("parseBranchCheckoutConflict", () => {
+  it("extracts conflicting files from Git checkout error output", () => {
+    const rawError = `error: Your local changes to the following files would be overwritten by checkout:
+\tapps/desktop/src/fileA.tsx
+\tapps/desktop/src/fileB.ts
+Please commit your changes or stash them before you switch branches.
+Aborting`
+
+    const parsed = parseBranchCheckoutConflict(rawError, "feature/awesome")
+    expect(parsed).toEqual({
+      targetBranch: "feature/awesome",
+      rawError,
+      conflictingFiles: [
+        "apps/desktop/src/fileA.tsx",
+        "apps/desktop/src/fileB.ts",
+      ],
+    })
+  })
+
+  it("returns null for unrelated errors", () => {
+    expect(parseBranchCheckoutConflict("fatal: not a git repository", "main")).toBeNull()
+  })
+})
+
+describe("humanizeGitError", () => {
+  it("translates index.lock error to user-friendly message", () => {
+    expect(humanizeGitError("fatal: Unable to create '.git/index.lock': File exists.")).toContain(
+      "Git is temporarily busy",
+    )
+  })
+
+  it("translates checkout overwrite error to clean message", () => {
+    expect(
+      humanizeGitError(
+        "error: Your local changes to the following files would be overwritten by checkout:\n\tfile.ts\nAborting",
+      ),
+    ).toContain("Your uncommitted changes conflict with this branch")
+  })
+
+  it("cleans up general git errors", () => {
+    expect(humanizeGitError("fatal: Some branch error Aborting")).toBe("Some branch error")
   })
 })

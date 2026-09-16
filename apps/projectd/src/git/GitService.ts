@@ -213,24 +213,51 @@ export class GitService {
     await this.process.execute(args, { cwd })
   }
 
-  async checkoutBranch(cwd: string, branchName: string): Promise<string> {
+  async checkoutBranch(
+    cwd: string,
+    branchName: string,
+    options?: { stash?: boolean },
+  ): Promise<string> {
     const trimmed = branchName.trim()
     if (!trimmed) {
       throw new Error("Branch name is required.")
     }
-    const [localCheck, remoteCheck] = await Promise.all([
-      this.process.execute(["show-ref", "--verify", "--quiet", `refs/heads/${trimmed}`], {
+
+    const isExplicitRemote = trimmed.startsWith("origin/") || trimmed.includes("/")
+    const remoteRefName = isExplicitRemote ? trimmed : `origin/${trimmed}`
+    const localBranchName = trimmed.startsWith("origin/") ? trimmed.slice("origin/".length) : trimmed
+
+    let didStash = false
+    if (options?.stash) {
+      const statusRes = await this.process.execute(["status", "--porcelain"], { cwd })
+      if (statusRes.success && statusRes.stdout.trim().length > 0) {
+        const stashRes = await this.process.execute(
+          ["stash", "push", "-m", `Auto-stashed before checkout of ${localBranchName}`],
+          { cwd },
+        )
+        if (stashRes.success) {
+          didStash = true
+        }
+      }
+    }
+
+    const [localCheck, remoteCheck, localTrackedCheck] = await Promise.all([
+      this.process.execute(["show-ref", "--verify", "--quiet", `refs/heads/${localBranchName}`], {
         cwd,
         allowNonZeroExit: true,
       }),
-      this.process.execute(["show-ref", "--verify", "--quiet", `refs/remotes/${trimmed}`], {
+      this.process.execute(["show-ref", "--verify", "--quiet", `refs/remotes/${remoteRefName}`], {
+        cwd,
+        allowNonZeroExit: true,
+      }),
+      this.process.execute(["show-ref", "--verify", "--quiet", `refs/heads/${trimmed}`], {
         cwd,
         allowNonZeroExit: true,
       }),
     ])
 
+    const localExists = localCheck.success || localTrackedCheck.success
     const remoteExists = remoteCheck.success
-    const localExists = localCheck.success
 
     let localTrackingBranch: string | null = null
     if (remoteExists) {
@@ -241,7 +268,7 @@ export class GitService {
       if (trackingRes.success) {
         for (const line of trackingRes.stdout.split("\n")) {
           const [branchNameRaw, upstreamBranchRaw = ""] = line.trim().split("\t")
-          if (upstreamBranchRaw.trim() === trimmed) {
+          if (upstreamBranchRaw.trim() === remoteRefName || upstreamBranchRaw.trim() === trimmed) {
             localTrackingBranch = branchNameRaw.trim()
             break
           }
@@ -249,31 +276,27 @@ export class GitService {
       }
     }
 
-    const separatorIndex = trimmed.indexOf("/")
-    const localTrackedCandidate =
-      separatorIndex > 0 ? trimmed.slice(separatorIndex + 1).trim() : null
-    let localTrackedCandidateExists = false
-    if (remoteExists && localTrackedCandidate) {
-      const candidateCheck = await this.process.execute(
-        ["show-ref", "--verify", "--quiet", `refs/heads/${localTrackedCandidate}`],
-        { cwd, allowNonZeroExit: true },
-      )
-      localTrackedCandidateExists = candidateCheck.success
-    }
-
     const checkoutArgs = localExists
-      ? ["checkout", trimmed]
-      : remoteExists && !localTrackingBranch && localTrackedCandidateExists
-        ? ["checkout", trimmed]
-        : remoteExists && !localTrackingBranch
-          ? ["checkout", "--track", trimmed]
-          : remoteExists && localTrackingBranch
-            ? ["checkout", localTrackingBranch]
-            : ["checkout", trimmed]
+      ? ["checkout", localBranchName]
+      : localTrackingBranch
+        ? ["checkout", localTrackingBranch]
+        : remoteExists
+          ? ["checkout", "-b", localBranchName, "--track", remoteRefName]
+          : ["checkout", trimmed]
 
     const res = await this.process.execute(checkoutArgs, { cwd })
     if (!res.success) {
-      throw new Error(res.stderr.trim() || "Failed to switch branches.")
+      if (didStash) {
+        await this.process.execute(["stash", "pop"], { cwd, allowNonZeroExit: true })
+      }
+      throw new Error(res.stderr.trim() || res.stdout.trim() || "Failed to switch branches.")
+    }
+
+    if (didStash) {
+      const popRes = await this.process.execute(["stash", "pop"], { cwd, allowNonZeroExit: true })
+      if (!popRes.success) {
+        console.warn("[GitService] Stash pop had conflicts:", popRes.stderr)
+      }
     }
 
     const currentBranchRes = await this.process.execute(["branch", "--show-current"], {
@@ -282,7 +305,7 @@ export class GitService {
     })
     return currentBranchRes.success && currentBranchRes.stdout.trim()
       ? currentBranchRes.stdout.trim()
-      : trimmed
+      : localBranchName
   }
 
   async createWorktree(

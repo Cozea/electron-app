@@ -45,13 +45,16 @@ describe("the composer's scroll chain in a small tile", () => {
     );
   });
 
-  it("scrolls the options inside the panel, below a question that stays put", () => {
-    // Match the scroll-chain classes rather than the whole class string: the
-    // card also carries enter-animation and pane-adaptation utilities, and this
-    // assertion exists to catch a dropped `min-h-0` only.
+  it("scrolls the question stack inside the panel, above a footer that stays put", () => {
+    // The card slides one question at a time, so a question travels with its
+    // own options and the whole stack scrolls; the footer keeps the step nav
+    // and Send reachable. Match the scroll-chain classes rather than the whole
+    // class string: the card also carries enter-animation and pane-adaptation
+    // utilities, and this assertion exists to catch a dropped `min-h-0` only.
     expect(panelSource).toMatch(/className="flex h-full min-h-0 flex-col/);
     expect(panelSource).toContain(
-      'className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain"',
+      'className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3',
     );
+    expect(panelSource).toMatch(/className="flex shrink-0 items-center justify-between/);
   });
 });

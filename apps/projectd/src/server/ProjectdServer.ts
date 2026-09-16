@@ -1040,7 +1040,7 @@ export class ProjectdServer {
         break
       }
       case "git.checkout": {
-        const p = req.params as { cwd: string; branch: string }
+        const p = req.params as { cwd: string; branch: string; stash?: boolean }
         if (!p?.cwd || !p?.branch) {
           this.sendError(state, req.id, {
             code: "INVALID_PARAMS",
@@ -1049,7 +1049,7 @@ export class ProjectdServer {
           break
         }
         void this.gitService
-          .checkoutBranch(p.cwd, p.branch)
+          .checkoutBranch(p.cwd, p.branch, { stash: p.stash })
           .then((branch) => {
             this.sendMessage(state, {
               type: "response",

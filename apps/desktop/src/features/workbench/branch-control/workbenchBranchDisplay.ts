@@ -133,3 +133,60 @@ export function getWorkspaceGitStatusSummary(
     hasLocalChanges: status.clean === false,
   })
 }
+
+export interface BranchCheckoutConflict {
+  targetBranch: string
+  rawError: string
+  conflictingFiles: string[]
+}
+
+export function parseBranchCheckoutConflict(error: string, targetBranch: string): BranchCheckoutConflict | null {
+  if (
+    !error.includes("Your local changes to the following files would be overwritten") &&
+    !error.includes("Please commit your changes or stash them")
+  ) {
+    return null
+  }
+
+  const lines = error.split("\n")
+  const conflictingFiles: string[] = []
+  let collecting = false
+
+  for (const line of lines) {
+    if (line.includes("overwritten by checkout:")) {
+      collecting = true
+      continue
+    }
+    if (line.includes("Please commit your changes") || line.includes("Aborting")) {
+      collecting = false
+      continue
+    }
+    if (collecting && line.trim()) {
+      conflictingFiles.push(line.trim())
+    }
+  }
+
+  return {
+    targetBranch,
+    rawError: error,
+    conflictingFiles,
+  }
+}
+
+export function humanizeGitError(error: string): string {
+  if (!error) return "Failed to switch branches."
+  if (error.includes("index.lock")) {
+    return "Git is temporarily busy with another operation. Please try again in a few seconds."
+  }
+  if (error.includes("Your local changes to the following files would be overwritten")) {
+    return "Your uncommitted changes conflict with this branch. Please stash or commit them before switching."
+  }
+  if (error.includes("did not match any file(s) known to git")) {
+    return "The selected branch was not found in this repository."
+  }
+  return error
+    .replace(/^error:\s*/i, "")
+    .replace(/^fatal:\s*/i, "")
+    .replace(/\s*Aborting\.?\s*$/i, "")
+    .trim()
+}

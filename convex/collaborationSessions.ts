@@ -1039,9 +1039,6 @@ export const finalizeLifecycleFromServer = publicMutation({
     const session = await ctx.db.query("collaborationSessions")
       .withIndex("by_public_session_id", (q) => q.eq("publicSessionId", args.publicSessionId)).first()
     if (!session) throw new ConvexError("Collaboration session not found")
-    if (session.lifecycle === "CLOSED") {
-      return { committed: true as const, revision: session.lifecycleRevision ?? 0, superseded: true }
-    }
     const caller = await ctx.db.get(args.principalId)
     const member = await getMembership(ctx, session._id, args.principalId)
     const isSessionMgr = member?.status === "active" && member.role === "project_manager"

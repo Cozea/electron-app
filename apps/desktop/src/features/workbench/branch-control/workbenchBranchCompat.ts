@@ -33,7 +33,11 @@ export async function loadGitBranchesCompat(workspaceId: string): Promise<{
   }
 }
 
-export async function checkoutGitBranchCompat(workspaceId: string, branch: string): Promise<{
+export async function checkoutGitBranchCompat(
+  workspaceId: string,
+  branch: string,
+  options?: { stash?: boolean },
+): Promise<{
   success: boolean
   branch?: string
   error?: string
@@ -41,7 +45,7 @@ export async function checkoutGitBranchCompat(workspaceId: string, branch: strin
   const checkoutGitBranch = window.electronAPI.project.checkoutGitBranch
   if (typeof checkoutGitBranch === "function") {
     try {
-      return await checkoutGitBranch({ workspaceId, branch })
+      return await checkoutGitBranch({ workspaceId, branch, stash: options?.stash })
     } catch (error) {
       if (
         !(error instanceof Error) ||

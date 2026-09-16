@@ -363,10 +363,12 @@ export class ProjectdClient {
   async gitCheckout(
     cwd: string,
     branch: string,
+    options?: { stash?: boolean },
   ): Promise<{ success: boolean; branch?: string; error?: string }> {
     return this.request<{ success: boolean; branch?: string; error?: string }>("git.checkout", {
       cwd,
       branch,
+      stash: options?.stash,
     })
   }
 

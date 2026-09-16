@@ -97,6 +97,7 @@ import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWind
 import type { AccountUsageLimitSnapshot } from "@/features/assistant/lib/usageLimits";
 import {
   buildPendingUserInputAnswers,
+  setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
   resolvePendingUserInputAnswer,
   derivePendingUserInputProgress,
@@ -1189,6 +1190,20 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       question,
       activePendingDraftAnswers[questionId],
       optionLabel,
+    );
+    const value = resolvePendingUserInputAnswer(question, next) ?? (question.multiSelect ? [] : "");
+    props.onUserInputDraftChange(String(activePendingUserInput.requestId), questionId, value);
+  };
+
+  const handlePendingUserInputCustomAnswer = (questionId: string, customAnswer: string) => {
+    if (!activePendingUserInput) {
+      return;
+    }
+    const question = activePendingUserInput.questions.find((entry) => entry.id === questionId);
+    if (!question) return;
+    const next = setPendingUserInputCustomAnswer(
+      activePendingDraftAnswers[questionId],
+      customAnswer,
     );
     const value = resolvePendingUserInputAnswer(question, next) ?? (question.multiSelect ? [] : "");
     props.onUserInputDraftChange(String(activePendingUserInput.requestId), questionId, value);
@@ -2426,7 +2441,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               answers={activePendingDraftAnswers}
               questionIndex={activePendingQuestionIndex}
               onSelectOption={handleSelectPendingUserInputOption}
+              onCustomAnswerChange={handlePendingUserInputCustomAnswer}
               onAdvance={handleAdvancePendingQuestion}
+              onPrevious={handlePreviousPendingQuestion}
+              onSubmit={handleSubmitPendingUserInput}
             />
           </div>
         ) : showPlanFollowUpPrompt && activeProposedPlan ? (

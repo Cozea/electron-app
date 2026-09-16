@@ -204,7 +204,10 @@ export function registerProjectHandlers(
 
   ipcMain.handle(
     'project:checkoutGitBranch',
-    async (_event, { workspaceId, branch }: { workspaceId: string; branch: string }) => {
+    async (
+      _event,
+      { workspaceId, branch, stash }: { workspaceId: string; branch: string; stash?: boolean },
+    ) => {
       let projectPath: string
       try {
         const access = await resolveAuthorizedWorkspaceAccess({ workspaceId, operation: 'git-write' })
@@ -214,7 +217,7 @@ export function registerProjectHandlers(
       }
       try {
         const client = getSharedProjectdClient()
-        return await client.gitCheckout(projectPath, branch)
+        return await client.gitCheckout(projectPath, branch, { stash })
       } catch (err: any) {
         return { success: false, error: err?.message ?? 'Failed to switch branches' }
       }
