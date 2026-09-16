@@ -79,6 +79,45 @@ Companion plans: `docs/t3code-upgrade-path.md` §3.8, `docs/t3code-implementatio
 | Full orphan prune via `VcsDriver.removeWorktree` in product delete flow | **Partial** — hooks ready; product still uses GitCore until Track B + 4a merge |
 | Stacked-action progress streaming | **Not yet** |
 
+## Deferred: consolidating status onto projectd
+
+Considered 2026-09-16 and deliberately not taken yet. Recorded here so the
+reasoning is not re-derived from scratch.
+
+**What it is.** Add a changes/diff RPC to projectd, point `VcsStatusBroadcaster`
+at it, and delete the desktop's second porcelain parser (`parsePorcelainStatus`
+in `checkpointOps.ts`) along with its diff machinery. This is what master plan
+§17.1 "One Git owner" already asks for: it names "direct Electron project
+handlers" as forbidden owners of Git, and `checkpointOps`' raw `spawn('git')` is
+exactly that. `tests/architecture/gitOwnerBoundary.test.ts` does not catch it
+because it only polices `apps/projectd`.
+
+**Why it is worth doing eventually.**
+
+- `checkpointOps.executeGit` accumulates `stdout` with no ceiling and now runs
+  in the Electron **main** process, since Phase 4b removed the forked worker. A
+  pathological diff grows unbounded in the process that owns the window.
+  `GitProcess` caps at 50MB and kills past it.
+- Two parsers means two truncation policies — `MAX_STATUS_FILES = 5000` in
+  projectd against a 50-file cap on untracked diffs in the desktop — so the
+  header badge, branch control and Changes list can disagree.
+- There is no dedup or cache at the IPC layer, so the eight ad-hoc `gitStatus`
+  callers each spawn their own. One owner gives one cache.
+- `GitProcess` sets `GIT_TERMINAL_PROMPT=0` and `LC_ALL=C` and clears stale
+  index locks; `checkpointOps.executeGit` does none of that.
+
+**Why it was deferred.** It is a large change — patches, untracked diffs, the
+50-file cap and binary handling all move across a socket — and it fixes none of
+the staleness that made external commits invisible. The watcher was done first
+because that is the part users feel. Note that the availability objection is
+weaker than it looks: `workspaceSync:gitStatus`, branch listing, checkout and
+worktree creation already route through projectd, which runs as a launchd
+LaunchAgent with a lazily reconnecting client.
+
+**Cheaper than the whole move,** if it is wanted before then: give
+`checkpointOps.executeGit` the same env discipline and output ceiling as
+`GitProcess`. That closes the worst failure mode without touching ownership.
+
 ## What not to do
 
 - Do not enable the flag by default in production yet.

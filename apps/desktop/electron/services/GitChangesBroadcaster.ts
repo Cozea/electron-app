@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { WebContents } from 'electron'
 
 import type { GitChangesSnapshot, GitChangesScope, GitDirtyStateSnapshot } from '../../../../shared/electronApiTypes'
+import { watchGitDir } from '../substrate/vcs/gitDirWatcher'
 import { invalidateVcsStatus } from '../substrate/vcs/statusInvalidation'
 import { VcsStatusBroadcaster } from '../substrate/vcs/VcsStatusBroadcaster'
 
@@ -56,6 +57,7 @@ export class GitChangesBroadcaster {
 
   private readonly dirtyStateSubsByPath = new Map<string, Map<number, GitDirtyStateSubscription>>()
   private readonly workspaceIdByPath = new Map<string, string>()
+  private readonly watchersByPath = new Map<string, () => void>()
 
   static getInstance(): GitChangesBroadcaster {
     if (!GitChangesBroadcaster.instance) {
@@ -98,6 +100,39 @@ export class GitChangesBroadcaster {
     return Array.from(scopes)
   }
 
+  /**
+   * Watch a repository for as long as anyone is looking at it.
+   *
+   * Without this nothing reports a commit, checkout or rebase made in a
+   * terminal: invalidation otherwise fires only where Cozea writes a file, so
+   * the Changes list and header counts would sit on a stale answer until the
+   * page was reopened.
+   */
+  private ensureWatcher(projectPath: string): void {
+    if (this.watchersByPath.has(projectPath)) {
+      return
+    }
+    this.watchersByPath.set(
+      projectPath,
+      watchGitDir(projectPath, () => {
+        this.statusBroadcaster.invalidateProjectPath(projectPath)
+      }),
+    )
+  }
+
+  /** Drop the watcher once the last subscriber for a path has gone. */
+  private releaseWatcherIfIdle(projectPath: string): void {
+    if (this.activeScopesFor(projectPath).length > 0) {
+      return
+    }
+    const dispose = this.watchersByPath.get(projectPath)
+    if (!dispose) {
+      return
+    }
+    this.watchersByPath.delete(projectPath)
+    dispose()
+  }
+
   async subscribe(
     sender: WebContents,
     options: { projectPath: string; scope: GitChangesScope; workspaceId?: string },
@@ -128,6 +163,8 @@ export class GitChangesBroadcaster {
       })
     }
 
+    this.ensureWatcher(projectPath)
+
     const snapshot = await this.statusBroadcaster.refresh(projectPath, options.scope)
     this.publishSnapshot(key, snapshot)
     return snapshot
@@ -145,6 +182,7 @@ export class GitChangesBroadcaster {
     if (subscribers.size === 0) {
       this.subscriptionsByKey.delete(key)
     }
+    this.releaseWatcherIfIdle(normalizedProjectPath)
   }
 
   invalidateProjectPath(projectPath: string): void {
@@ -172,11 +210,20 @@ export class GitChangesBroadcaster {
   }
 
   private unsubscribeSender(senderId: number): void {
+    const affectedPaths = new Set<string>()
+
     for (const [key, subscribers] of this.subscriptionsByKey.entries()) {
-      subscribers.delete(senderId)
+      if (!subscribers.delete(senderId)) {
+        continue
+      }
+      affectedPaths.add(key.split('\0')[0])
       if (subscribers.size === 0) {
         this.subscriptionsByKey.delete(key)
       }
+    }
+
+    for (const projectPath of affectedPaths) {
+      this.releaseWatcherIfIdle(projectPath)
     }
   }
 
@@ -197,6 +244,7 @@ export class GitChangesBroadcaster {
 
     if (subscribers.size === 0) {
       this.subscriptionsByKey.delete(key)
+      this.releaseWatcherIfIdle(key.split('\0')[0])
     }
   }
 
@@ -216,6 +264,8 @@ export class GitChangesBroadcaster {
       authorName: options.authorName,
     })
 
+    this.ensureWatcher(projectPath)
+
     const snapshot = await this.statusBroadcaster.refresh(projectPath, 'current')
     return this.buildDirtyStateSnapshot(workspaceId, snapshot)
   }
@@ -228,6 +278,7 @@ export class GitChangesBroadcaster {
     if (subs.size === 0) {
       this.dirtyStateSubsByPath.delete(normalizedPath)
     }
+    this.releaseWatcherIfIdle(normalizedPath)
   }
 
   private buildDirtyStateSnapshot(workspaceId: string, changesSnapshot: GitChangesSnapshot): GitDirtyStateSnapshot {
@@ -258,5 +309,9 @@ export class GitChangesBroadcaster {
   disposeForTests(): void {
     this.unsubscribeStatusStream?.()
     this.unsubscribeStatusStream = null
+    for (const dispose of this.watchersByPath.values()) {
+      dispose()
+    }
+    this.watchersByPath.clear()
   }
 }
