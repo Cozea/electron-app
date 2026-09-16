@@ -186,19 +186,18 @@ describe("Git owner consolidation boundary", () => {
       "gitReadCheckpointFilePair",
       "gitReadConflictFile",
       "gitResolveConflictFile",
+      // Removed 2026-09-16 with the module holding its only menu entries.
+      "mergeLaneIntoCollab",
     ]
 
-    const preload = fs.readFileSync(
-      path.join(repoRoot, "apps/desktop/electron/preload.ts"),
-      "utf8",
-    )
-    const handlers = fs.readFileSync(
-      path.join(repoRoot, "apps/desktop/electron/ipc/registerWorkspaceSyncHandlers.ts"),
-      "utf8",
-    )
+    const sources = [
+      "apps/desktop/electron/preload.ts",
+      "apps/desktop/electron/ipc/registerWorkspaceSyncHandlers.ts",
+      "apps/desktop/electron/ipc/registerProjectHandlers.ts",
+    ].map((rel) => fs.readFileSync(path.join(repoRoot, rel), "utf8"))
 
-    const resurrected = retiredChannels.filter(
-      (channel) => preload.includes(channel) || handlers.includes(channel),
+    const resurrected = retiredChannels.filter((channel) =>
+      sources.some((content) => content.includes(channel)),
     )
 
     expect(resurrected, "A retired Git IPC channel is back without a caller.").toEqual([])
@@ -212,15 +211,16 @@ describe("Git owner consolidation boundary", () => {
     expect(content).toContain("getSharedProjectdClient")
 
     /**
-     * Mutating verbs this file still runs locally instead of asking projectd.
+     * No exceptions. This list used to admit `checkout` and `merge`, for
+     * `project:mergeLaneIntoCollab` -- which turned out to have no caller at
+     * all, its menu entries living in a module nothing imported. Deleting it
+     * closed the exception rather than requiring the projectd merge RPC that
+     * closing it "properly" would have needed.
      *
-     * `project:mergeLaneIntoCollab` checks out a branch and merges into it
-     * through gitRuntime, because projectd exposes no generic merge RPC --
-     * only `sessions.merge`, which is session-scoped. Closing this needs a new
-     * daemon method, so it is recorded here rather than left invisible.
+     * `init`, `add` and `commit` are absent deliberately: `createGitHubRepo`
+     * runs them against a folder that is becoming a repository, which is not
+     * the same as mutating one the daemon owns.
      */
-    const ACCEPTED_LOCAL_MUTATIONS = ["'checkout'", "'merge'"]
-
     const localMutations = [
       "'checkout'",
       "'merge'",
@@ -228,9 +228,7 @@ describe("Git owner consolidation boundary", () => {
       "'rebase'",
       "'cherry-pick'",
       "'revert'",
-    ]
-      .filter((verb) => content.includes(`[${verb}`))
-      .filter((verb) => !ACCEPTED_LOCAL_MUTATIONS.includes(verb))
+    ].filter((verb) => content.includes(`[${verb}`))
 
     expect(
       localMutations,

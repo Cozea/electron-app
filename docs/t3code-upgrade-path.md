@@ -151,7 +151,7 @@ Same nouns (`status`, `checkpoint`, `worktree`, `push`) appear on both assistant
 - Sync journal (`syncJournalStore`) and collab `GitSyncService` (shared-main health/replay/salvage)
 - Conflict UI + `gitRuntime` merge-tree previews
 - Changes page scopes (`current` vs `branch`) if product still wants them — but **not** a second capture implementation
-- Lane → collab merge (`project:mergeLaneIntoCollab`)
+- ~~Lane → collab merge (`project:mergeLaneIntoCollab`)~~ — removed 2026-09-16; the channel had no caller and its menu entries lived in an unimported module
 - Dirty-state attribution (agent vs remote vs sync origins)
 - Convex/Yjs collab truth (orthogonal to VCS substrate)
 

@@ -296,11 +296,21 @@ vacuous (an early version pinned two engines it could not actually see), and the
 mutation check records the `mergeLaneIntoCollab` violation explicitly instead of
 being satisfied by a string appearing somewhere in the file.
 
-**Step 3 — blocked, deliberately.** Routing `registerProjectHandlers:306/:321`
-through projectd needs a generic merge RPC that does not exist; projectd offers
-only session-scoped `sessions.merge`. That is a daemon protocol change and is
-not bundled here. The violation is now asserted and bounded by step 2 rather
-than invisible.
+**Step 3 — resolved by deletion, not by a merge RPC.** The plan was to add a
+generic merge RPC to projectd so `registerProjectHandlers:306/:321` could stop
+running `checkout` and `merge --no-ff` locally. Checking who called it first
+showed `project:mergeLaneIntoCollab` had **no caller anywhere** — and its two
+menu entries, "Merge Lane Into Collab" and "Merge Collab Into Lane", lived in
+`workbenchBranchControlShared.ts`, a module with zero importers whose every
+`workbench-branch:*` id appeared only in the file declaring it.
+
+So the fix was to delete the channel and the module, not to build daemon
+protocol surface for a feature that was never wired. The guardrail's accepted
+exception for `checkout` and `merge` is gone with them, and that rule is now
+unconditional.
+
+Worth keeping in mind for steps 5–7: the instinct was to build the correct
+thing before asking whether the thing being corrected was reachable.
 
 **Step 4 — partial.** `gitRuntime.runGitCommand` gained a 50MB ceiling, a
 120s default deadline, `LC_ALL`/`LANG=C`, and byte-accurate decoding — which

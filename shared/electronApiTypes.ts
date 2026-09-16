@@ -2244,11 +2244,6 @@ export interface ElectronAPI {
       worktreePath: string
       relativePaths?: string[]
     }) => Promise<{ success: boolean; appliedFiles: string[]; error?: string }>
-    mergeLaneIntoCollab: (options: {
-      collabProjectPath: string
-      collabBranch: string
-      sourceBranch: string
-    }) => Promise<{ success: boolean; error?: string }>
     openFolder: (options: { workspaceId: string }) => Promise<StorageActionResult>
     pathExists: (workspaceId: string) => Promise<boolean>
     /** Resolves an opaque workspace id to its absolute project root path (or null if unauthorized/unknown). */

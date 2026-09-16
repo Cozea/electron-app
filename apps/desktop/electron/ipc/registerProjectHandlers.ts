@@ -278,68 +278,6 @@ export function registerProjectHandlers(
   )
 
   ipcMain.handle(
-    'project:mergeLaneIntoCollab',
-    async (
-      _event,
-      {
-        collabProjectPath,
-        collabBranch,
-        sourceBranch,
-      }: {
-        collabProjectPath: string
-        collabBranch: string
-        sourceBranch: string
-      }
-    ): Promise<{ success: boolean; error?: string }> => {
-      const resolvedProjectPath = path.resolve(collabProjectPath)
-      const normalizedCollabBranch = collabBranch.trim()
-      const normalizedSourceBranch = sourceBranch.trim()
-
-      if (!normalizedCollabBranch || !normalizedSourceBranch) {
-        return {
-          success: false,
-          error: 'Both collab branch and source branch are required.',
-        }
-      }
-
-      try {
-        const checkoutResult = await runGitCommand(
-          ['checkout', normalizedCollabBranch],
-          resolvedProjectPath,
-        )
-        if (!checkoutResult.success) {
-          return {
-            success: false,
-            error: checkoutResult.error,
-          }
-        }
-
-        if (normalizedSourceBranch === normalizedCollabBranch) {
-          return { success: true }
-        }
-
-        const mergeResult = await runGitCommand(
-          ['merge', '--no-ff', '--no-edit', normalizedSourceBranch],
-          resolvedProjectPath,
-        )
-        if (!mergeResult.success) {
-          return {
-            success: false,
-            error: mergeResult.error,
-          }
-        }
-
-        return { success: true }
-      } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed to merge lane into collab',
-        }
-      }
-    },
-  )
-
-  ipcMain.handle(
     'project:getPathNativeIcon',
     async (): Promise<ProjectPathNativeIconResult> => ({
       success: false,

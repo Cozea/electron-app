@@ -91,7 +91,7 @@ Notes:
 | `project:getContextOptions` | `electron/ipc/registerProjectHandlers.ts:568` | Project FS / desktop helpers — product |
 | `project:getPathNativeIcon` | `electron/ipc/registerProjectHandlers.ts:324` | Project FS / desktop helpers — product |
 | `project:listFiles` | `electron/ipc/registerProjectHandlers.ts:552` | Project FS / desktop helpers — product |
-| `project:mergeLaneIntoCollab` | `electron/ipc/registerProjectHandlers.ts:262` | Lane → collab merge — Cozea overlay; must invalidate substrate status |
+| ~~`project:mergeLaneIntoCollab`~~ | _removed 2026-09-16_ | Lane → collab merge. Never had a caller: its only menu entries lived in `workbenchBranchControlShared.ts`, which nothing imported. Channel and module both deleted. |
 | `project:openFolder` | `electron/ipc/registerProjectHandlers.ts:332` | Project FS / desktop helpers — product |
 | `project:pathExists` | `electron/ipc/registerProjectHandlers.ts:387` | Project FS / desktop helpers — product |
 | `project:preflightImportSource` | `electron/ipc/registerProjectHandlers.ts:827` | Project FS / desktop helpers — product |
@@ -350,7 +350,7 @@ Notes:
 | `project:getPathNativeIcon` | `keep-ipc` |
 | `project:listFiles` | `keep-ipc` |
 | `project:listGitBranches` | `move-to-server-rpc` |
-| `project:mergeLaneIntoCollab` | `keep-ipc` |
+| ~~`project:mergeLaneIntoCollab`~~ | _removed — had no caller_ |
 | `project:openFolder` | `keep-ipc` |
 | `project:pathExists` | `keep-ipc` |
 | `project:preflightImportSource` | `keep-ipc` |
