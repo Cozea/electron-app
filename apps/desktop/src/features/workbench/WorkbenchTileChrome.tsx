@@ -177,7 +177,7 @@ function WorkbenchTileGlyph({
   if (tileType === "devServer" && devAppId) {
     return (
       <span className={appWrapperClassName}>
-        <ProjectDevAppIcon publicationId={devAppId} name={title} />
+        <ProjectDevAppIcon name={title} />
       </span>
     )
   }

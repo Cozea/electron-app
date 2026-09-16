@@ -196,7 +196,7 @@ function WorkbenchDockTabIcon({ tile }: { tile: WorkbenchTile | null }) {
   if (tile?.type === "devServer" && definition?.fallbackIcon === "devServer" && tile.devAppId) {
     return (
       <span className="size-4 shrink-0 overflow-hidden rounded-[3px]">
-        <ProjectDevAppIcon publicationId={tile.devAppId} name={tile.title} />
+        <ProjectDevAppIcon name={tile.title} />
       </span>
     )
   }

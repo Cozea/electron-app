@@ -15,7 +15,6 @@ import type * as collaborationSessions from "../collaborationSessions.js";
 import type * as crons from "../crons.js";
 import type * as devApps from "../devApps.js";
 import type * as devicePrincipals from "../devicePrincipals.js";
-import type * as fileTombstones from "../fileTombstones.js";
 import type * as lib_authenticatedFunctions from "../lib/authenticatedFunctions.js";
 import type * as lib_devAppReferenceResolution from "../lib/devAppReferenceResolution.js";
 import type * as lib_deviceAuth from "../lib/deviceAuth.js";
@@ -54,7 +53,6 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   devApps: typeof devApps;
   devicePrincipals: typeof devicePrincipals;
-  fileTombstones: typeof fileTombstones;
   "lib/authenticatedFunctions": typeof lib_authenticatedFunctions;
   "lib/devAppReferenceResolution": typeof lib_devAppReferenceResolution;
   "lib/deviceAuth": typeof lib_deviceAuth;

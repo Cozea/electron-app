@@ -15,7 +15,6 @@ import { browseForDirectory } from "@/lib/browseForDirectory"
 import { resolveDroppedLocalFolderPath } from "@/lib/resolveDroppedLocalFolderPath"
 import { useTranslation } from "@/lib/i18n"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
-import { featureFlags } from "@/lib/featureFlags"
 
 export function ProjectsLaunchPage() {
   const { principalId, user } = useAuth()
@@ -45,7 +44,7 @@ export function ProjectsLaunchPage() {
   )
 
   useEffect(() => {
-    if (!featureFlags.desktopBootstrap || !legacyLastWorkbenchRoute) return
+    if (!legacyLastWorkbenchRoute) return
 
     // If /projects actually mounted, it is now the user's authoritative local
     // navigation intent (including the deleted/revoked-project correction

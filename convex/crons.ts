@@ -15,7 +15,7 @@ crons.interval(
 crons.daily(
   "cleanup expired identity security state",
   { hourUTC: 3, minuteUTC: 15 },
-  internal.fileTombstones.cleanupAllExpiredTombstones,
+  internal.devicePrincipals.cleanupExpiredIdentityState,
   {},
 )
 

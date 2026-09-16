@@ -65,7 +65,6 @@ async function listCollaboratorProjectsForUser(
 ): Promise<
   Array<
     Doc<"projects"> & {
-      localPath?: string
       role: Doc<"projectMembers">["role"]
     }
   >
@@ -84,7 +83,6 @@ async function listCollaboratorProjectsForUser(
 
       return {
         ...project,
-        localPath: membership.localPath ?? undefined,
         role: membership.role,
       }
     }),
@@ -93,7 +91,6 @@ async function listCollaboratorProjectsForUser(
   const dedupedProjects = new Map<
     string,
     Doc<"projects"> & {
-      localPath?: string
       role: Doc<"projectMembers">["role"]
     }
   >()
@@ -407,7 +404,6 @@ export const listSummariesForCurrentUser = query({
       template: project.template ?? null,
       updatedAt: project.updatedAt,
       createdBy: project.createdBy ?? null,
-      localPath: project.localPath ?? null,
       repo: project.repo ?? null,
       sourceControl: project.sourceControl ?? null,
       gitRepository: project.gitRepository ?? null,
@@ -850,14 +846,6 @@ async function deleteProjectPurgeStage(
     case 16: {
       const rows = await ctx.db
         .query("projectJoinLinks")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 18: {
-      const rows = await ctx.db
-        .query("fileTombstones")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)

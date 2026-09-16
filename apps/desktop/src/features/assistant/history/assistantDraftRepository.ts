@@ -86,41 +86,17 @@ export function createIndexedDbDraftStorage(): AssistantDraftStorage {
   const open = () =>
     (connection ??= new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open(DRAFT_DATABASE_NAME, DRAFT_DATABASE_VERSION);
-      request.onupgradeneeded = (event) => {
+      request.onupgradeneeded = () => {
         const db = request.result;
         const transaction = request.transaction;
-        const drafts = db.objectStoreNames.contains(DRAFT_STORE)
-          ? transaction?.objectStore(DRAFT_STORE)
-          : db.createObjectStore(DRAFT_STORE, { keyPath: "key" });
+        if (!db.objectStoreNames.contains(DRAFT_STORE)) {
+          db.createObjectStore(DRAFT_STORE, { keyPath: "key" });
+        }
         const attachments = db.objectStoreNames.contains(DRAFT_ATTACHMENT_STORE)
           ? transaction?.objectStore(DRAFT_ATTACHMENT_STORE)
           : db.createObjectStore(DRAFT_ATTACHMENT_STORE, { keyPath: "key" });
         if (attachments && !attachments.indexNames.contains(DRAFT_ATTACHMENT_DRAFT_INDEX)) {
           attachments.createIndex(DRAFT_ATTACHMENT_DRAFT_INDEX, "draftKey", { unique: false });
-        }
-        // v1 stored Blobs inline. Move them inside the same upgrade transaction
-        // and replace the draft row only after every attachment put is queued.
-        if (event.oldVersion < 2 && drafts && attachments) {
-          const cursorRequest = drafts.openCursor();
-          cursorRequest.onsuccess = () => {
-            const cursor = cursorRequest.result;
-            if (!cursor) return;
-            const legacy = cursor.value as AssistantContentDraft;
-            if (Array.isArray(legacy.images)) {
-              const metadata = draftMetadata(legacy);
-              for (const image of legacy.images) {
-                const blobKey = attachmentBlobKey(legacy.key, image.id);
-                attachments.put({
-                  ...image,
-                  key: blobKey,
-                  blobKey,
-                  draftKey: legacy.key,
-                } satisfies PersistedDraftImageBlob);
-              }
-              cursor.update(metadata);
-            }
-            cursor.continue();
-          };
         }
       };
       request.onerror = () => {

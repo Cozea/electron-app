@@ -221,27 +221,6 @@ export default defineSchema({
       }),
     ),
 
-    // Optional repository status metadata kept for compatibility and tooling.
-    gitSyncState: v.optional(
-      v.object({
-        accessState: v.union(
-          v.literal("unknown"),
-          v.literal("pending"),
-          v.literal("granted"),
-          v.literal("missing"),
-          v.literal("error"),
-        ),
-        lastFetchedCommit: v.optional(v.string()),
-        lastPushedCommit: v.optional(v.string()),
-        lastFetchAt: v.optional(v.number()),
-        lastPushAt: v.optional(v.number()),
-        repoBytes: v.optional(v.number()),
-        lastRepoSizeAt: v.optional(v.number()),
-        errorMessage: v.optional(v.string()),
-        migratedFromReplicaAt: v.optional(v.number()),
-      }),
-    ),
-
     // Visuals
     visuals: v.optional(
       v.object({
@@ -303,9 +282,6 @@ export default defineSchema({
         detectedStack: v.optional(v.any()),
       }),
     ),
-
-    // Local path where project files are stored (on creator's machine)
-    localPath: v.optional(v.string()),
 
     // Framework metadata (set during build, used for Pages tab + dev server)
     frameworkInfo: v.optional(
@@ -421,8 +397,6 @@ export default defineSchema({
     role: v.union(v.literal("project_manager"), v.literal("developer"), v.literal("designer"), v.literal("viewer")),
     addedAt: v.number(),
     addedBy: v.id("devicePrincipals"),
-    // Per-user local path for this project (machine-specific)
-    localPath: v.optional(v.string()),
     // Sync tracking (per-user, per-project)
     lastSyncAt: v.optional(v.number()),
     cloudPathsAtLastSync: v.optional(v.array(v.string())),
@@ -439,12 +413,8 @@ export default defineSchema({
     name: v.string(),
     // Historical WorkOS metadata is not an authentication authority.
     createdBy: v.optional(v.id("devicePrincipals")),
-    slug: v.optional(v.string()),
     iconColor: v.optional(v.any()),
     iconKey: v.optional(v.any()),
-    aiSettings: v.optional(v.any()),
-    storageUsage: v.optional(v.any()),
-    subscription: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -703,26 +673,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_token", ["token"])
     .index("by_project_and_status", ["projectId", "status"]),
-
-  // File locks for collaborative editing (traffic control system)
-
-  // File tombstones for delete-vs-edit conflict detection
-  // When a file is deleted, we create a tombstone to detect if someone
-  // was editing it offline. On reconnect, we can show a conflict UI.
-  fileTombstones: defineTable({
-    projectId: v.id("projects"),
-    filePath: v.string(),
-    deletedAt: v.number(),
-    deletedBy: v.optional(v.id("devicePrincipals")),
-    deletedByAgent: v.optional(v.string()),
-    // TTL: tombstones auto-expire after 7 days
-    expiresAt: v.number(),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_path", ["projectId", "filePath"])
-    .index("by_expires_at", ["expiresAt"]),
-
-  // Project files stored in Convex File Storage
 
   // ============================================
   // COLLABORATION ENCRYPTION TABLES
@@ -1004,8 +954,6 @@ export default defineSchema({
     activeTab: v.optional(v.string()), // Which tab they're viewing (editor, pages, etc.)
     activeFile: v.optional(v.string()), // Which file they're editing (if any)
     activeRoute: v.optional(v.string()), // Which preview route they're focused on (if on Pages)
-    // Deprecated legacy editor-typing flag. Keep optional until existing production records are migrated.
-    isMonacoTyping: v.optional(v.boolean()),
     isAiTyping: v.optional(v.boolean()),
     isAgentWorking: v.optional(v.boolean()),
 

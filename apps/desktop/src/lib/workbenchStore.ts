@@ -177,10 +177,6 @@ interface PersistedWorkbenchState {
   workbenches: Record<string, PersistedWorkbenchRecord>
 }
 
-interface LegacyPersistedWorkbenchState {
-  projects?: Record<string, PersistedWorkbenchRecord>
-}
-
 type PersistedWorkbenchRecord = WorkbenchProjectState & {
   projectPath?: string | null
 }
@@ -1014,7 +1010,7 @@ export function migratePersistedWorkbenchState(
     return { workbenches: {} }
   }
 
-  const typedState = persistedState as PersistedWorkbenchState & LegacyPersistedWorkbenchState
+  const typedState = persistedState as PersistedWorkbenchState
 
   if ("workbenches" in typedState && typedState.workbenches && typeof typedState.workbenches === "object") {
     return {
@@ -1022,28 +1018,7 @@ export function migratePersistedWorkbenchState(
     }
   }
 
-  const migratedWorkbenches = Object.fromEntries(
-    Object.entries(typedState.projects ?? {}).flatMap(([projectId, workbench]) => {
-      if (!workbench) return []
-      const sanitizedWorkbench = sanitizeWorkbenchState({
-        ...workbench,
-        projectId: workbench.projectId ?? projectId,
-        laneId: normalizeLaneId(workbench.laneId),
-      })
-      return [[
-        buildWorkbenchScopeKey(
-          sanitizedWorkbench.projectId,
-          sanitizedWorkbench.laneId,
-          readWorkbenchWorkspaceId(sanitizedWorkbench),
-        ),
-        sanitizedWorkbench,
-      ]]
-    }),
-  )
-
-  return {
-    workbenches: migratedWorkbenches,
-  }
+  return { workbenches: {} }
 }
 
 export function selectProjectWorkbench(

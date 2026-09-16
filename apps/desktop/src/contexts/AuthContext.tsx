@@ -5,7 +5,6 @@ import type { PersonalWorkspaceMembership, User } from '../types/electron'
 import { convex } from '@/lib/convex'
 import { getDeviceSession, type DeviceSession } from '@/lib/deviceSession'
 import { getInitialDesktopBootstrap } from '@/app/bootstrap/desktopBootstrap'
-import { featureFlags } from '@/lib/featureFlags'
 
 export interface AuthContextType {
   user: User | null
@@ -27,9 +26,7 @@ export type RefreshTokenStatus = 'refreshed' | 'retryable' | 'expired'
 export const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const bootstrapSession = featureFlags.shellFirstAuth
-    ? getInitialDesktopBootstrap()?.session ?? null
-    : null
+  const bootstrapSession = getInitialDesktopBootstrap()?.session ?? null
 
   // Cached device presentation can paint the desktop shell immediately, but
   // cloud authority is re-established from a fresh proof-of-possession token.

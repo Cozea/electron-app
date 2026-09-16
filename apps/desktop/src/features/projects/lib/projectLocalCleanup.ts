@@ -1,6 +1,5 @@
 import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
 
-import { removeLocalProjectDevApp } from "@/features/devapps/localProjectDevAppStore"
 import { useAssistantComposerDraftStore } from "@/features/assistant/chat/composerDraftStore"
 import { clearPersistedProjectSidebarEntry } from "@/features/projects/ui/sidebar/projectSidebarState"
 import { assistantDrafts } from "@/features/assistant/history/assistantDraftRepository"
@@ -288,7 +287,6 @@ function clearProjectRendererState(
   runBestEffort("recent open state", () => clearRecentProjectOpenSync(projectId))
   runBestEffort("persisted layouts", () => clearPersistedWorkbenchLayoutsForProject(projectId))
   runBestEffort("sync feed state", () => clearSyncFeedSeen(projectSlug))
-  runBestEffort("local Project DevApp", () => removeLocalProjectDevApp(projectId))
 
   runBestEffort("workspace runtime mirrors", () => {
     for (const workspaceId of snapshot.workspaceIds) {

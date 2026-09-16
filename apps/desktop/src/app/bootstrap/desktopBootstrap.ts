@@ -2,7 +2,6 @@ import {
   DESKTOP_BOOTSTRAP_VERSION,
   type DesktopBootstrapSnapshot,
 } from '@shared/desktopBootstrapTypes'
-import { featureFlags } from '@/lib/featureFlags'
 
 let initialSnapshot: DesktopBootstrapSnapshot | null = null
 
@@ -22,7 +21,7 @@ export function isDesktopBootstrapRootLocation(protocol: string, pathname: strin
 
 export async function initializeDesktopBootstrap(): Promise<DesktopBootstrapSnapshot> {
   let snapshot = emptySnapshot()
-  if (featureFlags.desktopBootstrap && window.cozeaBootstrap) {
+  if (window.cozeaBootstrap) {
     try {
       snapshot = await window.cozeaBootstrap.getInitialSnapshot()
     } catch (error) {
@@ -40,7 +39,7 @@ export function getInitialDesktopBootstrap(): DesktopBootstrapSnapshot | null {
 
 export function applyDesktopBootstrapRoute(snapshot: DesktopBootstrapSnapshot): void {
   const locator = snapshot.lastWorkbenchRoute
-  if (!featureFlags.desktopBootstrap || !locator) return
+  if (!locator) return
   if (window.electronAPI?.windowContext === 'settings') return
   if (!isDesktopBootstrapRootLocation(window.location.protocol, window.location.pathname)) return
 
