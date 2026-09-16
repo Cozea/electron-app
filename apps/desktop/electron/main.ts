@@ -1951,8 +1951,21 @@ app.on('web-contents-created', (_event, contents) => {
 })
 
 app.whenReady().then(() => {
+  /*
+   * Chromium routes navigator.clipboard.writeText through the permission
+   * check as 'clipboard-sanitized-write'. Denying it silently rejects every
+   * Copy button in the app's own renderer, so trusted origins get it back;
+   * reading the clipboard stays denied because nothing in the renderer needs it.
+   */
+  const TRUSTED_ORIGIN_CHECK_PERMISSIONS = new Set(['media', 'clipboard-sanitized-write'])
+  const TRUSTED_ORIGIN_REQUEST_PERMISSIONS = new Set([
+    'media',
+    'display-capture',
+    'clipboard-sanitized-write',
+  ])
+
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media' || permission === 'display-capture') {
+    if (TRUSTED_ORIGIN_REQUEST_PERMISSIONS.has(permission)) {
       const url = webContents.getURL()
       if (isTrustedAppOrigin(url)) {
         callback(true)
@@ -1963,7 +1976,7 @@ app.whenReady().then(() => {
   })
 
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-    if (permission === 'media') {
+    if (TRUSTED_ORIGIN_CHECK_PERMISSIONS.has(permission)) {
       const url = webContents?.getURL()
       return url ? isTrustedAppOrigin(url) : false
     }

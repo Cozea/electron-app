@@ -123,6 +123,77 @@ export function AcceptedSetupCard({
   )
 }
 
+/** One pending invitation to a project or an organization: who, as what, until when, accept or decline. */
+function InvitationRow({
+  name,
+  role,
+  inviterName,
+  expiresAt,
+  invitedByLabel,
+  acceptLabel,
+  declineLabel,
+  busy,
+  onAccept,
+  onDecline,
+}: {
+  name: string
+  role: string
+  /** Absent when the backend predates inviter names on this kind of invitation. */
+  inviterName?: string
+  expiresAt: number
+  invitedByLabel: string
+  acceptLabel: string
+  declineLabel: string
+  /** `true` while accepting, `false` while declining, `null` when idle. */
+  busy: boolean | null
+  onAccept: () => void
+  onDecline: () => void
+}) {
+  const isBusy = busy !== null
+  return (
+    <div className="group flex flex-col gap-3 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border/90 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3 sm:items-center">
+        <Avatar className="size-10 shrink-0 rounded-lg">
+          <AvatarFallback className="rounded-lg text-xs font-medium">{initial(name)}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-sm font-medium text-foreground">{name}</h3>
+            <Badge variant="secondary" shape="pill" size="sm">
+              {formatRole(role)}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+            {inviterName ? (
+              <>
+                <span>
+                  {invitedByLabel} {inviterName}
+                </span>
+                <span aria-hidden="true">·</span>
+              </>
+            ) : null}
+            <span className="inline-flex items-center gap-1">
+              <HugeiconsIcon icon={__ClockHugeIcon} className="size-3 text-muted-foreground/75" />
+              {formatExpiryDays(expiresAt)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 shrink-0 pt-1 sm:pt-0">
+        <Button size="sm" variant="ghost" disabled={isBusy} className="h-8 text-xs font-normal" onClick={onDecline}>
+          {busy === false ? <Spinner size="xs" className="mr-1.5" /> : null}
+          {declineLabel}
+        </Button>
+        <Button size="sm" disabled={isBusy} className="h-8 text-xs font-medium" onClick={onAccept}>
+          {busy === true ? <Spinner size="xs" className="mr-1.5 text-primary-foreground" /> : null}
+          {acceptLabel}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 const NO_SESSION_INVITATIONS: SessionInvitationItem[] = []
 
 /** A clone can take a while, so its result is also announced for anyone who left the Inbox. */
@@ -152,10 +223,15 @@ export function InboxPage() {
   const sessionInvitations: SessionInvitationItem[] =
     useQuery(api.collaborationSessions.listIncomingInvitations, principalId ? {} : "skip") ??
     NO_SESSION_INVITATIONS
+  const incomingOrganizations = useQuery(
+    api.organizations.listIncomingEnrollments,
+    principalId ? {} : "skip",
+  )
   const resolveEnrollment = useMutation(api.projectDeviceEnrollments.resolve)
+  const resolveOrganizationEnrollment = useMutation(api.organizations.resolveDeviceEnrollment)
 
   const [activeAction, setActiveAction] = useState<{
-    enrollmentId: Id<"projectDeviceEnrollments">
+    enrollmentId: Id<"projectDeviceEnrollments"> | Id<"organizationDeviceEnrollments">
     accept: boolean
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -201,6 +277,37 @@ export function InboxPage() {
       }
     },
     [rememberAccepted, resolveEnrollment, t],
+  )
+
+  const handleResolveOrganization = useCallback(
+    async (enrollmentId: Id<"organizationDeviceEnrollments">, accept: boolean, organizationName: string) => {
+      setError(null)
+      setActiveAction({ enrollmentId, accept })
+      try {
+        const result = await resolveOrganizationEnrollment({ enrollmentId, accept })
+        if (accept && result?.accepted) {
+          appToast.success({
+            title: t("inbox.accepted"),
+            description: `You're now a member of ${organizationName}.`,
+          })
+        } else if (!accept) {
+          appToast.info({
+            title: t("inbox.declined"),
+            description: `Declined invitation for ${organizationName}.`,
+          })
+        }
+      } catch (caught) {
+        const cleanMsg = cleanConvexError(caught, "Could not update this invitation.")
+        setError(cleanMsg)
+        appToast.error({
+          title: "Action failed",
+          description: cleanMsg,
+        })
+      } finally {
+        setActiveAction(null)
+      }
+    },
+    [resolveOrganizationEnrollment, t],
   )
 
   const runInviteeSetup = useCallback(
@@ -268,8 +375,18 @@ export function InboxPage() {
   )
 
   const isLoading = incoming === undefined
+  const organizationInvitations = incomingOrganizations ?? []
   const isEmpty =
-    incoming !== undefined && incoming.length === 0 && sessionInvitations.length === 0 && recentlyAccepted.size === 0
+    incoming !== undefined &&
+    incoming.length === 0 &&
+    organizationInvitations.length === 0 &&
+    sessionInvitations.length === 0 &&
+    recentlyAccepted.size === 0
+  const sectionCount =
+    (sessionInvitations.length > 0 ? 1 : 0) +
+    (organizationInvitations.length > 0 ? 1 : 0) +
+    (incoming && incoming.length > 0 ? 1 : 0)
+  const showSectionTitles = sectionCount > 1
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
@@ -375,77 +492,49 @@ export function InboxPage() {
                 </section>
               ) : null}
 
+              {organizationInvitations.length > 0 ? (
+                <section className="space-y-3" aria-label={t("inbox.organizationInvitations")}>
+                  {showSectionTitles ? (
+                    <h2 className="text-xs font-medium text-muted-foreground">{t("inbox.organizationInvitations")}</h2>
+                  ) : null}
+                  {organizationInvitations.map((enrollment) => (
+                    <InvitationRow
+                      key={enrollment._id}
+                      name={enrollment.organizationName}
+                      role={enrollment.role}
+                      inviterName={enrollment.inviterName}
+                      expiresAt={enrollment.expiresAt}
+                      invitedByLabel={t("inbox.invitedBy")}
+                      acceptLabel={t("inbox.accept")}
+                      declineLabel={t("inbox.decline")}
+                      busy={activeAction?.enrollmentId === enrollment._id ? activeAction.accept : null}
+                      onAccept={() => void handleResolveOrganization(enrollment._id, true, enrollment.organizationName)}
+                      onDecline={() => void handleResolveOrganization(enrollment._id, false, enrollment.organizationName)}
+                    />
+                  ))}
+                </section>
+              ) : null}
+
               {incoming && incoming.length > 0 ? (
                 <section className="space-y-3" aria-label={t("inbox.deviceInvitations")}>
-                  {sessionInvitations.length > 0 ? (
+                  {showSectionTitles ? (
                     <h2 className="text-xs font-medium text-muted-foreground">{t("inbox.deviceInvitations")}</h2>
                   ) : null}
-                  {incoming.map((enrollment) => {
-                    const isBusy = activeAction?.enrollmentId === enrollment._id
-                    const isAccepting = isBusy && activeAction?.accept === true
-                    const isDeclining = isBusy && activeAction?.accept === false
-
-                    return (
-                      <div
-                        key={enrollment._id}
-                        className="group flex flex-col gap-3 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border/90 sm:flex-row sm:items-center sm:justify-between"
-                      >
-                        <div className="flex items-start gap-3 sm:items-center">
-                          <Avatar className="size-10 shrink-0 rounded-lg">
-                            <AvatarFallback className="rounded-lg text-xs font-medium">
-                              {initial(enrollment.projectName)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="truncate text-sm font-medium text-foreground">
-                                {enrollment.projectName}
-                              </h3>
-                              <Badge variant="secondary" shape="pill" size="sm">
-                                {formatRole(enrollment.role)}
-                              </Badge>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
-                              <span>
-                                {t("inbox.invitedBy")} {enrollment.inviterName}
-                              </span>
-                              <span aria-hidden="true">·</span>
-                              <span className="inline-flex items-center gap-1">
-                                <HugeiconsIcon icon={__ClockHugeIcon} className="size-3 text-muted-foreground/75" />
-                                {formatExpiryDays(enrollment.expiresAt)}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 shrink-0 pt-1 sm:pt-0">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={isBusy}
-                            className="h-8 text-xs font-normal"
-                            onClick={() =>
-                              void handleResolve(enrollment._id, false, enrollment.projectName)
-                            }
-                          >
-                            {isDeclining ? <Spinner size="xs" className="mr-1.5" /> : null}
-                            {t("inbox.decline")}
-                          </Button>
-                          <Button
-                            size="sm"
-                            disabled={isBusy}
-                            className="h-8 text-xs font-medium"
-                            onClick={() =>
-                              void handleResolve(enrollment._id, true, enrollment.projectName)
-                            }
-                          >
-                            {isAccepting ? <Spinner size="xs" className="mr-1.5 text-primary-foreground" /> : null}
-                            {t("inbox.accept")}
-                          </Button>
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {incoming.map((enrollment) => (
+                    <InvitationRow
+                      key={enrollment._id}
+                      name={enrollment.projectName}
+                      role={enrollment.role}
+                      inviterName={enrollment.inviterName}
+                      expiresAt={enrollment.expiresAt}
+                      invitedByLabel={t("inbox.invitedBy")}
+                      acceptLabel={t("inbox.accept")}
+                      declineLabel={t("inbox.decline")}
+                      busy={activeAction?.enrollmentId === enrollment._id ? activeAction.accept : null}
+                      onAccept={() => void handleResolve(enrollment._id, true, enrollment.projectName)}
+                      onDecline={() => void handleResolve(enrollment._id, false, enrollment.projectName)}
+                    />
+                  ))}
                 </section>
               ) : null}
             </div>

@@ -5,6 +5,17 @@ Authoritative specification: [docs/collaboration/collaboration-autogit-master-pl
 ---
 
 
+## Implementation continuation — 2026-09-16
+
+Phase 9 checkpoint 9A, baseline verification on `main` head `03ad5ee2` (9 commits past the Phase 8 candidate `d49e4d74`; the Phase 8 branch was merged in PR #168 and deleted). Environment: Erick's MacBook Pro only.
+
+(1) Environment repair needed before any gate could run on this machine: `node_modules` held `effect@4.0.0-beta.25` while the lockfile pins `4.0.0-rc.112` (`bun install --frozen-lockfile` fixed every `effect/Context` typecheck and import error), and `apps/projectd/dist/projectd.mjs` did not exist (`bun run build:projectd` fixed the two packaged-daemon suites that timed out waiting for the daemon socket).
+(2) Green after repair: `typecheck`, `typecheck:electron`, `typecheck:projectd`, `typecheck:cloudflare`, `lint` (0 warnings), `tests/projectd/autoGitSession.test.ts` 38/38, `tests/collaboration/packagedDaemonDevRendererCutover.test.ts` and `tests/collaboration/capabilityIntegrationGui.test.ts` (real Electron GUI, U01 to U10) 2/2, and 161 of 164 collaboration tests.
+(3) Red, collab-owned: `tests/collaboration/sessionWorkbenchControls.test.tsx` "renders microphone controls and member voice activity states" asserts the literal `Muted` on the mic button. Commit `171c5714` (fix(ui): stabilize header layout geometry) changed the button to show the muted state through `data-state="muted"` and the icon, with no label. The UI change was deliberate; the assertion was not updated.
+(4) Red, not collab-owned, introduced by post-candidate UI commits (`23b086b7`, `171c5714`, `bf847c30`, `e31591ce`): `typecheck:tests` has 3 errors in `tests/assistant/chat/OpenInPicker.test.ts` and `tests/assistant/chat/taskProgress.test.ts`; `tests/architecture/appStoreShellUnification.test.ts` (2 tests) and `tests/architecture/desktopFirstBootGraph.test.ts` (1 test) fail on textual fingerprints such as `isOnAppStore && SIDEBAR_PILL_ACTIVE_CLASS` and `VISIBLE_BLOCKING_ROUTE_LOADERS` that the UI commits rewrote. Recorded here, not implemented, per the roadmap rule against opportunistic work outside the checkpoint.
+(5) Environment gate findings: the Phase 8 candidate `dist/Cozea-0.2.3-beta.3-arm64.dmg` was produced by `bun run dist:local`, which sets `COZEA_LOCAL_UNSIGNED_DIST=1`, so it is unsigned by construction and cannot satisfy the Phase 9 signed-app gate. No packaged candidate exists on this machine. CI signing is still broken (`CSC_KEY_PASSWORD` does not match the `.p12`). This machine's keychain holds a valid `Developer ID Application: Crossand LLC (779Z7M75YU)`, so a signed candidate can be built locally with `bun run dist` once the head is green. Production worker `GET /health` returned ok. No second physical Mac is available.
+**Gate not satisfied. 9A remains open; Phase 9 is blocked on a second Mac and a signed candidate cut from a green head.**
+
 ## Implementation continuation — 2026-09-14
 
 Phase 8 Coordinated Production Deployment closure (2026-09-14T08:52Z): Successfully coordinated, qualified, and deployed the complete multi-layer stack to production (Candidate Commit: `d49e4d74`):

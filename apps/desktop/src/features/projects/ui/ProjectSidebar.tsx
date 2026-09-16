@@ -218,7 +218,12 @@ export function ProjectSidebar({
     api.projectDeviceEnrollments.listIncoming,
     principalId ? {} : "skip",
   );
-  const inboxCount = incomingEnrollments?.length ?? 0;
+  const incomingOrganizationEnrollments = useQuery(
+    api.organizations.listIncomingEnrollments,
+    principalId ? {} : "skip",
+  );
+  const inboxCount =
+    (incomingEnrollments?.length ?? 0) + (incomingOrganizationEnrollments?.length ?? 0);
   const projectDevAppStateByProjectId = React.useMemo(
     () =>
       new Map(

@@ -70,6 +70,32 @@ describe("persisted workbench migration", () => {
     expect(Object.keys(restored?.tiles ?? {})).toEqual(["t1"])
   })
 
+  it("drops tiles whose type this build does not register", () => {
+    // A checkout of another branch can persist a tile type main has never
+    // heard of. Its registry lookup returns undefined and the dockview throws
+    // on `.dock`, taking the whole renderer to the error boundary.
+    const migrated = migratePersistedWorkbenchState({
+      workbenches: {
+        "p1::collab::ws1": {
+          ...bench({
+            projectId: "p1",
+            workspaceId: "ws1",
+            tiles: [
+              { id: "t1", type: "terminal" },
+              { id: "securityScan-1", type: "securityScan" },
+            ],
+          }),
+          activeTileId: "securityScan-1",
+        },
+      },
+    })
+
+    const restored = Object.values(migrated.workbenches)[0]
+    expect(Object.keys(restored?.tiles ?? {})).toEqual(["t1"])
+    expect(restored?.order).toEqual(["t1"])
+    expect(restored?.activeTileId).not.toBe("securityScan-1")
+  })
+
   it("drops legacy benches shadowed by a workspace-scoped bench for the same lane", () => {
     const migrated = migratePersistedWorkbenchState({
       workbenches: {
