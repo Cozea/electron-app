@@ -15,7 +15,7 @@ describe('WorkbenchRuntimeClient shutdown', () => {
     const client = WorkbenchRuntimeClient.getInstance()
     client.dispose()
 
-    await expect(client.request('terminal.getProfiles', {})).rejects.toThrow(
+    await expect(client.request('terminal.list', { workspaceId: 'ws-test' })).rejects.toThrow(
       'Workbench runtime client is disposed.',
     )
     expect(childProcess.fork).not.toHaveBeenCalled()
