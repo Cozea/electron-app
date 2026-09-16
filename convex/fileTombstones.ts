@@ -1,13 +1,9 @@
 import { internalMutation } from "./_generated/server"
-import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
+import { authenticatedMutation as mutation } from "./lib/authenticatedFunctions"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import { v } from "convex/values"
 
 const TOMBSTONE_TTL_MS = 7 * 24 * 60 * 60 * 1000
-
-function deviceDisplayName(device: { displayName?: string; identityKey?: string }): string {
-  return device.displayName?.trim() || device.identityKey?.trim() || "Unknown device"
-}
 
 /** Create a tombstone when a file is deleted. */
 export const createTombstone = mutation({
@@ -46,95 +42,6 @@ export const createTombstone = mutation({
       deletedByAgent: args.deletedByAgent,
       expiresAt: now + TOMBSTONE_TTL_MS,
     })
-  },
-})
-
-export const removeTombstone = mutation({
-  args: {
-    projectId: v.id("projects"),
-    filePath: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const tombstone = await ctx.db
-      .query("fileTombstones")
-      .withIndex("by_project_and_path", (q) =>
-        q.eq("projectId", args.projectId).eq("filePath", args.filePath)
-      )
-      .first()
-
-    if (tombstone) {
-      await ctx.db.delete(tombstone._id)
-      return { removed: true }
-    }
-
-    return { removed: false }
-  },
-})
-
-export const getTombstone = query({
-  args: {
-    projectId: v.id("projects"),
-    filePath: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const tombstone = await ctx.db
-      .query("fileTombstones")
-      .withIndex("by_project_and_path", (q) =>
-        q.eq("projectId", args.projectId).eq("filePath", args.filePath)
-      )
-      .first()
-
-    if (!tombstone || tombstone.expiresAt < Date.now()) return null
-
-    let deletedByName: string | null = null
-    if (tombstone.deletedBy) {
-      const device = await ctx.db.get(tombstone.deletedBy)
-      if (device) deletedByName = deviceDisplayName(device)
-    } else if (tombstone.deletedByAgent) {
-      deletedByName = tombstone.deletedByAgent
-    }
-
-    return {
-      ...tombstone,
-      deletedByName,
-    }
-  },
-})
-
-export const getProjectTombstones = query({
-  args: { projectId: v.id("projects") },
-  handler: async (ctx, args) => {
-    const now = Date.now()
-    const tombstones = await ctx.db
-      .query("fileTombstones")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .collect()
-    const active = tombstones.filter((t) => t.expiresAt > now)
-    return await Promise.all(active.map(async (tombstone) => {
-      let deletedByName: string | null = null
-      if (tombstone.deletedBy) {
-        const principal = await ctx.db.get(tombstone.deletedBy)
-        if (principal) deletedByName = deviceDisplayName(principal)
-      } else if (tombstone.deletedByAgent) {
-        deletedByName = tombstone.deletedByAgent
-      }
-      return { ...tombstone, deletedByName }
-    }))
-  },
-})
-
-export const cleanupExpiredTombstones = mutation({
-  args: { projectId: v.id("projects") },
-  handler: async (ctx, args) => {
-    const now = Date.now()
-    const expired = await ctx.db
-      .query("fileTombstones")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
-      .filter((q) => q.lt(q.field("expiresAt"), now))
-      .collect()
-
-    for (const tombstone of expired) await ctx.db.delete(tombstone._id)
-    return { deleted: expired.length }
   },
 })
 

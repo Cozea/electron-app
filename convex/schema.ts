@@ -179,7 +179,7 @@ export default defineSchema({
       }),
     ),
 
-    // Canonical repository descriptor. Written by create/setSourceControl;
+    // Canonical repository descriptor. Written by create;
     // readers prefer this and fall back to the legacy trio below.
     repo: v.optional(
       v.object({
