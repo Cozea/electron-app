@@ -1473,6 +1473,16 @@ export const WorkspaceCatalogLive = Layer.effect(
         ),
       )
 
+function humanizeCloneError(detail: string, url: string): string {
+  if (/repository not found|could not read username|authentication failed|permission denied|\b403\b|\b401\b/i.test(detail)) {
+    return `Git could not access "${url}". If this is a private repository, verify that your GitHub account has been added as a collaborator and that your Git credentials have access.`
+  }
+  if (/remote branch .* not found/i.test(detail)) {
+    return `The specified branch was not found in the repository at "${url}".`
+  }
+  return detail
+}
+
     // ── cloneForProject ─────────────────────────────────────────────────────
 
     const cloneForProject = (
@@ -1500,17 +1510,25 @@ export const WorkspaceCatalogLive = Layer.effect(
           catch: (e) => new Error(String(e)),
         })
 
+        const normalizedRepoUrl = repoUrl.trim().replace(/\/+$/, "")
         // Options go before `--`, so a URL that came from another device is never read as one.
-        const cloneArgs = ["clone", ...(branch ? ["--branch", branch] : []), "--", repoUrl, targetPath]
+        const cloneArgs = ["clone", ...(branch ? ["--branch", branch] : []), "--", normalizedRepoUrl, targetPath]
 
         yield* Effect.tryPromise({
           try: async () => {
-            const result = await runGitCommand(cloneArgs, { cwd: baseDir })
+            let result = await runGitCommand(cloneArgs, { cwd: baseDir })
+            if (!result.success && branch) {
+              await fs.rm(targetPath, { recursive: true, force: true }).catch(() => null)
+              const fallbackArgs = ["clone", "--", normalizedRepoUrl, targetPath]
+              result = await runGitCommand(fallbackArgs, { cwd: baseDir })
+            }
             if (!result.success) {
-              throw new Error(result.error ?? result.stderr ?? "git clone failed")
+              await fs.rm(targetPath, { recursive: true, force: true }).catch(() => null)
+              const rawError = result.error ?? result.stderr ?? "git clone failed"
+              throw new Error(humanizeCloneError(rawError, normalizedRepoUrl))
             }
           },
-          catch: (e) => new Error(`git clone failed: ${String(e)}`),
+          catch: (e) => new Error(e instanceof Error ? e.message : String(e)),
         })
 
         // Read actual remote URL after clone (non-fatal)
