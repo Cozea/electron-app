@@ -38,13 +38,11 @@ export interface SecurityScanStore {
   run: SecurityScanRun | null
   setupOpen: boolean
   selectedBackendId: string | null
-  acknowledged: boolean
   exporting: boolean
 
   setSetupOpen: (open: boolean) => void
   toggleSetup: () => void
   selectBackend: (id: string) => void
-  setAcknowledged: (value: boolean) => void
   startScan: () => void
   cancelScan: () => void
   exportReport: () => Promise<void>
@@ -64,13 +62,11 @@ export const useSecurityScanStore = create<SecurityScanStore>((set, get) => ({
   run: null,
   setupOpen: false,
   selectedBackendId: firstEligibleBackendId(SAMPLE_BACKEND_OPTIONS),
-  acknowledged: false,
   exporting: false,
 
   setSetupOpen: (open) => set({ setupOpen: open }),
   toggleSetup: () => set((state) => ({ setupOpen: !state.setupOpen })),
   selectBackend: (id) => set({ selectedBackendId: id }),
-  setAcknowledged: (value) => set({ acknowledged: value }),
 
   startScan: () => {
     const state = get()
@@ -122,11 +118,10 @@ export function isScanRunning(run: SecurityScanRun | null): boolean {
   return run?.status === "running" || run?.status === "preparing"
 }
 
-/** A scan can start only with Docker, an eligible backend, consent, and nothing running. */
+/** A scan can start with Docker, an eligible model selected, and nothing already running. */
 export function canStartScan(state: SecurityScanStore): boolean {
   if (!state.environment.dockerAvailable) return false
   if (isScanRunning(state.run)) return false
-  if (!state.acknowledged) return false
   const option = state.backendOptions.find((item) => item.id === state.selectedBackendId)
   return option?.eligible === true
 }

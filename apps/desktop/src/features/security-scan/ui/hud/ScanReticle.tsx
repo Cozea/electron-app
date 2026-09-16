@@ -72,8 +72,6 @@ export function ScanReticle({
             strokeLinecap="round"
             className="sscan-glow"
           />
-          <circle cx="120" cy="32" r="2.5" fill="currentColor" />
-          <circle cx="120" cy="208" r="2.5" fill="currentColor" />
         </g>
 
         {/* fast inner ring, short arcs */}
@@ -120,14 +118,6 @@ export function ScanReticle({
           <circle cx="120" cy="120" r="46" fill="url(#sscan-core)" />
         </g>
 
-        {/* crosshair */}
-        <g stroke="currentColor" strokeOpacity="0.5" strokeWidth="1">
-          <line x1="120" y1="86" x2="120" y2="98" />
-          <line x1="120" y1="142" x2="120" y2="154" />
-          <line x1="86" y1="120" x2="98" y2="120" />
-          <line x1="142" y1="120" x2="154" y2="120" />
-        </g>
-
         <defs>
           <radialGradient id="sscan-core" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="rgba(56,225,255,0.28)" />
@@ -139,8 +129,8 @@ export function ScanReticle({
       <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
         <span
           className={cn(
-            "font-mono font-semibold tracking-[0.2em] text-[color:var(--sscan-cyan)]",
-            active ? "text-2xl" : "text-lg",
+            "font-mono font-semibold text-[color:var(--sscan-cyan)]",
+            active ? "text-2xl tracking-tight" : "text-lg tracking-[0.15em]",
           )}
           style={{ textShadow: "0 0 12px var(--sscan-cyan-dim)" }}
         >

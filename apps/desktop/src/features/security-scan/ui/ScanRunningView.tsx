@@ -27,12 +27,7 @@ export function ScanRunningView({ run }: { run: SecurityScanRun }) {
   return (
     <div className="sscan-grid relative flex h-full flex-col overflow-y-auto p-4">
       <div className="flex flex-col items-center py-2">
-        <ScanReticle
-          mode="active"
-          label={`${Math.round(run.progress)}%`}
-          sublabel="Scanning"
-          size={180}
-        />
+        <ScanReticle mode="active" label={`${Math.round(run.progress)}%`} size={180} />
         <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.3em] text-[color:var(--sscan-text-dim)]">
           {run.target.label} · {run.backend.label}
         </div>

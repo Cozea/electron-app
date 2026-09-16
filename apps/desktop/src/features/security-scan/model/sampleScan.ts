@@ -158,12 +158,4 @@ export const SAMPLE_BACKEND_OPTIONS: readonly SecurityScanBackendOption[] = [
     baseUrl: "http://127.0.0.1:11434",
     eligible: true,
   },
-  {
-    id: "claude-sub",
-    kind: "apiKey",
-    label: "Claude Code (subscription)",
-    model: "anthropic/claude-sonnet-4.6",
-    eligible: false,
-    ineligibleReason: "Subscription logins cannot back a scan. Use an API key or local model.",
-  },
 ]
