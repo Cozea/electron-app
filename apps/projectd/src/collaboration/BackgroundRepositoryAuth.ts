@@ -1,5 +1,6 @@
 import { ConvexHttpClient } from "convex/browser"
 import { makeFunctionReference } from "convex/server"
+import { isSameGitHubRepository, parseGitHubRepository } from "@shared/git/githubRepository"
 import type { BackgroundDeviceIdentityManager } from "../identity/BackgroundDeviceIdentity"
 import type { BackgroundSessionIntent } from "./BackgroundSessionStore"
 
@@ -22,8 +23,10 @@ function assertRepositoryScope(
   descriptor: BackgroundSessionIntent,
   expected: { owner: string; repository: string },
 ): void {
-  const match = /^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(repositoryUrl)
-  if (!match || match[1]!.toLowerCase() !== expected.owner.toLowerCase() || match[2]!.toLowerCase() !== expected.repository.toLowerCase() ||
+  // Same parser as the PR provider and the scoped network Git layer, so all
+  // three agree on which remotes name an authorizable repository.
+  const parsed = parseGitHubRepository(repositoryUrl)
+  if (!parsed || !isSameGitHubRepository(parsed, expected) ||
     projectId !== descriptor.projectId) throw new Error("Repository credential scope changed")
 }
 

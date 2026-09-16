@@ -1,3 +1,4 @@
+import { isSameGitHubRepository, parseGitHubRepository } from "@shared/git/githubRepository"
 import type { GitExecuteOptions, GitProcess } from "./GitProcess"
 import { withGitRepositoryCredential } from "./GitCredentialBroker"
 
@@ -13,14 +14,15 @@ export async function executeScopedNetworkGit(process: GitProcess, args: string[
   const urls = await process.execute(["remote", "get-url", ...(args[0] === "push" ? ["--push"] : []), "--all", remote], { cwd: options.cwd })
   const values = urls.stdout.trim().split("\n").filter(Boolean)
   if (!urls.success || values.length !== 1) throw new Error("Scoped Git requires one unambiguous remote URL")
-  const match = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(values[0]!)
-  if (!match) throw new Error("Background Git requires an authorized GitHub repository")
-  const scope = { owner: match[1]!, repository: match[2]! }
+  const parsed = parseGitHubRepository(values[0]!)
+  if (!parsed) throw new Error("Background Git requires an authorized GitHub repository")
+  const scope = { owner: parsed.owner, repository: parsed.repository }
   if (args[0] === "push") {
     const fetched = await process.execute(["remote", "get-url", "--all", remote], { cwd: options.cwd })
-    const fetchMatch = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(fetched.stdout.trim())
-    if (!fetched.success || !fetchMatch || fetchMatch[1]!.toLowerCase() !== scope.owner.toLowerCase() ||
-      fetchMatch[2]!.toLowerCase() !== scope.repository.toLowerCase()) throw new Error("Fetch and push must address the same repository for checkpoint reconciliation")
+    const fetchParsed = parseGitHubRepository(fetched.stdout.trim())
+    if (!fetched.success || !fetchParsed || !isSameGitHubRepository(fetchParsed, scope)) {
+      throw new Error("Fetch and push must address the same repository for checkpoint reconciliation")
+    }
   }
   const url = `https://github.com/${scope.owner}/${scope.repository}.git`
   const token = await credentials(scope)

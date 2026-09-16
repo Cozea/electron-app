@@ -1,4 +1,5 @@
 import type { ProjectdPullRequestResult } from "@cozea/projectd-protocol"
+import { parseGitHubRepository } from "@shared/git/githubRepository"
 import type { SessionPullRequestRecord, SessionPullRequestStore } from "./SessionPullRequestStore"
 
 interface RepositoryScope { owner: string; repository: string }
@@ -36,10 +37,16 @@ function object(value: unknown): Record<string, unknown> {
 }
 
 function parseRepository(remoteUrl: string): { scope: RepositoryScope; repository: string } | null {
-  const match = /^(?:https:\/\/github\.com\/|git@github\.com:)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(remoteUrl)
-  if (!match) return null
-  const scope = { owner: match[1]!, repository: match[2]! }
-  return { scope, repository: `${scope.owner}/${scope.repository}` }
+  // Shared with the scoped network Git layer and background authorization, so
+  // a remote that one of them will act on is one the others recognise. This
+  // pattern used to refuse `ssh://git@github.com/`, which the network layer
+  // accepted -- a session on such a remote could push but never open a PR.
+  const parsed = parseGitHubRepository(remoteUrl)
+  if (!parsed) return null
+  return {
+    scope: { owner: parsed.owner, repository: parsed.repository },
+    repository: parsed.full,
+  }
 }
 
 function isOid(value: unknown): value is string {
