@@ -46,16 +46,16 @@ export function BranchCheckoutConflictDialog({
         <DialogHeader>
           <div className="flex items-center gap-2 text-foreground">
             <HugeiconsIcon icon={AlertCircleIcon} className="size-5 text-amber-500" />
-            <DialogTitle>Cannot switch branch</DialogTitle>
+            <DialogTitle className="text-base font-semibold">Cannot switch branch</DialogTitle>
           </div>
-          <DialogDescription className="text-xs text-muted-foreground pt-1">
+          <DialogDescription className="text-sm text-muted-foreground pt-1">
             Your uncommitted changes would be overwritten by switching to{" "}
             <span className="font-mono font-medium text-foreground">{conflict.targetBranch}</span>.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 py-1">
-          <p className="text-xs font-medium text-foreground">
+          <p className="text-sm font-medium text-foreground">
             {conflict.conflictingFiles.length} conflicting{" "}
             {conflict.conflictingFiles.length === 1 ? "file" : "files"}:
           </p>
@@ -67,7 +67,7 @@ export function BranchCheckoutConflictDialog({
               </div>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             Choose <strong>Stash & switch</strong> to automatically set aside your changes and switch, or review and commit them first.
           </p>
         </div>
@@ -76,6 +76,7 @@ export function BranchCheckoutConflictDialog({
           <Button
             variant="outline"
             size="sm"
+            className="h-8 text-sm"
             disabled={isStashing}
             onClick={onDismiss}
           >
@@ -84,6 +85,7 @@ export function BranchCheckoutConflictDialog({
           <Button
             variant="outline"
             size="sm"
+            className="h-8 text-sm"
             disabled={isStashing}
             onClick={onGoToCommit}
           >
@@ -91,7 +93,7 @@ export function BranchCheckoutConflictDialog({
           </Button>
           <Button
             size="sm"
-            className="gap-1.5"
+            className="h-8 text-sm gap-1.5"
             disabled={isStashing}
             onClick={handleStash}
           >

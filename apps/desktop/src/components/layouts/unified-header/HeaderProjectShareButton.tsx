@@ -530,7 +530,7 @@ export function HeaderProjectShareButton({
 
         {!canManage ? (
           <div className="border-t border-border/60 pt-4">
-            <p className="rounded-md border border-border/60 px-3 py-3 text-xs text-muted-foreground">
+            <p className="rounded-md border border-border/60 px-3 py-3 text-sm text-muted-foreground">
               Your role is {memberRole?.replace(/_/g, " ") || "member"}. Only project managers can change access.
             </p>
           </div>
@@ -538,49 +538,49 @@ export function HeaderProjectShareButton({
           <>
             <section className="space-y-2 border-t border-border/60 pt-4">
               <div>
-                <p className="text-xs font-medium">Invite a device</p>
-                <p className="text-[11px] text-muted-foreground">Paste the other device&apos;s public czd_… identity.</p>
+                <p className="text-sm font-medium text-foreground">Invite a device</p>
+                <p className="text-xs text-muted-foreground">Paste the other device&apos;s public czd_… identity.</p>
               </div>
               <div className="flex gap-2">
                 <Input
                   value={identityKey}
                   onChange={(event) => setIdentityKey(event.target.value)}
                   placeholder="czd_…"
-                  className="h-8 flex-1 font-mono text-xs"
+                  className="h-9 flex-1 font-mono text-sm"
                   onKeyDown={(event) => { if (event.key === "Enter") inviteDevice(); }}
                 />
                 <Select value={inviteRole} onValueChange={(value) => setInviteRole(value as ProjectRole)}>
-                  <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-36 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {ROLE_OPTIONS.map((role) => <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button size="sm" className="h-8" disabled={!identityKey.trim() || busy !== null} onClick={inviteDevice}>Invite</Button>
+                <Button size="sm" className="h-9 text-sm" disabled={!identityKey.trim() || busy !== null} onClick={inviteDevice}>Invite</Button>
               </div>
             </section>
 
             <section className="space-y-2 border-t border-border/60 pt-4">
               <div>
-                <p className="text-xs font-medium">Join link</p>
-                <p className="text-[11px] text-muted-foreground">Anyone with the link can authorize the current Cozea device for this project.</p>
+                <p className="text-sm font-medium text-foreground">Join link</p>
+                <p className="text-xs text-muted-foreground">Anyone with the link can authorize the current Cozea device for this project.</p>
               </div>
               <div className="flex gap-2">
                 <Select value={joinRole} onValueChange={(value) => setJoinRole(value as ProjectRole)}>
-                  <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 flex-1 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {ROLE_OPTIONS.map((role) => <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={busy !== null} onClick={copyOrCreateLink}>
+                <Button size="sm" variant="outline" className="h-9 gap-1.5 text-sm" disabled={busy !== null} onClick={copyOrCreateLink}>
                   <HugeiconsIcon icon={activeLink ? __CopyHugeIcon : __LinkHugeIcon} className="size-3.5" />
                   {activeLink ? "Copy" : "Create"}
                 </Button>
                 {activeLink ? (
                   <>
-                    <Button size="icon" variant="ghost" className="h-8 w-8" disabled={busy !== null} onClick={rotateLink} aria-label="Rotate link">
+                    <Button size="icon" variant="ghost" className="h-9 w-9" disabled={busy !== null} onClick={rotateLink} aria-label="Rotate link">
                       <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-8 w-8" disabled={busy !== null} onClick={disableLink} aria-label="Disable link">
+                    <Button size="icon" variant="ghost" className="h-9 w-9" disabled={busy !== null} onClick={disableLink} aria-label="Disable link">
                       <HugeiconsIcon icon={__DeleteHugeIcon} className="size-3.5" />
                     </Button>
                   </>
@@ -591,11 +591,11 @@ export function HeaderProjectShareButton({
         )}
 
         <section className="space-y-2 border-t border-border/60 pt-4">
-          <p className="text-xs font-medium">Devices with access</p>
+          <p className="text-sm font-medium text-foreground">Devices with access</p>
           {members === undefined ? (
-            <p className="text-xs text-muted-foreground">Loading…</p>
+            <p className="text-sm text-muted-foreground">Loading…</p>
           ) : members.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No project members.</p>
+            <p className="text-sm text-muted-foreground">No project members.</p>
           ) : (
             <div className="space-y-1.5">
               {members.map((member) => {
@@ -608,8 +608,8 @@ export function HeaderProjectShareButton({
                       <AvatarFallback className="rounded-lg text-xs font-medium">{initials(member.displayName)}</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">{member.displayName}{self ? " · This device" : ""}</p>
-                      <p className="truncate font-mono text-2xs text-muted-foreground">{member.identityKey}</p>
+                      <p className="truncate text-sm font-medium text-foreground">{member.displayName}{self ? " · This device" : ""}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{member.identityKey}</p>
                     </div>
                     {canManage && !self ? (
                       <div className="flex items-center gap-1">
@@ -620,7 +620,7 @@ export function HeaderProjectShareButton({
                             await updateMemberRole({ projectId, actorPrincipalId: principalId!, memberPrincipalId: member.principalId, newRole: value as ProjectRole });
                           })}
                         >
-                          <SelectTrigger className="h-7 w-32 text-[10px]"><SelectValue /></SelectTrigger>
+                          <SelectTrigger className="h-7 w-32 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             {ROLE_OPTIONS.map((role) => <SelectItem key={role.value} value={role.value}>{role.label}</SelectItem>)}
                           </SelectContent>
@@ -639,7 +639,7 @@ export function HeaderProjectShareButton({
                         </Button>
                       </div>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">{member.role.replace(/_/g, " ")}</span>
+                      <span className="text-xs text-muted-foreground">{member.role.replace(/_/g, " ")}</span>
                     )}
                   </div>
                 );
@@ -650,16 +650,16 @@ export function HeaderProjectShareButton({
 
         {canManage && (pendingEnrollments ?? []).length > 0 ? (
           <section className="space-y-2 border-t border-border/60 pt-4">
-            <p className="text-xs font-medium">Pending invitations</p>
+            <p className="text-sm font-medium text-foreground">Pending invitations</p>
             <div className="space-y-1.5">
               {(pendingEnrollments ?? []).map((enrollment) => (
-                <div key={enrollment._id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs">
-                  <span className="min-w-0 flex-1 truncate font-mono text-[10px]">{enrollment.targetIdentityKey}</span>
-                  <span className="text-[10px] text-muted-foreground">{enrollment.role.replace(/_/g, " ")}</span>
+                <div key={enrollment._id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{enrollment.targetIdentityKey}</span>
+                  <span className="text-xs text-muted-foreground">{enrollment.role.replace(/_/g, " ")}</span>
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-6 px-2 text-[10px]"
+                    className="h-7 px-2.5 text-xs"
                     disabled={busy !== null}
                     onClick={() => void run(`cancel:${String(enrollment._id)}`, async () => {
                       await cancelEnrollment({ enrollmentId: enrollment._id });

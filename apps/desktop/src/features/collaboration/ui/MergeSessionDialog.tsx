@@ -135,7 +135,7 @@ export function MergeSessionBody({
         </div>
       ) : preview.ahead > 0 ? (
         <fieldset className="space-y-1.5">
-          <legend className="text-xs font-medium">How to merge</legend>
+          <legend className="text-sm font-medium">How to merge</legend>
           <label className="flex cursor-pointer items-center gap-2">
             <input
               type="radio"
