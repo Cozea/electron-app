@@ -24,6 +24,8 @@ interface OrgAttachDialogProps {
   onOpenChange: (open: boolean) => void
   onAttach: (organizationId: Id<"organizations">) => Promise<void>
   onCreate: (name: string) => Promise<void>
+  confirmAttachLabel?: string
+  confirmCreateLabel?: string
 }
 
 export function OrgAttachDialog({
@@ -32,6 +34,8 @@ export function OrgAttachDialog({
   onOpenChange,
   onAttach,
   onCreate,
+  confirmAttachLabel = "Publish",
+  confirmCreateLabel = "Create & Publish",
 }: OrgAttachDialogProps) {
   const { t } = useTranslation()
   const { principalId } = useAuth()
@@ -171,14 +175,14 @@ export function OrgAttachDialog({
               disabled={busy || !defaultOrgId}
               onClick={() => void run(() => onAttach(defaultOrgId))}
             >
-              Publish
+              {confirmAttachLabel}
             </Button>
           ) : (
             <Button
               disabled={busy || !name.trim()}
               onClick={() => void run(() => onCreate(name.trim()))}
             >
-              Create & Publish
+              {confirmCreateLabel}
             </Button>
           )}
         </DialogFooter>

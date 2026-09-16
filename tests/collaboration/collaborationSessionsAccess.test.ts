@@ -132,12 +132,23 @@ describe("collaborationSessions access control", () => {
     await expect(createSession(world)).rejects.toThrow(/already exists for branch 'feature\/live'/)
   })
 
-  it("requires an invitation for invite-only sessions and grants project access on join", async () => {
+  it("admits project members to invite-only sessions and invites outsiders with project access", async () => {
     const world = createWorld()
     const { sessionId } = await createSession(world)
 
-    await expect(runConvexHandler(sessions.join, world.invitee.ctx, { sessionId })).rejects.toThrow(/Invitation required/)
+    // The teammate reaches the project through the organization: no session invite needed.
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+    expect(world.db.rows("collaborationSessionMembers")).toContainEqual(
+      expect.objectContaining({ principalId: world.teammate.id, role: "developer", status: "active" }),
+    )
+    expect(world.db.rows("projectMembers")).toEqual([])
 
+    // A device outside the project is still refused until a manager invites it…
+    await expect(runConvexHandler(sessions.join, world.invitee.ctx, { sessionId })).rejects.toThrow(
+      /no access to the project/,
+    )
+
+    // …and accepting grants project access like before.
     await runConvexHandler(sessions.inviteParticipant, world.owner.ctx, { sessionId, targetPrincipalId: world.invitee.id })
     await runConvexHandler(sessions.join, world.invitee.ctx, { sessionId })
 
@@ -145,6 +156,24 @@ describe("collaborationSessions access control", () => {
       expect.objectContaining({ projectId: world.projectId, principalId: world.invitee.id, role: "developer" }),
     ])
     expect(world.db.rows("collaborationSessionInvitations")[0]?.status).toBe("accepted")
+  })
+
+  it("gives viewers the viewer role when they join an invite-only session", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world)
+    const viewer = seedDevice(world.db, 5, "Viewer")
+    world.db.seed("projectMembers", {
+      projectId: world.projectId,
+      principalId: viewer.id,
+      role: "viewer",
+      addedAt: Date.now(),
+      addedBy: world.owner.id,
+    })
+
+    await runConvexHandler(sessions.join, viewer.ctx, { sessionId })
+    expect(world.db.rows("collaborationSessionMembers")).toContainEqual(
+      expect.objectContaining({ principalId: viewer.id, role: "viewer", status: "active" }),
+    )
   })
 
   it("lets only session or project managers invite people", async () => {
@@ -250,6 +279,59 @@ describe("collaborationSessions access control", () => {
         createArgs(world.personalProjectId, { accessMode: "organization_available" }),
       ),
     ).rejects.toThrow(/Only organization projects/)
+  })
+
+  it("lets managers flip a session between project and organization availability", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world)
+
+    // Project members join either mode freely; strangers need an invite in both.
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+    await expect(runConvexHandler(sessions.join, world.invitee.ctx, { sessionId })).rejects.toThrow(
+      /no access to the project/,
+    )
+
+    const opened = await runConvexHandler(sessions.updateAccessMode, world.owner.ctx, {
+      sessionId,
+      accessMode: "organization_available",
+    })
+    expect(opened).toEqual({ sessionId, accessMode: "organization_available" })
+    await expect(runConvexHandler(sessions.join, world.invitee.ctx, { sessionId })).rejects.toThrow(/organization/)
+
+    // Downgrading keeps existing members; project members still join.
+    await runConvexHandler(sessions.updateAccessMode, world.owner.ctx, { sessionId, accessMode: "invite_only" })
+    await runConvexHandler(sessions.join, world.teammate.ctx, { sessionId })
+  })
+
+  it("refuses access-mode changes from non-managers, on closed sessions, and without an organization", async () => {
+    const world = createWorld()
+    const { sessionId } = await createSession(world)
+    await expect(
+      runConvexHandler(sessions.updateAccessMode, world.teammate.ctx, {
+        sessionId,
+        accessMode: "organization_available",
+      }),
+    ).rejects.toThrow(/Only session or project managers/)
+
+    const solo = await runConvexHandler<{ sessionId: string; publicSessionId: string }>(
+      sessions.create,
+      world.owner.ctx,
+      createArgs(world.personalProjectId),
+    )
+    await expect(
+      runConvexHandler(sessions.updateAccessMode, world.owner.ctx, {
+        sessionId: solo.sessionId,
+        accessMode: "organization_available",
+      }),
+    ).rejects.toThrow(/Only organization projects/)
+
+    await world.db.patch(sessionId, { lifecycle: "CLOSED" })
+    await expect(
+      runConvexHandler(sessions.updateAccessMode, world.owner.ctx, {
+        sessionId,
+        accessMode: "organization_available",
+      }),
+    ).rejects.toThrow(/closed/)
   })
 
   it("denies revoked devices", async () => {

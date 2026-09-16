@@ -14,6 +14,7 @@ import { appToast } from "@/lib/appToast"
 import { SessionInvitationCard, type SessionInvitationItem } from "@/features/inbox/components/SessionInvitationCard"
 import { describeInviteeCopy, ensureInviteeCopy, type InviteeCopyOutcome } from "@/features/inbox/sessionCopy"
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
+import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -206,7 +207,7 @@ function announceInviteeCopy(copy: InviteeCopyOutcome, projectName: string): voi
       appToast.info({ title: `Link your copy of ${projectName}`, description: "The session hasn't recorded its Git remote." })
       return
     case "failed":
-      appToast.error({ title: `No copy of ${projectName} was set up`, description: copy.message })
+      appToast.error({ title: `No copy of ${projectName} was set up`, description: formatCloneErrorMessage(copy.message) })
       return
   }
 }

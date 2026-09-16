@@ -1,8 +1,9 @@
+import type { ReactNode } from "react"
 import { toastManager } from "@/components/ui/toast"
 
 type AppToastInput = {
   title: string
-  description?: string
+  description?: ReactNode
 }
 
 /** Non-blocking feedback for user-initiated actions. Pass already-translated strings. */

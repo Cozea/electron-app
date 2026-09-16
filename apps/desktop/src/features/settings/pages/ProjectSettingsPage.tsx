@@ -14,6 +14,7 @@ import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDelete
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { PublishedDevAppIcon } from '@/features/devapps/components/PublishedDevAppIcon'
+import { OrgAttachDialog } from '@/features/projects/ui/OrgAttachDialog'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
@@ -70,6 +71,10 @@ export function ProjectSettingsPage({
   const updateProject = useMutation(api.projects.update)
   const archiveProject = useMutation(api.projects.archive)
   const removeProject = useMutation(api.projects.deleteProject)
+  const attachProjectToOrg = useMutation(api.organizations.attachProject)
+  const createAndAttachProjectOrg = useMutation(api.organizations.createAndAttachProject)
+  const myOrgs = useQuery(api.organizations.listMine, principalId ? {} : 'skip')
+  const projectOrg = myOrgs?.find((org) => String(org.organizationId) === String(project?.organizationId)) ?? null
 
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
@@ -88,6 +93,8 @@ export function ProjectSettingsPage({
 
   const [isArchiving, setIsArchiving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [showOrgAttach, setShowOrgAttach] = useState(false)
+  const [orgError, setOrgError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!project) return
@@ -330,6 +337,38 @@ export function ProjectSettingsPage({
                     ) : null}
                   </SettingsGroup>
                 </section>
+                <section>
+                  <SettingsSectionTitle>{t('settings.section.organization')}</SettingsSectionTitle>
+                  <SettingsGroup>
+                    <SettingsRow isFirst>
+                      <SettingsRowLabel
+                        title={projectOrg?.name ?? t('settings.label.noOrganization')}
+                        description={t('settings.desc.organization')}
+                      />
+                      <SettingsRowControl>
+                        {project?.organizationId ? null : (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-7 shrink-0 bg-background/50 text-xs"
+                            disabled={!principalId || !canEditGeneral}
+                            onClick={() => {
+                              setOrgError(null)
+                              setShowOrgAttach(true)
+                            }}
+                          >
+                            {t('settings.action.attachOrganization')}
+                          </Button>
+                        )}
+                      </SettingsRowControl>
+                    </SettingsRow>
+                    {orgError ? (
+                      <div className="border-t border-border/40 px-4 py-3">
+                        <p className="text-xs text-destructive">{orgError}</p>
+                      </div>
+                    ) : null}
+                  </SettingsGroup>
+                </section>
                 {orgDevApp?.hasArtifact ? (
                   <section>
                     <SettingsSectionTitle>{t('settings.section.localDevApp')}</SettingsSectionTitle>
@@ -459,6 +498,42 @@ export function ProjectSettingsPage({
         </div>
       </div>
 
+      {project && showOrgAttach ? (
+        <Suspense fallback={null}>
+          <OrgAttachDialog
+            open
+            projectName={project.name}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowOrgAttach(false)
+                setOrgError(null)
+              }
+            }}
+            onAttach={async (organizationId) => {
+              if (!project) return
+              try {
+                await attachProjectToOrg({ organizationId, projectId: project._id })
+                setShowOrgAttach(false)
+                setOrgError(null)
+              } catch (error) {
+                setOrgError(cleanConvexError(error, 'Could not attach this project.'))
+              }
+            }}
+            onCreate={async (name) => {
+              if (!project) return
+              try {
+                await createAndAttachProjectOrg({ projectId: project._id, name })
+                setShowOrgAttach(false)
+                setOrgError(null)
+              } catch (error) {
+                setOrgError(cleanConvexError(error, 'Could not attach this project.'))
+              }
+            }}
+            confirmAttachLabel="Attach"
+            confirmCreateLabel="Create & Attach"
+          />
+        </Suspense>
+      ) : null}
       {orgDevApp && showDevAppIdentityDialog ? (
         <Suspense fallback={null}>
           <LazyProjectDevAppLogoDialog

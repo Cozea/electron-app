@@ -13,7 +13,7 @@
  * member, and offers the membership and lifecycle actions the bar shows.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation } from "convex/react"
 import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/projectd-protocol"
 
@@ -24,6 +24,7 @@ import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
+import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
 import { findBranchSession, findOpenSessionById, findWorkspaceSession } from "../collaborationGate"
@@ -220,14 +221,34 @@ export function useLiveSession(input: {
   const [closeReview, setCloseReview] = useState<ProjectdClosePreflight | null>(null)
   const [busyAction, setBusyAction] = useState<LiveSessionAction | null>(null)
 
-  const run = useCallback((action: LiveSessionAction, failure: string, work: () => Promise<unknown>) => {
+  const run = useCallback((
+    action: LiveSessionAction,
+    failure: string,
+    work: () => Promise<unknown>,
+    describeError?: (error: unknown) => ReactNode,
+  ) => {
     setBusyAction(action)
     work()
       .catch((error: unknown) => {
-        appToast.error({ title: failure, description: cleanConvexError(error, failure) })
+        appToast.error({
+          title: failure,
+          description: describeError ? describeError(error) : cleanConvexError(error, failure),
+        })
       })
       .finally(() => setBusyAction(null))
   }, [])
+
+  // Clone failures carry raw multi-line git output; when the repo is
+  // unreachable show the concise repo link instead. Anything else keeps the
+  // cleaned server message.
+  const describeWorkbenchError = useCallback(
+    (repoUrl: string | null | undefined) => (error: unknown) => {
+      const message = error instanceof Error ? error.message : null
+      const formatted = formatCloneErrorMessage(message, repoUrl)
+      return typeof formatted === "string" ? cleanConvexError(error, "Could not open the Session Workbench") : formatted
+    },
+    [],
+  )
 
   const ensureAndOpenSessionWorkbench = useCallback(
     async (target: LiveSessionRecord) => {
@@ -332,10 +353,15 @@ export function useLiveSession(input: {
     },
     join: () => {
       if (!sessionId || !session) return
-      run("join", "Could not join the session", async () => {
-        await joinSession({ sessionId })
-        await ensureAndOpenSessionWorkbench(session)
-      })
+      run(
+        "join",
+        "Could not join the session",
+        async () => {
+          await joinSession({ sessionId })
+          await ensureAndOpenSessionWorkbench(session)
+        },
+        describeWorkbenchError(session.repositoryUrl),
+      )
     },
     leave: onSession("leave", "Could not leave the session", leaveSession),
     pause: () => {
@@ -406,14 +432,22 @@ export function useLiveSession(input: {
       })
     },
     openSessionWorkbench: (publicSessionId) =>
-      run("switch", "Could not open the Session Workbench", async () => {
-        const target = findOpenSessionById(sessions, publicSessionId)
-        if (!target) throw new Error("That live session is no longer available.")
-        if (target.viewerMembership !== "active") {
-          await joinSession({ sessionId: target._id })
-        }
-        await ensureAndOpenSessionWorkbench(target)
-      }),
+      run(
+        "switch",
+        "Could not open the Session Workbench",
+        async () => {
+          const target = findOpenSessionById(sessions, publicSessionId)
+          if (!target) throw new Error("That live session is no longer available.")
+          if (target.viewerMembership !== "active") {
+            await joinSession({ sessionId: target._id })
+          }
+          await ensureAndOpenSessionWorkbench(target)
+        },
+        (error: unknown) => {
+          const target = findOpenSessionById(sessions, publicSessionId)
+          return describeWorkbenchError(target?.repositoryUrl)(error)
+        },
+      ),
     media,
   }
 }
