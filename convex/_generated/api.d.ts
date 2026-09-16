@@ -29,7 +29,6 @@ import type * as lib_projectSharing from "../lib/projectSharing.js";
 import type * as lib_sessionLifecycle from "../lib/sessionLifecycle.js";
 import type * as lib_storageHash from "../lib/storageHash.js";
 import type * as lib_usagePeriods from "../lib/usagePeriods.js";
-import type * as lib_workspaceLimits from "../lib/workspaceLimits.js";
 import type * as lib_workspaceProjectAccess from "../lib/workspaceProjectAccess.js";
 import type * as organizations from "../organizations.js";
 import type * as projectDeviceEnrollments from "../projectDeviceEnrollments.js";
@@ -69,7 +68,6 @@ declare const fullApi: ApiFromModules<{
   "lib/sessionLifecycle": typeof lib_sessionLifecycle;
   "lib/storageHash": typeof lib_storageHash;
   "lib/usagePeriods": typeof lib_usagePeriods;
-  "lib/workspaceLimits": typeof lib_workspaceLimits;
   "lib/workspaceProjectAccess": typeof lib_workspaceProjectAccess;
   organizations: typeof organizations;
   projectDeviceEnrollments: typeof projectDeviceEnrollments;

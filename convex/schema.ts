@@ -413,27 +413,6 @@ export default defineSchema({
 
   // Machine-written repository sync metrics, split out so background syncs
   // never touch (and re-push) the project doc itself.
-  projectSyncState: defineTable({
-    projectId: v.id("projects"),
-    gitSyncState: v.object({
-      accessState: v.union(
-        v.literal("unknown"),
-        v.literal("pending"),
-        v.literal("granted"),
-        v.literal("missing"),
-        v.literal("error"),
-      ),
-      lastFetchedCommit: v.optional(v.string()),
-      lastPushedCommit: v.optional(v.string()),
-      lastFetchAt: v.optional(v.number()),
-      lastPushAt: v.optional(v.number()),
-      repoBytes: v.optional(v.number()),
-      lastRepoSizeAt: v.optional(v.number()),
-      errorMessage: v.optional(v.string()),
-      migratedFromReplicaAt: v.optional(v.number()),
-    }),
-    updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
 
   // Project members with expanded roles
   projectMembers: defineTable({
@@ -590,23 +569,6 @@ export default defineSchema({
     .index("by_project", ["projectId"])
     .index("by_runtime_build_id", ["runtimeBuildId"]),
 
-  projectStorageUsage: defineTable({
-    projectId: v.id("projects"),
-    totalBytes: v.number(),
-    lastCalculatedAt: v.number(),
-    breakdown: v.object({
-      sourceAndConfig: v.number(),
-      collaborationData: v.number(),
-      aiHistory: v.number(),
-      buildCache: v.number(),
-      snapshots: v.number(),
-      gitHistory: v.number(),
-      databaseBackups: v.number(),
-      assets: v.number(),
-    }),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_project", ["projectId"]),
 
   // Project invites for pending team members
   projectTasks: defineTable({
@@ -725,35 +687,6 @@ export default defineSchema({
     .index("by_project_and_status", ["projectId", "status"]),
 
   // File locks for collaborative editing (traffic control system)
-  projectFileLocks: defineTable({
-    projectId: v.id("projects"),
-    filePath: v.string(), // relative path within project
-
-    // Lock status
-    status: v.union(
-      v.literal("free"), // Available for editing (green)
-      v.literal("locked"), // Currently being edited (yellow=human, red=agent)
-      v.literal("merging"), // Being merged by traffic control
-    ),
-
-    // Who has the lock (human)
-    lockedBy: v.optional(v.id("devicePrincipals")),
-    lockedAt: v.optional(v.number()),
-
-    // Who has the lock (agent) - traffic light red
-    agentId: v.optional(v.string()),
-    agentName: v.optional(v.string()),
-    taskDescription: v.optional(v.string()),
-    expiresAt: v.optional(v.number()), // Auto-expire for agent locks
-
-    // For merge tracking
-    pendingMerges: v.optional(v.array(v.id("devicePrincipals"))), // Users with local changes waiting to merge
-    lastMergedAt: v.optional(v.number()),
-    lastMergedBy: v.optional(v.id("devicePrincipals")),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_path", ["projectId", "filePath"])
-    .index("by_locked_by", ["lockedBy"]),
 
   // File tombstones for delete-vs-edit conflict detection
   // When a file is deleted, we create a tombstone to detect if someone
@@ -772,40 +705,6 @@ export default defineSchema({
     .index("by_expires_at", ["expiresAt"]),
 
   // Project files stored in Convex File Storage
-  projectFiles: defineTable({
-    projectId: v.id("projects"),
-
-    // File identity
-    fileName: v.string(), // e.g., "config.json", "src/App.tsx"
-    filePath: v.string(), // Relative path within project
-    fileType: v.string(), // MIME type
-
-    // Convex storage reference
-    storageId: v.id("_storage"), // Reference to stored file
-
-    // Metadata
-    sizeBytes: v.number(),
-    checksum: v.optional(v.string()), // SHA-256 for integrity
-
-    // Versioning
-    version: v.number(),
-    previousVersionId: v.optional(v.id("projectFiles")),
-
-    // Upload tracking
-    uploadedBy: v.id("devicePrincipals"),
-    uploadedAt: v.number(),
-
-    // Status
-    status: v.union(
-      v.literal("active"),
-      v.literal("deleted"),
-      v.literal("superseded"), // Replaced by newer version
-    ),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_path", ["projectId", "filePath"])
-    .index("by_project_and_status", ["projectId", "status"])
-    .index("by_storage_id", ["storageId"]),
 
   // ============================================
   // COLLABORATION ENCRYPTION TABLES
@@ -1194,64 +1093,4 @@ export default defineSchema({
     .index("by_change", ["changeId"])
     .index("by_comment_and_principal", ["commentId", "principalId"])
     .index("by_principal", ["principalId"]),
-
-  // Project assets (images, videos, PDFs, etc.)
-  projectAssets: defineTable({
-    projectId: v.id("projects"),
-    name: v.string(),
-    storageId: v.optional(v.id("_storage")), // Optional for folders
-    mimeType: v.string(),
-    size: v.number(),
-    folderPath: v.optional(v.string()),
-    label: v.optional(v.string()),
-    description: v.optional(v.string()),
-    category: v.string(), // image, audio, video, document, other
-    tags: v.optional(v.array(v.string())),
-    uploadedBy: v.id("devicePrincipals"),
-    uploadedAt: v.number(),
-    aiAnalysis: v.optional(
-      v.object({
-        summary: v.string(),
-        detectedContent: v.optional(v.array(v.string())),
-        suggestedTags: v.optional(v.array(v.string())),
-      }),
-    ),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_folder", ["projectId", "folderPath"])
-    .index("by_category", ["projectId", "category"])
-    .searchIndex("search_assets", {
-      searchField: "name",
-      filterFields: ["projectId"],
-    }),
-
-  // ============================================
-  // DEPLOYMENT JOBS
-  // ============================================
-  deploymentJobs: defineTable({
-    projectId: v.id("projects"),
-    requestedBy: v.id("devicePrincipals"),
-    target: v.union(v.literal("preview"), v.literal("production")),
-    provider: v.union(v.literal("railway")),
-    commitSha: v.optional(v.string()),
-    status: v.union(
-      v.literal("queued"),
-      v.literal("running"),
-      v.literal("succeeded"),
-      v.literal("failed"),
-      v.literal("canceled"),
-    ),
-    providerDeploymentId: v.optional(v.string()),
-    statusUrl: v.optional(v.string()),
-    error: v.optional(v.string()),
-    logs: v.optional(v.array(v.string())),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    startedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-  })
-    .index("by_project", ["projectId"])
-    .index("by_project_and_status", ["projectId", "status"])
-    .index("by_requested_by", ["requestedBy"])
-    .index("by_updated_at", ["updatedAt"]),
 })

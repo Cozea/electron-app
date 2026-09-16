@@ -764,7 +764,6 @@ const es: Record<TranslationKey, string> = {
   "routeLoading.projects": "Cargando proyectos…",
   "routeLoading.workbench": "Cargando el workbench…",
   "routeLoading.tasks": "Cargando tareas…",
-  "routeLoading.conflicts": "Cargando conflictos…",
   "routeLoading.team": "Cargando equipo…",
   "routeLoading.store": "Cargando Tienda DevApps…",
   "routeLoading.newProject": "Cargando nuevo proyecto…",

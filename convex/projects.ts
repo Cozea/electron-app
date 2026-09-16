@@ -765,28 +765,6 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 2: {
-      const rows = await ctx.db
-        .query("projectFiles")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      for (const row of rows) {
-        await ctx.storage.delete(row.storageId)
-        await ctx.db.delete(row._id)
-      }
-      return rows.length
-    }
-    case 3: {
-      const rows = await ctx.db
-        .query("projectAssets")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      for (const row of rows) {
-        if (row.storageId) await ctx.storage.delete(row.storageId)
-        await ctx.db.delete(row._id)
-      }
-      return rows.length
-    }
     case 4: {
       // This legacy table has no project-prefixed index. Keep the scan bounded;
       // a future schema migration can add one without changing purge semantics.
@@ -821,14 +799,6 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
-    case 8: {
-      const rows = await ctx.db
-        .query("projectSyncState")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
     case 9: {
       const rows = await ctx.db
         .query("projectMembers")
@@ -841,14 +811,6 @@ async function deleteProjectPurgeStage(
       const rows = await ctx.db
         .query("projectDeviceEnrollments")
         .withIndex("by_project_and_status", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 11: {
-      const rows = await ctx.db
-        .query("projectStorageUsage")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
       return rows.length
@@ -880,14 +842,6 @@ async function deleteProjectPurgeStage(
     case 16: {
       const rows = await ctx.db
         .query("projectJoinLinks")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 17: {
-      const rows = await ctx.db
-        .query("projectFileLocks")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
@@ -936,14 +890,6 @@ async function deleteProjectPurgeStage(
     case 23: {
       const rows = await ctx.db
         .query("projectPresence")
-        .withIndex("by_project", (q) => q.eq("projectId", projectId))
-        .take(PROJECT_PURGE_BATCH_SIZE)
-      await deleteRows(ctx, rows)
-      return rows.length
-    }
-    case 24: {
-      const rows = await ctx.db
-        .query("deploymentJobs")
         .withIndex("by_project", (q) => q.eq("projectId", projectId))
         .take(PROJECT_PURGE_BATCH_SIZE)
       await deleteRows(ctx, rows)
