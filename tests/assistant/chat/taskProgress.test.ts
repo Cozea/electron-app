@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { TurnId } from "@cozea/assistant-contracts";
 
 import {
   parseTaskStepsFromMarkdown,
@@ -39,7 +40,8 @@ describe("taskProgress", () => {
   it("resolves tasks progress prioritizing activePlan over activeProposedPlan", () => {
     const result = resolveTasksProgressAndSteps({
       activePlan: {
-        turnId: "turn-1",
+        createdAt: "2026-09-16T00:00:00.000Z",
+        turnId: "turn-1" as TurnId,
         steps: [
           { step: "Activity plan 1", status: "completed" },
           { step: "Activity plan 2", status: "inProgress" },
