@@ -796,6 +796,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               rowId={row.id}
               groupId={row.groupId}
               summary={row.summary}
+              activeAction={row.activeAction}
               count={row.hiddenCount}
               expanded={row.expanded}
               active={row.active}
@@ -888,7 +889,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 newlineCount >= USER_MESSAGE_TRUNCATE_NEWLINE_THRESHOLD;
               const userMessageExpanded = expandedUserMessageIds[messageId] ?? false;
               return (
-                <div className="flex w-full min-w-0 justify-end">
+                <div className="flex w-full min-w-0 justify-end animate-in fade-in-0 slide-in-from-bottom-2 duration-150 motion-reduce:animate-none">
                   <div className="group relative flex max-w-[85%] sm:max-w-[75%] min-w-0 flex-col items-end gap-1">
                     {row.message.attachments?.length ? (
                       <MessageAttachments

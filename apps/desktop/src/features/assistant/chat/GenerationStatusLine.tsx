@@ -34,12 +34,20 @@ export const GenerationStatusLine = memo(function GenerationStatusLine({
         <AnimatePresence mode="popLayout" initial={false}>
           <motion.div
             key={textKey}
-            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -14 }}
+            initial={
+              shouldReduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, y: 8, filter: "blur(2px)" }
+            }
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={
+              shouldReduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, y: -8, filter: "blur(2px)" }
+            }
             transition={{
-              duration: 0.22,
-              ease: [0.16, 1, 0.3, 1], // Smooth slot machine roll, no bounce
+              duration: 0.15,
+              ease: "easeInOut",
             }}
             className="flex items-center gap-1.5 min-w-0 truncate tabular-nums"
           >

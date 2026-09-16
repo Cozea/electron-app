@@ -3,12 +3,14 @@ import type { TimelineEntry, WorkLogEntry } from "./session-logic";
 import { projectConversation, type ConversationTurn } from "./conversationProjection";
 import {
   omitSupersededLifecycleMarkers,
+  workEntryIndicatesFailure,
   workLogEntryIsToolLike,
   type GenerationStatusPhase,
 } from "./MessagesTimeline.logic";
 import {
   deriveToolPhase,
   isDiagnosticWorkEntry,
+  liveWorkEntryTaskLabel,
   summarizeToolPhase,
   toolIsRunning,
   toolRowId,
@@ -34,6 +36,7 @@ export type ConversationRow = RowIdentity &
         hiddenCount: number;
         expanded: boolean;
         summary: string;
+        activeAction?: string;
         active: boolean;
         liveIds: ReadonlySet<string>;
         groupedEntries: WorkLogEntry[];
@@ -212,6 +215,24 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
             groupedEntries[0]?.createdAt ??
             input.activeWorkStartedAt)
           : null;
+
+        const runningEntry = active
+          ? (groupedEntries.findLast(toolIsRunning) ??
+            groupedEntries.findLast(
+              (entry) =>
+                !workEntryIndicatesFailure(entry) &&
+                (entry.toolLifecycleStatus ?? entry.status) !== "completed" &&
+                !["cancelled", "stopped", "declined"].includes(
+                  entry.toolLifecycleStatus ?? entry.status ?? "",
+                ),
+            ) ??
+            groupedEntries.at(-1))
+          : undefined;
+
+        const activeAction = runningEntry
+          ? liveWorkEntryTaskLabel(runningEntry, input.workspaceRoot)
+          : undefined;
+
         add(
           {
             kind: "work-toggle",
@@ -224,6 +245,7 @@ export function buildConversationRows(input: ConversationRowsInput): Conversatio
             active,
             liveIds: phase.liveIds,
             summary: summarizeToolPhase(groupedEntries, active, input.workspaceRoot),
+            activeAction,
             startedAt,
           },
           ids,
@@ -376,6 +398,7 @@ export function conversationRowsEqual(a: ConversationRow, b: ConversationRow): b
     return (
       a.expanded === b.expanded &&
       a.summary === b.summary &&
+      a.activeAction === b.activeAction &&
       a.active === b.active &&
       a.startedAt === b.startedAt &&
       a.liveIds.size === b.liveIds.size &&

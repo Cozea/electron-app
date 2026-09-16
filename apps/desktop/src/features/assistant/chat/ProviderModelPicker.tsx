@@ -190,10 +190,22 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
           aria-label={`Adjust capabilities. Current ${primaryTraitDescriptor?.label ?? "effort"}: ${currentEffortLabel}`}
         >
           <span>{currentEffortLabel}</span>
-          <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3.5 shrink-0 opacity-70" />
+          <HugeiconsIcon
+            icon={__ChevronDownHugeIcon}
+            className={cn(
+              "size-3.5 shrink-0 opacity-70 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              props.open && "rotate-180",
+            )}
+          />
         </button>
       ) : (
-        <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3.5 shrink-0 opacity-70" />
+        <HugeiconsIcon
+          icon={__ChevronDownHugeIcon}
+          className={cn(
+            "size-3.5 shrink-0 opacity-70 transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+            props.open && "rotate-180",
+          )}
+        />
       )}
 
       {isFastModeActive ? (

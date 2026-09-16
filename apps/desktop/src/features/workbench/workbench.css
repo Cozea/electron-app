@@ -415,6 +415,15 @@
   }
 }
 
+/* Arrival: a workbench paints fully formed when you navigate to it; motion is
+   for actions inside it. See workbenchArrival.tsx. */
+[data-workbench-arrival="settling"],
+[data-workbench-arrival="settling"] *,
+[data-workbench-arrival="settling"] *::before,
+[data-workbench-arrival="settling"] *::after {
+  transition: none !important;
+}
+
 .cozea-workbench-dockview-theme .dv-context-menu-item {
   height: 28px;
   gap: 8px;

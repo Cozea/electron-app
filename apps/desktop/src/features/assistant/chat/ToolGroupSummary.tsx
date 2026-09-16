@@ -12,6 +12,7 @@ interface ToolGroupSummaryProps {
   rowId: string;
   groupId: string;
   summary: string;
+  activeAction?: string;
   count: number;
   expanded: boolean;
   active: boolean;
@@ -27,6 +28,7 @@ export const ToolGroupSummary = memo(function ToolGroupSummary({
   rowId,
   groupId,
   summary,
+  activeAction,
   count,
   expanded,
   active,
@@ -79,8 +81,8 @@ export const ToolGroupSummary = memo(function ToolGroupSummary({
         data-tool-group-active={active}
       >
         {active && !expanded ? (
-          <GenerationStatusLine textKey={summary} animateEntrance={animateEntrance} className="h-6 min-h-6">
-            <LiveShimmerText className="align-middle">{summary}</LiveShimmerText>
+          <GenerationStatusLine textKey={activeAction || summary} animateEntrance={animateEntrance} className="h-6 min-h-6">
+            <LiveShimmerText className="align-middle">{activeAction || summary}</LiveShimmerText>
             {startedAt ? (
               <>
                 <span className="text-muted-foreground/75">for</span>

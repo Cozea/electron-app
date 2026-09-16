@@ -417,21 +417,15 @@ function AudioControlPill({
   )
 }
 
-export function HeaderLiveSessionControl({
-  live,
-  isWorkbenchView = true,
-}: {
-  live: LiveSessionController
-  isWorkbenchView?: boolean
-}) {
+export function HeaderLiveSessionControl({ live }: { live: LiveSessionController }) {
   const [merging, setMerging] = useState(false)
   const [rebasing, setRebasing] = useState(false)
   const [reviewingFiles, setReviewingFiles] = useState(false)
   const [reviewingPaths, setReviewingPaths] = useState(false)
 
+  // No session, no control: the header shows nothing rather than an offline placeholder.
   const activeSession = live.session && live.sync ? live.session : null
-  const hasSession = activeSession !== null
-  if (!hasSession && !isWorkbenchView) {
+  if (!activeSession) {
     return null
   }
 
@@ -442,60 +436,29 @@ export function HeaderLiveSessionControl({
   return (
     <>
       <div className="flex items-center gap-1.5 shrink-0 titlebar-no-drag" data-header-live-session="">
-        {hasSession ? (
-          <SessionStatusPill
-            sync={live.sync!}
-            autoGit={live.autoGit}
-            session={live.session!}
-            canManage={live.canManage}
-            canEdit={live.canEdit}
-            membership={live.membership}
-            busy={busy}
-            busyAction={live.busyAction}
-            isSaving={isSaving}
-            onSaveNow={live.saveNow}
-            onRebase={() => setRebasing(true)}
-            onMerge={() => setMerging(true)}
-            onBinaryConflicts={() => setReviewingFiles(true)}
-            onStructuralConflicts={() => setReviewingPaths(true)}
-            onPause={live.pause}
-            onResume={live.resume}
-            onEnd={live.end}
-          />
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-sm font-medium text-foreground hover:bg-muted/60 transition-[background-color,color,transform] duration-150 active:scale-[0.98] titlebar-no-drag shadow-none border-0 shrink-0"
-            title="Local session · No active live collaboration"
-          >
-            <span className="t-icon-swap size-4 shrink-0" data-state="inactive">
-              <span className="t-icon flex items-center justify-center" data-icon="active">
-                <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
-              </span>
-              <span className="t-icon flex items-center justify-center" data-icon="inactive">
-                <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
-              </span>
-            </span>
-            <span
-              className="t-icon-swap inline-grid h-4 w-[28px] shrink-0 items-center justify-center text-center text-sm font-medium leading-none select-none text-muted-foreground"
-              data-state="unsaved"
-            >
-              <span className="t-icon flex items-center justify-center" data-icon="unsaved">
-                <LuSaveOff className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-              </span>
-              <span className="t-icon flex items-center justify-center" data-icon="time" />
-              <span className="t-icon flex items-center justify-center" data-icon="saving">
-                <div className="loader shrink-0 text-muted-foreground" />
-              </span>
-            </span>
-          </Button>
-        )}
+        <SessionStatusPill
+          sync={live.sync!}
+          autoGit={live.autoGit}
+          session={activeSession}
+          canManage={live.canManage}
+          canEdit={live.canEdit}
+          membership={live.membership}
+          busy={busy}
+          busyAction={live.busyAction}
+          isSaving={isSaving}
+          onSaveNow={live.saveNow}
+          onRebase={() => setRebasing(true)}
+          onMerge={() => setMerging(true)}
+          onBinaryConflicts={() => setReviewingFiles(true)}
+          onStructuralConflicts={() => setReviewingPaths(true)}
+          onPause={live.pause}
+          onResume={live.resume}
+          onEnd={live.end}
+        />
 
         <AudioControlPill
           media={live.media}
-          visible={hasSession && live.membership === "active"}
+          visible={live.membership === "active"}
         />
 
         {canJoin ? (

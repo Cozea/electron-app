@@ -605,10 +605,10 @@ export function WorkbenchSelectionTile({
         />
       </div>
 
-      {/* Main Content Area: clean, non-chaotic cross-fade between list and grid */}
+      {/* Main Content Area: list or grid, shown without an enter animation */}
       <div className={cn("relative min-h-0 w-full overflow-hidden", useListView ? "flex-1" : "shrink-0")}>
         {useListView ? (
-          <div className="h-full w-full animate-in fade-in duration-150">
+          <div className="h-full w-full">
             <ScrollArea scrollFade fadeSize="2rem" className="min-h-0 flex-1 w-full" viewportClassName="px-3 md:px-6">
               <GlideMenu
                 rowSelector="[data-row]"
@@ -635,7 +635,7 @@ export function WorkbenchSelectionTile({
         ) : (
           <div
             data-tour="project-devapps"
-            className="flex w-full flex-col items-center justify-center overflow-hidden py-1 animate-in fade-in duration-150"
+            className="flex w-full flex-col items-center justify-center overflow-hidden py-1"
           >
             <div className="mx-auto flex w-full max-w-5xl flex-none flex-col px-3 md:px-6">
               <div

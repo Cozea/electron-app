@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react"
 
 import { WorkbenchDockRuntimeProvider } from "@/features/workbench/WorkbenchDockRuntimeContext"
+import { useWorkbenchArrival } from "@/features/workbench/workbenchArrival"
 import { useWorkbenchDockviewRuntime } from "@/features/workbench/hooks/useWorkbenchDockviewRuntime"
 import {
   ensureWorkbenchLayoutPersistenceReady,
@@ -32,6 +33,7 @@ export function WorkbenchDockviewSession({
   getWorkbenchSession,
 }: WorkbenchDockviewSessionProps) {
   const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false)
+  const [isDockviewReady, setIsDockviewReady] = useState(false)
   const workbenchScopeKey = session.scopeKey
   const legacyWorkbenchScopeKey = buildWorkbenchScopeKey(
     session.projectId,
@@ -103,9 +105,11 @@ export function WorkbenchDockviewSession({
   const onReady = useCallback(
     (event: Parameters<typeof handleDockviewReady>[0]) => {
       handleDockviewReady(event)
+      setIsDockviewReady(true)
     },
     [handleDockviewReady],
   )
+  const arriving = useWorkbenchArrival(isActive, isDockviewReady)
 
   return (
     <WorkbenchDockRuntimeProvider
@@ -127,7 +131,11 @@ export function WorkbenchDockviewSession({
       onResolveSelectionTile={handleResolveSelectionTile}
       onSplitTile={handleSplitTile}
     >
-      <div ref={dockviewHostRef} className="h-full min-h-0 w-full min-w-0">
+      <div
+        ref={dockviewHostRef}
+        className="h-full min-h-0 w-full min-w-0"
+        data-workbench-arrival={arriving ? "settling" : undefined}
+      >
         <Suspense fallback={null}>
           <LazyWorkbenchDockviewCanvas
             dockviewKey={workbenchScopeKey}

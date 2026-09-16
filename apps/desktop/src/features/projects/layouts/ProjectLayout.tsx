@@ -422,14 +422,11 @@ export function ProjectLayout({
   }, [project?._id]);
 
   const liveSessionHeaderControl = useMemo(() => {
-    if (isWorkbenchView) {
-      return <HeaderLiveSessionControl live={liveSession} isWorkbenchView={true} />;
-    }
     if (!liveSession.session || !liveSession.sync) {
       return null;
     }
-    return <HeaderLiveSessionControl live={liveSession} isWorkbenchView={false} />;
-  }, [isWorkbenchView, liveSession]);
+    return <HeaderLiveSessionControl live={liveSession} />;
+  }, [liveSession]);
 
   const chromeHeader = useProjectChromeHeader({
     isSettingsModeRoute,

@@ -386,45 +386,6 @@ function resolveTimelineTheme(): "light" | "dark" {
   return "light";
 }
 
-
-
-function renderSendIcon(isBusy: boolean) {
-  if (isBusy) {
-    return (
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 14 14"
-        fill="none"
-        className="animate-spin"
-        aria-hidden="true"
-      >
-        <circle
-          cx="7"
-          cy="7"
-          r="5.5"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeDasharray="20 12"
-        />
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-      <path
-        d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function SkillGlyph({ className }: { className?: string }) {
   return (
     <svg
@@ -487,6 +448,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const [composerPathMenuItems, setComposerPathMenuItems] = useState<ComposerPathMenuItem[]>([]);
   const [isComposerMenuLoading, setIsComposerMenuLoading] = useState(false);
   const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
+  const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [modelPickerView, setModelPickerView] = useState<ModelPickerPrimaryView>("models");
   const [shouldRenderModelPicker, setShouldRenderModelPicker] = useState(false);
   const [isModelPickerVisible, setIsModelPickerVisible] = useState(false);
@@ -1767,7 +1729,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   const renderModeChip = () => {
     if (activeMode === "debug") {
       return (
-        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-rose-500/12 text-rose-600 dark:bg-[#3a1820]/90 dark:text-rose-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-rose-500/12 text-rose-600 dark:bg-[#3a1820]/90 dark:text-rose-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
           <DebugBugIcon className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
           <span>Debug</span>
           <button
@@ -1777,7 +1739,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               e.stopPropagation();
               updateComposerMode(null);
             }}
-            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-rose-600/70 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-400/80 dark:hover:bg-rose-500/25 dark:hover:text-rose-200 transition-colors cursor-pointer"
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-rose-600/70 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-400/80 dark:hover:bg-rose-500/25 dark:hover:text-rose-200 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
             aria-label="Remove debug mode"
             title="Remove debug mode"
           >
@@ -1788,7 +1750,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     if (activeMode === "plan") {
       return (
-        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
           <HugeiconsIcon
             icon={__ListTodoIconHugeIcon}
             className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
@@ -1801,7 +1763,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               e.stopPropagation();
               updateComposerMode(null);
             }}
-            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-amber-700/70 hover:bg-amber-500/25 hover:text-amber-800 dark:text-amber-400/80 dark:hover:bg-amber-500/25 dark:hover:text-amber-200 transition-colors cursor-pointer"
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-amber-700/70 hover:bg-amber-500/25 hover:text-amber-800 dark:text-amber-400/80 dark:hover:bg-amber-500/25 dark:hover:text-amber-200 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
             aria-label="Remove plan mode"
             title="Remove plan mode"
           >
@@ -1812,7 +1774,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     if (activeMode === "ask") {
       return (
-        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all">
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
           <HugeiconsIcon
             icon={__ChatIconHugeIcon}
             className="size-3.5 shrink-0 text-sky-700 dark:text-sky-400"
@@ -1825,7 +1787,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               e.stopPropagation();
               updateComposerMode(null);
             }}
-            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-sky-700/70 hover:bg-sky-500/25 hover:text-sky-800 dark:text-sky-400/80 dark:hover:bg-sky-500/25 dark:hover:text-sky-200 transition-colors cursor-pointer"
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-sky-700/70 hover:bg-sky-500/25 hover:text-sky-800 dark:text-sky-400/80 dark:hover:bg-sky-500/25 dark:hover:text-sky-200 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
             aria-label="Remove ask mode"
             title="Remove ask mode"
           >
@@ -1838,17 +1800,23 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
   };
 
   const renderPlusDropdown = () => (
-    <DropdownMenu>
+    <DropdownMenu open={isPlusMenuOpen} onOpenChange={setIsPlusMenuOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="size-8 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/80 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-white/10 transition-colors cursor-pointer outline-none"
+          className="size-8 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/80 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-white/10 transition-[background-color,color,transform] duration-150 active:scale-95 cursor-pointer outline-none"
           title="Add context or change mode"
           aria-label="Add context or change mode"
         >
-          <HugeiconsIcon icon={__PlusIconHugeIcon} className="size-4 stroke-[2]" />
+          <HugeiconsIcon
+            icon={__PlusIconHugeIcon}
+            className={cn(
+              "size-4 stroke-[2] transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+              isPlusMenuOpen && "rotate-45 text-foreground",
+            )}
+          />
           {props.composerImages.length > 0 ? (
-            <span className="ml-0.5 text-[10px] font-bold text-primary">
+            <span className="ml-0.5 text-[10px] font-bold text-primary animate-in fade-in zoom-in-50 duration-150">
               {props.composerImages.length}
             </span>
           ) : null}
@@ -2000,54 +1968,73 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       props.isSending ||
       props.isBinding;
 
-    const buttonElement = props.isRunning ? (
+    const buttonState = props.isRunning
+      ? props.isInterrupting && !props.isForceStopAvailable
+        ? "loading"
+        : "stop"
+      : props.isSending || props.isBinding
+        ? "loading"
+        : "send";
+
+    const buttonElement = (
       <button
-        type="button"
-        className={cn(
-          "flex shrink-0 cursor-pointer items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95 shadow-xs transition-all duration-150 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-50",
-          buttonSizeClass,
-        )}
-        onClick={() => {
-          void props.onInterrupt();
-        }}
-        aria-label={stopButtonLabel}
-        title={stopButtonLabel}
-        disabled={!isChatReady || (props.isInterrupting && !props.isForceStopAvailable)}
-      >
-        {props.isInterrupting && !props.isForceStopAvailable ? (
-          <div className="loader" />
-        ) : (
-          <span className="size-2 rounded-[1px] bg-primary-foreground" />
-        )}
-      </button>
-    ) : (
-      <button
-        type="submit"
+        type={props.isRunning ? "button" : "submit"}
         onClick={(event) => {
+          if (props.isRunning) {
+            void props.onInterrupt();
+            return;
+          }
           event.preventDefault();
           if (!isSendDisabled) {
             void handleSendWithMode();
           }
         }}
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-full transition-all duration-150",
+          "flex shrink-0 items-center justify-center rounded-full transition-all duration-150 active:scale-95",
           buttonSizeClass,
-          isSendDisabled
-            ? "bg-foreground/[0.08] text-foreground/30 dark:bg-white/10 dark:text-zinc-500/50 cursor-not-allowed"
-            : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-xs hover:scale-105 active:scale-95 cursor-pointer",
+          props.isRunning
+            ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 shadow-xs cursor-pointer"
+            : isSendDisabled
+              ? "bg-foreground/[0.08] text-foreground/30 dark:bg-white/10 dark:text-zinc-500/50 cursor-not-allowed"
+              : "bg-primary text-primary-foreground hover:bg-primary/90 hover:scale-105 shadow-xs cursor-pointer",
         )}
-        disabled={isSendDisabled}
-        aria-label={
-          !isChatReady
-            ? "Local runtime unavailable"
-            : props.isBinding
-              ? "Binding agent"
-              : props.isSending
-                ? "Sending"
-                : "Send message"
+        disabled={
+          props.isRunning
+            ? !isChatReady || (props.isInterrupting && !props.isForceStopAvailable)
+            : isSendDisabled
         }
+        aria-label={
+          props.isRunning
+            ? stopButtonLabel
+            : !isChatReady
+              ? "Local runtime unavailable"
+              : props.isBinding
+                ? "Binding agent"
+                : props.isSending
+                  ? "Sending"
+                  : "Send message"
+        }
+        title={props.isRunning ? stopButtonLabel : undefined}
       >
-        {renderSendIcon(props.isSending)}
+        <span className="t-icon-swap size-3.5 shrink-0" data-state={buttonState}>
+          <span className="t-icon flex items-center justify-center" data-icon="send">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path
+                d="M7 11.5V2.5M7 2.5L3 6.5M7 2.5L11 6.5"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+          <span className="t-icon flex items-center justify-center" data-icon="stop">
+            <span className="size-2.5 rounded-[1.5px] bg-current" />
+          </span>
+          <span className="t-icon flex items-center justify-center" data-icon="loading">
+            <div className="loader shrink-0 text-current" />
+          </span>
+        </span>
       </button>
     );
 
@@ -2399,7 +2386,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               {regularComposerImages.map((image) => (
                 <div
                   key={image.id}
-                  className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-background"
+                  className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/10 bg-background animate-in fade-in zoom-in-75 duration-150 ease-out"
                 >
                   <button
                     type="button"
@@ -2420,7 +2407,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90"
+                    className="absolute right-1 top-1 h-5 w-5 bg-background/80 p-0 hover:bg-background/90 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110"
                     onClick={() => {
                       props.onRemoveComposerImage(image.id);
                     }}
