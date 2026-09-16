@@ -47,6 +47,7 @@ import { buildBranchSessionLaneId } from "@/features/source-control/model/projec
 import {
   FALLBACK_SHARED_BRANCH,
   resolveProjectRecordedDefaultBranch,
+  resolveProjectRepositoryIntegration,
 } from "@/lib/git/projectRepositoryIntegration";
 import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 import { saveLastAppRoute } from "@/lib/settings/settingsReturnRoute";
@@ -469,13 +470,16 @@ export function ProjectLayout({
       if (!workspaceProjectId) return;
       const projectId = workspaceProjectId;
       const slug = project?.slug ?? routeSlug ?? projectId;
+      const repoIntegration = resolveProjectRepositoryIntegration(project as never);
       const repoUrl =
-        (project as { repoSource?: { repoUrl?: string | null } | null } | null | undefined)?.repoSource?.repoUrl ??
-        (project as { sourceControl?: { repoUrl?: string | null } | null } | null | undefined)?.sourceControl?.repoUrl ??
+        repoIntegration.repoUrl ||
+        (project as { repoSource?: { repoUrl?: string | null } | null } | null | undefined)?.repoSource?.repoUrl ||
+        (project as { sourceControl?: { repoUrl?: string | null } | null } | null | undefined)?.sourceControl?.repoUrl ||
         null;
       const branch =
-        (project as { repoSource?: { branch?: string | null } | null } | null | undefined)?.repoSource?.branch ??
-        (project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ??
+        repoIntegration.defaultBranch ||
+        (project as { repoSource?: { branch?: string | null } | null } | null | undefined)?.repoSource?.branch ||
+        (project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ||
         undefined;
 
       try {
