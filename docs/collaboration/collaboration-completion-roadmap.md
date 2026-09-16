@@ -11,7 +11,8 @@
 - Current checkpoint: **9A — Dual-Mac environment and baseline verification**
 - Blocking gate: Two physical Macs, independent device identities, signed packaged app, deployed cloud revisions.
 - Next authorized work: Phase 9 only.
-- Branch: `feat/collab-step3-session-ui` · Phase 8 closed at the current working tree.
+- Branch: `main` (the `feat/collab-step3-session-ui` branch was merged in PR #168 and deleted; all later phases landed directly on `main`).
+- 9A status on 2026-09-16 (see ledger entry of the same date): baseline verification run on `main` head `03ad5ee2`. Collab-owned gates green after `bun install` and `bun run build:projectd`, except one drifted assertion in `sessionWorkbenchControls.test.tsx`. Environment gate not met: only one physical Mac is available, no packaged candidate exists on it, and the Phase 8 candidate was built with `dist:local`, which is unsigned by construction. Phase 9 stays blocked until a second Mac and a signed candidate from a green head exist.
 - Closed: Phase 0 (baseline green); Phase 1 (P11 + B01–B05/memory gate); Phase 2 (lifecycle, identity without branch fallback); Phase 3 (AutoGit/Git program A/C/G/R/M matrices); Phase 4 (P23 Electron cutover: packaged daemon + dev renderer gate proven); Phase 5 (P24 capability qualification, including U02 review follow-up); Phase 6 (P25 media: WebRTC voice engine, perfect negotiation, idle mute policy, audio input device selection, CUA AX verification, and decoupling gate); Phase 7 (P26 legacy removal + one Git owner: deleted legacy in-renderer engine, consolidated Git into canonical GitService, verified architecture tests); Phase 8 (Coordinated production deployment: green repository head, Convex production deploy, Cloudflare worker deploy with version ID `49f6d994-d89b-4ab4-b706-d5b55f22d02d`, binary object route protocol qualification, packaged desktop candidate `dist/Cozea-0.2.3-beta.3-arm64.dmg`).
 
 ## How this file is used
