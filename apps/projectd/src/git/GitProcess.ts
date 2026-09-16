@@ -34,6 +34,23 @@ export interface GitProcessResult {
   stderrBuffer: Buffer
 }
 
+function cleanStaleIndexLock(cwd: string): void {
+  try {
+    const candidates = [
+      path.join(cwd, ".git", "index.lock"),
+      path.join(cwd, "index.lock"),
+    ]
+    for (const lockPath of candidates) {
+      const stat = fs.statSync(lockPath, { throwIfNoEntry: false })
+      if (stat && Date.now() - stat.mtimeMs > 5_000) {
+        fs.unlinkSync(lockPath)
+      }
+    }
+  } catch {
+    // Ignore errors cleaning up stale lock
+  }
+}
+
 export class GitProcess {
   private readonly explicitPath?: string
   private cachedHealth: GitProcessHealth | null = null
@@ -196,6 +213,7 @@ export class GitProcess {
       if (options.stdin && options.stdinFile) {
         throw new Error("Git execute accepts stdin or stdinFile, not both")
       }
+      cleanStaleIndexLock(options.cwd)
       let stdinFd: number | null = null
       const closeStdinFile = (): void => {
         if (stdinFd !== null) {

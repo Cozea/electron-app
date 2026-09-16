@@ -730,7 +730,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   project: {
     listGitBranches: (options: { workspaceId: string }) => ipcRenderer.invoke('project:listGitBranches', options),
-    checkoutGitBranch: (options: { workspaceId: string; branch: string }) =>
+    checkoutGitBranch: (options: { workspaceId: string; branch: string; stash?: boolean }) =>
       ipcRenderer.invoke('project:checkoutGitBranch', options),
     createGitWorktree: (options: { workspaceId: string; branch: string; newBranch?: string; path?: string | null }) =>
       ipcRenderer.invoke('project:createGitWorktree', options),

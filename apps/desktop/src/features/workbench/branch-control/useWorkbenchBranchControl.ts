@@ -4,12 +4,16 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "reac
 
 import {
   getWorkspaceGitStatusSummary,
+  humanizeGitError,
+  parseBranchCheckoutConflict,
   resolveDisplayedWorkbenchBranch,
   resolveWorkbenchBranchAriaLabel,
   resolveWorkbenchBranchChromeLabel,
   resolveWorkbenchBranchTooltipDetail,
+  type BranchCheckoutConflict,
 } from "./workbenchBranchDisplay"
 import { checkoutGitBranchCompat, loadGitBranchesCompat } from "./workbenchBranchCompat"
+import { appToast } from "@/lib/appToast"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { deriveLocalBranchNameFromRemoteRef } from "@/lib/git/projectBranchToolbar"
 import {
@@ -195,6 +199,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   const [hasVerifiedGitStatus, setHasVerifiedGitStatus] = useState(false)
   const [gitStatus, setGitStatus] = useState<GitToolbarSnapshot["gitStatus"]>(null)
   const [branches, setBranches] = useState<NativeGitBranch[]>([])
+  const [branchConflict, setBranchConflict] = useState<BranchCheckoutConflict | null>(null)
   const syncContext = useOptionalProjectSyncContext()
 
   useEffect(() => {
@@ -304,17 +309,26 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
   }, [branchCwd, input.projectId, refreshGitState])
 
   const handleBranchSelect = useCallback(
-    async (branch: NativeGitBranch) => {
+    async (branch: NativeGitBranch, options?: { stash?: boolean }) => {
       if (!input.projectId || !branchCwd || isSwitching) return
 
       setIsSwitching(true)
       setLastError(null)
 
+      const checkoutTarget = branch.isRemote
+        ? deriveLocalBranchNameFromRemoteRef(branch.name)
+        : branch.name
+
       try {
-        const checkoutTarget = branch.name
-        const checkoutResult = await checkoutGitBranchCompat(branchCwd, checkoutTarget)
+        const checkoutResult = await checkoutGitBranchCompat(branchCwd, checkoutTarget, options)
         if (!checkoutResult.success) {
-          throw new Error(checkoutResult.error || "Failed to switch branches")
+          const rawError = checkoutResult.error || "Failed to switch branches"
+          const conflict = parseBranchCheckoutConflict(rawError, checkoutTarget)
+          if (conflict && !options?.stash) {
+            setBranchConflict(conflict)
+            return
+          }
+          throw new Error(rawError)
         }
 
         const statusResult = await window.electronAPI.workspaceSync
@@ -323,7 +337,7 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
         const nextBranch =
           statusResult?.currentBranch ??
           checkoutResult.branch ??
-          (branch.isRemote ? deriveLocalBranchNameFromRemoteRef(branch.name) : branch.name)
+          checkoutTarget
 
         rememberProjectBranchSession({
           projectId: input.projectId,
@@ -332,17 +346,41 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
           workspaceId: branchCwd,
         })
 
+        setBranchConflict(null)
         await refreshGitState()
         await input.onLaneStateChange?.()
+        appToast.success({
+          title: "Branch switched",
+          description: `Now working on ${nextBranch}.`,
+        })
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to switch branches"
-        setLastError(message)
+        const rawMessage = error instanceof Error ? error.message : "Failed to switch branches"
+        const friendlyMessage = humanizeGitError(rawMessage)
+        setLastError(friendlyMessage)
+        appToast.error({ title: "Failed to switch branches", description: friendlyMessage })
       } finally {
         setIsSwitching(false)
       }
     },
     [branchCwd, input.collabBranch, input.onLaneStateChange, input.projectId, isSwitching, refreshGitState],
   )
+
+  const handleStashAndSwitch = useCallback(async () => {
+    if (!branchConflict) return
+    const target = branchConflict.targetBranch
+    const targetBranchObj: NativeGitBranch = {
+      name: target,
+      current: false,
+      isRemote: false,
+      isDefault: false,
+      worktreePath: null,
+    }
+    await handleBranchSelect(targetBranchObj, { stash: true })
+  }, [branchConflict, handleBranchSelect])
+
+  const dismissBranchConflict = useCallback(() => {
+    setBranchConflict(null)
+  }, [])
 
   const handleOpenNativeBranchMenu = useCallback(
     async (event: MouseEvent<HTMLButtonElement>) => {
@@ -467,5 +505,8 @@ export function useWorkbenchBranchControl(input: UseWorkbenchBranchControlInput)
     isBusy: isLoading || isSwitching,
     showActionSpinner: isSwitching,
     handleOpenNativeBranchMenu,
+    branchConflict,
+    dismissBranchConflict,
+    handleStashAndSwitch,
   }
 }

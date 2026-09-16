@@ -7,6 +7,9 @@ import { cn } from "@/lib/utils"
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
 import { useWorkbenchBranchControl } from "@/features/workbench/branch-control/useWorkbenchBranchControl"
+import { BranchCheckoutConflictDialog } from "@/features/workbench/branch-control/BranchCheckoutConflictDialog"
+import { useViewTransitionNavigate } from "@/lib/navigation"
+import { buildProjectPath } from "@/contexts/project/projectRoutes"
 
 import { WorkbenchBranchStatusIcon } from "@/features/workbench/branch-control/WorkbenchBranchStatusIcon"
 
@@ -54,6 +57,9 @@ export function WorkbenchHeaderBranchControl({
     isBusy,
     showActionSpinner,
     handleOpenNativeBranchMenu,
+    branchConflict,
+    dismissBranchConflict,
+    handleStashAndSwitch,
   } = useWorkbenchBranchControl({
     projectId,
     workspaceId,
@@ -62,6 +68,14 @@ export function WorkbenchHeaderBranchControl({
     activeLane: routeContext?.activeLane ?? null,
     onLaneStateChange,
   })
+
+  const navigate = useViewTransitionNavigate()
+  const handleGoToCommit = useCallback(() => {
+    dismissBranchConflict()
+    if (projectId) {
+      navigate(buildProjectPath(projectId, "changes"))
+    }
+  }, [dismissBranchConflict, navigate, projectId])
 
   const { t } = useTranslation()
   const ariaLabel =
@@ -78,38 +92,49 @@ export function WorkbenchHeaderBranchControl({
   ) : null
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "h-7 gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60 transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
-            triggerClassName,
-          )}
-          disabled={!branchCwd}
-          aria-busy={isBusy}
-          aria-haspopup="menu"
-          aria-label={ariaLabel}
-          onClick={handleOpenNativeBranchMenu}
-        >
-          {showActionSpinner ? (
-            <div className="loader text-muted-foreground" />
-          ) : iconPosition === "leading" ? (
-            branchIcon
-          ) : null}
-          <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
-          {iconPosition === "trailing" ? branchIcon : null}
-          {trailing ? (
-            <span className="inline-flex shrink-0 items-center pointer-events-none" aria-hidden="true">
-              {trailing}
-            </span>
-          ) : null}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">{tooltipText}</TooltipContent>
-    </Tooltip>
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-7 gap-1.5 rounded-md border-0 bg-transparent px-1.5 text-sm font-medium text-muted-foreground shadow-none hover:bg-muted/60 transition-[background-color,color,transform] duration-150 active:scale-[0.98]",
+              triggerClassName,
+            )}
+            disabled={!branchCwd}
+            aria-busy={isBusy}
+            aria-haspopup="menu"
+            aria-label={ariaLabel}
+            onClick={handleOpenNativeBranchMenu}
+          >
+            {showActionSpinner ? (
+              <div className="loader text-muted-foreground" />
+            ) : iconPosition === "leading" ? (
+              branchIcon
+            ) : null}
+            <span className="max-w-[160px] truncate leading-none">{chromeLabel}</span>
+            {iconPosition === "trailing" ? branchIcon : null}
+            {trailing ? (
+              <span className="inline-flex shrink-0 items-center pointer-events-none" aria-hidden="true">
+                {trailing}
+              </span>
+            ) : null}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">{tooltipText}</TooltipContent>
+      </Tooltip>
+
+      {branchConflict ? (
+        <BranchCheckoutConflictDialog
+          conflict={branchConflict}
+          onDismiss={dismissBranchConflict}
+          onStashAndSwitch={handleStashAndSwitch}
+          onGoToCommit={handleGoToCommit}
+        />
+      ) : null}
+    </>
   )
 }
 

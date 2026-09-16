@@ -2224,7 +2224,7 @@ export interface ElectronAPI {
   }
   project: {
     listGitBranches: (options: { workspaceId: string }) => Promise<ProjectGitBranchListResult>
-    checkoutGitBranch: (options: { workspaceId: string; branch: string }) => Promise<ProjectGitCheckoutResult>
+    checkoutGitBranch: (options: { workspaceId: string; branch: string; stash?: boolean }) => Promise<ProjectGitCheckoutResult>
     createGitWorktree: (options: {
       workspaceId: string
       branch: string

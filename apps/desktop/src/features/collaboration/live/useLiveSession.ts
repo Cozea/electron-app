@@ -26,7 +26,8 @@ import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation"
 import { normalizeSessionRepositoryUrl } from "@shared/collaboration/repositoryUrl"
-import { findOpenSessionById, findWorkspaceSession } from "../collaborationGate"
+import { findBranchSession, findOpenSessionById, findWorkspaceSession } from "../collaborationGate"
+import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { useDaemonCollaborationSession } from "../daemon/useDaemonCollaborationSession"
 import { useSessionMedia, type SessionMediaController } from "../media/useSessionMedia"
 import { cacheProjectSessions, readCachedProjectSessions } from "./liveSessionCache"
@@ -140,9 +141,10 @@ export function useLiveSession(input: {
   workspaceId: string | null
   rootPath: string | null
   principalId: string | null
+  activeBranch?: string | null
 }): LiveSessionController {
   const navigate = useViewTransitionNavigate()
-  const { enabled, sessions, workspaceId, projectId } = input
+  const { enabled, sessions, workspaceId, projectId, activeBranch } = input
 
   useEffect(() => {
     if (projectId && sessions && sessions.length > 0) {
@@ -156,7 +158,11 @@ export function useLiveSession(input: {
   }, [projectId, sessions])
 
   const effectiveSessions = sessions ?? cachedSessions
-  const session = enabled ? findWorkspaceSession<LiveSessionRecord>(effectiveSessions, workspaceId) : null
+  const workspaceSession = enabled ? findWorkspaceSession<LiveSessionRecord>(effectiveSessions, workspaceId) : null
+  const branchSession = enabled && !workspaceSession && activeBranch
+    ? findBranchSession<LiveSessionRecord>(effectiveSessions, activeBranch)
+    : null
+  const session = workspaceSession ?? branchSession ?? null
   const sessionId = session?._id ?? null
 
   const membersQuery = useSafeConvexQuery(
@@ -239,6 +245,7 @@ export function useLiveSession(input: {
         setActive: true,
       })
       if (!ensured.success) throw new Error(ensured.error)
+      invalidateProjectWorkspaceResolution(input.projectId)
       navigate(buildProjectPath(input.projectId, "workbench"), {
         state: buildProjectRouteNavigationState({
           projectId: input.projectId,
@@ -402,6 +409,9 @@ export function useLiveSession(input: {
       run("switch", "Could not open the Session Workbench", async () => {
         const target = findOpenSessionById(sessions, publicSessionId)
         if (!target) throw new Error("That live session is no longer available.")
+        if (target.viewerMembership !== "active") {
+          await joinSession({ sessionId: target._id })
+        }
         await ensureAndOpenSessionWorkbench(target)
       }),
     media,
