@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { requestGitHubJson } from '../../../../shared/github/apiFetch'
 import { loadBundledCapabilityCatalog, loadBundledRuntimePublicKey } from './runtimeManifest'
 import type { CapabilityCatalog } from './runtimeTypes'
 import { verifyCatalogAsset } from './catalogVerify'
@@ -97,12 +98,16 @@ function getCachedCatalogSignaturePath(): string {
   return path.join(getRuntimeMetaDir(), 'capability-catalog.sig')
 }
 
+function githubToken(): string | undefined {
+  return process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || undefined
+}
+
 function githubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json,application/octet-stream',
     'User-Agent': 'cozea-capability-catalog',
   }
-  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
+  const token = githubToken()
   if (token) {
     headers.Authorization = `Bearer ${token}`
   }
@@ -181,9 +186,20 @@ async function fetchReleaseAssets(): Promise<Map<string, string>> {
     : [`https://api.github.com/repos/${owner}/${repo}/releases/latest`]
 
   for (const endpoint of endpoints) {
-    const response = await fetch(endpoint, { headers: githubHeaders() })
-    if (!response.ok) continue
-    const payload = await response.json() as { assets?: Array<{ name?: string; browser_download_url?: string }> }
+    // Went through a bare `fetch` that followed redirects, had no deadline and
+    // parsed an unbounded body in the main process -- while sending a bearer
+    // token whenever GITHUB_TOKEN or GH_TOKEN is set.
+    let payload: { assets?: Array<{ name?: string; browser_download_url?: string }> }
+    try {
+      payload = (await requestGitHubJson(endpoint, {
+        token: githubToken(),
+        userAgent: 'cozea-capability-catalog',
+        timeoutMs: 15_000,
+      })) as { assets?: Array<{ name?: string; browser_download_url?: string }> }
+    } catch {
+      // A tagged release may simply not exist; the next endpoint is the fallback.
+      continue
+    }
     const map = new Map<string, string>()
     for (const asset of payload.assets ?? []) {
       const name = asset.name?.trim()
@@ -196,6 +212,12 @@ async function fetchReleaseAssets(): Promise<Map<string, string>> {
   return new Map()
 }
 
+/**
+ * Left on a plain `fetch` on purpose. Release assets redirect to a CDN, so
+ * refusing redirects here would break downloading them, and a total-duration
+ * deadline would abort a large artifact that is still arriving. Bounding this
+ * one needs a stall timeout rather than a wall clock, which is a different fix.
+ */
 async function downloadToFile(url: string, destinationPath: string): Promise<void> {
   const response = await fetch(url, { headers: githubHeaders() })
   if (!response.ok || !response.body) {

@@ -4,6 +4,7 @@ import { sign } from "node:crypto"
 import { ConvexError, v } from "convex/values"
 import { action, type ActionCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
+import { requestGitHubJson } from "../shared/github/apiFetch"
 import type { Id } from "./_generated/dataModel"
 
 interface CredentialScope {
@@ -30,26 +31,22 @@ export async function issueRepositoryInstallationToken(grant: RepositoryGrant, a
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url")
   const unsigned = `${encode({ alg: "RS256", typ: "JWT" })}.${encode({ iat: now - 60, exp: now + 540, iss: appId })}`
   const jwt = `${unsigned}.${sign("RSA-SHA256", Buffer.from(unsigned), normalizedKey).toString("base64url")}`
-  const response = await fetchFn(`https://api.github.com/app/installations/${grant.installationId}/access_tokens`, {
-    method: "POST", redirect: "error", signal: AbortSignal.timeout(15_000),
-    headers: { Authorization: `Bearer ${jwt}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-    body: JSON.stringify({ repository_ids: [grant.repositoryId], permissions: purpose === "git_write" ? { contents: "write" } : { contents: "read", pull_requests: "write" } }),
-  })
-  if (!response.ok) { await response.body?.cancel(); throw new Error("GitHub authorization failed") }
-  const reader = response.body?.getReader()
-  if (!reader) throw new Error("GitHub authorization failed")
-  const chunks: Uint8Array[] = []
-  let size = 0
-  try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      size += value.length
-      if (size > 64 * 1024) throw new Error("Invalid GitHub authorization response")
-      chunks.push(value)
-    }
-  } finally { await reader.cancel().catch(() => undefined); reader.releaseLock() }
-  const result = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { token?: unknown; expires_at?: string }
+  // Shares the bounded, redirect-refusing reader with every other GitHub call.
+  // An empty answer collapses to {}, which the validation below rejects for the
+  // same reason a malformed one is rejected: no usable token in it.
+  const result = ((await requestGitHubJson(
+    `https://api.github.com/app/installations/${grant.installationId}/access_tokens`,
+    {
+      token: jwt,
+      body: {
+        repository_ids: [grant.repositoryId],
+        permissions: purpose === "git_write" ? { contents: "write" } : { contents: "read", pull_requests: "write" },
+      },
+      maxBytes: 64 * 1024,
+      timeoutMs: 15_000,
+      fetchFn,
+    },
+  )) ?? {}) as { token?: unknown; expires_at?: string }
   const expiresAt = Date.parse(result.expires_at ?? "")
   if (typeof result.token !== "string" || !result.token || result.token.length > 16000 || !Number.isFinite(expiresAt) ||
     expiresAt <= Date.now() || expiresAt > Date.now() + 65 * 60_000) throw new Error("Invalid GitHub authorization response")

@@ -1,5 +1,6 @@
 import type { ProjectdPullRequestResult } from "@cozea/projectd-protocol"
 import { parseGitHubRepository } from "@shared/git/githubRepository"
+import { requestGitHubJson } from "@shared/github/apiFetch"
 import type { SessionPullRequestRecord, SessionPullRequestStore } from "./SessionPullRequestStore"
 
 interface RepositoryScope { owner: string; repository: string }
@@ -180,29 +181,19 @@ export class GitHubSessionPullRequest {
   }
 
   private async request(repository: string, token: string, suffix: string, body?: unknown): Promise<unknown> {
-    const root = `https://api.github.com/repos/${repository}`
     try {
-      const response = await (this.options.fetchFn ?? fetch)(root + suffix, {
-        method: body === undefined ? "GET" : "POST", redirect: "error", signal: AbortSignal.timeout(30_000),
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
+      return await requestGitHubJson(`https://api.github.com/repos/${repository}${suffix}`, {
+        token,
+        body,
+        maxBytes: 1024 * 1024,
+        timeoutMs: 30_000,
+        fetchFn: this.options.fetchFn,
       })
-      if (!response.ok) { await response.body?.cancel(); throw new Error("Request failed") }
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error("Missing response")
-      const chunks: Uint8Array[] = []
-      let size = 0
-      try {
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          size += value.length
-          if (size > 1024 * 1024) throw new Error("Response too large")
-          chunks.push(value)
-        }
-      } finally { await reader.cancel().catch(() => undefined); reader.releaseLock() }
-      return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown
     } catch {
+      // The sanitised message stays here rather than moving into the shared
+      // helper: a test pins that nothing a provider says reaches the caller,
+      // because whatever it says may quote the request, and the request carries
+      // the token.
       throw new Error("GitHub PR request failed. Check repository access and retry.")
     }
   }

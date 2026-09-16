@@ -3,6 +3,7 @@ import type {
   DevAppRuntimeReleaseImage,
 } from '../../../../shared/devAppContainedRuntime'
 import type { DevAppParts } from '../../../../shared/devAppParts'
+import { GitHubApiError, requestGitHubJson } from '../../../../shared/github/apiFetch'
 import {
   authorizeDevAppRuntimeBuildInConvex,
   completeDevAppRuntimeBuildInConvex,
@@ -52,21 +53,27 @@ async function dispatchBuild(env: Env, buildId: string): Promise<void> {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(env.DEVAPP_BUILDER_GITHUB_REPOSITORY)) {
     throw new Error('The trusted DevApp builder repository is invalid')
   }
-  const response = await fetch(
-    `https://api.github.com/repos/${env.DEVAPP_BUILDER_GITHUB_REPOSITORY}/dispatches`,
-    {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${env.DEVAPP_BUILDER_GITHUB_TOKEN}`,
-        accept: 'application/vnd.github+json',
-        'content-type': 'application/json',
-        'user-agent': 'Cozea-DevApp-Builder/1',
-        'x-github-api-version': '2022-11-28',
+  // Went through a bare `fetch` that followed redirects and had no deadline,
+  // while sending the builder token. A redirect would have handed that token to
+  // whatever host the reply named.
+  try {
+    await requestGitHubJson(
+      `https://api.github.com/repos/${env.DEVAPP_BUILDER_GITHUB_REPOSITORY}/dispatches`,
+      {
+        token: env.DEVAPP_BUILDER_GITHUB_TOKEN,
+        userAgent: 'Cozea-DevApp-Builder/1',
+        body: { event_type: 'devapp-image-build', client_payload: { buildId } },
+        timeoutMs: 15_000,
       },
-      body: JSON.stringify({ event_type: 'devapp-image-build', client_payload: { buildId } }),
-    },
-  )
-  if (!response.ok) throw new Error(`The trusted builder rejected dispatch (${response.status})`)
+    )
+  } catch (error) {
+    const status = error instanceof GitHubApiError ? error.status : null
+    throw new Error(
+      status === null
+        ? 'The trusted builder could not be reached for dispatch'
+        : `The trusted builder rejected dispatch (${status})`,
+    )
+  }
 }
 
 export async function handleCreateDevAppRuntimeBuild(
