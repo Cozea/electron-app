@@ -815,6 +815,14 @@ async function deleteProjectPurgeStage(
       await deleteRows(ctx, rows)
       return rows.length
     }
+    case 11: {
+      const rows = await ctx.db
+        .query("projectStorageUsage")
+        .withIndex("by_project", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
     case 13: {
       const rows = await ctx.db
         .query("projectTasks")

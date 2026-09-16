@@ -570,6 +570,24 @@ export default defineSchema({
     .index("by_runtime_build_id", ["runtimeBuildId"]),
 
 
+  projectStorageUsage: defineTable({
+    projectId: v.id("projects"),
+    totalBytes: v.number(),
+    lastCalculatedAt: v.number(),
+    breakdown: v.object({
+      sourceAndConfig: v.number(),
+      collaborationData: v.number(),
+      aiHistory: v.number(),
+      buildCache: v.number(),
+      snapshots: v.number(),
+      gitHistory: v.number(),
+      databaseBackups: v.number(),
+      assets: v.number(),
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_project", ["projectId"]),
+
   // Project invites for pending team members
   projectTasks: defineTable({
     projectId: v.id("projects"),
