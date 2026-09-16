@@ -22,6 +22,14 @@ const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 const DEFAULT_AUTHOR_EMAIL = 'cozea@users.noreply.github.com'
 const GIT_EXECUTE_TIMEOUT_MS = 30_000
 const MAX_UNTRACKED_DIFF_FILES = 50
+/**
+ * Ceiling on a single command's stdout, matching projectd's `GitProcess`.
+ *
+ * Phase 4b moved this code into the Electron **main** process, so an
+ * unbounded diff — a vendored binary, a generated bundle — would grow in the
+ * process that owns the window rather than in a worker that could be killed.
+ */
+const MAX_GIT_STDOUT_BYTES = 50 * 1024 * 1024
 
 interface GitExecuteOptions {
   cwd: string
@@ -111,6 +119,12 @@ export interface GitChangesResult {
   diff?: string
   baseRef?: string
   headRef?: string
+  /**
+   * The commit HEAD points at, for the `current` scope. Absent in a repository
+   * with no commits yet. `headRef` is the literal string `'working tree'`
+   * there, so it cannot answer "did a commit happen".
+   */
+  headCommit?: string
   error?: string
 }
 
@@ -118,39 +132,65 @@ async function executeGit(options: GitExecuteOptions): Promise<GitExecuteResult>
   return await new Promise((resolve) => {
     const proc = spawn('git', options.args, {
       cwd: options.cwd,
-      env: { ...process.env, ...options.env },
+      env: {
+        ...process.env,
+        // Never wait on a credential prompt: nothing here is interactive, and a
+        // blocked `git` would sit in the main process until the timeout.
+        GIT_TERMINAL_PROMPT: '0',
+        // Everything below parses Git's output, so pin it to the C locale.
+        LC_ALL: 'C',
+        LANG: 'C',
+        // Callers still win: checkpoint capture sets authorship and GIT_INDEX_FILE.
+        ...options.env,
+      },
     })
 
-    let stdout = ''
+    // Collected as bytes rather than appended as strings: a chunk boundary can
+    // fall inside a multi-byte character, and decoding each chunk on its own
+    // turns that character into replacement bytes.
+    const stdoutChunks: Buffer[] = []
+    let stdoutBytes = 0
     let stderr = ''
     let settled = false
+    let timeoutId: NodeJS.Timeout | undefined
 
-    const timeoutId = setTimeout(() => {
+    const settle = (result: GitExecuteResult): void => {
       if (settled) return
       settled = true
+      if (timeoutId) clearTimeout(timeoutId)
+      resolve(result)
+    }
+
+    timeoutId = setTimeout(() => {
       try { proc.kill() } catch {}
-      resolve({
+      settle({
         stdout: '',
         stderr: `git ${options.args[0]} timed out after ${GIT_EXECUTE_TIMEOUT_MS / 1000}s`,
         code: 1,
       })
     }, GIT_EXECUTE_TIMEOUT_MS)
 
-    proc.stdout.on('data', (data: Buffer) => { stdout += data.toString() })
+    proc.stdout.on('data', (data: Buffer) => {
+      stdoutBytes += data.length
+      if (stdoutBytes > MAX_GIT_STDOUT_BYTES) {
+        try { proc.kill('SIGKILL') } catch {}
+        settle({
+          stdout: '',
+          stderr: `git ${options.args[0]} produced more than ${MAX_GIT_STDOUT_BYTES} bytes`,
+          code: 1,
+        })
+        return
+      }
+      stdoutChunks.push(data)
+    })
     proc.stderr.on('data', (data: Buffer) => { stderr += data.toString() })
 
     proc.on('close', (code: number | null) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeoutId)
-      resolve({ stdout, stderr, code: code ?? 1 })
+      settle({ stdout: Buffer.concat(stdoutChunks).toString('utf8'), stderr, code: code ?? 1 })
     })
 
     proc.on('error', (error: Error) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timeoutId)
-      resolve({ stdout: '', stderr: error.message, code: 1 })
+      settle({ stdout: '', stderr: error.message, code: 1 })
     })
   })
 }
@@ -670,6 +710,7 @@ async function readCurrentWorkingTreeChanges(cwd: string): Promise<{
   diff: string
   baseRef: string
   headRef: string
+  headCommit: string | null
 }> {
   const headCommit = await resolveHeadCommit(cwd)
 
@@ -709,6 +750,7 @@ async function readCurrentWorkingTreeChanges(cwd: string): Promise<{
     diff,
     baseRef: headCommit ? 'HEAD' : 'empty tree',
     headRef: 'working tree',
+    headCommit,
   }
 }
 
@@ -879,6 +921,7 @@ export async function readChanges(args: {
         diff: result.diff,
         baseRef: result.baseRef,
         headRef: result.headRef,
+        headCommit: result.headCommit ?? undefined,
       }
     }
 
