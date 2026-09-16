@@ -659,6 +659,10 @@ function readWorkbenchWorkspaceId(workbench: PersistedWorkbenchRecord): string |
   return normalizeWorkspaceId(workbench.workspaceId ?? workbench.projectPath)
 }
 
+function isKnownWorkbenchTileType(value: unknown): value is WorkbenchTileType {
+  return typeof value === "string" && Object.hasOwn(WORKBENCH_TILE_DEFAULT_TITLES, value)
+}
+
 function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchProjectState {
   const workspaceId = readWorkbenchWorkspaceId(workbench)
   const sanitizedTiles: Record<string, WorkbenchTile> = {}
@@ -666,10 +670,14 @@ function sanitizeWorkbenchState(workbench: PersistedWorkbenchRecord): WorkbenchP
 
   for (const [tileId, tile] of Object.entries(workbench.tiles ?? {})) {
     const tileType = (tile as { type?: string } | null)?.type
+    // A tile type this build does not know (removed, renamed, or persisted by
+    // a checkout of another branch) has no registry entry, so keeping it would
+    // crash the dockview on its first lookup. Treat it like an obsolete tile.
     if (
       !tile ||
       tileType === "tasks" ||
-      tileType === "changes"
+      tileType === "changes" ||
+      !isKnownWorkbenchTileType(tileType)
     ) {
       removedObsoleteTile = true
       continue
