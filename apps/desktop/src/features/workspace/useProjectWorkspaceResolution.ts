@@ -39,7 +39,7 @@ export function useProjectWorkspaceResolution(
   expectedRepo?: RepoIdentity | null,
   preferredWorkspaceId?: string | null,
   options?: { allowCandidateScan?: boolean },
-): { result: ResolveProjectWorkspaceResult | null, refresh: () => void } {
+): { result: ResolveProjectWorkspaceResult | null, refresh: () => Promise<void> } {
   return useSharedWorkspaceResolution(
     projectId,
     projectSlug,

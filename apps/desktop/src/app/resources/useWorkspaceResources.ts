@@ -23,7 +23,7 @@ export function useSharedWorkspaceResolution(
   expectedRepo?: RepoIdentity | null,
   preferredWorkspaceId?: string | null,
   options?: { allowCandidateScan?: boolean }
-): { result: ResolveProjectWorkspaceResult | null; refresh: () => void } {
+): { result: ResolveProjectWorkspaceResult | null; refresh: () => Promise<void> } {
   const resource = useMemo(() => {
     if (!projectId) return null;
     return getWorkspaceResolutionResource(
@@ -67,11 +67,12 @@ export function useSharedWorkspaceResolution(
     }
   }, [resource]);
 
-  const refresh = useCallback(() => {
-    if (resource) {
-      resource.invalidate('manual refresh');
-      void resource.ensure('refresh').catch(() => {});
-    }
+  // Resolves once the re-resolve has landed, so a caller that changed the
+  // workspace can keep its busy state until the new result is what renders.
+  const refresh = useCallback(async () => {
+    if (!resource) return;
+    resource.invalidate('manual refresh');
+    await resource.ensure('refresh').catch(() => {});
   }, [resource]);
 
   return { result, refresh };

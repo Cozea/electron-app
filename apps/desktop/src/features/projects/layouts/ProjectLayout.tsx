@@ -465,6 +465,10 @@ export function ProjectLayout({
     [chromeHeader, isBuildsView],
   );
 
+  // The action the repair screen is carrying out, kept until the re-resolve
+  // lands so the screen never snaps back to idle while it is still on screen.
+  const [pendingRepairAction, setPendingRepairAction] = useState<WorkspaceResolutionAction | null>(null);
+
   const handleRepairAction = useCallback(
     async (action: WorkspaceResolutionAction) => {
       if (!workspaceProjectId) return;
@@ -482,18 +486,21 @@ export function ProjectLayout({
         (project as { sourceControl?: { defaultBranch?: string | null } | null } | null | undefined)?.sourceControl?.defaultBranch ||
         undefined;
 
+      // Locating starts with the OS folder picker; the work begins once a folder is chosen.
+      if (action.kind !== "locate") setPendingRepairAction(action);
       try {
         switch (action.kind) {
           case "locate": {
             const folderPath = await window.desktopBridge?.pickFolder();
             if (folderPath) {
+              setPendingRepairAction(action);
               const bindResult = await window.electronAPI.workspace!.attachExistingFolder({
                 projectId,
                 folderPath,
                 setActive: true,
               });
               if (bindResult.success) {
-                refreshWorkspace();
+                await refreshWorkspace();
               } else {
                 appToast.error({
                   title: t("workspace.bindFailed"),
@@ -510,7 +517,7 @@ export function ProjectLayout({
               setActive: true,
             });
             if (bindResult.success) {
-              refreshWorkspace();
+              await refreshWorkspace();
             } else {
               appToast.error({
                 title: t("workspace.bindFailed"),
@@ -527,7 +534,7 @@ export function ProjectLayout({
               setActive: true,
             });
             if (createResult.success) {
-              refreshWorkspace();
+              await refreshWorkspace();
             } else {
               appToast.error({
                 title: t("workspace.createFailed"),
@@ -549,7 +556,7 @@ export function ProjectLayout({
               setActive: true,
             });
             if (cloneResult.success) {
-              refreshWorkspace();
+              await refreshWorkspace();
             } else {
               appToast.error({
                 title: t("workspace.cloneFailed"),
@@ -561,7 +568,7 @@ export function ProjectLayout({
           case "forget": {
             if ("workspaceId" in action && action.workspaceId) {
               await window.electronAPI.workspace!.forget(action.workspaceId);
-              refreshWorkspace();
+              await refreshWorkspace();
             }
             break;
           }
@@ -572,6 +579,8 @@ export function ProjectLayout({
           title: t("workspace.actionFailed"),
           description: err instanceof Error ? err.message : undefined,
         });
+      } finally {
+        setPendingRepairAction(null);
       }
     },
     [project, refreshWorkspace, routeSlug, t, workspaceProjectId],
@@ -635,6 +644,7 @@ export function ProjectLayout({
                       name: effectiveProjectName,
                     }}
                     onAction={handleRepairAction}
+                    pendingAction={pendingRepairAction}
                   />
                 ) : (
                   <>
