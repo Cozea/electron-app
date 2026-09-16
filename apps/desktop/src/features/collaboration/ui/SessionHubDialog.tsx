@@ -86,7 +86,7 @@ export function SessionHubDialog({
             </div>
           </div>
 
-          <DialogDescription className="text-xs text-muted-foreground">
+          <DialogDescription className="text-sm text-muted-foreground">
             {projectName ? `${projectName} · ` : ""}Active for {metrics.sessionDurationFormatted} · {metrics.totalOperations} edit operations batched
           </DialogDescription>
 
@@ -95,27 +95,27 @@ export function SessionHubDialog({
             <button
               type="button"
               className={cn(
-                "flex-1 px-3 py-1.5 rounded-sm text-xs font-medium transition-all text-center flex items-center justify-center gap-1.5",
+                "flex-1 px-3 py-1.5 rounded-sm text-sm font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer",
                 activeTab === "dashboard"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
               )}
               onClick={() => setActiveTab("dashboard")}
             >
-              <HugeiconsIcon icon={GitBranchIcon} className="size-3.5" />
+              <HugeiconsIcon icon={GitBranchIcon} className="size-4" />
               <span>Work & Call Dashboard</span>
             </button>
             <button
               type="button"
               className={cn(
-                "flex-1 px-3 py-1.5 rounded-sm text-xs font-medium transition-all text-center flex items-center justify-center gap-1.5",
+                "flex-1 px-3 py-1.5 rounded-sm text-sm font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer",
                 activeTab === "share"
                   ? "bg-background text-foreground shadow-xs"
                   : "text-muted-foreground hover:text-foreground",
               )}
               onClick={() => setActiveTab("share")}
             >
-              <HugeiconsIcon icon={Share01Icon} className="size-3.5" />
+              <HugeiconsIcon icon={Share01Icon} className="size-4" />
               <span>Share & Invites</span>
             </button>
           </div>
@@ -152,7 +152,7 @@ export function SessionHubDialog({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 text-xs gap-1.5"
+                className="h-8 text-sm gap-1.5"
                 onClick={() => void liveSession.saveNow()}
               >
                 <HugeiconsIcon icon={FolderGitIcon} className="size-3.5 text-muted-foreground" />
@@ -165,7 +165,7 @@ export function SessionHubDialog({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40"
+              className="h-8 text-sm text-muted-foreground hover:text-destructive hover:border-destructive/40"
               onClick={() => {
                 onOpenChange(false)
                 liveSession.leave()
@@ -177,7 +177,7 @@ export function SessionHubDialog({
               <Button
                 variant="destructive"
                 size="sm"
-                className="h-8 text-xs gap-1.5"
+                className="h-8 text-sm gap-1.5"
                 disabled={liveSession.busyAction !== null}
                 onClick={() => {
                   onOpenChange(false)

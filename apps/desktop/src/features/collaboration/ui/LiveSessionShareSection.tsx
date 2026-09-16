@@ -230,20 +230,20 @@ export function LiveSessionShareSection({
 
   let body: ReactNode
   if (sessions === undefined) {
-    body = <p className="text-xs text-muted-foreground">Loading…</p>
+    body = <p className="text-sm text-muted-foreground">Loading…</p>
   } else if (!sync?.gitCwd || !activeBranch) {
     body = (
-      <p className="rounded-md border border-border/60 px-3 py-3 text-xs text-muted-foreground">
+      <p className="rounded-md border border-border/60 px-3 py-3 text-sm text-muted-foreground">
         Live sessions follow a Git branch. Open a project folder that is a Git repository to start one.
       </p>
     )
   } else if (!activeSession) {
     body = (
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-2.5 py-2">
-        <p className="min-w-0 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2.5">
+        <p className="min-w-0 text-sm text-muted-foreground">
           Nobody is editing <span className="font-mono text-foreground">{activeBranch}</span> live yet.
         </p>
-        <Button size="sm" className="h-8 shrink-0" disabled={busy !== null} onClick={onStartSession}>
+        <Button size="sm" className="h-8 text-sm shrink-0" disabled={busy !== null} onClick={onStartSession}>
           Start live session
         </Button>
       </div>
@@ -251,12 +251,12 @@ export function LiveSessionShareSection({
   } else {
     body = (
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/20 p-2.5">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/20 p-3">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium">
+            <p className="text-sm font-medium text-foreground">
               Live session on <span className="font-mono">{activeSession.branchName}</span>
             </p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {inSession.length} {inSession.length === 1 ? "person is" : "people are"} currently collaborating
               {activeSession.lifecycle === "ACTIVE" ? "." : ` (${activeSession.lifecycle.toLowerCase()}).`}
             </p>
@@ -295,13 +295,13 @@ export function LiveSessionShareSection({
                 {invitable.map((member) => {
                   const key = `invite:${String(member.principalId)}`
                   return (
-                    <div key={String(member.principalId)} className="flex items-center gap-2 px-1 text-xs">
-                      <span className="min-w-0 flex-1 truncate">{member.displayName}</span>
-                      <span className="text-[10px] text-muted-foreground">{member.role.replace(/_/g, " ")}</span>
+                    <div key={String(member.principalId)} className="flex items-center gap-2 px-1 text-sm">
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{member.displayName}</span>
+                      <span className="text-xs text-muted-foreground">{member.role.replace(/_/g, " ")}</span>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 px-2 text-[11px]"
+                        className="h-7 px-2.5 text-xs"
                         disabled={busy !== null}
                         onClick={() => inviteMember(member)}
                       >
@@ -319,18 +319,18 @@ export function LiveSessionShareSection({
                 onChange={(event) => setIdentityKey(event.target.value)}
                 placeholder="Another device's czd_… ID"
                 aria-label="Device ID to invite"
-                className="h-8 flex-1 font-mono text-xs"
+                className="h-9 flex-1 font-mono text-sm"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") inviteDevice()
                 }}
               />
-              <Button size="sm" className="h-8" disabled={!identityKey.trim() || busy !== null} onClick={inviteDevice}>
+              <Button size="sm" className="h-9 text-sm" disabled={!identityKey.trim() || busy !== null} onClick={inviteDevice}>
                 Invite
               </Button>
             </div>
           </>
         ) : (
-          <p className="text-[11px] text-muted-foreground">Only session managers can invite people to the session.</p>
+          <p className="text-xs text-muted-foreground">Only session managers can invite people to the session.</p>
         )}
       </div>
     )
@@ -339,15 +339,15 @@ export function LiveSessionShareSection({
   return (
     <section className="space-y-2" aria-label="Live session">
       <div>
-        <p className="text-xs font-medium">Live session</p>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-sm font-medium text-foreground">Live session</p>
+        <p className="text-xs text-muted-foreground">
           Everyone in a live session edits the same branch in real time, each from their own Mac.
         </p>
       </div>
       {message ? (
         <p
           className={cn(
-            "rounded-md px-3 py-2 text-xs",
+            "rounded-md px-3 py-2 text-sm",
             message.kind === "error" ? "bg-destructive/10 text-destructive" : "bg-muted text-muted-foreground",
           )}
         >
@@ -357,14 +357,14 @@ export function LiveSessionShareSection({
       {body}
       {otherSessions.length > 0 ? (
         <div className="space-y-1.5">
-          <p className="text-[11px] text-muted-foreground">Other live sessions in this project</p>
+          <p className="text-sm font-medium text-muted-foreground">Other live sessions in this project</p>
           {otherSessions.map((candidate) => (
-            <div key={String(candidate._id)} className="flex items-center gap-2 px-1 text-xs">
-              <span className="min-w-0 flex-1 truncate font-mono">{candidate.branchName}</span>
+            <div key={String(candidate._id)} className="flex items-center gap-2 px-1 text-sm">
+              <span className="min-w-0 flex-1 truncate font-mono text-sm">{candidate.branchName}</span>
               <Button
                 size="sm"
                 variant="ghost"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 px-2.5 text-xs"
                 disabled={busy !== null}
                 onClick={() => openSessionWorkbench(candidate)}
               >
@@ -375,7 +375,7 @@ export function LiveSessionShareSection({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-7 px-2 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                  className="h-7 px-2.5 text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
                   disabled={busy !== null}
                   onClick={() => {
                     void run(`end:${candidate.publicSessionId}`, async () => {
