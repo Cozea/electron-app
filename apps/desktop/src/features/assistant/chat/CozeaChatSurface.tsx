@@ -34,11 +34,6 @@ import { motion, useReducedMotion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AppOverlayPortal } from "@/components/ui/app-overlay-portal";
 import { ComposerPendingApprovalActions } from "@/features/assistant/chat/ComposerPendingApprovalActions";
@@ -129,9 +124,15 @@ import {
   type PersistedComposerImageAttachment,
 } from "./promptStashStore";
 
+import {
+  ComposerSourceMenu,
+  type ComposerSourceSection,
+} from "./ComposerSourceMenu";
+
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Add01Icon as __PlusIconHugeIcon,
+  Globe02Icon as __GlobeIconHugeIcon,
   AlertCircleIcon as __CircleAlertIconHugeIcon,
   BubbleChatIcon as __ChatIconHugeIcon,
   Cancel01Icon as __XIconHugeIcon,
@@ -143,6 +144,8 @@ import {
   LockIcon as __LockIconHugeIcon,
   Mic01Icon as __Mic01IconHugeIcon,
 } from "@hugeicons/core-free-icons";
+import { FaFigma, FaSlack } from "react-icons/fa6";
+import { SiGmail } from "react-icons/si";
 
 import type {
   ComposerImageDraft,
@@ -921,6 +924,26 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       setShouldRenderModelPicker(false);
     }, MODEL_PICKER_PANEL_TRANSITION_MS);
   }, [isModelPickerOpen]);
+
+  useEffect(() => {
+    if (!isPlusMenuOpen) return;
+
+    const handlePlusMenuPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (
+        target?.closest("[data-composer-source-menu]") ||
+        target?.closest("[data-composer-plus-trigger]")
+      ) {
+        return;
+      }
+      setIsPlusMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePlusMenuPointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePlusMenuPointerDown, true);
+    };
+  }, [isPlusMenuOpen]);
 
   useEffect(() => {
     if (!isModelPickerOpen) return;
@@ -1799,105 +1822,172 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     return null;
   };
 
+  // Rows for the plus menu. Sources come first, then the modes and runtime
+  // controls that were in the old dropdown. Integrations we have not built yet
+  // are listed but disabled, so the menu never claims a connection we lack.
+  const plusMenuSections: ComposerSourceSection[] = [
+    {
+      key: "sources",
+      rows: [
+        {
+          key: "attach",
+          name: "Add photos & files",
+          description: "Upload from your computer",
+          icon: <HugeiconsIcon icon={__ImageAdd01IconHugeIcon} className="size-4" />,
+          disabled: attachDisabled,
+          title: `Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`,
+          onSelect: () => composerFileInputRef.current?.click(),
+        },
+        {
+          key: "web",
+          name: "Web search",
+          description: "Real-time news and info",
+          icon: <HugeiconsIcon icon={__GlobeIconHugeIcon} className="size-4" />,
+          disabled: true,
+          status: "Soon",
+          onSelect: () => {},
+        },
+        {
+          key: "figma",
+          name: "Figma",
+          description: "Design-to-code workflows",
+          icon: <FaFigma className="size-3.5" />,
+          disabled: true,
+          status: "Soon",
+          onSelect: () => {},
+        },
+        {
+          key: "slack",
+          name: "Slack",
+          description: "Read and manage Slack",
+          icon: <FaSlack className="size-3.5" />,
+          disabled: true,
+          status: "Soon",
+          onSelect: () => {},
+        },
+        {
+          key: "gmail",
+          name: "Gmail",
+          description: "Read and manage Gmail",
+          icon: <SiGmail className="size-3.5" />,
+          disabled: true,
+          status: "Soon",
+          onSelect: () => {},
+        },
+      ],
+    },
+    {
+      key: "modes",
+      rows: [
+        {
+          key: "debug",
+          name: "Debug Mode",
+          icon: <DebugBugIcon className="size-4 text-rose-400" />,
+          status: activeMode === "debug" ? "On" : undefined,
+          statusTone: "positive",
+          onSelect: () => updateComposerMode(activeMode === "debug" ? null : "debug"),
+        },
+        ...(props.selectedProvider !== "antigravity" &&
+        props.providerSnapshot?.showInteractionModeToggle !== false
+          ? [
+              {
+                key: "plan",
+                name: "Plan Mode",
+                icon: (
+                  <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 text-amber-400" />
+                ),
+                status: activeMode === "plan" ? "On" : undefined,
+                statusTone: "positive" as const,
+                onSelect: () => updateComposerMode(activeMode === "plan" ? null : "plan"),
+              },
+            ]
+          : []),
+        {
+          key: "ask",
+          name: "Ask Mode",
+          icon: <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4 text-sky-400" />,
+          status: activeMode === "ask" ? "On" : undefined,
+          statusTone: "positive",
+          onSelect: () => updateComposerMode(activeMode === "ask" ? null : "ask"),
+        },
+        ...(activeMode !== null
+          ? [
+              {
+                key: "clear-mode",
+                name: "Clear Mode",
+                icon: <HugeiconsIcon icon={__XIconHugeIcon} className="size-4" />,
+                onSelect: () => updateComposerMode(null),
+              },
+            ]
+          : []),
+      ],
+    },
+    {
+      key: "session",
+      rows: [
+        ...(props.onCompact &&
+        props.providerSnapshot?.slashCommands?.some((command) => command.name === "compact")
+          ? [
+              {
+                key: "compact",
+                name: "Compact context",
+                description: "Keeps chat history and your draft",
+                disabled: Boolean(props.compactUnavailableReason),
+                title:
+                  props.compactUnavailableReason ??
+                  "Summarize provider context; keep chat history and your draft",
+                onSelect: () => void props.onCompact?.(),
+              },
+            ]
+          : []),
+        {
+          key: "runtime",
+          name: "Runtime",
+          description:
+            props.selectedRuntimeMode === "full-access" ? "Full access" : "Approval required",
+          icon: (
+            <HugeiconsIcon
+              icon={
+                props.selectedRuntimeMode === "full-access"
+                  ? __CircleAlertIconHugeIcon
+                  : __LockIconHugeIcon
+              }
+              className="size-4"
+            />
+          ),
+          onSelect: () => void props.onToggleRuntimeMode(),
+        },
+      ],
+    },
+  ];
+
   const renderPlusDropdown = () => (
-    <DropdownMenu open={isPlusMenuOpen} onOpenChange={setIsPlusMenuOpen}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="size-8 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/80 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-white/10 transition-[background-color,color,transform] duration-150 active:scale-95 cursor-pointer outline-none"
-          title="Add context or change mode"
-          aria-label="Add context or change mode"
-        >
-          <HugeiconsIcon
-            icon={__PlusIconHugeIcon}
-            className={cn(
-              "size-4 stroke-[2] transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
-              isPlusMenuOpen && "rotate-45 text-foreground",
-            )}
-          />
-          {props.composerImages.length > 0 ? (
-            <span className="ml-0.5 text-[10px] font-bold text-primary animate-in fade-in zoom-in-50 duration-150">
-              {props.composerImages.length}
-            </span>
-          ) : null}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" side="top" className="w-56 p-1">
-        <DropdownMenuItem
-          disabled={attachDisabled}
-          onClick={() => composerFileInputRef.current?.click()}
-          title={`Attach images (max ${PROVIDER_SEND_TURN_MAX_ATTACHMENTS}, ${imageSizeLimitLabel} each)`}
-        >
-          <HugeiconsIcon
-            icon={__ImageAdd01IconHugeIcon}
-            className="size-4 mr-2 text-muted-foreground"
-          />
-          Attach Images
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => updateComposerMode(activeMode === "debug" ? null : "debug")}
-          className={cn(activeMode === "debug" && "bg-rose-500/10 text-rose-400")}
-        >
-          <DebugBugIcon className="size-4 mr-2 text-rose-400" />
-          <span className="flex-1">Debug Mode</span>
-          {activeMode === "debug" && <span className="text-xs text-rose-400">✓</span>}
-        </DropdownMenuItem>
-        {props.selectedProvider !== "antigravity" &&
-        props.providerSnapshot?.showInteractionModeToggle !== false ? (
-          <DropdownMenuItem
-            onClick={() => updateComposerMode(activeMode === "plan" ? null : "plan")}
-            className={cn(activeMode === "plan" && "bg-amber-500/10 text-amber-400")}
-          >
-            <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 mr-2 text-amber-400" />
-            <span className="flex-1">Plan Mode</span>
-            {activeMode === "plan" && <span className="text-xs text-amber-400">✓</span>}
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem
-          onClick={() => updateComposerMode(activeMode === "ask" ? null : "ask")}
-          className={cn(activeMode === "ask" && "bg-sky-500/10 text-sky-400")}
-        >
-          <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4 mr-2 text-sky-400" />
-          <span className="flex-1">Ask Mode</span>
-          {activeMode === "ask" && <span className="text-xs text-sky-400">✓</span>}
-        </DropdownMenuItem>
-        {activeMode !== null && (
-          <DropdownMenuItem onClick={() => updateComposerMode(null)}>
-            <HugeiconsIcon icon={__XIconHugeIcon} className="size-4 mr-2 text-muted-foreground" />
-            Clear Mode
-          </DropdownMenuItem>
+    <button
+      type="button"
+      data-composer-plus-trigger="true"
+      aria-expanded={isPlusMenuOpen}
+      aria-haspopup="menu"
+      className="size-8 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/80 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-white/10 transition-[background-color,color,transform] duration-150 active:scale-95 cursor-pointer outline-none"
+      title="Add context or change mode"
+      aria-label="Add context or change mode"
+      onClick={() => {
+        setIsModelPickerOpen(false);
+        setIsPlusMenuOpen((current) => !current);
+      }}
+    >
+      <HugeiconsIcon
+        icon={__PlusIconHugeIcon}
+        className={cn(
+          "size-4 stroke-[2] transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          isPlusMenuOpen && "rotate-45 text-foreground",
         )}
-        <DropdownMenuSeparator />
-        {props.onCompact &&
-        props.providerSnapshot?.slashCommands?.some((command) => command.name === "compact") ? (
-          <DropdownMenuItem
-            disabled={Boolean(props.compactUnavailableReason)}
-            title={
-              props.compactUnavailableReason ??
-              "Summarize provider context; keep chat history and your draft"
-            }
-            onClick={() => void props.onCompact?.()}
-          >
-            Compact context
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem onClick={() => void props.onToggleRuntimeMode()}>
-          <HugeiconsIcon
-            icon={
-              props.selectedRuntimeMode === "full-access"
-                ? __CircleAlertIconHugeIcon
-                : __LockIconHugeIcon
-            }
-            className="size-4 mr-2"
-          />
-          <span>
-            Runtime:{" "}
-            {props.selectedRuntimeMode === "full-access" ? "Full access" : "Approval required"}
-          </span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      />
+      {props.composerImages.length > 0 ? (
+        <span className="ml-0.5 text-[10px] font-bold text-primary animate-in fade-in zoom-in-50 duration-150">
+          {props.composerImages.length}
+        </span>
+      ) : null}
+    </button>
   );
 
   const latestUserMessage = props.thread?.messages.findLast((message) => message.role === "user");
@@ -2065,6 +2155,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       }}
       className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col"
     >
+      {/* Plus menu: sources, modes and runtime (floating above) */}
+      {isPlusMenuOpen ? (
+        <ComposerSourceMenu
+          sections={plusMenuSections}
+          onClose={() => setIsPlusMenuOpen(false)}
+        />
+      ) : null}
+
       {/* Autocomplete Menu (floating above) */}
       {composerMenuOpen ? (
         <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 w-[min(34rem,100%)] max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl p-1.5 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 dark:border-white/[0.08] motion-reduce:animate-none">

@@ -3,13 +3,12 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { GitForkIcon, Volume02Icon } from "@hugeicons/core-free-icons";
 import type { ChatMessage } from "../model/types";
 import type { TextRevealController } from "./textRevealController";
-import { useTextReveal } from "./useTextReveal";
 import { MessageCopyButton } from "./MessageCopyButton";
 import { cn } from "@/lib/utils";
 
 interface AssistantResponseActionsProps {
   message: ChatMessage;
-  controller: TextRevealController;
+  controller?: TextRevealController;
   relativeTime: string;
   isLatest?: boolean;
   showActions?: boolean;
@@ -18,13 +17,11 @@ interface AssistantResponseActionsProps {
 /** One footer per settled response; it may sit after trailing tool activity. */
 export const AssistantResponseActions = memo(function AssistantResponseActions({
   message,
-  controller,
   relativeTime,
   isLatest = false,
   showActions = true,
 }: AssistantResponseActionsProps) {
-  const { isRevealing } = useTextReveal(controller, message.id);
-  const isReady = showActions && !message.streaming && !isRevealing && Boolean(message.text);
+  const isReady = showActions && !message.streaming && Boolean(message.text);
 
   return (
     <div

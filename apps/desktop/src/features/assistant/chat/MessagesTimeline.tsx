@@ -68,7 +68,6 @@ import { ProviderTaskRow } from "./ProviderTaskRow";
 import { ProviderPlanSteps } from "./ProviderPlanSteps";
 import { ToolGroupSummary } from "./ToolGroupSummary";
 import { toolRowId } from "./toolPhase";
-import { useTimelineTextReveal } from "./useTextReveal";
 import { asHugeIcon } from "@/lib/icons/asHugeIcon";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
@@ -248,7 +247,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   waitingFor,
   activities,
   isChatVisible = true,
-  revealImmediately = false,
+  revealImmediately: _revealImmediately = false,
   hasMessages,
   isWorking,
   selectedProvider,
@@ -282,11 +281,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onManualNavigation,
 }: MessagesTimelineProps) {
   const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
-  const revealMessages = useMemo(
-    () => timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
-    [timelineEntries],
-  );
-  const textReveal = useTimelineTextReveal(revealMessages, isChatVisible, revealImmediately);
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(null);
   const legendListRef = useRef<LegendListRef | null>(null);
@@ -746,7 +740,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           {row.kind === "assistant-meta" && (
             <AssistantResponseActions
               message={row.message}
-              controller={textReveal}
               relativeTime={formatMessageRelativeTime(
                 row.message.completedAt ?? row.message.createdAt,
               )}
@@ -1032,13 +1025,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             >
               <AssistantMessageBody
                 message={row.message}
-                controller={textReveal}
                 cwd={markdownCwd}
                 actions={
                   (row.hasFooter ?? row.showActions) ? (
                     <AssistantResponseActions
                       message={row.message}
-                      controller={textReveal}
                       relativeTime={formatMessageRelativeTime(
                         row.message.completedAt ?? row.message.createdAt,
                       )}
@@ -1142,7 +1133,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [
       onToggleWorkGroup,
-      textReveal,
       isChatVisible,
       isWorkActive,
       runningTurnId,
