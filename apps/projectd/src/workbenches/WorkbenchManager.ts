@@ -275,22 +275,45 @@ export class WorkbenchManager {
     const gitDir = path.join(sessionRepoPath, ".git")
 
     if (!fs.existsSync(gitDir)) {
-      const source = params.sourceRepoUrl?.trim() || params.sourceRootPath?.trim() || null
+      const source = params.sourceRootPath?.trim() || params.sourceRepoUrl?.trim() || null
       if (source && this.gitService) {
         fs.mkdirSync(sessionRepoPath, { recursive: true })
         const entries = fs.readdirSync(sessionRepoPath)
         if (entries.length > 0) {
-          throw new Error(`Session workspace '${sessionRepoPath}' is not empty and is not a Git repository`)
+          for (const entry of entries) {
+            fs.rmSync(path.join(sessionRepoPath, entry), { recursive: true, force: true })
+          }
         }
-        const cloneArgs = [
-          "clone",
-          ...(params.baseBranch ? ["--branch", String(params.baseBranch)] : []),
-          ...(params.sourceRootPath && !params.sourceRepoUrl ? ["--no-hardlinks"] : []),
-          "--",
-          source,
-          ".",
-        ]
-        await this.gitService.process.execute(cloneArgs, { cwd: sessionRepoPath })
+        let cloneSuccess = false
+        if (params.baseBranch) {
+          const cloneArgs = [
+            "clone",
+            "--branch",
+            String(params.baseBranch),
+            ...(params.sourceRootPath && source === params.sourceRootPath ? ["--no-hardlinks"] : []),
+            "--",
+            source,
+            ".",
+          ]
+          const res = await this.gitService.process.execute(cloneArgs, { cwd: sessionRepoPath, allowNonZeroExit: true })
+          cloneSuccess = res.success
+        }
+        if (!cloneSuccess) {
+          const fallbackArgs = [
+            "clone",
+            ...(params.sourceRootPath && source === params.sourceRootPath ? ["--no-hardlinks"] : []),
+            "--",
+            source,
+            ".",
+          ]
+          await this.gitService.process.execute(fallbackArgs, { cwd: sessionRepoPath })
+        }
+        if (params.sourceRepoUrl && source === params.sourceRootPath) {
+          await this.gitService.process.execute(
+            ["remote", "set-url", "origin", params.sourceRepoUrl],
+            { cwd: sessionRepoPath, allowNonZeroExit: true },
+          )
+        }
       } else {
         fs.mkdirSync(sessionRepoPath, { recursive: true })
         if (this.gitService) {

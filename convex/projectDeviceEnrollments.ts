@@ -19,8 +19,9 @@ export const create = mutation({
     if (!isDeviceIdentityKey(identityKey)) throw new ConvexError("Enter a valid Cozea device ID")
     const target = await ctx.db.query("devicePrincipals")
       .withIndex("by_identity_key", (q) => q.eq("identityKey", identityKey)).unique()
-    if (!target || target.status !== "active") throw new ConvexError("That device has not initialized Cozea")
-    if (await getProjectMembership(ctx, args.projectId, target._id)) throw new ConvexError("That device already has access")
+    if (target && (await getProjectMembership(ctx, args.projectId, target._id))) {
+      throw new ConvexError("That device already has access")
+    }
     const existing = await ctx.db.query("projectDeviceEnrollments")
       .withIndex("by_target_and_status", (q) => q.eq("targetIdentityKey", identityKey).eq("status", "pending"))
       .filter((q) => q.eq(q.field("projectId"), args.projectId)).first()
