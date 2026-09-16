@@ -271,8 +271,13 @@ export const listIncomingEnrollments = query({
         q.eq("targetIdentityKey", user.identityKey).eq("status", "pending"),
       ).collect()
     return await Promise.all(rows.filter((row) => row.expiresAt > Date.now()).map(async (row) => {
-      const organization = await ctx.db.get(row.organizationId)
-      return { ...row, organizationName: organization?.name ?? "Unknown group", groupId: organization?.groupId ?? "" }
+      const [organization, inviter] = await Promise.all([ctx.db.get(row.organizationId), ctx.db.get(row.createdBy)])
+      return {
+        ...row,
+        organizationName: organization?.name ?? "Unknown group",
+        groupId: organization?.groupId ?? "",
+        inviterName: inviter?.displayName ?? "Unknown device",
+      }
     }))
   },
 })

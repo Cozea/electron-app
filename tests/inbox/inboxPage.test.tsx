@@ -5,9 +5,18 @@ import { InboxPage } from "@/features/inbox/pages/InboxPage";
 
 let mockIncoming: any = [];
 let mockSessionInvitations: any = [];
+let mockOrganizationInvitations: any = [];
 vi.mock("convex/react", () => ({
-  useQuery: (query: any) =>
-    getFunctionName(query) === "collaborationSessions:listIncomingInvitations" ? mockSessionInvitations : mockIncoming,
+  useQuery: (query: any) => {
+    switch (getFunctionName(query)) {
+      case "collaborationSessions:listIncomingInvitations":
+        return mockSessionInvitations;
+      case "organizations:listIncomingEnrollments":
+        return mockOrganizationInvitations;
+      default:
+        return mockIncoming;
+    }
+  },
   useMutation: () => vi.fn(),
   useConvex: () => ({}),
 }));
@@ -55,6 +64,42 @@ describe("InboxPage", () => {
     expect(markup).toContain("Accept");
     expect(markup).toContain("Decline");
     expect(markup).toContain("Expires in 5 days");
+  });
+
+  it("renders organization invitations beside project ones, each under its own title", () => {
+    mockIncoming = [
+      {
+        _id: "enrollment-1",
+        projectId: "proj-1",
+        projectName: "Crossand Mobile",
+        inviterName: "Alice's MacBook",
+        role: "developer",
+        status: "pending",
+        expiresAt: Date.now() + 5 * DAY_MS,
+      },
+    ];
+    mockOrganizationInvitations = [
+      {
+        _id: "org-enrollment-1",
+        organizationId: "org-1",
+        organizationName: "Crossand",
+        groupId: "grp_0123",
+        inviterName: "Bob's Mac mini",
+        role: "member",
+        status: "pending",
+        expiresAt: Date.now() + 3 * DAY_MS,
+      },
+    ];
+    mockSessionInvitations = [];
+    const markup = renderToStaticMarkup(<InboxPage />);
+    expect(markup).toContain("Organization invitations");
+    expect(markup).toContain("Device invitations");
+    expect(markup).toContain("Crossand</h3>");
+    expect(markup).toContain("Bob&#x27;s Mac mini");
+    expect(markup).toContain("Member");
+    expect(markup).toContain("Expires in 3 days");
+    expect(markup).not.toContain("No pending invitations");
+    mockOrganizationInvitations = [];
   });
 
   it("renders live session invitations with their branch and a join action", () => {
