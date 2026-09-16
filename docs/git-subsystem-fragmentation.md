@@ -146,8 +146,29 @@ carry `@generated from vendor/t3code/packages/contracts @ 53fc2f7…`, synced by
 `scripts/vendor/sync-t3-contracts.mjs`, which writes only to that directory.
 
 `shared/assistant-contracts/` carries **no provenance banner** and is not a sync
-target. It is a hand-maintained parallel set that exports **23 of the same
-names** as the vendored `git.ts` — with different shapes:
+target. It is a hand-maintained parallel set.
+
+The overlap is far wider than this section first recorded. Measured properly,
+the two universes share **335 export names across 14 file pairs** — not 23 in
+one file. `providerRuntime.ts` alone shares 118 names and `orchestration.ts` 84.
+(Sixteen files share a *filename*; `index.ts` and `providerSetup.ts` share no
+export names.) The original figure came from generalising `git.ts`, which
+understated it by more than an order of magnitude; the count above is computed,
+not sampled.
+
+Both sets also publish an `index.ts` barrel re-exporting everything, and
+**seven files import both barrels**. That is what makes this latent rather than
+inert. Checked by parsing their import clauses, not their text: all seven take
+*disjoint* names from the two sides, and the split is consistent — types come
+from `assistant-contracts`, and only method-name constants (`WS_METHODS`,
+`ORCHESTRATION_WS_METHODS`, `ORCHESTRATION_RPC_METHODS`) come from the vendored
+set. Nothing crosses today. But in those seven a single `import { X }` would
+resolve to whichever barrel is listed first, and both sides typecheck. The divergent
+values are inert today (`create_pr` and `skipped_not_requested` exist only as
+declarations, with no producer or consumer anywhere), which is why freezing the
+boundary is cheap and migrating is not yet justified.
+
+`git.ts` remains the clearest illustration of the shapes diverging:
 
 | Export | Vendored `t3/git.ts` | `shared/assistant-contracts/git.ts` |
 | --- | --- | --- |
@@ -291,4 +312,23 @@ five-minute deadline but ran on `spawnSync`'s 1MB default. None of these engines
 is *retired* yet; they are merely no longer able to fail in the ways that were
 reachable.
 
-**Steps 5–7 — not started.**
+**Step 5 — partly done.** The classification of *what a Git failure was* now
+lives once, in `shared/git/failureConditions.ts`: two screens had drifted, so
+only one recognised a bare `401` and only the other recognised "could not read
+username" and "access denied". The wording stays with each caller, since they
+address different readers. The strict repository parser now lives once too, in
+`shared/git/githubRepository.ts`, shared by the scoped network Git layer, the
+pull request provider and background authorization — which fixed a reachable
+bug: a session on an `ssh://git@github.com/` remote could fetch and push but
+never open a pull request. Not done: the four GitHub HTTP clients and their
+token paths, which span four runtimes and remain separate.
+
+**Step 6 — frozen rather than merged.** Investigated first, as asked. No file
+takes an overlapping name from both universes, and the divergent values are
+inert, so migrating ~194 importers is not justified today. But seven files
+import both barrels, which makes this latent rather than harmless, so
+`tests/architecture/contractUniverseDrift.test.ts` pins the 335 shared names and
+that set of seven, and `shared/assistant-contracts/index.ts` now states what it
+is and what it is not.
+
+**Step 7 — not started.**
