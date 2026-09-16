@@ -104,10 +104,13 @@ describe("watchGitDir", () => {
     const watcher = watch();
     const ref = path.join(root, ".git", "refs", "heads", "main");
 
-    // A recursive watch is not armed the moment `fs.watch` returns on macOS, so
-    // a single write can land while nothing is listening yet and be missed
-    // outright. Rewrite the ref until it is noticed rather than writing once
-    // and hoping the race went our way.
+    // Writing once and waiting flaked here, sitting silent for the whole
+    // timeout in roughly half of runs under vitest. It reproduced neither in a
+    // plain process nor in a worker thread, with `persistent` set either way,
+    // so the cause was never pinned down -- do not read this retry as evidence
+    // of a known race. Poking until the change is noticed holds whatever the
+    // cause turns out to be. Keep the interval wider than SETTLE_MS, or the
+    // pokes reset the debounce they are waiting on and nothing ever fires.
     const noticed = await waitFor(
       () => watcher.changes() > 0,
       () => fs.writeFileSync(ref, `${"1".repeat(40)}\n`),
