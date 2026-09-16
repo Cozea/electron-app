@@ -999,6 +999,12 @@ export interface GitDirtyStateSnapshot {
   deletions: number
   changedFiles: number
   computedAt: number
+  /**
+   * The commit HEAD points at. Absent before the first commit, or when the
+   * snapshot carries an error. A change here is how a commit made anywhere —
+   * Cozea, a terminal, another editor — becomes visible to the renderer.
+   */
+  headCommit?: string
   error?: string
 }
 
@@ -1012,6 +1018,8 @@ export interface GitChangesSnapshot {
   error: string | null
   baseRef?: string
   headRef?: string
+  /** The commit HEAD points at, for the `current` scope. See {@link GitDirtyStateSnapshot}. */
+  headCommit?: string
   additions: number
   deletions: number
 }

@@ -39,6 +39,7 @@ function buildLegacyCheckpointBackend(
         ...(result.diff !== undefined ? { diff: result.diff } : {}),
         ...(result.baseRef !== undefined ? { baseRef: result.baseRef } : {}),
         ...(result.headRef !== undefined ? { headRef: result.headRef } : {}),
+        ...(result.headCommit !== undefined ? { headCommit: result.headCommit } : {}),
         ...(result.error !== undefined ? { error: result.error } : {}),
       };
     },

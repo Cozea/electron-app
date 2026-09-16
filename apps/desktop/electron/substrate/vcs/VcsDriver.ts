@@ -96,6 +96,12 @@ export interface VcsChangesReadResult {
   readonly diff?: string;
   readonly baseRef?: string;
   readonly headRef?: string;
+  /**
+   * The commit HEAD points at, for the `current` scope. Absent before the first
+   * commit. `headRef` is the literal `'working tree'` there, so it cannot say
+   * whether a commit happened.
+   */
+  readonly headCommit?: string;
   readonly error?: string;
 }
 

@@ -178,15 +178,20 @@ export class VcsStatusBroadcaster {
           error: result.success ? null : (result.error ?? "Failed to compute git changes"),
           baseRef: result.baseRef,
           headRef: result.headRef,
+          headCommit: result.headCommit,
           additions: stats.additions,
           deletions: stats.deletions,
         };
 
         const existing = this.snapshotsByKey.get(key);
+        // HEAD is part of what makes a snapshot the same snapshot: an amend, or
+        // a commit whose changes are immediately restored, leaves an identical
+        // patch behind a different commit.
         if (
           existing &&
           existing.patch === snapshot.patch &&
           existing.error === snapshot.error &&
+          existing.headCommit === snapshot.headCommit &&
           existing.additions === snapshot.additions &&
           existing.deletions === snapshot.deletions
         ) {

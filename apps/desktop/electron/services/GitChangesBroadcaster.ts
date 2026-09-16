@@ -287,6 +287,7 @@ export class GitChangesBroadcaster {
       additions: changesSnapshot.additions,
       deletions: changesSnapshot.deletions,
       changedFiles: changesSnapshot.files.length,
+      headCommit: changesSnapshot.headCommit,
       computedAt: Date.now(),
       error: changesSnapshot.error ?? undefined,
     }
