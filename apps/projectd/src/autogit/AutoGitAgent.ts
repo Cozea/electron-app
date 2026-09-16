@@ -46,7 +46,7 @@ import type { SessionTransport } from "../collaboration/SessionTransport"
 import { TextDocRegistry } from "../collaboration/TextDocRegistry"
 import { ScopePolicy } from "../filesystem/ScopePolicy"
 import type { GitExecuteOptions } from "../git/GitProcess"
-import { executeScopedNetworkGit, type RepositoryCredentialProvider } from "../git/ScopedNetworkGit"
+import { executeScopedNetworkGit, RepositoryNotAuthorizedError, type RepositoryCredentialProvider } from "../git/ScopedNetworkGit"
 import type { GitService } from "../git/GitService"
 import { fallbackIdentityEnv } from "../git/identity"
 import { BarrierCapture, type BarrierSnapshot } from "./BarrierCapture"
@@ -68,6 +68,8 @@ export interface AutoGitTiming {
   retryMs: number
   /** How often a device that cannot push checks again. */
   eligibilityRecheckMs: number
+  /** How often it checks again when Cozea isn't set up to write to the repository at all. */
+  notAuthorizedRecheckMs: number
   /** Limit for one fetch, push or ls-remote. */
   remoteTimeoutMs: number
   /** How often the leader looks for commits pushed to the branch from outside the session. */
@@ -81,6 +83,7 @@ export const DEFAULT_AUTOGIT_TIMING: AutoGitTiming = {
   minIntervalMs: 30_000,
   retryMs: 15_000,
   eligibilityRecheckMs: 60_000,
+  notAuthorizedRecheckMs: 15 * 60_000,
   remoteTimeoutMs: 60_000,
   remotePollMs: 60_000,
 }
@@ -214,6 +217,13 @@ function describeUnignoredEnvironmentFiles(paths: readonly string[]): string {
   )
 }
 
+/** Git never ran: either Cozea isn't set up to write to the repository, or the remote didn't answer. */
+function networkFailure(error: unknown, message: string): AutoGitError {
+  return error instanceof RepositoryNotAuthorizedError
+    ? new AutoGitError("NOT_AUTHORIZED", error.message)
+    : new AutoGitError("REMOTE_UNREACHABLE", `${message}: ${describeError(error)}`)
+}
+
 /** Names what went wrong talking to the remote, from Git's own words. */
 function remoteFailure(remote: string, output: string): AutoGitError {
   if (/GH006|protected branch|pre-receive hook declined/i.test(output)) {
@@ -252,6 +262,7 @@ export class AutoGitAgent {
   private stopped = false
   private eligible = false
   private ineligibleReason: string | null = null
+  private ineligibleCode: string | null = null
   private blocked: AutoGitError | null = null
   private noticeShown = false
   private lease: RoomLease | null = null
@@ -574,7 +585,8 @@ export class AutoGitAgent {
       detailCode:
         (this.rebaseRun ? "REBASING" : null) ??
         this.blocked?.code ??
-        (leaderNotice ? (this.lease?.noticeCode ?? null) : null),
+        (leaderNotice ? (this.lease?.noticeCode ?? null) : null) ??
+        (state === "ineligible" ? this.ineligibleCode : null),
       lastError: this.lastError,
     }
   }
@@ -618,6 +630,7 @@ export class AutoGitAgent {
     const repo = this.repo
     if (this.stopped || !repo) return
     let reason: string | null = null
+    let code: string | null = null
     if (!this.options.canWrite()) {
       reason = "Viewers don't save the session to Git."
     } else {
@@ -629,11 +642,13 @@ export class AutoGitAgent {
           await this.lsRemote()
         } catch (error) {
           reason = describeError(error)
+          code = error instanceof AutoGitError ? error.code : null
         }
       }
     }
     this.eligible = reason === null
     this.ineligibleReason = reason
+    this.ineligibleCode = code
     // The room refuses viewers outright, so they say nothing.
     if (this.options.canWrite()) this.options.room.setAutoGitEligibility(this.eligible)
     if (!this.eligible) this.scheduleEligibilityCheck()
@@ -646,7 +661,7 @@ export class AutoGitAgent {
     this.eligibilityTimer = setTimeout(() => {
       this.eligibilityTimer = null
       void this.refreshEligibility()
-    }, this.timing.eligibilityRecheckMs)
+    }, this.ineligibleCode === "NOT_AUTHORIZED" ? this.timing.notAuthorizedRecheckMs : this.timing.eligibilityRecheckMs)
   }
 
   // ─── Leadership (Section 14.5 - 14.7) ────────────────────────────────────────
@@ -1491,7 +1506,7 @@ export class AutoGitAgent {
         timeoutMs: this.timing.remoteTimeoutMs,
       })
     } catch (error) {
-      throw new AutoGitError("REMOTE_UNREACHABLE", `Git couldn't fetch ${target} from ${repo.remote}: ${describeError(error)}`)
+      throw networkFailure(error, `Git couldn't fetch ${target} from ${repo.remote}`)
     }
     if (!result.success) throw remoteFailure(repo.remote, result.stderr)
     return this.options.gitService.getCommitOid(repo.root, ref)
@@ -1517,10 +1532,11 @@ export class AutoGitAgent {
       this.setNotice(message, code)
       return
     }
-    if (code === "AUTH") {
+    if (code === "AUTH" || code === "NOT_AUTHORIZED") {
       // Another member's Mac may be able to push; step aside until this one can.
       this.eligible = false
       this.ineligibleReason = message
+      this.ineligibleCode = code
       this.options.room.setAutoGitEligibility(false)
       this.updateLeadership()
       this.scheduleEligibilityCheck()
@@ -1617,7 +1633,7 @@ export class AutoGitAgent {
         timeoutMs: this.timing.remoteTimeoutMs,
       })
     } catch (error) {
-      throw new AutoGitError("REMOTE_UNREACHABLE", `Git couldn't reach ${repo.remote}: ${describeError(error)}`)
+      throw networkFailure(error, `Git couldn't reach ${repo.remote}`)
     }
     if (!result.success) throw remoteFailure(repo.remote, result.stderr)
     const line = result.stdout.split("\n").find((entry) => entry.endsWith(`\t${ref}`))
@@ -1635,7 +1651,7 @@ export class AutoGitAgent {
         timeoutMs: this.timing.remoteTimeoutMs,
       })
     } catch (error) {
-      throw new AutoGitError("REMOTE_UNREACHABLE", `Git couldn't fetch from ${repo.remote}: ${describeError(error)}`)
+      throw networkFailure(error, `Git couldn't fetch from ${repo.remote}`)
     }
     if (!result.success) throw remoteFailure(repo.remote, result.stderr)
   }
@@ -1658,7 +1674,7 @@ export class AutoGitAgent {
     } catch (error) {
       // No answer (Section 15.9): the push may have landed all the same.
       if ((await this.lsRemote().catch(() => null)) === commitOid) return
-      throw new AutoGitError("REMOTE_UNREACHABLE", `Git couldn't finish pushing to ${repo.remote}: ${describeError(error)}`)
+      throw networkFailure(error, `Git couldn't finish pushing to ${repo.remote}`)
     }
     if (result.success) return
     if ((await this.lsRemote().catch(() => null)) === commitOid) return

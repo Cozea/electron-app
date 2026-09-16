@@ -4,7 +4,7 @@ import { sign } from "node:crypto"
 import { ConvexError, v } from "convex/values"
 import { action, type ActionCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
-import { requestGitHubJson } from "../shared/github/apiFetch"
+import { GitHubApiError, requestGitHubJson } from "../shared/github/apiFetch"
 import type { Id } from "./_generated/dataModel"
 
 interface CredentialScope {
@@ -53,6 +53,19 @@ export async function issueRepositoryInstallationToken(grant: RepositoryGrant, a
   return { token: result.token, expiresAt }
 }
 
+// Refusals this module raises itself; their wording carries no ids, keys or tokens.
+const KNOWN_REFUSALS = new Set([
+  "Invalid repository grants", "Repository is not provisioned", "Not configured",
+  "Git write access is not provisioned", "Invalid GitHub authorization response", "Repository binding changed",
+])
+
+/** Which step refused, for the operator's logs; the caller only ever sees one generic message. */
+export function describeRefusal(error: unknown): string {
+  if (error instanceof GitHubApiError) return error.status === null ? "GitHub request failed" : `GitHub answered ${error.status}`
+  if (error instanceof SyntaxError) return "Invalid repository grants"
+  return error instanceof Error && KNOWN_REFUSALS.has(error.message) ? error.message : "Unexpected failure"
+}
+
 function issueForSession(purpose: "pull_request" | "git_write") {
   return async (
     ctx: ActionCtx,
@@ -68,7 +81,10 @@ function issueForSession(purpose: "pull_request" | "git_write") {
       const after = (await ctx.runQuery(internal.collaborationSessions.repositoryCredentialScope, args)) as CredentialScope
       if (after.projectId !== before.projectId || after.repositoryUrl !== before.repositoryUrl) throw new Error("Repository binding changed")
       return { ...issued, repositoryUrl: before.repositoryUrl, projectId: before.projectId }
-    } catch { throw new ConvexError("Background repository authorization is unavailable. Ask a project operator to verify its GitHub App binding.") }
+    } catch (error) {
+      console.warn(`[sessionRepositoryCredentials] ${purpose} token refused for ${args.publicSessionId}: ${describeRefusal(error)}`)
+      throw new ConvexError("Background repository authorization is unavailable. Ask a project operator to verify its GitHub App binding.")
+    }
   }
 }
 

@@ -17,6 +17,7 @@ import { CollaborationSessionHost } from "../../apps/projectd/src/collaboration/
 import type { FileEventSource, NativeFSEventItem } from "../../apps/projectd/src/filesystem/FSEventsClient"
 import { GitService } from "../../apps/projectd/src/git/GitService"
 import { GitProcess } from "../../apps/projectd/src/git/GitProcess"
+import { RepositoryNotAuthorizedError, type RepositoryCredentialProvider } from "../../apps/projectd/src/git/ScopedNetworkGit"
 import { ProjectdDatabase } from "../../apps/projectd/src/storage/Database"
 import {
   RoomHost,
@@ -194,6 +195,7 @@ async function createPeer(
     onSyncRequest?: (sequence: number) => void
     sessionRole?: "developer" | "project_manager"
     withoutGit?: boolean
+    repositoryCredentials?: RepositoryCredentialProvider
   },
 ): Promise<Peer> {
   const events = new ManualFileEvents()
@@ -223,6 +225,7 @@ async function createPeer(
     db,
     actor: { actorType: "user", principalId: `principal_${name}` },
     gitService: options.withoutGit ? undefined : new GitService(),
+    repositoryCredentials: options.repositoryCredentials,
     branchName: BRANCH,
     shareEnvironmentFiles: options.shareEnvironmentFiles,
     targetBranch: options.targetBranch,
@@ -763,6 +766,31 @@ describe("AutoGit in projectd", () => {
     expect(remoteHead(repos.remote)).toBe(saved)
     expect(git(repos.remote, "show", `${saved}:notes.md`)).toBe("one\nfrom the joiner")
     expect(git(repos.remote, "log", "-1", "--format=%B", saved)).toContain("Cozea-Lease-Generation: 2")
+  })
+
+  it("stops asking for a repository Cozea isn't set up to write to, and says so", async () => {
+    const room = newRoom()
+    const repos = await setUpRepositories({ "notes.md": "one\n" })
+    git(repos.creatorRoot, "remote", "set-url", "origin", "https://github.com/team/app.git")
+    const credentials = vi.fn(async (scope: { owner: string; repository: string }): Promise<string> => {
+      throw new RepositoryNotAuthorizedError(scope)
+    })
+    const creator = await createPeer(room, "creator", randomBytes(32), {
+      root: repos.creatorRoot,
+      clientId: "c_a",
+      sessionRole: "project_manager",
+      timing: { ...FAST, notAuthorizedRecheckMs: 600_000 },
+      repositoryCredentials: credentials,
+    })
+    await startLive(creator, "the creator")
+    await waitFor(() => autoGitOf(creator)?.detailCode === "NOT_AUTHORIZED", "the creator to report the missing setup", GIT_WAIT_MS)
+
+    expect(autoGitOf(creator)).toMatchObject({ state: "ineligible", isLeader: false })
+    expect(autoGitOf(creator)?.detail).toContain("isn't set up for team/app")
+    const asked = credentials.mock.calls.length
+    // Several ordinary rechecks' worth of time: a missing setup waits for the long one.
+    await new Promise((resolve) => setTimeout(resolve, (FAST.eligibilityRecheckMs ?? 0) * 3))
+    expect(credentials).toHaveBeenCalledTimes(asked)
   })
 
   it("pauses a folder while another branch is checked out or Git is mid-merge, and catches up after", async () => {

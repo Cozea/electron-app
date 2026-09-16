@@ -231,7 +231,13 @@ export function describeAutoGit(
         fix: autoGit.detailCode === "ENV_NOT_IGNORED" && status.role !== "viewer" ? "ignore_env" : null,
       }
     case "ineligible":
-      return { ...view, tone: "attention", label: "Not saving to Git", detail: autoGit.detail, canSave: false }
+      return {
+        ...view,
+        tone: "attention",
+        label: autoGit.detailCode === "NOT_AUTHORIZED" ? "Saving to Git isn't set up" : "Not saving to Git",
+        detail: autoGit.detail,
+        canSave: false,
+      }
     case "no_leader":
       return { ...view, tone: "working", label: "Waiting to save to Git", detail: null, canSave: false }
     case "leader":

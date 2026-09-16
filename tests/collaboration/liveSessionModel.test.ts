@@ -162,6 +162,12 @@ describe("how the session bar describes saving to Git", () => {
     expect(
       describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "ineligible", leaderPrincipalId: null, detail: noSignIn }) })),
     ).toMatchObject({ tone: "attention", label: "Not saving to Git", detail: noSignIn, canSave: false })
+    const notSetUp = "Saving to Git isn't set up for team/app."
+    expect(
+      describeAutoGit(daemonStatus({
+        autoGit: autoGit({ state: "ineligible", leaderPrincipalId: null, detail: notSetUp, detailCode: "NOT_AUTHORIZED" }),
+      })),
+    ).toMatchObject({ tone: "attention", label: "Saving to Git isn't set up", detail: notSetUp, canSave: false })
     const lastError = { code: "REMOTE_UNREACHABLE", message: "Git couldn't reach origin: timed out." }
     expect(describeAutoGit(daemonStatus({ autoGit: autoGit({ state: "leader", isLeader: true, lastError }) }))?.detail).toBe(
       "The last save didn't finish (Git couldn't reach origin: timed out). It retries on its own.",
