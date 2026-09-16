@@ -9,6 +9,10 @@ import {
   hasSpaceOrControlCharacter,
   normalizeSessionRepositoryUrl,
 } from "@shared/collaboration/repositoryUrl"
+import {
+  isMissingRemoteBranchFailure,
+  isRepositoryAccessFailure,
+} from "@shared/git/failureConditions"
 import type {
   EnsureDesktopSessionWorkbenchRequest,
   EnsureDesktopSessionWorkbenchResponse,
@@ -119,12 +123,12 @@ export function isCloneableBranchName(name: string): boolean {
 }
 
 function describeSetupFailure(detail: string, repository: string | null, branchName: string): string {
-  if (/authentication failed|could not read username|repository not found|permission denied|access denied|\b403\b/i.test(detail)) {
+  if (isRepositoryAccessFailure(detail)) {
     return repository
       ? `Git on this Mac can't read ${repository}. Update this Mac's Git credentials and retry.`
       : "Git on this Mac could not read the local project copy."
   }
-  if (/remote branch .* not found|couldn't find remote ref/i.test(detail)) {
+  if (isMissingRemoteBranchFailure(detail)) {
     return `${repository ?? "The repository"} has no branch ${branchName}.`
   }
   const firstLine = detail

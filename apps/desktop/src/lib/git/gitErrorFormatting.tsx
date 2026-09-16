@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { GitHubIcon } from "@/components/integrations/IntegrationIcon"
+import { isRepositoryAccessFailure } from "@shared/git/failureConditions"
 
 export function extractGitHubRepoInfo(raw: string): { repoName: string; webUrl: string } | null {
   // Matches https://github.com/owner/repo or http://github.com/owner/repo
@@ -46,11 +47,7 @@ export function formatCloneErrorMessage(
 
   const info = extractGitHubRepoInfo(errorMessage) ?? (fallbackUrl ? extractGitHubRepoInfo(fallbackUrl) : null)
 
-  const isAccessDenied = /could not access|repository not found|authentication failed|permission denied|\b403\b|\b401\b/i.test(
-    errorMessage,
-  )
-
-  if (info && isAccessDenied) {
+  if (info && isRepositoryAccessFailure(errorMessage)) {
     return (
       <span className="inline leading-relaxed">
         Git could not access{" "}
