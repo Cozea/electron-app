@@ -59,14 +59,47 @@ export interface T3ServerConfigBridge {
   ): Promise<ServerProviderUpdatedPayload>
 }
 
+function getActiveT3ConfigBridge(): T3ServerConfigBridge | null {
+  if (t3ConfigBridge) return t3ConfigBridge
+  if (typeof window !== "undefined") {
+    const w = window as unknown as { __cozeaT3ConfigBridge?: T3ServerConfigBridge | null }
+    if (w.__cozeaT3ConfigBridge) return w.__cozeaT3ConfigBridge
+  }
+  return null
+}
+
+function syncT3ConfigBridgeToWindow(bridge: T3ServerConfigBridge | null) {
+  t3ConfigBridge = bridge
+  if (typeof window !== "undefined") {
+    const w = window as unknown as { __cozeaT3ConfigBridge?: T3ServerConfigBridge | null }
+    w.__cozeaT3ConfigBridge = bridge
+  }
+}
+
 export async function updateAssistantProvider(
   provider: ProviderDriverKind,
   instanceId?: ProviderInstanceId,
 ): Promise<NonNullable<ServerProvider["updateState"]> | null> {
-  if (!t3ConfigBridge?.updateProvider) {
+  const activeBridge = getActiveT3ConfigBridge()
+  let result: ServerProviderUpdatedPayload | null = null
+
+  if (activeBridge?.updateProvider) {
+    result = await activeBridge.updateProvider(provider, instanceId)
+  } else {
+    try {
+      const nativeApi = ensureNativeApi()
+      if (nativeApi.server.updateProvider) {
+        result = await nativeApi.server.updateProvider(provider, instanceId)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!result) {
     throw new Error("Provider updates are unavailable while the local agent runtime is offline.")
   }
-  const result = await t3ConfigBridge.updateProvider(provider, instanceId)
+
   await maybeLoadServerConfig({ showLoading: false })
   const updatedProvider = result.providers.find(
     (candidate) =>
@@ -158,11 +191,11 @@ function releaseLegacyServerConfigSubscriptions() {
 function releaseT3ServerConfigBridge() {
   t3ConfigBridgeUnsubscribe?.()
   t3ConfigBridgeUnsubscribe = null
-  t3ConfigBridge = null
+  syncT3ConfigBridgeToWindow(null)
 }
 
 function ensureLegacyServerConfigSubscriptions() {
-  if (t3ConfigBridge || serverConfigUnsubscribe || serverProvidersUnsubscribe) {
+  if (getActiveT3ConfigBridge() || serverConfigUnsubscribe || serverProvidersUnsubscribe) {
     return
   }
 
@@ -226,7 +259,7 @@ function activateT3ServerConfigBridge(bridge: T3ServerConfigBridge): void {
   }
   releaseT3ServerConfigBridge()
   releaseLegacyServerConfigSubscriptions()
-  t3ConfigBridge = bridge
+  syncT3ConfigBridgeToWindow(bridge)
   t3ConfigBridgeUnsubscribe = bridge.subscribe((config) => {
     hasLoadedConfig = true
     updateSnapshot((current) => ({
@@ -239,22 +272,35 @@ function activateT3ServerConfigBridge(bridge: T3ServerConfigBridge): void {
   void maybeLoadServerConfig({ showLoading: !hasLoadedConfig }).catch(() => undefined)
 }
 
+function getT3ConfigBridgesMap(): Map<symbol, T3ServerConfigBridge> {
+  if (typeof window === "undefined") {
+    return t3ConfigBridges
+  }
+  const w = window as unknown as { __cozeaT3ConfigBridges?: Map<symbol, T3ServerConfigBridge> }
+  if (!w.__cozeaT3ConfigBridges) {
+    w.__cozeaT3ConfigBridges = t3ConfigBridges
+  }
+  return w.__cozeaT3ConfigBridges
+}
+
 export function connectT3ServerConfigBridge(
   owner: symbol,
   bridge: T3ServerConfigBridge,
 ): void {
-  t3ConfigBridges.delete(owner)
-  t3ConfigBridges.set(owner, bridge)
+  const bridges = getT3ConfigBridgesMap()
+  bridges.delete(owner)
+  bridges.set(owner, bridge)
   activateT3ServerConfigBridge(bridge)
 }
 
 export function disconnectT3ServerConfigBridge(owner: symbol): void {
-  const removedBridge = t3ConfigBridges.get(owner)
-  t3ConfigBridges.delete(owner)
+  const bridges = getT3ConfigBridgesMap()
+  const removedBridge = bridges.get(owner)
+  bridges.delete(owner)
   if (!removedBridge || removedBridge !== t3ConfigBridge) {
     return
   }
-  const fallbackBridge = Array.from(t3ConfigBridges.values()).at(-1) ?? null
+  const fallbackBridge = Array.from(bridges.values()).at(-1) ?? null
   if (fallbackBridge) {
     activateT3ServerConfigBridge(fallbackBridge)
     return
@@ -284,8 +330,9 @@ function maybeLoadServerConfig(options?: { showLoading?: boolean }) {
 
   activeConfigLoad = (async () => {
     try {
-      const nextConfig = t3ConfigBridge
-        ? await t3ConfigBridge.getConfig()
+      const activeBridge = getActiveT3ConfigBridge()
+      const nextConfig = activeBridge
+        ? await activeBridge.getConfig()
         : await ensureNativeApi().server.getConfig()
       hasLoadedConfig = true
       updateSnapshot((current) => ({
@@ -309,7 +356,7 @@ function maybeLoadServerConfig(options?: { showLoading?: boolean }) {
 }
 
 function maybeRefreshConfigForStatus(status: AssistantRuntimeStatus) {
-  if (t3ConfigBridge) {
+  if (getActiveT3ConfigBridge()) {
     if (hasLoadedConfig && snapshot.config) {
       return
     }
@@ -339,7 +386,7 @@ function applyRuntimeStatus(nextStatus: Partial<AssistantRuntimeStatus> | null |
 
 function ensureSharedSubscriptions() {
   if (runtimeStatusUnsubscribe) {
-    if (!t3ConfigBridge) {
+    if (!getActiveT3ConfigBridge()) {
       ensureLegacyServerConfigSubscriptions()
     }
     return
@@ -364,7 +411,7 @@ function ensureSharedSubscriptions() {
       .catch(() => undefined)
   }
 
-  if (!t3ConfigBridge) {
+  if (!getActiveT3ConfigBridge()) {
     ensureLegacyServerConfigSubscriptions()
   }
 }

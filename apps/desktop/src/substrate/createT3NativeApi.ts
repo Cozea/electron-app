@@ -136,6 +136,8 @@ export function createT3NativeApi(session: T3RpcSessionHandle, options?: { local
         const config = await session.serverConfig.getConfig();
         return { providers: config.providers } satisfies ServerProviderUpdatedPayload;
       },
+      updateProvider: (provider, instanceId) =>
+        session.serverConfig.updateProvider(provider, instanceId),
       upsertKeybinding: (input: ServerUpsertKeybindingInput) =>
         session.client.callUnary(WS_METHODS.serverUpsertKeybinding, input) as Promise<
           ServerUpsertKeybindingResult

@@ -31,6 +31,7 @@ import type {
   ServerProviderUpdatedPayload,
   ServerUpsertKeybindingResult,
 } from "./server";
+import type { ProviderDriverKind, ProviderInstanceId } from "./providerInstance";
 import type {
   TerminalClearInput,
   TerminalCloseInput,
@@ -176,6 +177,10 @@ export interface NativeApi {
     getConfig: () => Promise<ServerConfig>;
     onConfigUpdated?: (listener: (config: ServerConfig) => void) => Promise<() => void>;
     refreshProviders: () => Promise<ServerProviderUpdatedPayload>;
+    updateProvider?: (
+      provider: ProviderDriverKind,
+      instanceId?: ProviderInstanceId,
+    ) => Promise<ServerProviderUpdatedPayload>;
     upsertKeybinding: (input: ServerUpsertKeybindingInput) => Promise<ServerUpsertKeybindingResult>;
     getSettings: () => Promise<ServerSettings>;
     updateSettings: (patch: ServerSettingsPatch) => Promise<ServerSettings>;
