@@ -119,6 +119,12 @@ export interface DevAppMemoryLaunchSpec extends DevAppLaunchBase {
   singleton: true
 }
 
+export interface DevAppSecurityScanLaunchSpec extends DevAppLaunchBase {
+  kind: "securityScan"
+  tileType: "securityScan"
+  singleton: true
+}
+
 export interface DevAppLlamaLaunchSpec extends DevAppLaunchBase {
   kind: "llama"
   tileType: "llama"
@@ -138,6 +144,7 @@ export type DevAppLaunchSpec =
   | DevelopmentDevAppLaunchSpec
   | DevAppLlamaLaunchSpec
   | DevAppMemoryLaunchSpec
+  | DevAppSecurityScanLaunchSpec
   | DevAppMobileSimulatorLaunchSpec
   | PublishedDevAppLaunchSpec
   | ProjectDevAppLaunchSpec

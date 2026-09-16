@@ -25,6 +25,7 @@ export type WorkbenchTileType =
   | "devServer"
   | "llama"
   | "mobileSimulator"
+  | "securityScan"
   | "orgDevApp"
   | "devAppPreview"
   | "selection"
@@ -48,6 +49,7 @@ export const WORKBENCH_TILE_DEFAULT_TITLES: Record<WorkbenchTileType, string> = 
   memory: "Memory",
   llama: "Llama",
   mobileSimulator: "Mobile Simulator",
+  securityScan: "Security scan",
   orgDevApp: "DevApp",
   devAppPreview: "DevApp (development)",
   selection: "Add DevApp",
@@ -156,6 +158,10 @@ export interface WorkbenchMemoryTile extends WorkbenchBaseTile {
   type: "memory"
 }
 
+export interface WorkbenchSecurityScanTile extends WorkbenchBaseTile {
+  type: "securityScan"
+}
+
 export interface WorkbenchSelectionTile extends WorkbenchBaseTile {
   type: "selection"
   mode: WorkbenchSelectionTileMode
@@ -192,6 +198,7 @@ export type WorkbenchTile =
   | WorkbenchDevServerTile
   | WorkbenchLlamaTile
   | WorkbenchMemoryTile
+  | WorkbenchSecurityScanTile
   | WorkbenchMobileSimulatorTile
   | WorkbenchOrgDevAppTile
   | WorkbenchDevAppPreviewTile

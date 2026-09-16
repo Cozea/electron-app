@@ -37,6 +37,7 @@ export type WorkbenchPanelRendererKey =
   | "devServer"
   | "llama"
   | "mobileSimulator"
+  | "securityScan"
   | "orgDevApp"
   | "selection"
   | "terminal"
@@ -52,6 +53,7 @@ export type WorkbenchFallbackIcon =
   | "llama"
   | "published"
   | "mobileSimulator"
+  | "securityScan"
   | null
 
 export interface WorkbenchPanelConstraints {
@@ -180,6 +182,17 @@ export const WORKBENCH_TILE_REGISTRY = {
     manifestSource: "surface",
     fallbackIcon: "llama",
     panelRenderer: "llama",
+    dock: dockDefinition({
+      constraints: ASSISTANT_CONSTRAINTS,
+      tabGroup: AGENT_GROUP,
+    }),
+  },
+  securityScan: {
+    defaultTitle: WORKBENCH_TILE_DEFAULT_TITLES.securityScan,
+    tabLabel: "Security scan",
+    manifestSource: "surface",
+    fallbackIcon: "securityScan",
+    panelRenderer: "securityScan",
     dock: dockDefinition({
       constraints: ASSISTANT_CONSTRAINTS,
       tabGroup: AGENT_GROUP,

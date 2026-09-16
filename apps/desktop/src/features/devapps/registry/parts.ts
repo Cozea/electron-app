@@ -66,6 +66,15 @@ export function partsForLaunchSpec(launch: DevAppLaunchSpec): DevAppParts {
         service: { runtimeKind: "node", singleton: true },
       }
 
+    case "securityScan":
+      // Development tier: spawns the local scan runner over the project it is pointed at.
+      return {
+        view: NATIVE_VIEW("securityScan"),
+        worker: { capabilities: ["project.read", "process.spawn"] },
+        service: { runtimeKind: "node", singleton: true },
+        runtime: { kind: "development", location: "device", state: "device" },
+      }
+
     case "llama":
       return {
         view: NATIVE_VIEW("llama"),

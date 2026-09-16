@@ -40,6 +40,7 @@ describe("workbench tile contract architecture boundary", () => {
       "memory",
       "llama",
       "mobileSimulator",
+      "securityScan",
       "orgDevApp",
       "devAppPreview",
       "selection",

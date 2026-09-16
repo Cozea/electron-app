@@ -213,7 +213,10 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
     openSingletonTile: (
       projectId: string,
       laneId: string,
-      type: Extract<WorkbenchTileType, "devServer" | "mobileSimulator" | "llama" | "memory">,
+      type: Extract<
+        WorkbenchTileType,
+        "devServer" | "mobileSimulator" | "llama" | "memory" | "securityScan"
+      >,
       options?: CreateTileOptions,
       workspaceId?: string | null,
     ) => string
@@ -527,6 +530,7 @@ function createTile(type: WorkbenchTileType, options: CreateTileOptions = {}): W
     case "mobileSimulator":
     case "llama":
     case "memory":
+    case "securityScan":
       return { id, type, title, createdAt }
     case "devAppPreview":
       return {

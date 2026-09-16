@@ -102,6 +102,7 @@ import {
   Settings02Icon as __SettingsHugeIcon,
   StopIcon as __SquareHugeIcon,
 } from "@hugeicons/core-free-icons"
+import { SecurityScanHeaderActions } from "@/features/security-scan"
 import { WorkbenchMemoryTileHeaderActions } from "@/features/workbench/WorkbenchMemoryTileHeaderActions"
 import { WorkbenchMemoryTileInfo } from "@/features/workbench/WorkbenchMemoryTileInfo"
 import { WorkbenchAssistantTabStatus } from "@/features/workbench/assistant/WorkbenchAssistantTabStatus"
@@ -133,6 +134,10 @@ const loadWorkbenchLlamaTile = () =>
   import("@/features/workbench/WorkbenchLlamaTile").then((m) => ({
     default: m.WorkbenchLlamaTile,
   }))
+const loadSecurityScanTile = () =>
+  import("@/features/security-scan").then((m) => ({
+    default: m.SecurityScanTile,
+  }))
 const loadWorkbenchOrgDevAppTile = () =>
   import("@/features/workbench/WorkbenchOrgDevAppTile").then((m) => ({
     default: m.WorkbenchOrgDevAppTile,
@@ -155,6 +160,7 @@ const LazyWorkbenchBrowserTile = lazy(loadWorkbenchBrowserTile)
 const LazyWorkbenchDevServerTile = lazy(loadWorkbenchDevServerTile)
 const LazyWorkbenchLlamaTile = lazy(loadWorkbenchLlamaTile)
 const LazyWorkbenchMemoryTile = lazy(loadWorkbenchMemoryTile)
+const LazySecurityScanTile = lazy(loadSecurityScanTile)
 const LazyWorkbenchMobileSimulatorTile = lazy(loadWorkbenchMobileSimulatorTile)
 const LazyWorkbenchOrgDevAppTile = lazy(loadWorkbenchOrgDevAppTile)
 const LazyWorkbenchDevAppPreviewTile = lazy(loadWorkbenchDevAppPreviewTile)
@@ -1378,6 +1384,46 @@ const MemoryPanel: FunctionComponent<IDockviewPanelProps> = memo(function Memory
   )
 })
 
+const SecurityScanPanel: FunctionComponent<IDockviewPanelProps> = memo(
+  function SecurityScanPanel(props) {
+    const runtime = useWorkbenchDockRuntime()
+    const tile = useWorkbenchTile(
+      props.params.projectId,
+      props.params.laneId,
+      runtime.workspaceId,
+      props.params.tileId,
+    )
+
+    useSyncPanelTitle(props.api, tile?.title)
+
+    if (!tile || tile.type !== "securityScan") {
+      return (
+        <WorkbenchTileChrome
+          title="Security scan"
+          panelApi={props.api}
+          containerApi={props.containerApi}
+        >
+          <MissingTilePlaceholder />
+        </WorkbenchTileChrome>
+      )
+    }
+
+    return (
+      <WorkbenchTileChrome
+        title={tile.title}
+        panelApi={props.api}
+        containerApi={props.containerApi}
+        tileType="securityScan"
+        actions={<SecurityScanHeaderActions />}
+      >
+        <Suspense fallback={changesSuspenseFallback}>
+          <LazySecurityScanTile />
+        </Suspense>
+      </WorkbenchTileChrome>
+    )
+  },
+)
+
 type WorkbenchDockPanelComponent = FunctionComponent<IDockviewPanelProps>
 
 const WORKBENCH_PANEL_RENDERERS = {
@@ -1387,6 +1433,7 @@ const WORKBENCH_PANEL_RENDERERS = {
   devServer: DevServerPanel,
   llama: LlamaPanel,
   memory: MemoryPanel,
+  securityScan: SecurityScanPanel,
   mobileSimulator: MobileSimulatorPanel,
   orgDevApp: OrgDevAppPanel,
   devAppPreview: DevAppPreviewPanel,

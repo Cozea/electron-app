@@ -52,7 +52,7 @@ import { getWorkbenchTileDefinition } from "@/features/workbench/model/workbench
 import type { SidebarActiveSelectionLevel } from "./projectSidebarShared"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { BrainCircuitIcon as __BrainCircuitHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon } from '@hugeicons/core-free-icons'
+import { BrainCircuitIcon as __BrainCircuitHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, CpuChargeIcon as __CpuChargeHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __ServerStackHugeIcon, Shield01Icon as __ShieldHugeIcon } from '@hugeicons/core-free-icons'
 
 const SIDEBAR_APP_ICON_CLASS = "size-[18px] shrink-0 overflow-hidden rounded-[4px]"
 
@@ -145,6 +145,15 @@ function SurfaceTileGlyph(props: {
         )
       }
       return <HugeiconsIcon icon={__BrainCircuitHugeIcon} className={className} aria-hidden />
+    case "securityScan":
+      if (devApp) {
+        return (
+          <span className={SIDEBAR_APP_ICON_CLASS}>
+            <DevAppIcon app={devApp} />
+          </span>
+        )
+      }
+      return <HugeiconsIcon icon={__ShieldHugeIcon} className={className} aria-hidden />
     case "terminal":
     default:
       if (devApp) {

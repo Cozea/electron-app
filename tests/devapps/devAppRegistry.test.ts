@@ -28,6 +28,7 @@ describe("DevApps registry", () => {
       "dev-server",
       "terminal",
       "mobile-simulator",
+      "security-scan",
       "memory",
       "llama",
       "codex",
@@ -45,6 +46,7 @@ describe("DevApps registry", () => {
       "dev-server",
       "terminal",
       "mobile-simulator",
+      "security-scan",
       "memory",
       "llama",
       "codex",
@@ -55,7 +57,15 @@ describe("DevApps registry", () => {
       listLauncherApps({
         enabledAssistantProviders: [],
       }).map((app) => app.id),
-    ).toEqual(["browser", "dev-server", "terminal", "mobile-simulator", "memory", "llama"])
+    ).toEqual([
+      "browser",
+      "dev-server",
+      "terminal",
+      "mobile-simulator",
+      "security-scan",
+      "memory",
+      "llama",
+    ])
   })
 
   it("filters store apps by category and query", () => {
@@ -63,6 +73,7 @@ describe("DevApps registry", () => {
       "browser",
       "dev-server",
       "mobile-simulator",
+      "security-scan",
     ])
 
     expect(listStoreApps({ query: "anthropic" }).map((app) => app.id)).toEqual(["claude"])

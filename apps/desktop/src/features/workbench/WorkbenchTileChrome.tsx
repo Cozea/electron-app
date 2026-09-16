@@ -33,7 +33,7 @@ import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, Layout04Icon as __Layout04HugeIcon, ArrowUp01Icon as __ArrowUpHugeIcon, ArrowDown01Icon as __ArrowDownHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, BrainCircuitIcon as __BrainCircuitHugeIcon } from '@hugeicons/core-free-icons'
+import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, Layout04Icon as __Layout04HugeIcon, ArrowUp01Icon as __ArrowUpHugeIcon, ArrowDown01Icon as __ArrowDownHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, BrainCircuitIcon as __BrainCircuitHugeIcon, Shield01Icon as __ShieldHugeIcon } from '@hugeicons/core-free-icons'
 
 const DevServer = (props: any) => <HugeiconsIcon icon={__DevServerHugeIcon} {...props} />
 const Messages = (props: any) => <HugeiconsIcon icon={__MessagesHugeIcon} {...props} />
@@ -42,6 +42,7 @@ const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} /
 const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
 const AddCircle = (props: any) => <HugeiconsIcon icon={__AddCircleHugeIcon} {...props} />
 const BrainCircuit = (props: any) => <HugeiconsIcon icon={__BrainCircuitHugeIcon} {...props} />
+const Shield = (props: any) => <HugeiconsIcon icon={__ShieldHugeIcon} {...props} />
 const WORKBENCH_PILL_APP_ICON_CLASS = "size-5 shrink-0 overflow-hidden rounded-[4.5px]"
 const WORKBENCH_OVERLAY_APP_ICON_CLASS = "size-6 shrink-0 overflow-hidden rounded-[5.3px]"
 
@@ -138,6 +139,8 @@ function resolveTileFallbackIcon(
       return SiOllama
     case "memory":
       return BrainCircuit
+    case "securityScan":
+      return Shield
     case "published":
       return Globe
     case "mobileSimulator":
