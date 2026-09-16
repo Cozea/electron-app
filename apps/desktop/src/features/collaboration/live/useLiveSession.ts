@@ -161,10 +161,13 @@ export function useLiveSession(input: {
     : null
   const session = workspaceSession ?? branchSession ?? null
   const sessionId = session?._id ?? null
+  // Sessions and membership can come from the local cache before the device
+  // session is re-established; Convex calls wait until the device is signed in.
+  const signedIn = Boolean(input.principalId)
 
   const membersQuery = useSafeConvexQuery(
     api.collaborationSessions.listMembers,
-    sessionId ? { sessionId } : "skip",
+    sessionId && signedIn ? { sessionId } : "skip",
   )
   const members: LiveSessionMember[] =
     membersQuery.data?.map((member) => ({ ...member, principalId: String(member.principalId) })) ?? NO_MEMBERS
@@ -175,7 +178,7 @@ export function useLiveSession(input: {
   const sessionWorkspaceId = session ? `ws_collab_${session.publicSessionId}` : null
   const isSessionWorkspace = Boolean(sessionWorkspaceId && workspaceId === sessionWorkspaceId)
   const daemon = useDaemonCollaborationSession({
-    enabled: membership === "active" && isSessionWorkspace,
+    enabled: signedIn && membership === "active" && isSessionWorkspace,
     session,
     projectId: input.projectId,
     workspaceId,
@@ -185,7 +188,7 @@ export function useLiveSession(input: {
 
   const media = useSessionMedia({
     sessionId,
-    enabled: membership === "active" && isSessionWorkspace,
+    enabled: signedIn && membership === "active" && isSessionWorkspace,
     members,
     myPrincipalId: input.principalId,
     isWorkbenchActive: isSessionWorkspace,
