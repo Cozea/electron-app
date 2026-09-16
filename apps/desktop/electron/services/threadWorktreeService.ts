@@ -24,7 +24,29 @@ import crypto from "node:crypto"
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
 
-const exec = promisify(execFile)
+const execFileAsync = promisify(execFile)
+
+/**
+ * Git's answers here are bounded by the repository, not by this file: a
+ * worktree diff or an untracked listing grows with the change set. Node's
+ * `execFile` default is 1MB, and exceeding it fails with `ENOBUFS` rather than
+ * anything Git said, so every call gets a real ceiling and a deadline. Call
+ * sites can still state their own.
+ */
+const GIT_EXEC_DEFAULTS = {
+  maxBuffer: 64 * 1024 * 1024,
+  timeout: 120_000,
+}
+
+const exec = ((
+  file: string,
+  args: readonly string[],
+  options: Record<string, unknown> = {},
+) =>
+  execFileAsync(file, args as string[], {
+    ...GIT_EXEC_DEFAULTS,
+    ...options,
+  })) as unknown as typeof execFileAsync
 
 export interface CreateThreadWorktreeInput {
   workspaceRoot: string

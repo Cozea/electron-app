@@ -3,6 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 const COMMAND_TIMEOUT_MS = 5 * 60_000;
+/**
+ * `spawnSync` defaults to 1MB and signals the overflow only by killing the
+ * child, so a scaffold whose install or commit talks at length would be read as
+ * having failed, or as having said less than it did. This runs synchronously on
+ * the Electron main thread, so the ceiling also bounds what it can hold there.
+ */
+const COMMAND_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
 
 export interface ScaffoldCommandResult {
   status: number | null;
@@ -28,6 +35,7 @@ function runCommand(command: string, args: string[], cwd: string): ScaffoldComma
     cwd,
     encoding: "utf8",
     timeout: COMMAND_TIMEOUT_MS,
+    maxBuffer: COMMAND_MAX_OUTPUT_BYTES,
     env: { ...process.env, CI: "1" },
   });
   if (result.error) return { status: null, output: result.error.message };

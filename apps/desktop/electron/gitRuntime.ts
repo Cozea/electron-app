@@ -85,6 +85,20 @@ let cachedHealth: GitRuntimeHealth | null = null
 let healthCacheAt = 0
 const HEALTH_CACHE_TTL_MS = 30_000
 const EXPLICIT_GIT_EXECUTABLE_ENV = "COZEA_GIT_EXECUTABLE"
+/**
+ * Ceiling on one command's stdout, matching projectd's `GitProcess`. This runs
+ * in the Electron **main** process, and `mergeTreeWithGit` reads whole file
+ * contents through it, so an unbounded answer grows in the process that owns
+ * the window.
+ */
+const MAX_GIT_STDOUT_BYTES = 50 * 1024 * 1024
+/**
+ * A deadline for callers that state none. Several — branch checkout, merge,
+ * the initial commit — passed no timeout at all, so a command waiting on
+ * something that never arrives waited forever. Generous enough that a slow
+ * merge on a large repository still finishes.
+ */
+const DEFAULT_GIT_TIMEOUT_MS = 120_000
 
 export function resolveGitExecutablePath(): { path: string | null; source: GitRuntimeSource } {
   const explicitExecutable = process.env[EXPLICIT_GIT_EXECUTABLE_ENV]?.trim()
@@ -110,6 +124,11 @@ function createGitEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
     ...process.env,
     ...extra,
     GIT_TERMINAL_PROMPT: "0",
+    // `parseMergeTreeConflicts` reads Git's own words -- "Auto-merging",
+    // "CONFLICT (...)" -- which Git translates under a localised locale, so
+    // pin the one the parsing assumes.
+    LC_ALL: "C",
+    LANG: "C",
   }
 }
 
@@ -142,24 +161,51 @@ export async function runGitCommand(
       stdio: ["pipe", "pipe", "pipe"],
     })
 
-    let stdout = ""
+    // Collected as bytes and decoded once: this carries merged file contents,
+    // and decoding each chunk alone corrupts any character a chunk boundary
+    // happens to split.
+    const stdoutChunks: Buffer[] = []
+    let stdoutBytes = 0
     let stderr = ""
     let timedOut = false
+    let overflowed = false
+    let settled = false
     let timeout: NodeJS.Timeout | null = null
 
-    if (options?.timeoutMs && options.timeoutMs > 0) {
-      timeout = setTimeout(() => {
-        timedOut = true
+    const readStdout = (): string => Buffer.concat(stdoutChunks).toString("utf8")
+
+    const settle = (result: GitCommandResult): void => {
+      if (settled) return
+      settled = true
+      if (timeout) clearTimeout(timeout)
+      resolve(result)
+    }
+
+    const timeoutMs =
+      options?.timeoutMs && options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_GIT_TIMEOUT_MS
+    timeout = setTimeout(() => {
+      timedOut = true
+      try {
+        child.kill("SIGKILL")
+      } catch {
+        // ignore kill failures
+      }
+    }, timeoutMs)
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      stdoutBytes += buffer.length
+      if (stdoutBytes > MAX_GIT_STDOUT_BYTES) {
+        if (overflowed) return
+        overflowed = true
         try {
           child.kill("SIGKILL")
         } catch {
           // ignore kill failures
         }
-      }, options.timeoutMs)
-    }
-
-    child.stdout.on("data", (chunk: Buffer | string) => {
-      stdout += chunk.toString()
+        return
+      }
+      stdoutChunks.push(buffer)
     })
 
     child.stderr.on("data", (chunk: Buffer | string) => {
@@ -167,11 +213,10 @@ export async function runGitCommand(
     })
 
     child.on("error", (error) => {
-      if (timeout) clearTimeout(timeout)
-      resolve({
+      settle({
         success: false,
         exitCode: null,
-        stdout,
+        stdout: readStdout(),
         stderr,
         executablePath: resolved.path!,
         source: resolved.source,
@@ -180,15 +225,18 @@ export async function runGitCommand(
     })
 
     child.on("close", (code) => {
-      if (timeout) clearTimeout(timeout)
-      resolve({
-        success: !timedOut && code === 0,
+      settle({
+        success: !timedOut && !overflowed && code === 0,
         exitCode: code,
-        stdout,
+        stdout: overflowed ? "" : readStdout(),
         stderr,
         executablePath: resolved.path!,
         source: resolved.source,
-        error: timedOut ? "Git command timed out" : undefined,
+        error: overflowed
+          ? `Git command output exceeded ${MAX_GIT_STDOUT_BYTES} bytes`
+          : timedOut
+            ? "Git command timed out"
+            : undefined,
       })
     })
 
