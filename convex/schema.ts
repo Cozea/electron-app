@@ -1059,4 +1059,64 @@ export default defineSchema({
     .index("by_change", ["changeId"])
     .index("by_comment_and_principal", ["commentId", "principalId"])
     .index("by_principal", ["principalId"]),
+
+  // ─── GitHub App (cozea-source-control) ──────────────────────────────────────
+  // The GitHub account a device proved it controls by signing in through the app.
+  // Cozea keeps who the person is on GitHub, never their token.
+  githubAccounts: defineTable({
+    principalId: v.id("devicePrincipals"),
+    githubUserId: v.number(),
+    login: v.string(),
+    verifiedAt: v.number(),
+  })
+    .index("by_principal", ["principalId"])
+    .index("by_github_user", ["githubUserId"]),
+
+  // Installations of the app, as GitHub reports them to the callback, the webhook
+  // or a sync. accountKey is the lowercased login, for matching repository owners.
+  githubInstallations: defineTable({
+    installationId: v.number(),
+    accountId: v.number(),
+    accountLogin: v.string(),
+    accountKey: v.string(),
+    accountType: v.string(),
+    repositorySelection: v.string(),
+    suspendedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_installation", ["installationId"])
+    .index("by_account", ["accountKey"]),
+
+  // A project's repository, verified with GitHub: the app is installed on it and the
+  // person who linked it can push. Session Git tokens are issued only against these.
+  githubRepositoryGrants: defineTable({
+    projectId: v.id("projects"),
+    repositoryKey: v.string(),
+    repositoryUrl: v.string(),
+    owner: v.string(),
+    name: v.string(),
+    repositoryId: v.number(),
+    installationId: v.number(),
+    allowGitWrite: v.boolean(),
+    // Absent on grants imported from the operator's COZEA_GITHUB_REPOSITORY_GRANTS.
+    linkedByPrincipalId: v.optional(v.id("devicePrincipals")),
+    linkedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_repository", ["projectId", "repositoryKey"])
+    .index("by_linked_by", ["linkedByPrincipalId"])
+    .index("by_installation", ["installationId"])
+    .index("by_repository_id", ["repositoryId"]),
+
+  // One trip to GitHub and back: the state GitHub returns names the device (and
+  // project) that asked. Single use and short-lived.
+  githubLinkRequests: defineTable({
+    state: v.string(),
+    principalId: v.id("devicePrincipals"),
+    projectId: v.optional(v.id("projects")),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  }).index("by_state", ["state"]),
 })

@@ -810,6 +810,7 @@ const es: Record<TranslationKey, string> = {
   "routeLoading.tooling": "Cargando herramientas…",
   "routeLoading.devapps": "Cargando DevApps…",
   "routeLoading.computerUse": "Cargando Computer Use…",
+  "routeLoading.github": "Cargando GitHub…",
   "agentSkills.filter.all": "Todas las habilidades",
   "agentSkills.filter.external": "Carpetas de proveedores",
   "agentSkills.library": "Biblioteca de habilidades",

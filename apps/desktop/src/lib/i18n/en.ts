@@ -799,6 +799,7 @@ const en = {
   "routeLoading.tooling": "Loading tooling…",
   "routeLoading.devapps": "Loading DevApps…",
   "routeLoading.computerUse": "Loading Computer Use…",
+  "routeLoading.github": "Loading GitHub…",
   "agentSkills.filter.all": "All skills",
   "agentSkills.filter.external": "Provider folders",
   "agentSkills.library": "Skill library",

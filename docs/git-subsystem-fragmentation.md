@@ -373,4 +373,49 @@ import both barrels, which makes this latent rather than harmless, so
 that set of seven, and `shared/assistant-contracts/index.ts` now states what it
 is and what it is not.
 
-**Step 7 — not started.**
+**Step 4, engine #8 — fixed further (2026-09-17).** `devAppScaffoldPreparation`
+was worse than undisciplined. It ran `git add -A` and a bare `git commit` from
+the package directory, and both act on the **whole repository** from any
+subdirectory: creating a DevApp committed whatever else the author had in
+progress, under "feat: scaffold Cozea DevApp". It now stages only the files the
+scaffold wrote (leaving out anything `.gitignore` excludes rather than forcing
+it) and commits them with `--only`, so the author's own staged work stays
+staged. It also left `spawnSync`: a five-minute `bun install` or a slow commit
+hook froze every window. A real-repository test pins both.
+
+**Step 5c, `downloadToFile` — done (2026-09-17).** Now
+`runtime/releaseAssetDownload.ts`: redirects followed by hand, with the bearer
+token sent only to `github.com`/`api.github.com` and dropped on the first hop
+elsewhere (GitHub's real redirect goes to `release-assets.githubusercontent.com`);
+HTTPS only; at most five hops; a 32MB ceiling; and a stall timeout re-armed on
+every chunk instead of a wall clock.
+
+**Lint scope — widened (2026-09-17).** `bun run lint` now covers
+`apps/projectd/src`, `cloudflare` and `packages`. The worker had four findings,
+one of them an unused `runQuery` that would have called Convex without the
+server secret.
+
+**Step 7 — taken in part, deliberately (2026-09-17).** Of the four reasons
+recorded in `substrate-phase4-vcs.md`, two were already closed by step 4
+(output ceiling, env discipline). Of the other two:
+
+- *Two status parsers* — closed. The v2 parser moved to
+  `shared/git/porcelainStatus.ts` and the Changes list now uses it. The v1
+  parser it replaced had a real bug: under `-z` a rename is `R  <new>\0<old>`,
+  and it read the first path as the old one, so **every staged rename showed
+  backwards** in the Changes list, naming a file that no longer exists. A
+  real-Git test fails on the old parser and passes on the new one. The
+  truncation disagreement is now an explicit caller policy: projectd keeps
+  5000, the Changes list passes no cap because it has no way to say it was
+  truncated.
+- *No dedup across the ad-hoc `gitStatus` callers* — **not** taken. Joining an
+  in-flight status read would hand a caller that asks right after a checkout
+  the answer to a read that started before it. Every call is already one
+  bounded `git status` in projectd; a cache is not worth a stale branch name.
+
+Moving patches and untracked diffs across the socket is not planned. Its
+remaining argument was one owner of parsing, which the shared parser now gives
+without making the Changes list depend on the daemon being up.
+
+§2 now counts five parsers, two of them for status, and the status pair shares
+one implementation.

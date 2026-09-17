@@ -1,6 +1,7 @@
 import { generateKeyPairSync, verify } from "node:crypto"
 import { expect, it } from "vitest"
-import { repositoryGrant, issueRepositoryInstallationToken } from "../../convex/sessionRepositoryCredentials"
+import { describeRefusal, repositoryGrant, issueRepositoryInstallationToken } from "../../convex/sessionRepositoryCredentials"
+import { GitHubApiError } from "../../shared/github/apiFetch"
 
 it("requires an exact operator grant and requests a single-repository minimal token with a signed JWT", async () => {
   const grant = { projectId: "project", repositoryUrl: "https://github.com/team/app.git", installationId: 123, repositoryId: 456 }
@@ -23,9 +24,20 @@ it("requires an exact operator grant and requests a single-repository minimal to
   expect(await issueRepositoryInstallationToken(grant, "app", privateKey, fetchFn)).toMatchObject({ token: "fixture-token" })
   await expect(issueRepositoryInstallationToken(grant, "app", privateKey, fetchFn, "git_write")).rejects.toThrow("not provisioned")
   const gitFetch = (async (_url, init) => {
-    expect(JSON.parse(String(init?.body))).toEqual({ repository_ids: [456], permissions: { contents: "write" } })
+    expect(JSON.parse(String(init?.body))).toEqual({ repository_ids: [456], permissions: { contents: "write", workflows: "write" } })
     return Response.json({ token: "git-token", expires_at: new Date(Date.now() + 3600_000).toISOString() })
   }) as typeof fetch
   expect(await issueRepositoryInstallationToken({ ...grant, allowGitWrite: true }, "app", privateKey, gitFetch, "git_write")).toMatchObject({ token: "git-token" })
   await expect(issueRepositoryInstallationToken(grant, "app", privateKey, (async () => Response.json({ token: "expired", expires_at: "2000-01-01" })) as typeof fetch)).rejects.toThrow("Invalid")
+})
+
+it("names the step that refused a token without repeating anything else an error says", () => {
+  expect(describeRefusal((() => { try { repositoryGrant("[]", "project", "https://github.com/team/app.git") } catch (error) { return error } })()))
+    .toBe("Repository is not provisioned")
+  expect(describeRefusal((() => { try { repositoryGrant("not json", "project", "url") } catch (error) { return error } })()))
+    .toBe("Invalid repository grants")
+  expect(describeRefusal(new Error("Git write access is not provisioned"))).toBe("Git write access is not provisioned")
+  expect(describeRefusal(new GitHubApiError("GitHub answered 404.", 404))).toBe("GitHub answered 404")
+  expect(describeRefusal(new GitHubApiError("The GitHub request could not be completed."))).toBe("GitHub request failed")
+  expect(describeRefusal(new Error("-----BEGIN PRIVATE KEY----- installation 118079255"))).toBe("Unexpected failure")
 })

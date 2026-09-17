@@ -20,8 +20,6 @@ import "./responsiveHeader.css"
 
 export interface HeaderActionGroup {
   id: string
-  label: string
-  priority: number
   content: ReactNode
   placement?: "leading" | "trailing"
 }
@@ -47,7 +45,6 @@ export function ResponsiveHeaderRow({
   compact = true,
   collapseThreshold = 800,
 }: ResponsiveHeaderRowProps) {
-  const rowRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [open, setOpen] = useState(false)
@@ -87,7 +84,6 @@ export function ResponsiveHeaderRow({
   return (
     <HeaderOverflowContext.Provider value={overflowContextValue}>
       <div
-        ref={rowRef}
         className={cn(
           "responsive-header-row h-10 transition-[padding]",
           SIDEBAR_TRANSITION_CLASS_NAME,

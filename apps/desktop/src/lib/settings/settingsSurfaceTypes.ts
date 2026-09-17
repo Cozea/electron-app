@@ -12,6 +12,7 @@ export type SettingsSurfaceId =
   | "organizations"
   | "tooling"
   | "computerUse"
+  | "github"
 
 export interface SettingsSurfaceDefinition {
   id: SettingsSurfaceId

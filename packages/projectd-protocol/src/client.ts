@@ -470,6 +470,11 @@ export class ProjectdClient {
     return this.request<ProjectdTargetStatus | null>("sessions.checkTarget", { publicSessionId }, 90_000)
   }
 
+  /** Checks now whether this Mac can save the session to Git. */
+  async recheckSessionGitAccess(publicSessionId: string): Promise<void> {
+    await this.request<null>("sessions.recheckGitAccess", { publicSessionId }, 90_000)
+  }
+
   /** Hides the rebase recommendation for a while. */
   async dismissSessionTarget(publicSessionId: string): Promise<ProjectdTargetStatus | null> {
     return this.request<ProjectdTargetStatus | null>("sessions.dismissTarget", { publicSessionId })

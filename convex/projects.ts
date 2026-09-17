@@ -699,7 +699,7 @@ export const deleteProject = mutation({
 })
 
 const PROJECT_PURGE_BATCH_SIZE = 64
-const PROJECT_PURGE_FINAL_STAGE = 32
+const PROJECT_PURGE_FINAL_STAGE = 33
 
 async function deleteRows<TableName extends TableNames>(
   ctx: MutationCtx,
@@ -939,6 +939,14 @@ async function deleteProjectPurgeStage(
       return rows.length
     }
     case 31: {
+      const rows = await ctx.db
+        .query("githubRepositoryGrants")
+        .withIndex("by_project_and_repository", (q) => q.eq("projectId", projectId))
+        .take(PROJECT_PURGE_BATCH_SIZE)
+      await deleteRows(ctx, rows)
+      return rows.length
+    }
+    case 32: {
       // Sessions go last, once nothing keyed by their ID remains.
       const rows = await ctx.db
         .query("collaborationSessions")

@@ -16,6 +16,7 @@ import {
   checkpointRefForGroupId,
   migrateLegacyT3CheckpointRefs,
 } from './checkpointRefs'
+import { parsePorcelainV2Status } from '../../../../../shared/git/porcelainStatus'
 import { countDiffLines } from './diffStats'
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
@@ -652,54 +653,37 @@ export async function deleteAllCheckpointRefs(cwd: string): Promise<GitCheckpoin
   }
 }
 
-function parsePorcelainStatus(stdout: string): {
+/**
+ * Maps the shared porcelain v2 parse onto the Changes list's summary.
+ *
+ * Uncapped on purpose: the Changes list has no way to say it was truncated, so
+ * a cap here would silently hide files. Directory entries from
+ * `--untracked-files=normal` are listed but get no synthetic diff.
+ */
+function summarizeWorkingTreeStatus(stdout: string): {
   files: GitChangeFileSummary[]
   untrackedPaths: string[]
 } {
-  const tokens = stdout.split('\0')
   const files: GitChangeFileSummary[] = []
   const untrackedPaths: string[] = []
 
-  let i = 0
-  while (i < tokens.length) {
-    const token = tokens[i]
-    i++
-    // Status entries: XY<space>path — at least 4 chars with space at index 2
-    if (!token || token.length < 4 || token[2] !== ' ') continue
-
-    const x = token[0]
-    const y = token[1]
-    const filePath = token.slice(3)
-    if (!filePath) continue
-
-    if (x === '?' && y === '?') {
-      if (!filePath.endsWith('/')) {
-        untrackedPaths.push(filePath)
-      }
-      files.push({ path: filePath, status: 'added' })
+  for (const entry of parsePorcelainV2Status(stdout, Number.POSITIVE_INFINITY).files) {
+    if (entry.isIgnored) continue
+    if (entry.isUntracked) {
+      if (!entry.path.endsWith('/')) untrackedPaths.push(entry.path)
+      files.push({ path: entry.path, status: 'added' })
       continue
     }
-
-    if (x === '!' && y === '!') continue
-
-    // Rename/copy: next token is the new path
-    if (x === 'R' || x === 'C') {
-      const newPath = tokens[i]
-      i++
-      if (newPath) {
-        files.push({ path: newPath, oldPath: filePath, status: 'renamed' })
-      }
+    if (entry.origPath !== undefined) {
+      files.push({ path: entry.path, oldPath: entry.origPath, status: 'renamed' })
       continue
     }
-
-    const effectiveChar = x !== ' ' ? x : y
-    if (effectiveChar === 'A') {
-      files.push({ path: filePath, status: 'added' })
-    } else if (effectiveChar === 'D') {
-      files.push({ path: filePath, status: 'deleted' })
-    } else {
-      files.push({ path: filePath, status: 'modified' })
-    }
+    // The index side wins when it has something to say, as it did under v1.
+    const effective = entry.stagedStatus !== '.' ? entry.stagedStatus : entry.unstagedStatus
+    files.push({
+      path: entry.path,
+      status: effective === 'A' ? 'added' : effective === 'D' ? 'deleted' : 'modified',
+    })
   }
 
   return { files, untrackedPaths }
@@ -717,7 +701,7 @@ async function readCurrentWorkingTreeChanges(cwd: string): Promise<{
   const [statusResult, trackedDiffResult] = await Promise.all([
     executeGit({
       cwd,
-      args: ['status', '--porcelain=1', '-z', '--untracked-files=normal'],
+      args: ['status', '--porcelain=v2', '-z', '--untracked-files=normal'],
       allowNonZeroExit: true,
     }),
     headCommit
@@ -729,7 +713,7 @@ async function readCurrentWorkingTreeChanges(cwd: string): Promise<{
       : Promise.resolve<GitExecuteResult>({ stdout: '', stderr: '', code: 0 }),
   ])
 
-  const { files, untrackedPaths } = parsePorcelainStatus(statusResult.stdout)
+  const { files, untrackedPaths } = summarizeWorkingTreeStatus(statusResult.stdout)
 
   const untrackedDiffs = await Promise.all(
     untrackedPaths.slice(0, MAX_UNTRACKED_DIFF_FILES).map(async (filePath) => {
@@ -846,10 +830,10 @@ export async function readChangesPatch(args: {
         // Check if the file is untracked
         const statusResult = await executeGit({
           cwd: args.cwd,
-          args: ['status', '--porcelain=1', '-z', '--', filePath],
+          args: ['status', '--porcelain=v2', '-z', '--', filePath],
           allowNonZeroExit: true,
         })
-        const isUntracked = statusResult.stdout.trimStart().startsWith('??')
+        const isUntracked = parsePorcelainV2Status(statusResult.stdout).files.some((entry) => entry.isUntracked)
 
         if (isUntracked) {
           const absPath = path.join(args.cwd, filePath)

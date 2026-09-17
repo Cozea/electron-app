@@ -75,6 +75,10 @@ const DESTINATION_DEFINITIONS: Record<string, DestinationDefinition> = {
     loader: settingsModules.devapps,
     pathPrefix: '/projects/settings/devapps',
   },
+  '/projects/settings/github': {
+    loader: settingsModules.github,
+    pathPrefix: '/projects/settings/github',
+  },
 };
 
 // Cached single-flight promises per destination (Section 11.1)

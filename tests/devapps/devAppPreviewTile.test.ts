@@ -51,6 +51,10 @@ const commandHostSource = fs.readFileSync(
   ),
   "utf8",
 )
+const projectLayoutSource = fs.readFileSync(
+  path.join(root, "apps/desktop/src/features/projects/layouts/ProjectLayout.tsx"),
+  "utf8",
+);
 const workbenchSurfaceSource = fs.readFileSync(
   path.join(root, "apps/desktop/src/features/projects/pages/ProjectWorkbenchSurface.tsx"),
   "utf8",
@@ -138,7 +142,10 @@ describe("Preview tile — registration", () => {
     expect(commandSource).toContain('"devAppPreview"')
     expect(commandSource).toContain("devAppPreviewRelativePath: relativePath")
     expect(commandHostSource).toContain("projectRootPath: props.projectRootPath")
-    expect(workbenchSurfaceSource).toContain("projectRootPath={projectRootPath}")
+    // The palette host moved from the workbench surface to the project layout
+    // (bf847c30f) so it is global; outside the workbench it gets no root.
+    const paletteMount = projectLayoutSource.slice(projectLayoutSource.indexOf("<WorkbenchCommandPaletteHost"))
+    expect(paletteMount).toContain("projectRootPath={isWorkbenchView ? activeProjectRootPath : null}")
   })
 
   it("is registered as a dock component", () => {

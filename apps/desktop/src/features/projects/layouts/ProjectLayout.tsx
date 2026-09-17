@@ -20,7 +20,7 @@ import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery";
 import { resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
-import { LiveSessionBar } from "@/features/collaboration/live/LiveSessionBar";
+import { useLiveSessionNotices } from "@/features/collaboration/live/useLiveSessionNotices";
 import { HeaderLiveSessionControl } from "@/features/collaboration/live/HeaderLiveSessionControl";
 import { CloseSessionDialog } from "@/features/collaboration/ui/CloseSessionDialog";
 import { useLiveSession } from "@/features/collaboration/live/useLiveSession";
@@ -425,6 +425,8 @@ export function ProjectLayout({
     return project?._id ?? null;
   }, [project?._id]);
 
+  useLiveSessionNotices(isSettingsModeRoute ? null : liveSession);
+
   const liveSessionHeaderControl = useMemo(() => {
     if (!liveSession.session || !liveSession.sync) {
       return null;
@@ -615,7 +617,6 @@ export function ProjectLayout({
             className="flex flex-col flex-1 min-w-0 overflow-hidden bg-background md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none md:peer-data-[variant=inset]:bg-transparent"
           >
             {headerElement}
-            {isSettingsModeRoute ? null : <LiveSessionBar live={liveSession} />}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
               <div
                 className={cn(

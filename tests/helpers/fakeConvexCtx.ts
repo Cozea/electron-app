@@ -116,6 +116,10 @@ export class FakeConvexDb {
     }
   }
 
+  async delete(id: string): Promise<void> {
+    if (!this.tables.get(id.split("|")[0])?.delete(id)) throw new Error(`delete: no document ${id}`)
+  }
+
   query(table: string): FakeQuery {
     return new FakeQuery(this.rows(table))
   }
