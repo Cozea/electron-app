@@ -3,12 +3,11 @@ import fs from 'node:fs'
 import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
 import { requestGitHubJson } from '../../../../shared/github/apiFetch'
 import { loadBundledCapabilityCatalog, loadBundledRuntimePublicKey } from './runtimeManifest'
 import type { CapabilityCatalog } from './runtimeTypes'
 import { verifyCatalogAsset } from './catalogVerify'
+import { downloadReleaseAsset } from './releaseAssetDownload'
 
 const DEFAULT_CAPABILITY_CATALOG: CapabilityCatalog = {
   version: '0',
@@ -100,18 +99,6 @@ function getCachedCatalogSignaturePath(): string {
 
 function githubToken(): string | undefined {
   return process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || undefined
-}
-
-function githubHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json,application/octet-stream',
-    'User-Agent': 'cozea-capability-catalog',
-  }
-  const token = githubToken()
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-  return headers
 }
 
 function getRuntimeReleaseRepository(): string {
@@ -212,21 +199,11 @@ async function fetchReleaseAssets(): Promise<Map<string, string>> {
   return new Map()
 }
 
-/**
- * Left on a plain `fetch` on purpose. Release assets redirect to a CDN, so
- * refusing redirects here would break downloading them, and a total-duration
- * deadline would abort a large artifact that is still arriving. Bounding this
- * one needs a stall timeout rather than a wall clock, which is a different fix.
- */
 async function downloadToFile(url: string, destinationPath: string): Promise<void> {
-  const response = await fetch(url, { headers: githubHeaders() })
-  if (!response.ok || !response.body) {
-    throw new Error(`Catalog download failed (${response.status}) for ${url}`)
-  }
-  await mkdir(path.dirname(destinationPath), { recursive: true })
-  // response.body is a DOM ReadableStream (lib.dom); Readable.fromWeb wants node's web stream type.
-  const body = Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream)
-  await pipeline(body, fs.createWriteStream(destinationPath))
+  await downloadReleaseAsset(url, destinationPath, {
+    token: githubToken(),
+    userAgent: 'cozea-capability-catalog',
+  })
 }
 
 function firstAsset(assetMap: Map<string, string>, names: string[]): string | null {
