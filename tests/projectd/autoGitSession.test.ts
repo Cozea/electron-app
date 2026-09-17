@@ -791,6 +791,10 @@ describe("AutoGit in projectd", () => {
     // Several ordinary rechecks' worth of time: a missing setup waits for the long one.
     await new Promise((resolve) => setTimeout(resolve, (FAST.eligibilityRecheckMs ?? 0) * 3))
     expect(credentials).toHaveBeenCalledTimes(asked)
+
+    // Once someone links the repository, Cozea asks straight away rather than in 15 minutes.
+    await creator.host.recheckGitAccess()
+    expect(credentials).toHaveBeenCalledTimes(asked + 1)
   })
 
   it("pauses a folder while another branch is checked out or Git is mid-merge, and catches up after", async () => {

@@ -1720,6 +1720,8 @@ export interface ElectronAPI {
       checkTarget: (
         publicSessionId: string,
       ) => Promise<{ success: true; target: ProjectdTargetStatus | null } | ProjectdCallFailure>
+      /** Checks now whether this Mac can save the session to Git, e.g. once its repository was linked. */
+      recheckGitAccess: (publicSessionId: string) => Promise<{ success: true } | ProjectdCallFailure>
       /** Hides the rebase recommendation for a while. */
       dismissTarget: (
         publicSessionId: string,

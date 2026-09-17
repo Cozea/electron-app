@@ -338,6 +338,15 @@ export function registerProjectdHandlers(): void {
     }
   })
 
+  ipcMain.handle("projectd:sessions:recheckGitAccess", async (_event, publicSessionId: string) => {
+    try {
+      await getSharedProjectdClient().recheckSessionGitAccess(publicSessionId)
+      return { success: true }
+    } catch (err) {
+      return toFailure(err)
+    }
+  })
+
   ipcMain.handle("projectd:sessions:dismissTarget", async (_event, publicSessionId: string) => {
     try {
       return { success: true, target: await getSharedProjectdClient().dismissSessionTarget(publicSessionId) }

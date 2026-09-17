@@ -515,6 +515,15 @@ export class AutoGitAgent {
     return { outcome: routed ? "requested" : "no_leader", lastCheckpoint: this.summary() }
   }
 
+  /** Checks now whether this Mac can push, instead of at the next scheduled recheck. */
+  async recheckEligibility(): Promise<void> {
+    await this.start()
+    if (this.eligible) return
+    if (this.eligibilityTimer) clearTimeout(this.eligibilityTimer)
+    this.eligibilityTimer = null
+    await this.refreshEligibility()
+  }
+
   /** Waits for a room-confirmed barrier captured after this request, on any leader. */
   async freshCheckpoint(): Promise<ProjectdCheckpointSummary> {
     await this.start()

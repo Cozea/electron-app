@@ -346,6 +346,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ignoreEnvironmentFiles: (publicSessionId: string) =>
         ipcRenderer.invoke('projectd:sessions:ignoreEnvironmentFiles', publicSessionId),
       checkTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:checkTarget', publicSessionId),
+      recheckGitAccess: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:recheckGitAccess', publicSessionId),
       dismissTarget: (publicSessionId: string) => ipcRenderer.invoke('projectd:sessions:dismissTarget', publicSessionId),
       rebaseRecovery: (publicSessionId: string, request: import('@cozea/projectd-protocol').ProjectdRebaseRecoveryRequest) =>
         ipcRenderer.invoke('projectd:sessions:rebaseRecovery', publicSessionId, request),
