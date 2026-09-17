@@ -111,13 +111,14 @@ describe("downloadReleaseAsset", () => {
 
   it("keeps a slow download alive as long as bytes keep arriving", async () => {
     const target = destination()
-    // Total time well past the stall window; no single gap reaches it.
-    const fetchFn = vi.fn(async () => new Response(streamOf(["a", "b", "c", "d", "e", "f"], 20)))
+    // Eight 100ms gaps: twice the stall window in total, a quarter of it per
+    // gap. The margin is wide on purpose; a loaded test run stretches timers.
+    const fetchFn = vi.fn(async () => new Response(streamOf(["a", "b", "c", "d", "e", "f", "g"], 100)))
     await downloadReleaseAsset("https://github.com/a", target, {
-      stallTimeoutMs: 60,
+      stallTimeoutMs: 400,
       fetchFn: fetchFn as unknown as typeof fetch,
     })
-    expect(fs.readFileSync(target, "utf8")).toBe("abcdef")
+    expect(fs.readFileSync(target, "utf8")).toBe("abcdefg")
   })
 
   it("refuses an asset larger than the ceiling", async () => {
