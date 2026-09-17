@@ -13,13 +13,14 @@ describe('desktop-first boot graph', () => {
   it('keeps common route chunk waits invisible while preserving token-bound invite loading', () => {
     const routeLoading = read('apps/desktop/src/router/RouteLoading.tsx')
 
-    expect(routeLoading).toContain('VISIBLE_BLOCKING_ROUTE_LOADERS')
-    expect(routeLoading).toContain('"routeLoading.projectInvite"')
+    // Only a token-bound invite can genuinely block, so only it gets the
+    // spinner-and-label page. bf847c30f gave settings and page routes
+    // layout-shaped skeletons instead of nothing; the workbench and anything
+    // unlisted still render nothing at all.
+    expect(routeLoading).toContain('resolvedLabelKey === "routeLoading.projectInvite"')
+    expect(routeLoading.match(/className="loader"/g)).toHaveLength(1)
     expect(routeLoading).toContain('return null')
-    expect(routeLoading).not.toContain('"routeLoading.workbench",')
-    expect(routeLoading).not.toContain('"routeLoading.tasks",')
-    expect(routeLoading).not.toContain('"routeLoading.account",')
-    expect(routeLoading).not.toContain('"routeLoading.appearance",')
+    expect(routeLoading).not.toContain('"routeLoading.workbench"')
   })
 
   it('aliases cold main-process services to startup-safe facades', () => {

@@ -14,7 +14,9 @@ export async function runLauncherViewportChecks(): Promise<string[]> {
   function Harness() {
     const [grid, updateGrid] = useState(false)
     setGrid = updateGrid
-    const [ref, layout] = useLauncherGridLayout(20)
+    // Uncapped so height changes are observable: this exercises measurement
+    // lifecycle, not the two-row page cap the launcher applies by default.
+    const [ref, layout] = useLauncherGridLayout(20, Number.POSITIVE_INFINITY)
     return <>
       <output>{JSON.stringify(layout)}</output>
       {grid ? <div ref={ref} data-viewport style={{ width: 500, height: 240 }} /> : <span>List</span>}

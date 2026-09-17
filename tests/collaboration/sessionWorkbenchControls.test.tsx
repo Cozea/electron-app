@@ -244,8 +244,10 @@ describe("P23 session bar", () => {
 
     expect(markupWithMuted).toContain("data-live-session-mic-button")
     expect(markupWithMuted).toContain('aria-label="Unmute microphone"')
-    expect(markupWithMuted).toContain("Muted")
-    expect(markupWithMuted).not.toContain("data-soundwave-candles")
+    // Since 171c57142 the state is an icon swap, not a text label: both icons
+    // stay mounted so they can cross-fade, and data-state selects the visible one.
+    expect(markupWithMuted).toContain('data-state="muted"')
+    expect(markupWithMuted).toContain('title="Microphone muted (click to unmute)"')
     // Alice is speaking -> should have the speaking ring
     expect(markupWithMuted).toContain("ring-emerald-500")
 
@@ -278,7 +280,7 @@ describe("P23 session bar", () => {
 
     expect(markupWithUnmuted).toContain('aria-label="Mute microphone"')
     expect(markupWithUnmuted).toContain("data-soundwave-candles")
-    expect(markupWithUnmuted).toContain("Mic")
+    expect(markupWithUnmuted).toContain('data-state="recording"')
   })
 
   it("renders audio input device selector trigger and options", () => {
