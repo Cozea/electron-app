@@ -452,7 +452,7 @@ Still open:
 
 First step of the finishing order agreed after step 4: package the helper, run what is built for real, then P20, then P26 and the remaining gaps.
 
-- **The app ships the macOS helper (P03).** `scripts/prepare-projectd-helper.mjs`, run by `predist` as `prepare:projectd-helper`, builds `cozea-projectd-mac-helper` for arm64 and x86_64 and stages it in `build/projectd-helper/`.
+- **The app ships the macOS helper (P03).** `scripts/prepare-projectd-helper.mjs`, run by `predist` and `dev` as `prepare:projectd-helper`, builds `cozea-projectd-mac-helper` for arm64 and x86_64 and stages it in `build/projectd-helper/`.
   - It asks SwiftPM where the build landed, because Xcode releases put multi-architecture builds in different folders, and it fails if either slice is missing.
   - It skips outside macOS, so the Windows build no longer calls `xcrun`.
 - **Where it lands.** `apps/desktop/electron-builder.config.cjs` copies it to `Contents/Resources/projectd/`, next to `projectd.mjs`, where `ProjectdLauncher` already looked for it. Both per-architecture builds carry the same universal file, so the universal merge keeps it unchanged, and release signing signs it with the rest of the bundle.

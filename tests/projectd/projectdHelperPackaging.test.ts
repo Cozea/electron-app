@@ -62,13 +62,16 @@ describe("projectd helper packaging", () => {
     expect(path.resolve(desktopRoot, entry!.from)).toBe(path.join(repositoryRoot, "build/projectd-helper"))
   })
 
-  it("stages the helper during predist", () => {
+  it("stages the helper during predist and dev", () => {
     const { scripts } = JSON.parse(fs.readFileSync(path.join(repositoryRoot, "package.json"), "utf8")) as {
       scripts: Record<string, string>
     }
     const prepareScript = fs.readFileSync(path.join(repositoryRoot, "scripts/prepare-projectd-helper.mjs"), "utf8")
 
     expect(scripts.predist).toContain("bun run prepare:projectd-helper")
+    // The helper is gitignored, so a fresh checkout has none until something builds it,
+    // and a daemon run from source can't join a session without it.
+    expect(scripts.dev).toContain("bun run prepare:projectd-helper")
     expect(scripts["prepare:projectd-helper"]).toBe("node scripts/prepare-projectd-helper.mjs")
     expect(prepareScript).toContain("path.join(repositoryRoot, 'build', 'projectd-helper')")
     expect(prepareScript).toContain("['arm64', 'x86_64']")
