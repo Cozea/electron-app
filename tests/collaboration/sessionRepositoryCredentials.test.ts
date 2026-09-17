@@ -24,7 +24,7 @@ it("requires an exact operator grant and requests a single-repository minimal to
   expect(await issueRepositoryInstallationToken(grant, "app", privateKey, fetchFn)).toMatchObject({ token: "fixture-token" })
   await expect(issueRepositoryInstallationToken(grant, "app", privateKey, fetchFn, "git_write")).rejects.toThrow("not provisioned")
   const gitFetch = (async (_url, init) => {
-    expect(JSON.parse(String(init?.body))).toEqual({ repository_ids: [456], permissions: { contents: "write" } })
+    expect(JSON.parse(String(init?.body))).toEqual({ repository_ids: [456], permissions: { contents: "write", workflows: "write" } })
     return Response.json({ token: "git-token", expires_at: new Date(Date.now() + 3600_000).toISOString() })
   }) as typeof fetch
   expect(await issueRepositoryInstallationToken({ ...grant, allowGitWrite: true }, "app", privateKey, gitFetch, "git_write")).toMatchObject({ token: "git-token" })
