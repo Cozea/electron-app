@@ -308,6 +308,14 @@ describe("which live-session situations become toasts", () => {
     expect(actionFor({ canLink: false })).toBeNull()
     expect(actionFor(null)).toBeNull()
 
+    // The toast says the next step in a line, not the daemon's full explanation.
+    const descriptionFor = (overrides: Partial<LiveSessionRepositoryStatus> | null) =>
+      describeLiveSessionNotices({ ...base, autoGit: notSetUp, repository: overrides === null ? null : { ...repository, ...overrides } })[0]?.description
+    expect(descriptionFor({ account: { login: "kel" } })).toBe("Only Team can install the Cozea GitHub App. Send them the link.")
+    expect(descriptionFor({})).toBe("Install the Cozea GitHub App on Team.")
+    expect(descriptionFor({ installation: { accountLogin: "Team" } })).toBe("Link Team/App so this session can save to it.")
+    expect(descriptionFor(null)).toBe("Saving to Git isn't set up for Team/App.")
+
     // Once the app is installed the way forward changes, and so does the toast.
     const before = describeLiveSessionNotices({ ...base, autoGit: notSetUp, repository: { ...repository, account: { login: "kel" } } })
     const after = describeLiveSessionNotices({

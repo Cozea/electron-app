@@ -11,6 +11,7 @@
 
 import { useEffect, useRef } from "react"
 
+import { GitHubIcon } from "@/components/integrations/IntegrationIcon"
 import { toastManager } from "@/components/ui/toast"
 import { useGitHubConnect } from "@/features/github/useGitHubConnect"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
@@ -52,7 +53,7 @@ export function useLiveSessionNotices(live: LiveSessionController | null): void 
         // Toasts that offer a fix wait for the user; the rest fade like any other.
         timeout: action ? 0 : undefined,
         actionProps: action
-          ? { children: action.label, onClick: () => runNoticeAction(liveRef.current, githubRef.current, action.run) }
+          ? { children: <NoticeActionLabel action={action} />, onClick: () => runNoticeAction(liveRef.current, githubRef.current, action.run) }
           : undefined,
         onClose: () => {
           // Closed by us because the situation ended: nothing to remember.
@@ -73,6 +74,17 @@ export function useLiveSessionNotices(live: LiveSessionController | null): void 
       open.clear()
     }
   }, [])
+}
+
+/** Actions that go through GitHub carry its logo, as GitHub errors do elsewhere. */
+function NoticeActionLabel({ action }: { action: NonNullable<LiveSessionNotice["action"]> }) {
+  if (action.run !== "github_link" && action.run !== "github_copy_link") return action.label
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <GitHubIcon className="size-3.5 shrink-0" />
+      {action.label}
+    </span>
+  )
 }
 
 function runNoticeAction(

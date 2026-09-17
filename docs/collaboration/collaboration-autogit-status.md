@@ -2322,7 +2322,7 @@ Exit-gate evidence:
 
 Status: partial — P23 first made the in-app Yjs engine wait for an ACTIVE session row that nothing could create, which switched live collaboration off; the audit fix restored it. Since the step 3 work on 2026-09-11:
 - A branch with a session record belongs to the projectd daemon. The in-app engine leaves it alone, and [useLiveSession.ts](apps/desktop/src/features/collaboration/live/useLiveSession.ts) attaches the folder while this device is an active member. `VITE_FF_DAEMON_COLLABORATION=0` hands session branches back to the in-app engine.
-- The session bar was removed on 2026-09-17. [HeaderLiveSessionControl.tsx](apps/desktop/src/features/collaboration/live/HeaderLiveSessionControl.tsx) in the unified header carries its actions, and [useLiveSessionNotices.ts](apps/desktop/src/features/collaboration/live/useLiveSessionNotices.ts) turns its messages into toasts, including the Switch branch notice.
+- The session bar was removed on 2026-09-17. [HeaderLiveSessionControl.tsx](apps/desktop/src/features/collaboration/live/HeaderLiveSessionControl.tsx) in the unified header carries its actions, and [useLiveSessionNotices.tsx](apps/desktop/src/features/collaboration/live/useLiveSessionNotices.tsx) turns its messages into toasts, including the Switch branch notice.
 - The daemon hook retries while the daemon is unreachable and attaches again after a daemon restart.
 - Without a session record, the shared branch still collaborates through the in-app engine until P26.
 - Not in the bar yet: rebase and merge controls (P20–P22), the microphone (P25) and a Workbench switcher. AutoGit status and Save now joined the bar in step 4.

@@ -330,17 +330,25 @@ export interface LiveSessionRepositoryStatus {
   canLink: boolean
 }
 
-/** How to get a repository set up for saving, from what's known about it. */
-function gitHubSetupAction(status: LiveSessionRepositoryStatus | null | undefined): LiveSessionNotice["action"] {
-  if (!status) return null
-  if (!status.canLink || !status.repository) return null
-  if (status.linked || status.installation) return { label: "Link repository", run: "github_link" }
-  const owner = status.repository.owner.toLowerCase()
-  // Someone else's account: only they can install, so hand them the link.
-  if (status.account && status.account.login.toLowerCase() !== owner) {
-    return { label: "Copy install link", run: "github_copy_link" }
+/** How to get a repository set up for saving, from what's known about it, in a line the toast can hold. */
+function gitHubSetup(
+  status: LiveSessionRepositoryStatus | null | undefined,
+): { action: LiveSessionNotice["action"]; description: string } | null {
+  const repository = status?.repository
+  if (!status || !repository) return null
+  const { owner, name } = repository
+  if (!status.canLink) return { action: null, description: `The Cozea GitHub App isn't set up for ${owner}/${name}.` }
+  if (status.linked || status.installation) {
+    return { action: { label: "Link repository", run: "github_link" }, description: `Link ${owner}/${name} so this session can save to it.` }
   }
-  return { label: "Install on GitHub", run: "github_link" }
+  // Someone else's account: only they can install, so hand them the link.
+  if (status.account && status.account.login.toLowerCase() !== owner.toLowerCase()) {
+    return {
+      action: { label: "Copy install link", run: "github_copy_link" },
+      description: `Only ${owner} can install the Cozea GitHub App. Send them the link.`,
+    }
+  }
+  return { action: { label: "Install on GitHub", run: "github_link" }, description: `Install the Cozea GitHub App on ${owner}.` }
 }
 
 /** A toast about the live session: something the header's pill is too small to say. */
@@ -397,18 +405,17 @@ export function describeLiveSessionNotices(live: {
 
   const autoGit = live.autoGit
   if (autoGit?.tone === "attention" && autoGit.detail) {
+    const setup = autoGit.needsGitHubSetup ? gitHubSetup(live.repository) : null
     const action: LiveSessionNotice["action"] =
       autoGit.fix === "ignore_env" && live.canEdit
         ? { label: "Add to .gitignore", run: "ignore_env" }
-        : autoGit.needsGitHubSetup
-          ? gitHubSetupAction(live.repository)
-          : null
+        : (setup?.action ?? null)
     notices.push({
       // A new way forward (the app got installed, say) is a new toast.
       key: `autogit:${id}:${autoGit.label}:${autoGit.detail}:${action?.run ?? ""}`,
       type: "warning",
       title: autoGit.label,
-      description: autoGit.detail,
+      description: setup?.description ?? autoGit.detail,
       action,
       dismissesTarget: false,
     })
