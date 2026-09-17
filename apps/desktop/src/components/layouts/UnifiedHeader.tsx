@@ -103,38 +103,22 @@ export function UnifiedHeader({
 
   const groups: HeaderActionGroup[] = [];
   if (liveSessionControl) {
-    groups.push({
-      id: "live-session",
-      label: "Live Session",
-      priority: 95,
-      placement: "leading",
-      content: liveSessionControl,
-    });
+    groups.push({ id: "live-session", placement: "leading", content: liveSessionControl });
   } else if (preSearchAddon) {
-    groups.push({ id: "presence", label: "Collaboration", priority: 10, placement: "leading", content: preSearchAddon });
+    groups.push({ id: "presence", placement: "leading", content: preSearchAddon });
   }
   if (projectInviteContext) {
     if (projectInviteContext.projectId) {
-      groups.push({ id: "changes", label: "Changes", priority: 80,
+      groups.push({ id: "changes",
         content: <HeaderProjectChangesButton projectId={projectInviteContext.projectId} /> });
     }
     if (editorProjectPath) {
-      groups.push({ id: "editor", label: "Open in editor", priority: 30,
+      groups.push({ id: "editor",
         content: <WorkbenchHeaderEditorControl workspaceId={editorProjectPath} /> });
     }
     if (!hideShare) {
-      const hasActiveSession = Boolean(
-        liveSessionMembers && liveSessionMembers.some((m) => m.status === "active")
-      );
-      const hasLiveBranchSession = Boolean(
-        sessions?.some(
-          (s) => s.lifecycle !== "CLOSED" && (!activeBranch || s.branchName === activeBranch),
-        ),
-      );
       groups.push({
         id: "share",
-        label: hasActiveSession ? "Session members & access" : hasLiveBranchSession ? "Live session" : "Share project",
-        priority: 20,
         content: (
           <HeaderProjectShareButton
             projectId={projectInviteContext.projectId}
@@ -150,7 +134,7 @@ export function UnifiedHeader({
     }
   }
   if (rightAddon) {
-    groups.push({ id: "page", label: "Page actions", priority: 100, content: rightAddon });
+    groups.push({ id: "page", content: rightAddon });
   }
 
 
