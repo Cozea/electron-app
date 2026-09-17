@@ -333,6 +333,8 @@ export function useLiveSession(input: {
           phase: daemon.phase,
           status: daemon.status,
           error: daemon.error,
+          // The workspace isn't known while the project loads; "off" covers that wait.
+          inSessionWorkbench: workspaceId ? isSessionWorkspace : undefined,
         })
       : null,
     autoGit: session ? describeAutoGit(daemonStatus, leaderName) : null,

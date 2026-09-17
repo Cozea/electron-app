@@ -105,6 +105,22 @@ describe("how the session bar describes syncing", () => {
     expect(describeLiveSessionSync({ ...ATTACHED, lifecycle: "PAUSED" })).toMatchObject({ tone: "idle", label: "Paused" })
   })
 
+  it("sends a member on another folder of the session's branch to the session's Workbench", () => {
+    // An invitee whose setup failed opens the project's usual folder; the daemon never syncs it.
+    const elsewhere = { ...ATTACHED, phase: "off" as const, status: null, inSessionWorkbench: false }
+    expect(describeLiveSessionSync(elsewhere)).toMatchObject({ tone: "attention", label: "Not syncing this folder", fix: "open_workbench" })
+    // Joining and removal still come first, and an unknown workspace is just loading.
+    expect(describeLiveSessionSync({ ...elsewhere, membership: "none" })).toMatchObject({ label: "Not joined" })
+    expect(describeLiveSessionSync({ ...elsewhere, inSessionWorkbench: undefined })).toMatchObject({ label: "Waiting for the project folder" })
+    expect(describeLiveSessionSync({ ...ATTACHED, inSessionWorkbench: true }).fix).toBeUndefined()
+
+    const notices = describeLiveSessionNotices({
+      session: { publicSessionId: "czs_a" }, otherSessions: [], membership: "active", canEdit: true,
+      sync: describeLiveSessionSync(elsewhere), autoGit: null, target: null,
+    })
+    expect(notices).toMatchObject([{ title: "Not syncing this folder", action: { label: "Open Workbench", run: "open_workbench" } }])
+  })
+
   it("shows progress while the daemon connects or waits for the session key", () => {
     expect(describeLiveSessionSync({ ...ATTACHED, phase: "connecting", status: null })).toMatchObject({
       label: "Connecting…",

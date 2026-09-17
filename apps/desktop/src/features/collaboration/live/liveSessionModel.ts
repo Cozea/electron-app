@@ -42,6 +42,8 @@ export interface LiveSessionSyncView {
   tone: LiveSessionTone
   label: string
   detail: string | null
+  /** The session's own Workbench isn't open here, so opening it is what starts syncing. */
+  fix?: "open_workbench"
 }
 
 /**
@@ -108,6 +110,8 @@ export function describeLiveSessionSync(input: {
   phase: DaemonSessionPhase
   status: ProjectdSessionStatus | null
   error: string | null
+  /** False when the project is open on another folder whose branch has this session. */
+  inSessionWorkbench?: boolean
 }): LiveSessionSyncView {
   switch (input.lifecycle) {
     case "PAUSING":
@@ -132,6 +136,17 @@ export function describeLiveSessionSync(input: {
       return { tone: "idle", label: "Not syncing", detail: "You left this session. Rejoin to sync this folder with it." }
     case "none":
       return { tone: "idle", label: "Not joined", detail: "Join to sync this folder with the session." }
+  }
+
+  // Only the session's own Workbench syncs. A member whose setup failed, or who opened
+  // the project's usual folder on the same branch, would otherwise wait here for good.
+  if (input.inSessionWorkbench === false) {
+    return {
+      tone: "attention",
+      label: "Not syncing this folder",
+      detail: "This folder isn't the session's Workbench. Open the Workbench to sync with the session.",
+      fix: "open_workbench",
+    }
   }
 
   switch (input.phase) {
@@ -319,7 +334,7 @@ export function planLiveSessionStart(input: {
   return { status: "ready", branch }
 }
 
-export type LiveSessionNoticeRun = "switch" | "ignore_env" | "check_target" | "github_link" | "github_copy_link"
+export type LiveSessionNoticeRun = "switch" | "open_workbench" | "ignore_env" | "check_target" | "github_link" | "github_copy_link"
 
 /** What the GitHub App knows about the project's repository (githubLinks.projectRepositoryStatus). */
 export interface LiveSessionRepositoryStatus {
@@ -397,7 +412,7 @@ export function describeLiveSessionNotices(live: {
       type: live.sync.tone === "attention" ? "warning" : "info",
       title: live.sync.label,
       description: live.sync.detail,
-      action: null,
+      action: live.sync.fix === "open_workbench" ? { label: "Open Workbench", run: "open_workbench" } : null,
       dismissesTarget: false,
     })
   }

@@ -99,6 +99,9 @@ function runNoticeAction(
       if (other) live.openSessionWorkbench(other.publicSessionId)
       return
     }
+    case "open_workbench":
+      if (live.session) live.openSessionWorkbench(live.session.publicSessionId)
+      return
     case "ignore_env":
       live.ignoreEnvironmentFiles()
       return

@@ -47,6 +47,7 @@ function SessionStatusPill({
   isSaving,
   target,
   onSaveNow,
+  onOpenWorkbench,
   onIgnoreEnvironmentFiles,
   onCheckTarget,
   onRebase,
@@ -69,6 +70,7 @@ function SessionStatusPill({
   isSaving: boolean
   target: LiveSessionTargetView | null
   onSaveNow: () => void
+  onOpenWorkbench: () => void
   onIgnoreEnvironmentFiles: () => void
   onCheckTarget: () => void
   onRebase: () => void
@@ -114,6 +116,11 @@ function SessionStatusPill({
     }
 
     const items: ContextMenuItem<string>[] = []
+
+    if (membership === "active" && sync.fix === "open_workbench") {
+      items.push({ id: "open_workbench", label: "Open session Workbench", enabled: !busy })
+      items.push({ id: "sep-workbench", type: "separator" })
+    }
 
     if (membership === "active") {
       items.push({
@@ -212,6 +219,9 @@ function SessionStatusPill({
     if (!action) return
 
     switch (action) {
+      case "open_workbench":
+        onOpenWorkbench()
+        break
       case "save_now":
         onSaveNow()
         break
@@ -478,6 +488,9 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
           isSaving={isSaving}
           target={live.target}
           onSaveNow={live.saveNow}
+          onOpenWorkbench={() => {
+            if (live.session) live.openSessionWorkbench(live.session.publicSessionId)
+          }}
           onIgnoreEnvironmentFiles={live.ignoreEnvironmentFiles}
           onCheckTarget={live.checkTarget}
           onRebase={() => setRebasing(true)}
