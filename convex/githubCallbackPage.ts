@@ -14,7 +14,7 @@ type LinkStatus =
   | { status: "not_configured" }
 
 export type CallbackPageResult =
-  | { ok: true; login: string | null; link: LinkStatus | null }
+  | { ok: true; login: string | null; link: LinkStatus | null; installedOn?: string }
   | { ok: false; reason: "expired" | "not_configured" | "github_refused" }
 
 function escape(text: string): string {
@@ -30,6 +30,12 @@ function message(result: CallbackPageResult): { title: string; detail: string } 
         return { title: "GitHub isn't set up on this Cozea deployment", detail: "Ask whoever runs Cozea to configure the GitHub App." }
       case "github_refused":
         return { title: "GitHub didn't confirm who you are", detail: "Start again from Cozea." }
+    }
+  }
+  if (result.installedOn) {
+    return {
+      title: `Cozea is installed on ${result.installedOn}`,
+      detail: "People in Cozea can now link its repositories to their projects. You can close this tab.",
     }
   }
   const signedIn = result.login ? `Signed in to GitHub as @${result.login}.` : "GitHub is connected."

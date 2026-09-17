@@ -209,7 +209,7 @@ export const syncInstallations = action({
 // ─── For http.ts ──────────────────────────────────────────────────────────────
 
 export type CallbackResult =
-  | { ok: true; login: string | null; link: LinkResult | null }
+  | { ok: true; login: string | null; link: LinkResult | null; installedOn?: string }
   | { ok: false; reason: "expired" | "not_configured" | "github_refused" }
 
 /** Where GitHub returns after installing the app or signing in. */
@@ -258,6 +258,26 @@ export const completeCallback = internalAction({
 
     const link = request.projectId ? await linkRepositoryFor(deps, request.principalId, request.projectId) : null
     return { ok: true, login, link }
+  },
+})
+
+/**
+ * An owner installed the app from a shared link, so GitHub returned no state to tie
+ * it to a device. The installation is still worth recording, once GitHub confirms it.
+ */
+export const recordInstallation = internalAction({
+  args: { installationId: v.number() },
+  handler: async (ctx, args): Promise<{ accountLogin: string } | null> => {
+    const credentials = githubAppCredentials()
+    if (!credentials) return null
+    try {
+      const installation = (await github(`/app/installations/${args.installationId}`, signGitHubAppJwt(credentials))) as GitHubInstallation
+      await saveInstallation({ runQuery: ctx.runQuery, runMutation: ctx.runMutation, credentials }, installation)
+      return installation.account ? { accountLogin: installation.account.login } : null
+    } catch (error) {
+      if (isStatus(error, 404)) return null
+      throw error
+    }
   },
 })
 

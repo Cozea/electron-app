@@ -12,7 +12,7 @@ import { httpRouter } from "convex/server"
 
 import { internal } from "./_generated/api"
 import { httpAction } from "./_generated/server"
-import { describeCallbackResult } from "./githubCallbackPage"
+import { describeCallbackResult, type CallbackPageResult } from "./githubCallbackPage"
 
 /** GitHub caps webhook payloads at 25 MB, but the installation events read here are small. */
 const MAX_WEBHOOK_BYTES = 1024 * 1024
@@ -26,13 +26,21 @@ http.route({
     const params = new URL(request.url).searchParams
     const state = params.get("state")
     const installationId = Number(params.get("installation_id"))
-    const result = state
-      ? await ctx.runAction(internal.githubApp.completeCallback, {
-          state,
-          code: params.get("code") ?? undefined,
-          installationId: Number.isSafeInteger(installationId) && installationId > 0 ? installationId : undefined,
-        })
-      : ({ ok: false, reason: "expired" } as const)
+    const validInstallationId = Number.isSafeInteger(installationId) && installationId > 0 ? installationId : undefined
+    let result: CallbackPageResult
+    if (state) {
+      result = await ctx.runAction(internal.githubApp.completeCallback, {
+        state,
+        code: params.get("code") ?? undefined,
+        installationId: validInstallationId,
+      })
+    } else {
+      // Installed from a shared link: nothing ties it to a device, but the installation counts.
+      const recorded = validInstallationId
+        ? await ctx.runAction(internal.githubApp.recordInstallation, { installationId: validInstallationId })
+        : null
+      result = recorded ? { ok: true, login: null, link: null, installedOn: recorded.accountLogin } : { ok: false, reason: "expired" }
+    }
     return new Response(describeCallbackResult(result), {
       status: result.ok ? 200 : 400,
       headers: {
