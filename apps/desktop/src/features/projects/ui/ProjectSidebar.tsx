@@ -20,6 +20,7 @@ import { cleanConvexErrorMessage } from "@/lib/convexError"
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
 import { cn } from "@/lib/utils";
+import { useIncomingInvites } from "@/hooks/useIncomingInvites";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   publishOrgDevAppFromWorkspace,
@@ -214,16 +215,7 @@ export function ProjectSidebar({
     api.devApps.listPublisherStatus,
     featureFlags.projectDevApps && principalId ? {} : "skip",
   );
-  const incomingEnrollments = useQuery(
-    api.projectDeviceEnrollments.listIncoming,
-    principalId ? {} : "skip",
-  );
-  const incomingOrganizationEnrollments = useQuery(
-    api.organizations.listIncomingEnrollments,
-    principalId ? {} : "skip",
-  );
-  const inboxCount =
-    (incomingEnrollments?.length ?? 0) + (incomingOrganizationEnrollments?.length ?? 0);
+  const { totalCount: inboxCount } = useIncomingInvites();
   const projectDevAppStateByProjectId = React.useMemo(
     () =>
       new Map(

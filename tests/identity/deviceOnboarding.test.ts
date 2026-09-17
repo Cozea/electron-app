@@ -27,7 +27,7 @@ describe("device principal onboarding", () => {
   })
 
   it("treats an unconfigured device as onboarding-required", () => {
-    expect(authContext).toContain("!user.presentationConfigured")
+    expect(authContext).toContain("!reactiveUser.presentationConfigured")
     expect(authContext).toContain("needsOnboarding")
     expect(authContext).not.toContain("needsOnboarding: false")
   })

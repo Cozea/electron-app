@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
 import { Avatar } from "@/components/ui/avatar";
@@ -49,21 +49,16 @@ interface UserPrefs {
   pushNotifications: boolean;
 }
 
+import { getDeviceInitials as initials } from "@/lib/devicePresentation";
+
 interface AccountProps {
   surface?: "page" | "drawer";
   route?: string;
 }
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return "D"
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
-}
-
 export function Account({ surface = "page", route: _route }: AccountProps) {
-  const { user, principalId, refreshToken } = useAuth();
+  const { user, principalId, preferences, refreshToken } = useAuth();
   const { t } = useTranslation();
-  const profile = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip");
 
   const updatePreferencesMutation = useMutation(api.devicePrincipals.updatePreferences);
   const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation);
@@ -71,8 +66,8 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const removeAvatarMutation = useMutation(api.devicePrincipals.removeAvatar);
   const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
-  const initialDisplayName = profile?.displayName ?? user?.displayName ?? "";
-  const initialAvatarUrl = profile?.avatarUrl ?? user?.avatarUrl ?? null;
+  const initialDisplayName = user?.displayName ?? "";
+  const initialAvatarUrl = user?.avatarUrl ?? null;
 
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({ pushNotifications: true });
   const [deviceName, setDeviceName] = useState(() => initialDisplayName);
@@ -87,16 +82,21 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
-    if (!profile) return;
-    setUserPrefs({ pushNotifications: profile.preferences?.pushNotifications ?? true });
-    setDeviceName((current) => (current && current !== user?.displayName ? current : profile.displayName || current || ""));
-    setSavedDeviceName(profile.displayName || "");
-    setAvatarUrl((current) => (current && current !== user?.avatarUrl ? current : profile.avatarUrl || current || null));
+    if (preferences?.pushNotifications !== undefined) {
+      setUserPrefs({ pushNotifications: preferences.pushNotifications });
+    }
+  }, [preferences?.pushNotifications]);
+
+  useEffect(() => {
+    if (!user) return;
+    setDeviceName((current) => (current && current !== user.displayName ? current : user.displayName || ""));
+    setSavedDeviceName(user.displayName || "");
+    setAvatarUrl((current) => (current && current !== user.avatarUrl ? current : user.avatarUrl || null));
     setPendingAvatarDataUrl(null);
     setRemoveAvatar(false);
-  }, [profile, user?.avatarUrl, user?.displayName]);
+  }, [user?.avatarUrl, user?.displayName]);
 
-  const identityKey = profile?.identityKey ?? user?.identityKey ?? "";
+  const identityKey = user?.identityKey ?? "";
   const normalizedDeviceName = deviceName.trim()
   const presentationDirty =
     normalizedDeviceName !== savedDeviceName ||
@@ -156,7 +156,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     }
   }
 
-  const isProfileLoading = profile === undefined;
+  const isProfileLoading = !user;
 
   return (
     <SettingsPageBody surface={surface}>

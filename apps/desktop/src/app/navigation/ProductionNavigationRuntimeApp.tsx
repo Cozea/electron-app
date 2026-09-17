@@ -33,6 +33,7 @@ const testAuth: AuthContextType = {
     platform: 'linux',
   },
   principalId: null,
+  preferences: null,
   accessToken: null,
   personalWorkspace: null,
   isAuthenticated: true,

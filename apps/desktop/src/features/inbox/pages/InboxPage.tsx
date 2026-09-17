@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation } from "convex/react"
+import { useIncomingInvites } from "@/hooks/useIncomingInvites"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { cleanConvexError } from "@/lib/convexError"
-import { useAuth } from "@/contexts/AuthContext"
 import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
 import { useViewTransitionNavigate } from "@/lib/navigation"
@@ -31,9 +31,7 @@ import {
   Clock01Icon as __ClockHugeIcon,
 } from "@hugeicons/core-free-icons"
 
-function initial(value: string): string {
-  return value.trim().charAt(0).toUpperCase() || "?"
-}
+import { getDeviceInitials as initial } from "@/lib/devicePresentation"
 
 
 
@@ -214,20 +212,15 @@ function announceInviteeCopy(copy: InviteeCopyOutcome, projectName: string): voi
 
 export function InboxPage() {
   const { t } = useTranslation()
-  const { principalId } = useAuth()
   const navigate = useViewTransitionNavigate()
 
-  const incoming = useQuery(
-    api.projectDeviceEnrollments.listIncoming,
-    principalId ? {} : "skip",
-  )
+  const {
+    projectEnrollments: incoming,
+    sessionInvitations: rawSessionInvitations,
+    organizationEnrollments: incomingOrganizations,
+  } = useIncomingInvites()
   const sessionInvitations: SessionInvitationItem[] =
-    useQuery(api.collaborationSessions.listIncomingInvitations, principalId ? {} : "skip") ??
-    NO_SESSION_INVITATIONS
-  const incomingOrganizations = useQuery(
-    api.organizations.listIncomingEnrollments,
-    principalId ? {} : "skip",
-  )
+    (rawSessionInvitations as SessionInvitationItem[] | undefined) ?? NO_SESSION_INVITATIONS
   const resolveEnrollment = useMutation(api.projectDeviceEnrollments.resolve)
   const resolveOrganizationEnrollment = useMutation(api.organizations.resolveDeviceEnrollment)
 

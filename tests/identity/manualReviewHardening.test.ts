@@ -8,7 +8,7 @@ describe("manual identity review hardening", () => {
   it("uses explicit presentation lifecycle state instead of a display-name sentinel", () => {
     expect(read("convex/schema.ts")).toContain("presentationConfiguredAt")
     const auth = read("apps/desktop/src/contexts/AuthContext.tsx")
-    expect(auth).toContain("!user.presentationConfigured")
+    expect(auth).toContain("!reactiveUser.presentationConfigured")
     expect(auth).not.toContain("UNCONFIGURED_DEVICE_NAME")
   })
 

@@ -3,6 +3,10 @@ import type {
   WorkspaceIconKey,
 } from "./workspaceIdentity"
 
+/**
+ * Public presentation of a device principal.
+ * Cozea has no human user accounts; this represents the device's visible profile.
+ */
 export interface User {
   principalId: string
   identityKey: string
@@ -11,6 +15,8 @@ export interface User {
   avatarUrl: string | null
   platform: string
 }
+
+export type DevicePresentation = User
 
 export type WorkspaceType = "personal" | "organization"
 
@@ -32,7 +38,6 @@ export type WorkspaceMembership = PersonalWorkspaceMembership
 
 export interface Session {
   accessToken: string | null
-  refreshToken: string | null
   user: User
   personalWorkspace: PersonalWorkspaceMembership | null
 }

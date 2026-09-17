@@ -56,7 +56,6 @@ describe('workbench search param sync', () => {
     const params = new URLSearchParams({
       changes: '1',
       openTile: 'changes',
-      userId: 'user-1',
       lane: 'collab',
       focusTile: 'tile-123',
     })
@@ -65,7 +64,6 @@ describe('workbench search param sync', () => {
 
     expect(next.get('changes')).toBeNull()
     expect(next.get('openTile')).toBeNull()
-    expect(next.get('userId')).toBeNull()
     expect(next.get('lane')).toBe('collab')
     expect(next.get('focusTile')).toBe('tile-123')
   })

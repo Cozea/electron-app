@@ -1,14 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useQuery } from 'convex/react'
 
+import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import type { PersonalWorkspaceMembership, User } from '../types/electron'
 import { convex } from '@/lib/convex'
 import { getDeviceSession, type DeviceSession } from '@/lib/deviceSession'
 import { getInitialDesktopBootstrap } from '@/app/bootstrap/desktopBootstrap'
 
+export interface DevicePreferences {
+  theme?: "light" | "dark" | "system"
+  defaultModel?: string
+  pushNotifications?: boolean
+}
+
 export interface AuthContextType {
   user: User | null
   principalId: Id<"devicePrincipals"> | null
+  preferences: DevicePreferences | null
   accessToken: string | null
   personalWorkspace: PersonalWorkspaceMembership | null
   isAuthenticated: boolean
@@ -142,12 +151,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [bootstrapLocalDeviceSession])
 
-  const needsOnboarding = Boolean(user && !user.presentationConfigured)
+  const isConvexAuthReady = Boolean(accessToken)
+  const liveProfile = useQuery(
+    api.devicePrincipals.getCurrent,
+    isConvexAuthReady && principalId ? {} : 'skip',
+  )
+
+  const reactiveUser = useMemo(() => {
+    if (!user) return null
+    if (!liveProfile) return user
+    return {
+      ...user,
+      displayName: liveProfile.displayName,
+      avatarUrl: liveProfile.avatarUrl ?? null,
+      presentationConfigured: liveProfile.presentationConfigured,
+      platform: liveProfile.platform,
+    }
+  }, [user, liveProfile])
+
+  const needsOnboarding = Boolean(reactiveUser && !reactiveUser.presentationConfigured)
 
   const value = useMemo<AuthContextType>(
     () => ({
-      user,
+      user: reactiveUser,
       principalId,
+      preferences: liveProfile?.preferences ?? null,
       accessToken,
       personalWorkspace,
       isAuthenticated: Boolean(user),
@@ -169,7 +197,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       needsOnboarding,
       personalWorkspace,
       refreshToken,
-      user,
+      reactiveUser,
+      liveProfile?.preferences,
+      isConvexAuthReady,
     ],
   )
 

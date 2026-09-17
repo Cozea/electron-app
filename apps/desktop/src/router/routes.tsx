@@ -40,13 +40,6 @@ const ProjectJoinPage = createLazyRouteComponent(
     })),
   "routeLoading.projectInvite",
 );
-const LegacyProjectRedirectPage = createLazyRouteComponent(
-  () =>
-    import("@/features/projects/pages/LegacyProjectRedirectPage").then((module) => ({
-      default: module.LegacyProjectRedirectPage,
-    })),
-  "routeLoading.project",
-);
 const ProjectsLaunchPage = createLazyRouteComponent(
   () =>
     destinationModules.projects().then((module) => ({
@@ -152,17 +145,6 @@ const GitHubSettings = createLazyRouteComponent(
     })),
   "routeLoading.github",
 );
-const WORKSPACE_MEMBERS_ROUTE = "/teams";
-const WORKSPACE_ROLES_ROUTE = "/teams/roles";
-const WORKSPACE_GENERAL_ROUTE = "/workspace/general";
-const PERSONAL_GENERAL_ROUTE = "/settings/general";
-const WORKSPACE_POLICIES_ROUTE = "/workspace/policies";
-const WORKSPACE_BILLING_ROUTE = "/workspace/billing";
-const PERSONAL_BILLING_ROUTE = "/settings/billing";
-const WORKSPACE_INTEGRATIONS_ROUTE = "/workspace/integrations";
-const PERSONAL_INTEGRATIONS_ROUTE = "/settings/cli-tools";
-const LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE = "/workspace/source-control";
-const PERSONAL_SOURCE_CONTROL_ROUTE = "/settings/source-control";
 const PERSONAL_ACCOUNT_ROUTE = "/settings/account";
 const PERSONAL_APPEARANCE_ROUTE = "/settings/appearance";
 const PERSONAL_DEVAPPS_ROUTE = "/settings/devapps";
@@ -404,101 +386,10 @@ const projectSettingsSectionRoute = createRoute({
   component: ProjectSettingsRedirect,
 });
 
-const legacyProjectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/projects/$slug",
-  component: LegacyProjectRedirectPage,
-});
-
-const projectsTeamsMembersRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_MEMBERS_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const projectsTeamMemberDetailsRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: "/teams/members/$memberId",
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const projectsTeamsRolesRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_ROLES_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const projectsWorkspacePoliciesRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_POLICIES_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const projectsPersonalGeneralRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(PERSONAL_GENERAL_ROUTE),
-  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
-});
-
-const projectsWorkspaceGeneralRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_GENERAL_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const projectsWorkspaceBillingRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_BILLING_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const projectsWorkspaceIntegrationsRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(WORKSPACE_INTEGRATIONS_ROUTE),
-  component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
-});
-
-const projectsPersonalIntegrationsRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE),
-  component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
-});
-
-const projectsWorkspaceSourceControlRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const projectsPersonalSourceControlRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE),
-  component: () => <Navigate to={"/projects/settings/github" as never} replace />,
-});
-
-/** Legacy cloud storage settings (removed); send users to workspace / personal general settings. */
-const projectsLegacyWorkspaceSyncRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: "workspace/sync",
-  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
-});
-
-const projectsLegacyPersonalCloudStorageRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: "settings/cloud-storage",
-  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
-});
-
 const projectsPersonalAccountRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_ACCOUNT_ROUTE),
   component: Account,
-});
-
-const projectsPersonalBillingRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: toRoutePath(PERSONAL_BILLING_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
 });
 
 const projectsPersonalAppearanceRoute = createRoute({
@@ -537,106 +428,10 @@ const projectsPersonalGitHubRoute = createRoute({
   component: GitHubSettings,
 });
 
-const teamsMembersRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_MEMBERS_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const teamMemberDetailsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/teams/members/$memberId",
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const teamsRolesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_ROLES_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const workspacePoliciesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_POLICIES_ROUTE),
-  component: () => <Navigate to={"/projects" as never} replace />,
-});
-
-const workspaceSelectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/workspaces/select",
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const workspaceCreateRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/workspaces/new",
-  component: () => <Navigate to="/projects" replace />,
-});
-
-const personalGeneralRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_GENERAL_ROUTE),
-  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
-});
-
-const workspaceGeneralRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_GENERAL_ROUTE),
-  component: () => <Navigate to={"/projects" as never} replace />,
-});
-
-const workspaceBillingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_BILLING_ROUTE),
-  component: () => <Navigate to={"/projects" as never} replace />,
-});
-
-const workspaceIntegrationsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(WORKSPACE_INTEGRATIONS_ROUTE),
-  component: () => <Navigate to={"/projects" as never} replace />,
-});
-
-const personalIntegrationsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_INTEGRATIONS_ROUTE),
-  component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
-});
-
-const workspaceSourceControlRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(LEGACY_WORKSPACE_SOURCE_CONTROL_ROUTE),
-  component: () => <Navigate to={"/projects" as never} replace />,
-});
-
-const personalSourceControlRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE),
-  component: () => <Navigate to={"/projects/settings/github" as never} replace />,
-});
-
-const workspaceSyncLegacyRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "workspace/sync",
-  component: () => <Navigate to={"/projects" as never} replace />,
-});
-
-const personalCloudStorageLegacyRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "settings/cloud-storage",
-  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
-});
-
 const personalAccountRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_ACCOUNT_ROUTE),
   component: () => <Navigate to={"/projects/settings/account" as never} replace />,
-});
-
-const personalBillingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_BILLING_ROUTE),
-  component: () => <Navigate to={"/projects" as never} replace />,
 });
 
 const personalAppearanceRoute = createRoute({
@@ -675,12 +470,6 @@ const personalGitHubRoute = createRoute({
   component: () => <Navigate to={"/projects/settings/github" as never} replace />,
 });
 
-const inviteRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/invite/$token",
-  component: () => <Navigate to="/projects" replace />,
-});
-
 const inboxRedirectRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/inbox",
@@ -714,21 +503,7 @@ export const routeTree = rootRoute.addChildren([
       projectSettingsTeamRoute,
       projectSettingsSectionRoute,
     ]),
-    projectsTeamsMembersRoute,
-    projectsTeamMemberDetailsRoute,
-    projectsTeamsRolesRoute,
-    projectsWorkspacePoliciesRoute,
-    projectsPersonalGeneralRoute,
-    projectsWorkspaceGeneralRoute,
-    projectsWorkspaceBillingRoute,
-    projectsWorkspaceIntegrationsRoute,
-    projectsPersonalIntegrationsRoute,
-    projectsWorkspaceSourceControlRoute,
-    projectsPersonalSourceControlRoute,
-    projectsLegacyWorkspaceSyncRoute,
-    projectsLegacyPersonalCloudStorageRoute,
     projectsPersonalAccountRoute,
-    projectsPersonalBillingRoute,
     projectsPersonalAppearanceRoute,
     projectsPersonalDevAppsRoute,
     projectsPersonalOrganizationsRoute,
@@ -736,31 +511,13 @@ export const routeTree = rootRoute.addChildren([
     projectsPersonalComputerUseRoute,
     projectsPersonalGitHubRoute,
   ]),
-  legacyProjectRoute,
-  teamsMembersRoute,
-  teamMemberDetailsRoute,
-  teamsRolesRoute,
-  workspacePoliciesRoute,
-  workspaceSelectRoute,
-  workspaceCreateRoute,
-  personalGeneralRoute,
-  workspaceGeneralRoute,
-  workspaceBillingRoute,
-  workspaceIntegrationsRoute,
-  personalIntegrationsRoute,
-  workspaceSourceControlRoute,
-  personalSourceControlRoute,
-  workspaceSyncLegacyRoute,
-  personalCloudStorageLegacyRoute,
   personalAccountRoute,
-  personalBillingRoute,
   personalAppearanceRoute,
   personalDevAppsRoute,
   personalOrganizationsRoute,
   personalToolingRoute,
   personalComputerUseRoute,
   personalGitHubRoute,
-  inviteRoute,
 ]);
 
 export const appRouter = createRouter({

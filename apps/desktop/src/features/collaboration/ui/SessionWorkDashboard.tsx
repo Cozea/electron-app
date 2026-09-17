@@ -20,6 +20,7 @@ import {
 } from "@hugeicons/core-free-icons"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { getDeviceInitials } from "@/lib/devicePresentation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -213,7 +214,7 @@ export function SessionWorkDashboard({
                         className="text-[11px] font-semibold text-white"
                         style={{ backgroundColor: color }}
                       >
-                        {m.displayName.slice(0, 2).toUpperCase()}
+                        {getDeviceInitials(m.displayName)}
                       </AvatarFallback>
                     </Avatar>
                     {isSpeaking ? (

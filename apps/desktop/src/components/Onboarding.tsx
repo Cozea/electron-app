@@ -15,11 +15,7 @@ import { useGitHubConnect } from '@/features/github/useGitHubConnect'
 import { useTranslation } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return 'D'
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('') || 'D'
-}
+import { getDeviceInitials as initials } from '@/lib/devicePresentation'
 
 const GRADIENT_PALETTE: Array<'blue' | 'purple' | 'coral'> = ['blue', 'purple', 'coral']
 
