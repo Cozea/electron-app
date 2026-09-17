@@ -2,8 +2,8 @@
  * Header Live Session Control.
  *
  * Compact, unified collaboration control rendered in the top UnifiedHeader
- * when a live collaboration session is active. Replaces the cluttered secondary
- * session bar, recovers vertical space, and consolidates presence and voice.
+ * when a live collaboration session is active. It is the only live-session surface:
+ * what the pill has no room to say arrives as toasts (useLiveSessionNotices).
  */
 
 import { useEffect, useState } from "react"
@@ -30,6 +30,7 @@ import {
   type LiveSessionAction,
   type LiveSessionAutoGitView,
   type LiveSessionSyncView,
+  type LiveSessionTargetView,
   type SessionMembership,
 } from "./liveSessionModel"
 import type { LiveSessionController, LiveSessionRecord } from "./useLiveSession"
@@ -44,11 +45,15 @@ function SessionStatusPill({
   busy,
   busyAction: _busyAction,
   isSaving,
+  target,
   onSaveNow,
+  onIgnoreEnvironmentFiles,
+  onCheckTarget,
   onRebase,
   onMerge,
   onBinaryConflicts,
   onStructuralConflicts,
+  onLeave,
   onPause,
   onResume,
   onEnd,
@@ -62,11 +67,15 @@ function SessionStatusPill({
   busy: boolean
   busyAction: LiveSessionAction | null
   isSaving: boolean
+  target: LiveSessionTargetView | null
   onSaveNow: () => void
+  onIgnoreEnvironmentFiles: () => void
+  onCheckTarget: () => void
   onRebase: () => void
   onMerge: () => void
   onBinaryConflicts: () => void
   onStructuralConflicts: () => void
+  onLeave: () => void
   onPause: () => void
   onResume: () => void
   onEnd: () => void
@@ -113,6 +122,14 @@ function SessionStatusPill({
         enabled: !busy && Boolean(autoGit?.canSave) && !isSaving,
         icon: getNativeMenuIcon("sync"),
       })
+      if (autoGit?.fix === "ignore_env" && canEdit) {
+        items.push({ id: "ignore_env", label: "Add env files to .gitignore", enabled: !busy })
+      }
+      items.push({
+        id: "check_target",
+        label: target?.checking ? `Checking ${session.targetBranch}…` : `Check ${session.targetBranch}`,
+        enabled: !busy && !target?.checking,
+      })
       items.push({ id: "sep-git", type: "separator" })
     }
 
@@ -143,6 +160,11 @@ function SessionStatusPill({
         label: "Path conflicts…",
         enabled: !busy,
       })
+    }
+
+    if (membership === "active") {
+      items.push({ id: "sep-leave", type: "separator" })
+      items.push({ id: "leave", label: "Leave session", enabled: !busy })
     }
 
     if (canManage) {
@@ -192,6 +214,15 @@ function SessionStatusPill({
     switch (action) {
       case "save_now":
         onSaveNow()
+        break
+      case "ignore_env":
+        onIgnoreEnvironmentFiles()
+        break
+      case "check_target":
+        onCheckTarget()
+        break
+      case "leave":
+        onLeave()
         break
       case "rebase":
         onRebase()
@@ -445,11 +476,15 @@ export function HeaderLiveSessionControl({ live }: { live: LiveSessionController
           busy={busy}
           busyAction={live.busyAction}
           isSaving={isSaving}
+          target={live.target}
           onSaveNow={live.saveNow}
+          onIgnoreEnvironmentFiles={live.ignoreEnvironmentFiles}
+          onCheckTarget={live.checkTarget}
           onRebase={() => setRebasing(true)}
           onMerge={() => setMerging(true)}
           onBinaryConflicts={() => setReviewingFiles(true)}
           onStructuralConflicts={() => setReviewingPaths(true)}
+          onLeave={live.leave}
           onPause={live.pause}
           onResume={live.resume}
           onEnd={live.end}

@@ -1,5 +1,5 @@
 /**
- * What the session bar and the Start dialog say about a live session.
+ * What the header, its toasts and the Start dialog say about a live session.
  *
  * Master Specification: Section 5.3, 6.1, 6.7, 23.2
  * Phase: P14, P23
@@ -167,7 +167,7 @@ export interface LiveSessionAutoGitView {
   title: string | null
   /** Whether Save now can reach a Mac that pushes. */
   canSave: boolean
-  /** The fix the bar offers for why saving waits, when there is one. */
+  /** The fix offered for why saving waits, when there is one. */
   fix: "ignore_env" | null
   lastSavedAt?: number | null
   isSaving?: boolean
@@ -314,4 +314,89 @@ export function planLiveSessionStart(input: {
     return { status: "blocked", reason: `${branch} already has a live session. Join it from the session bar.` }
   }
   return { status: "ready", branch }
+}
+
+/** A toast about the live session: something the header's pill is too small to say. */
+export interface LiveSessionNotice {
+  /** Stable while the situation lasts; a new key is a new toast. */
+  key: string
+  type: "info" | "warning"
+  title: string
+  description: string | null
+  action: { label: string; run: "switch" | "ignore_env" | "check_target" } | null
+  /** A recommended rebase the user closes is dismissed until the target moves again. */
+  dismissesTarget: boolean
+}
+
+export function describeLiveSessionNotices(live: {
+  session: { publicSessionId: string } | null
+  otherSessions: readonly { publicSessionId: string; branchName: string }[]
+  membership: SessionMembership
+  canEdit: boolean
+  sync: LiveSessionSyncView | null
+  autoGit: LiveSessionAutoGitView | null
+  target: LiveSessionTargetView | null
+}): LiveSessionNotice[] {
+  if (!live.session || !live.sync) {
+    const other = live.otherSessions[0]
+    return other
+      ? [{
+          key: `other:${other.publicSessionId}`,
+          type: "info",
+          title: `You're in the live session on ${other.branchName}`,
+          description: "Switch to that branch to sync with it.",
+          action: { label: "Switch branch", run: "switch" },
+          dismissesTarget: false,
+        }]
+      : []
+  }
+
+  const notices: LiveSessionNotice[] = []
+  const id = live.session.publicSessionId
+  // Someone outside the session has the header's Join button; that says it already.
+  // Passing states (reconnecting, uploads on their way) would flash a toast each time.
+  if (live.sync.detail && live.sync.tone !== "working" && live.membership !== "none" && live.membership !== "left") {
+    notices.push({
+      key: `sync:${id}:${live.sync.label}:${live.sync.detail}`,
+      type: live.sync.tone === "attention" ? "warning" : "info",
+      title: live.sync.label,
+      description: live.sync.detail,
+      action: null,
+      dismissesTarget: false,
+    })
+  }
+  if (live.membership !== "active") return notices
+
+  const autoGit = live.autoGit
+  if (autoGit?.tone === "attention" && autoGit.detail) {
+    notices.push({
+      key: `autogit:${id}:${autoGit.label}:${autoGit.detail}`,
+      type: "warning",
+      title: autoGit.label,
+      description: autoGit.detail,
+      action: autoGit.fix === "ignore_env" && live.canEdit ? { label: "Add to .gitignore", run: "ignore_env" } : null,
+      dismissesTarget: false,
+    })
+  }
+  const target = live.target
+  if (target?.tone === "attention") {
+    notices.push({
+      key: `target:${id}:${target.label}:${target.detail ?? ""}`,
+      type: "warning",
+      title: target.label,
+      description: target.detail,
+      action: { label: "Check again", run: "check_target" },
+      dismissesTarget: false,
+    })
+  } else if (target?.recommended) {
+    notices.push({
+      key: `target:${id}:${target.label}:${target.detail ?? ""}`,
+      type: "info",
+      title: target.label,
+      description: target.detail,
+      action: null,
+      dismissesTarget: true,
+    })
+  }
+  return notices
 }

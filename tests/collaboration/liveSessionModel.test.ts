@@ -4,6 +4,7 @@ import type { ProjectdAutoGitStatus, ProjectdSessionStatus, ProjectdTargetStatus
 
 import {
   describeAutoGit,
+  describeLiveSessionNotices,
   describeLiveSessionSync,
   describeTarget,
   resolveMembership,
@@ -196,7 +197,7 @@ describe("how the session bar describes saving to Git", () => {
   })
 })
 
-describe("how the session bar describes the branch the session merges into", () => {
+describe("how the header describes the branch the session merges into", () => {
   function target(overrides: Partial<ProjectdTargetStatus> = {}): ProjectdTargetStatus {
     return {
       branch: "main",
@@ -239,5 +240,76 @@ describe("how the session bar describes the branch the session merges into", () 
   it("shows why the check failed", () => {
     const error = "Git couldn't fetch main from origin: timed out"
     expect(describeTarget(target({ error }))).toMatchObject({ tone: "attention", label: "Couldn't check main", detail: error })
+  })
+})
+
+describe("which live-session situations become toasts", () => {
+  const LIVE = { tone: "live" as const, label: "Live", detail: null }
+  const base = {
+    session: { publicSessionId: "czs_a" },
+    otherSessions: [],
+    membership: "active" as const,
+    canEdit: true,
+    sync: LIVE,
+    autoGit: null,
+    target: null,
+  }
+  const autoGitView = { title: null, canSave: false, fix: null }
+
+  it("stays quiet while the session is healthy", () => {
+    expect(describeLiveSessionNotices(base)).toEqual([])
+  })
+
+  it("points at the session on another branch, with a way to switch", () => {
+    const notices = describeLiveSessionNotices({
+      ...base,
+      session: null,
+      sync: null,
+      otherSessions: [{ publicSessionId: "czs_b", branchName: "feat/live" }],
+    })
+    expect(notices).toMatchObject([
+      { key: "other:czs_b", title: "You're in the live session on feat/live", action: { run: "switch" } },
+    ])
+  })
+
+  it("explains why saving to Git stopped, offering the fix only to members who can edit", () => {
+    const envHold = {
+      ...autoGitView, tone: "attention" as const, label: "Git saves on hold",
+      detail: ".env isn't ignored.", fix: "ignore_env" as const,
+    }
+    expect(describeLiveSessionNotices({ ...base, autoGit: envHold })).toMatchObject([
+      { type: "warning", title: "Git saves on hold", description: ".env isn't ignored.", action: { run: "ignore_env" } },
+    ])
+    expect(describeLiveSessionNotices({ ...base, canEdit: false, autoGit: envHold })[0]?.action).toBeNull()
+    // A new reason is a new toast, so one the user closed doesn't hide the next.
+    const notSetUp = { ...envHold, label: "Saving to Git isn't set up", detail: "Install the app.", fix: null }
+    expect(describeLiveSessionNotices({ ...base, autoGit: notSetUp })[0]?.key)
+      .not.toBe(describeLiveSessionNotices({ ...base, autoGit: envHold })[0]?.key)
+  })
+
+  it("leaves joining to the header's button, but says why a member's folder doesn't sync", () => {
+    const notJoined = { tone: "idle" as const, label: "Not joined", detail: "Join to sync this folder with the session." }
+    expect(describeLiveSessionNotices({ ...base, membership: "none", sync: notJoined })).toEqual([])
+    const paused = { tone: "idle" as const, label: "Paused", detail: "Nothing syncs until it resumes." }
+    expect(describeLiveSessionNotices({ ...base, sync: paused })).toMatchObject([{ type: "info", title: "Paused" }])
+    const reconnecting = { tone: "working" as const, label: "Reconnecting…", detail: "Room went away" }
+    expect(describeLiveSessionNotices({ ...base, sync: reconnecting })).toEqual([])
+  })
+
+  it("recommends a rebase once, and offers a retry when checking the target failed", () => {
+    const targetView = { checking: false, title: null }
+    expect(describeLiveSessionNotices({
+      ...base,
+      target: { ...targetView, tone: "working", label: "main is 3 commits ahead", detail: "Rebase recommended: both changed a.ts", recommended: true },
+    })).toMatchObject([{ type: "info", dismissesTarget: true, action: null }])
+    expect(describeLiveSessionNotices({
+      ...base,
+      target: { ...targetView, tone: "attention", label: "Couldn't check main", detail: "offline", recommended: false },
+    })).toMatchObject([{ type: "warning", action: { run: "check_target" }, dismissesTarget: false }])
+    expect(describeLiveSessionNotices({
+      ...base,
+      membership: "left",
+      target: { ...targetView, tone: "attention", label: "Couldn't check main", detail: "offline", recommended: false },
+    })).toEqual([])
   })
 })
