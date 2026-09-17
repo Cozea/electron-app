@@ -145,6 +145,13 @@ const ComputerUse = createLazyRouteComponent(
     })),
   "routeLoading.computerUse",
 );
+const GitHubSettings = createLazyRouteComponent(
+  () =>
+    settingsModules.github().then((module) => ({
+      default: module.GitHubSettings,
+    })),
+  "routeLoading.github",
+);
 const WORKSPACE_MEMBERS_ROUTE = "/teams";
 const WORKSPACE_ROLES_ROUTE = "/teams/roles";
 const WORKSPACE_GENERAL_ROUTE = "/workspace/general";
@@ -162,6 +169,7 @@ const PERSONAL_DEVAPPS_ROUTE = "/settings/devapps";
 const PERSONAL_ORGANIZATIONS_ROUTE = "/settings/organizations";
 const PERSONAL_TOOLING_ROUTE = "/settings/tooling";
 const PERSONAL_COMPUTER_USE_ROUTE = "/settings/computer-use";
+const PERSONAL_GITHUB_ROUTE = "/settings/github";
 function toRoutePath(route: string): string {
   return route.replace(/^\//, "");
 }
@@ -465,7 +473,7 @@ const projectsWorkspaceSourceControlRoute = createRoute({
 const projectsPersonalSourceControlRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE),
-  component: () => <Navigate to="/projects" replace />,
+  component: () => <Navigate to={"/projects/settings/github" as never} replace />,
 });
 
 /** Legacy cloud storage settings (removed); send users to workspace / personal general settings. */
@@ -521,6 +529,12 @@ const projectsPersonalComputerUseRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_COMPUTER_USE_ROUTE),
   component: ComputerUse,
+});
+
+const projectsPersonalGitHubRoute = createRoute({
+  getParentRoute: () => projectsShellRoute,
+  path: toRoutePath(PERSONAL_GITHUB_ROUTE),
+  component: GitHubSettings,
 });
 
 const teamsMembersRoute = createRoute({
@@ -598,7 +612,7 @@ const workspaceSourceControlRoute = createRoute({
 const personalSourceControlRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_SOURCE_CONTROL_ROUTE),
-  component: () => <Navigate to={"/projects" as never} replace />,
+  component: () => <Navigate to={"/projects/settings/github" as never} replace />,
 });
 
 const workspaceSyncLegacyRoute = createRoute({
@@ -653,6 +667,12 @@ const personalComputerUseRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: toRoutePath(PERSONAL_COMPUTER_USE_ROUTE),
   component: () => <Navigate to={"/projects/settings/computer-use" as never} replace />,
+});
+
+const personalGitHubRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: toRoutePath(PERSONAL_GITHUB_ROUTE),
+  component: () => <Navigate to={"/projects/settings/github" as never} replace />,
 });
 
 const inviteRoute = createRoute({
@@ -714,6 +734,7 @@ export const routeTree = rootRoute.addChildren([
     projectsPersonalOrganizationsRoute,
     projectsPersonalToolingRoute,
     projectsPersonalComputerUseRoute,
+    projectsPersonalGitHubRoute,
   ]),
   legacyProjectRoute,
   teamsMembersRoute,
@@ -738,6 +759,7 @@ export const routeTree = rootRoute.addChildren([
   personalOrganizationsRoute,
   personalToolingRoute,
   personalComputerUseRoute,
+  personalGitHubRoute,
   inviteRoute,
 ]);
 

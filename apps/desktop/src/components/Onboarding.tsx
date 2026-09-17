@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useAction, useMutation } from 'convex/react'
+import { useAction, useMutation, useQuery } from 'convex/react'
 import { AnimatePresence, motion } from 'motion/react'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { ArrowLeft01Icon, Camera01Icon, Cancel01Icon } from '@hugeicons/core-free-icons'
+import { ArrowLeft01Icon, Camera01Icon, Cancel01Icon, CheckmarkCircle02Icon, GithubIcon } from '@hugeicons/core-free-icons'
 
 import { api } from '../../../../convex/_generated/api'
 import { Avatar } from '@/components/ui/avatar'
@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/contexts/AuthContext'
 import { optimizeProjectDevAppLogo } from '@/features/devapps/projectDevAppLogo'
+import { useGitHubConnect } from '@/features/github/useGitHubConnect'
+import { useTranslation } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 function initials(value: string): string {
@@ -49,7 +51,12 @@ export function Onboarding() {
   const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation)
   const uploadAvatar = useAction(api.devicePrincipals.uploadAvatar)
 
-  const [step, setStep] = useState<'name' | 'avatar'>('name')
+  const { t } = useTranslation()
+  const [step, setStep] = useState<'name' | 'avatar' | 'github'>('name')
+  const github = useGitHubConnect()
+  const githubSettings = useQuery(api.githubLinks.settings, isConvexAuthReady && step === 'github' ? {} : 'skip')
+  const githubLogin = githubSettings?.account?.login ?? null
+  const [openedGitHub, setOpenedGitHub] = useState(false)
   const [direction, setDirection] = useState<1 | -1>(1)
   const [deviceName, setDeviceName] = useState('')
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
@@ -128,23 +135,59 @@ export function Onboarding() {
 
           <div className="h-px w-8 bg-border" />
 
-          <div
+          <button
+            type="button"
+            onClick={() => {
+              if (step === 'github' && !saving) {
+                setError(null)
+                setDirection(-1)
+                setStep('avatar')
+              }
+            }}
             className={cn(
               'flex items-center gap-2 text-xs transition-colors',
-              step === 'avatar' ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground/60'
+              step === 'avatar'
+                ? 'font-semibold text-foreground'
+                : step === 'github'
+                  ? 'font-medium text-muted-foreground hover:text-foreground cursor-pointer'
+                  : 'font-medium text-muted-foreground/60'
             )}
+            disabled={step !== 'github' || saving}
           >
             <span
               className={cn(
                 'flex size-5 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
                 step === 'avatar'
                   ? 'border-2 border-foreground text-foreground'
-                  : 'border border-muted-foreground/40 text-muted-foreground/60'
+                  : step === 'github'
+                    ? 'border border-muted-foreground/50 text-muted-foreground'
+                    : 'border border-muted-foreground/40 text-muted-foreground/60'
               )}
             >
               2
             </span>
             <span>Avatar</span>
+          </button>
+
+          <div className="h-px w-8 bg-border" />
+
+          <div
+            className={cn(
+              'flex items-center gap-2 text-xs transition-colors',
+              step === 'github' ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground/60'
+            )}
+          >
+            <span
+              className={cn(
+                'flex size-5 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+                step === 'github'
+                  ? 'border-2 border-foreground text-foreground'
+                  : 'border border-muted-foreground/40 text-muted-foreground/60'
+              )}
+            >
+              3
+            </span>
+            <span>{t('onboarding.github.step')}</span>
           </div>
         </div>
 
@@ -201,7 +244,7 @@ export function Onboarding() {
                   </Button>
                 </div>
               </motion.form>
-            ) : (
+            ) : step === 'avatar' ? (
             <motion.form
               key="avatar"
               custom={direction}
@@ -212,7 +255,10 @@ export function Onboarding() {
               transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
               onSubmit={(event) => {
                 event.preventDefault()
-                void save()
+                if (processingAvatar) return
+                setError(null)
+                setDirection(1)
+                setStep('github')
               }}
               className="flex h-full w-full flex-col justify-between"
             >
@@ -306,9 +352,103 @@ export function Onboarding() {
                     type="submit"
                     size="lg"
                     className="w-full h-10 font-medium cursor-pointer"
-                    disabled={!isConvexAuthReady || saving || processingAvatar}
+                    disabled={processingAvatar}
                   >
-                    {saving ? 'Saving…' : isConvexAuthReady ? (avatarPreview ? 'Continue' : 'Skip for now') : 'Preparing device…'}
+                    {avatarPreview ? 'Continue' : 'Skip for now'}
+                  </Button>
+                </div>
+              </motion.form>
+            ) : (
+              <motion.form
+                key="github"
+                custom={direction}
+                variants={stepVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void save()
+                }}
+                className="flex h-full w-full flex-col justify-between"
+              >
+                <div className="space-y-1 text-left">
+                  <div className="flex items-center gap-1.5 -ml-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null)
+                        setDirection(-1)
+                        setStep('avatar')
+                      }}
+                      className="p-1 text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted cursor-pointer"
+                      disabled={saving}
+                      aria-label="Back to avatar"
+                      title="Back"
+                    >
+                      <HugeiconsIcon icon={ArrowLeft01Icon} className="size-4" />
+                    </button>
+                    <h1 className="text-xl font-semibold tracking-tight">{t('onboarding.github.title')}</h1>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{t('onboarding.github.description')}</p>
+                </div>
+
+                <div className="my-auto flex flex-col items-center gap-3">
+                  {githubLogin ? (
+                    <div className="flex items-center gap-2 text-sm font-medium text-foreground" role="status">
+                      <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-5 text-emerald-500" />
+                      {t('onboarding.github.connected').replace('{login}', githubLogin)}
+                    </div>
+                  ) : (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="h-10 w-full gap-2 font-medium cursor-pointer"
+                        disabled={!isConvexAuthReady || github.busy !== null || saving}
+                        onClick={() => {
+                          setOpenedGitHub(true)
+                          void github.connect('install')
+                        }}
+                      >
+                        <HugeiconsIcon icon={GithubIcon} className="size-4" />
+                        {t('onboarding.github.install')}
+                      </Button>
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                        disabled={!isConvexAuthReady || github.busy !== null || saving}
+                        onClick={() => {
+                          setOpenedGitHub(true)
+                          void github.connect('sign_in')
+                        }}
+                      >
+                        {t('onboarding.github.signIn')}
+                      </button>
+                      {openedGitHub ? (
+                        <p className="text-xs text-muted-foreground" role="status">{t('onboarding.github.waiting')}</p>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  {error ? <p className="text-xs text-destructive text-center" role="alert">{error}</p> : null}
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full h-10 font-medium cursor-pointer"
+                    disabled={!isConvexAuthReady || saving}
+                  >
+                    {saving
+                      ? 'Saving…'
+                      : !isConvexAuthReady
+                        ? 'Preparing device…'
+                        : githubLogin
+                          ? t('onboarding.github.finish')
+                          : t('onboarding.github.skip')}
                   </Button>
                 </div>
               </motion.form>

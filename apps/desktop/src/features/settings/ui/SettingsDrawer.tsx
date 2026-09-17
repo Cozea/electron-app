@@ -28,6 +28,7 @@ const Appearance = lazy(() => settingsModules.appearance().then((m) => ({ defaul
 const DevAppSettings = lazy(() => settingsModules.devapps().then((m) => ({ default: m.DevAppSettings })))
 const Organizations = lazy(() => settingsModules.organizations().then((m) => ({ default: m.Organizations })))
 const Tooling = lazy(() => settingsModules.tooling().then((m) => ({ default: m.Tooling })))
+const GitHubSettings = lazy(() => settingsModules.github().then((m) => ({ default: m.GitHubSettings })))
 
 function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection; route: string }) {
   if (section === 'account') {
@@ -44,6 +45,10 @@ function SettingsDrawerBody({ section, route }: { section: SettingsDrawerSection
 
   if (section === 'organizations') {
     return <Organizations surface="drawer" route={route} />
+  }
+
+  if (section === 'github') {
+    return <GitHubSettings surface="drawer" route={route} />
   }
 
   return <Tooling surface="drawer" route={route} />

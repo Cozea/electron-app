@@ -23,13 +23,14 @@ import {
   computerUseTranslations,
   type ComputerUseTranslationKey,
 } from "./i18n/computerUse"
+import { githubTranslations, type GitHubTranslationKey } from "./i18n/github"
 import en, { type TranslationKey as BaseTranslationKey } from "./i18n/en"
 import es from "./i18n/es"
 
 // ── Public types ──────────────────────────────────────────────────────
 
 export type Language = "en" | "es"
-export type TranslationKey = BaseTranslationKey | ComputerUseTranslationKey
+export type TranslationKey = BaseTranslationKey | ComputerUseTranslationKey | GitHubTranslationKey
 
 export interface LanguageOption {
   code: Language
@@ -44,8 +45,8 @@ export const LANGUAGES: readonly LanguageOption[] = [
 // ── Translation maps ─────────────────────────────────────────────────
 
 const translations: Record<Language, Record<TranslationKey, string>> = {
-  en: { ...en, ...computerUseTranslations.en },
-  es: { ...es, ...computerUseTranslations.es },
+  en: { ...en, ...computerUseTranslations.en, ...githubTranslations.en },
+  es: { ...es, ...computerUseTranslations.es, ...githubTranslations.es },
 }
 
 // ── Storage helpers ──────────────────────────────────────────────────

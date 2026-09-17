@@ -37,6 +37,7 @@ import {
   type LiveSessionAction,
   type LiveSessionAutoGitView,
   type LiveSessionMember,
+  type LiveSessionRepositoryStatus,
   type LiveSessionSyncView,
   type LiveSessionTargetView,
   type SessionMembership,
@@ -59,8 +60,14 @@ export interface LiveSessionRecord {
 }
 
 export interface LiveSessionController {
+  /** The project the session belongs to. */
+  projectId: string | null
   /** The session for the active Workbench, if it is a Session Workbench. */
   session: LiveSessionRecord | null
+  /** Whether the project's repository is linked through the GitHub App; null until known. */
+  repository: LiveSessionRepositoryStatus | null
+  /** Asks this Mac to check again whether it can save the session to Git. */
+  recheckGitAccess: () => void
   /** This device's other live sessions, excluding the active one. */
   otherSessions: LiveSessionRecord[]
   members: LiveSessionMember[]
@@ -290,11 +297,31 @@ export function useLiveSession(input: {
     : []
 
   const daemonStatus = daemon.phase === "attached" ? daemon.status : null
+
+  const repositoryQuery = useSafeConvexQuery(
+    api.githubLinks.projectRepositoryStatus,
+    signedIn && session && projectId ? { projectId: projectId as Id<"projects"> } : "skip",
+  )
+  const repository = repositoryQuery.data ?? null
+  const publicSessionId = session?.publicSessionId ?? null
+  const recheckGitAccess = useCallback(() => {
+    if (publicSessionId) void window.electronAPI.projectd.sessions.recheckGitAccess(publicSessionId)
+  }, [publicSessionId])
+  // Linked from anywhere (this Mac, the browser, another member): check now, not in 15 minutes.
+  const waitingForGitHub = daemonStatus?.autoGit?.detailCode === "NOT_AUTHORIZED"
+  const repositoryLinked = repository?.linked === true
+  useEffect(() => {
+    if (waitingForGitHub && repositoryLinked) recheckGitAccess()
+  }, [waitingForGitHub, repositoryLinked, recheckGitAccess])
+
   const leaderName =
     members.find((member) => member.principalId === daemonStatus?.autoGit?.leaderPrincipalId)?.displayName ?? null
 
   return {
+    projectId,
     session,
+    repository,
+    recheckGitAccess,
     otherSessions,
     members,
     membership,

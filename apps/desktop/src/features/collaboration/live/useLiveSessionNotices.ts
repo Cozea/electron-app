@@ -1,6 +1,7 @@
 /**
  * Toasts for what the header's live-session pill can't say in its space: a session
- * on another branch, why saving to Git stopped, and how the target branch moved.
+ * on another branch, why saving to Git stopped (with the GitHub step that fixes it),
+ * and how the target branch moved.
  *
  * Master Specification: Section 5.3, 23.2
  *
@@ -11,15 +12,20 @@
 import { useEffect, useRef } from "react"
 
 import { toastManager } from "@/components/ui/toast"
-import { describeLiveSessionNotices, type LiveSessionNotice } from "./liveSessionModel"
+import { useGitHubConnect } from "@/features/github/useGitHubConnect"
+import type { Id } from "../../../../../../convex/_generated/dataModel"
+import { describeLiveSessionNotices, type LiveSessionNotice, type LiveSessionNoticeRun } from "./liveSessionModel"
 import type { LiveSessionController } from "./useLiveSession"
 
 export function useLiveSessionNotices(live: LiveSessionController | null): void {
   const notices = live ? describeLiveSessionNotices(live) : []
   const signature = notices.map((notice) => notice.key).join("\n")
 
+  const github = useGitHubConnect()
   const liveRef = useRef(live)
   liveRef.current = live
+  const githubRef = useRef(github)
+  githubRef.current = github
   const noticesRef = useRef<LiveSessionNotice[]>(notices)
   noticesRef.current = notices
   const shown = useRef(new Map<string, string>())
@@ -46,7 +52,7 @@ export function useLiveSessionNotices(live: LiveSessionController | null): void 
         // Toasts that offer a fix wait for the user; the rest fade like any other.
         timeout: action ? 0 : undefined,
         actionProps: action
-          ? { children: action.label, onClick: () => runNoticeAction(liveRef.current, action.run) }
+          ? { children: action.label, onClick: () => runNoticeAction(liveRef.current, githubRef.current, action.run) }
           : undefined,
         onClose: () => {
           // Closed by us because the situation ended: nothing to remember.
@@ -69,7 +75,11 @@ export function useLiveSessionNotices(live: LiveSessionController | null): void 
   }, [])
 }
 
-function runNoticeAction(live: LiveSessionController | null, run: NonNullable<LiveSessionNotice["action"]>["run"]): void {
+function runNoticeAction(
+  live: LiveSessionController | null,
+  github: ReturnType<typeof useGitHubConnect>,
+  run: LiveSessionNoticeRun,
+): void {
   if (!live) return
   switch (run) {
     case "switch": {
@@ -82,6 +92,12 @@ function runNoticeAction(live: LiveSessionController | null, run: NonNullable<Li
       return
     case "check_target":
       live.checkTarget()
+      return
+    case "github_link":
+      if (live.projectId) void github.link(live.projectId as Id<"projects">, live.recheckGitAccess)
+      return
+    case "github_copy_link":
+      if (live.repository?.repository) void github.copyInstallLink(live.repository.repository.owner)
       return
   }
 }

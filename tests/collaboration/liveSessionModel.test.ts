@@ -9,6 +9,7 @@ import {
   describeTarget,
   resolveMembership,
   type LiveSessionMember,
+  type LiveSessionRepositoryStatus,
 } from "@/features/collaboration/live/liveSessionModel"
 
 function daemonStatus(overrides: Partial<ProjectdSessionStatus> = {}): ProjectdSessionStatus {
@@ -285,6 +286,34 @@ describe("which live-session situations become toasts", () => {
     const notSetUp = { ...envHold, label: "Saving to Git isn't set up", detail: "Install the app.", fix: null }
     expect(describeLiveSessionNotices({ ...base, autoGit: notSetUp })[0]?.key)
       .not.toBe(describeLiveSessionNotices({ ...base, autoGit: envHold })[0]?.key)
+  })
+
+  it("offers the GitHub step that gets saving set up, and only to people who can link", () => {
+    const notSetUp = {
+      ...autoGitView, tone: "attention" as const, label: "Saving to Git isn't set up",
+      detail: "Saving to Git isn't set up for Team/App.", needsGitHubSetup: true,
+    }
+    const repository: LiveSessionRepositoryStatus = {
+      repository: { owner: "Team", name: "App" }, linked: false, installation: null, account: null, canLink: true,
+    }
+    const actionFor = (overrides: Partial<LiveSessionRepositoryStatus> | null) =>
+      describeLiveSessionNotices({ ...base, autoGit: notSetUp, repository: overrides === null ? null : { ...repository, ...overrides } })[0]?.action
+
+    expect(actionFor({})).toEqual({ label: "Install on GitHub", run: "github_link" })
+    expect(actionFor({ account: { login: "team" } })).toEqual({ label: "Install on GitHub", run: "github_link" })
+    // Someone else's account: they have to install it.
+    expect(actionFor({ account: { login: "kel" } })).toEqual({ label: "Copy install link", run: "github_copy_link" })
+    expect(actionFor({ account: { login: "kel" }, installation: { accountLogin: "Team" } }))
+      .toEqual({ label: "Link repository", run: "github_link" })
+    expect(actionFor({ canLink: false })).toBeNull()
+    expect(actionFor(null)).toBeNull()
+
+    // Once the app is installed the way forward changes, and so does the toast.
+    const before = describeLiveSessionNotices({ ...base, autoGit: notSetUp, repository: { ...repository, account: { login: "kel" } } })
+    const after = describeLiveSessionNotices({
+      ...base, autoGit: notSetUp, repository: { ...repository, account: { login: "kel" }, installation: { accountLogin: "Team" } },
+    })
+    expect(after[0]?.key).not.toBe(before[0]?.key)
   })
 
   it("leaves joining to the header's button, but says why a member's folder doesn't sync", () => {

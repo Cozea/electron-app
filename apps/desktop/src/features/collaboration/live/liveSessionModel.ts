@@ -169,6 +169,8 @@ export interface LiveSessionAutoGitView {
   canSave: boolean
   /** The fix offered for why saving waits, when there is one. */
   fix: "ignore_env" | null
+  /** Saving waits for the project's repository to be linked through the GitHub App. */
+  needsGitHubSetup?: boolean
   lastSavedAt?: number | null
   isSaving?: boolean
 }
@@ -217,6 +219,7 @@ export function describeAutoGit(
     title: title || null,
     canSave: status.role !== "viewer" && autoGit.leaderPrincipalId !== null,
     fix: null,
+    needsGitHubSetup: autoGit.detailCode === "NOT_AUTHORIZED",
     lastSavedAt: checkpoint?.publishedAt ?? null,
     isSaving: Boolean(autoGit.saving),
   }
@@ -316,6 +319,30 @@ export function planLiveSessionStart(input: {
   return { status: "ready", branch }
 }
 
+export type LiveSessionNoticeRun = "switch" | "ignore_env" | "check_target" | "github_link" | "github_copy_link"
+
+/** What the GitHub App knows about the project's repository (githubLinks.projectRepositoryStatus). */
+export interface LiveSessionRepositoryStatus {
+  repository: { owner: string; name: string } | null
+  linked: boolean
+  installation: { accountLogin: string } | null
+  account: { login: string } | null
+  canLink: boolean
+}
+
+/** How to get a repository set up for saving, from what's known about it. */
+function gitHubSetupAction(status: LiveSessionRepositoryStatus | null | undefined): LiveSessionNotice["action"] {
+  if (!status) return null
+  if (!status.canLink || !status.repository) return null
+  if (status.linked || status.installation) return { label: "Link repository", run: "github_link" }
+  const owner = status.repository.owner.toLowerCase()
+  // Someone else's account: only they can install, so hand them the link.
+  if (status.account && status.account.login.toLowerCase() !== owner) {
+    return { label: "Copy install link", run: "github_copy_link" }
+  }
+  return { label: "Install on GitHub", run: "github_link" }
+}
+
 /** A toast about the live session: something the header's pill is too small to say. */
 export interface LiveSessionNotice {
   /** Stable while the situation lasts; a new key is a new toast. */
@@ -323,7 +350,7 @@ export interface LiveSessionNotice {
   type: "info" | "warning"
   title: string
   description: string | null
-  action: { label: string; run: "switch" | "ignore_env" | "check_target" } | null
+  action: { label: string; run: LiveSessionNoticeRun } | null
   /** A recommended rebase the user closes is dismissed until the target moves again. */
   dismissesTarget: boolean
 }
@@ -336,6 +363,7 @@ export function describeLiveSessionNotices(live: {
   sync: LiveSessionSyncView | null
   autoGit: LiveSessionAutoGitView | null
   target: LiveSessionTargetView | null
+  repository?: LiveSessionRepositoryStatus | null
 }): LiveSessionNotice[] {
   if (!live.session || !live.sync) {
     const other = live.otherSessions[0]
@@ -369,12 +397,19 @@ export function describeLiveSessionNotices(live: {
 
   const autoGit = live.autoGit
   if (autoGit?.tone === "attention" && autoGit.detail) {
+    const action: LiveSessionNotice["action"] =
+      autoGit.fix === "ignore_env" && live.canEdit
+        ? { label: "Add to .gitignore", run: "ignore_env" }
+        : autoGit.needsGitHubSetup
+          ? gitHubSetupAction(live.repository)
+          : null
     notices.push({
-      key: `autogit:${id}:${autoGit.label}:${autoGit.detail}`,
+      // A new way forward (the app got installed, say) is a new toast.
+      key: `autogit:${id}:${autoGit.label}:${autoGit.detail}:${action?.run ?? ""}`,
       type: "warning",
       title: autoGit.label,
       description: autoGit.detail,
-      action: autoGit.fix === "ignore_env" && live.canEdit ? { label: "Add to .gitignore", run: "ignore_env" } : null,
+      action,
       dismissesTarget: false,
     })
   }
