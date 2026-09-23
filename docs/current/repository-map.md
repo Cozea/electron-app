@@ -13,7 +13,6 @@ apps/desktop/src/
     collaboration/      collaboration sessions, state and presentation
     dev-server/         dev-server runs, commands, and preview coordination
     devapps/            DevApp authoring, catalog, publication, installation, preview
-    native-preview/     simulator preview presentation, selection and session state
     projects/           identity, lifecycle, access, navigation, dialog and header state
     project-memory/     agent-generated code graph state, layout and controls
     settings/           personal/project settings and settings-domain preferences

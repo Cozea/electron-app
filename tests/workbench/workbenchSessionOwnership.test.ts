@@ -44,7 +44,6 @@ describe("workbench session ownership", () => {
       lastFocusedAt,
       lastBackgroundedAt: lastFocusedAt,
       terminalBindings: {},
-      nativePreviewLocator: null,
     });
     const sessions = new Map([
       ["project-a::collab::workspace-123::v1", makeRecord(1, 200)],

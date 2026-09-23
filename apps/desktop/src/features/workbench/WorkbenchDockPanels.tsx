@@ -40,7 +40,6 @@ import {
 } from "@/features/dev-server/devServerRunStore"
 import {
   buildLocalDevServerUrl,
-  dispatchDevServerTileCommand,
   isSameDevServerPreviewUrl,
 } from "@/features/dev-server/devServerTileCommands"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
@@ -600,18 +599,14 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          disabled={surface === "devServer" && !runtimeTabId}
+          disabled={!runtimeTabId}
           onClick={() => {
-            if (surface === "mobileSimulator") {
-              dispatchDevServerTileCommand({ tileId, type: "refresh-simulators" })
-              return
-            }
             const preview = window.desktopBridge?.preview
             if (preview && runtimeTabId) {
               void preview.refresh(runtimeTabId).catch(() => undefined)
             }
           }}
-          aria-label={surface === "mobileSimulator" ? "Refresh simulator" : "Reload preview"}
+          aria-label="Reload preview"
         >
           <HugeiconsIcon icon={__RefreshCcwHugeIcon} className="h-3.5 w-3.5" />
         </Button>

@@ -9,7 +9,6 @@ const BUILTIN_ICON_PATHS = [
   "codex/icon.png",
   "cursor/icon.png",
   "dev-server/icon.png",
-  "mobile-simulator/icon.png",
   "opencode/icon.png",
   "published/icon.png",
   "terminal/icon.png",

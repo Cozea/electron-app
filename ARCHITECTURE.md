@@ -34,7 +34,7 @@ Nothing here may import from `features/`. The exceptions that remain are pinned 
 ## Current capability roots
 
 `assistant`, `browser`, `collaboration`, `dev-server`, `devapps`,
-`native-preview`, `project-memory`, `projects`, `settings`, `source-control`,
+`project-memory`, `projects`, `settings`, `source-control`,
 `tasks`, `terminal`, `workbench`, `workspace`.
 
 ## Boundary rules

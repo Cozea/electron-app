@@ -7,10 +7,8 @@ import type {
   WorkbenchSessionLifecycle,
   WorkbenchSessionSnapshot,
 } from '../../../../shared/electronApiTypes'
-import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { DevServerService } from './DevServerService'
 import { TerminalService } from './TerminalService'
-import { NativePreviewManager } from './nativePreview/NativePreviewManager'
 import { getDesktopStatePersistenceService } from './DesktopStatePersistenceService'
 
 interface PersistedWorkbenchSessionRecord {
@@ -41,11 +39,9 @@ interface LiveWorkbenchSessionRecord {
   lastFocusedAt: number
   lastBackgroundedAt: number | null
   terminalBindings: Record<string, string>
-  nativePreviewLocator: NativePreviewSessionLocator | null
 }
 
 interface WorkbenchSessionManagerServices {
-  nativePreviewManager: NativePreviewManager
   browserSurfaces: {
     hasSurfaceForWorkbenchSession: (sessionKey: string) => boolean
     releaseSurfacesForWorkbenchSession: (sessionKey: string) => Promise<void>
@@ -279,7 +275,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
   private readonly terminalService = TerminalService.getInstance()
   private readonly devServerService = DevServerService.getInstance()
-  private readonly nativePreviewManager: NativePreviewManager
   private readonly browserSurfaces: WorkbenchSessionManagerServices['browserSurfaces']
   private readonly sessions = new Map<string, LiveWorkbenchSessionRecord>()
   private readonly policySweepTimer: NodeJS.Timeout
@@ -326,7 +321,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
 
   private constructor(services: WorkbenchSessionManagerServices) {
     super()
-    this.nativePreviewManager = services.nativePreviewManager
     this.browserSurfaces = services.browserSurfaces
 
     const persisted = readRegistryState()
@@ -347,7 +341,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
         lifecycle:
           record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
         terminalBindings: {},
-        nativePreviewLocator: null,
       }
       const existing = this.sessions.get(derivedSessionKey)
       if (
@@ -448,7 +441,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
         workspaceRevision,
         lifecycle: record.lifecycle === 'active' ? 'backgroundWarm' : record.lifecycle,
         terminalBindings: {},
-        nativePreviewLocator: null,
       })
     }
     this.sessions.clear()
@@ -540,7 +532,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
       lastFocusedAt: now,
       lastBackgroundedAt: now,
       terminalBindings: {},
-      nativePreviewLocator: null,
     }
   }
 
@@ -660,14 +651,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return this.devServerService.getState(record.workspaceId, record.laneId).running
   }
 
-  private hasRunningNativePreview(record: LiveWorkbenchSessionRecord): boolean {
-    if (!record.nativePreviewLocator) {
-      return false
-    }
-
-    return Boolean(this.nativePreviewManager.getSessionState(record.nativePreviewLocator))
-  }
-
   private hasRetainedPreviewRuntime(record: LiveWorkbenchSessionRecord): boolean {
     const sessionKey = buildSessionKey(
       record.projectId,
@@ -677,7 +660,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
     )
     return (
       this.hasRunningDevServer(record) ||
-      this.hasRunningNativePreview(record) ||
       this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey)
     )
   }
@@ -839,9 +821,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
     const devServer = record.workspaceId
       ? this.devServerService.getState(record.workspaceId, record.laneId)
       : { running: false, port: null, runId: null }
-    const hasNativePreviewSession = record.nativePreviewLocator
-      ? Boolean(this.nativePreviewManager.getSessionState(record.nativePreviewLocator))
-      : false
 
     return {
       sessionKey,
@@ -857,7 +836,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
       terminalBindings: { ...record.terminalBindings },
       devServer,
       hasBrowserSurface: this.browserSurfaces.hasSurfaceForWorkbenchSession(sessionKey),
-      hasNativePreviewSession,
     }
   }
 
@@ -1088,11 +1066,6 @@ export class WorkbenchSessionManager extends EventEmitter<{
       await this.devServerService.stop(record.workspaceId, record.laneId).catch(() => ({ success: false }))
     }
 
-    if (record.nativePreviewLocator) {
-      await this.nativePreviewManager.stopSession(record.nativePreviewLocator).catch(() => ({ success: false }))
-      record.nativePreviewLocator = null
-    }
-
     await this.browserSurfaces.releaseSurfacesForWorkbenchSession(sessionKey)
 
     const previousLifecycle = record.lifecycle
@@ -1311,40 +1284,5 @@ export class WorkbenchSessionManager extends EventEmitter<{
     this.persist(sessionKey)
     this.emitState(sessionKey, record)
     return { success: true, terminalId }
-  }
-
-  async setNativePreviewSession(input: {
-    sessionKey?: string | null
-    projectId: string
-    laneId: string
-    workspaceId?: string | null
-    workspaceRevision?: number
-    locator: NativePreviewSessionLocator | null
-    stopPrevious?: boolean
-  }): Promise<WorkbenchSessionSnapshot | null> {
-    const sessionKey = this.resolveSessionKey(input)
-    if (!sessionKey) {
-      return null
-    }
-    const record = this.sessions.get(sessionKey)
-    if (!record) {
-      return null
-    }
-
-    const previousLocator = record.nativePreviewLocator
-    const previousKey = previousLocator
-      ? `${previousLocator.platform}:${previousLocator.deviceId}:${previousLocator.workspaceId}`
-      : null
-    const nextKey = input.locator
-      ? `${input.locator.platform}:${input.locator.deviceId}:${input.locator.workspaceId}`
-      : null
-
-    if (input.stopPrevious && previousLocator && previousKey !== nextKey) {
-      await this.nativePreviewManager.stopSession(previousLocator).catch(() => ({ success: false }))
-    }
-
-    record.nativePreviewLocator = input.locator
-    this.persist(sessionKey)
-    return this.emitState(sessionKey, record)
   }
 }

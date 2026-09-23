@@ -41,26 +41,6 @@ import type {
   WorkspaceCatalogSnapshot,
   TrashManagedWorkspaceResult,
 } from './workspaceTypes'
-import type {
-  NativePreviewActionResult,
-  NativePreviewCaptureScreenshotRequest,
-  NativePreviewCaptureScreenshotResult,
-  NativePreviewListIosSimulatorsResult,
-  NativePreviewResolveLaunchConfigRequest,
-  NativePreviewResolveLaunchConfigResult,
-  NativePreviewRotateRequest,
-  NativePreviewSendButtonRequest,
-  NativePreviewSendKeyRequest,
-  NativePreviewSendTouchesRequest,
-  NativePreviewSendWheelRequest,
-  NativePreviewSessionLocator,
-  NativePreviewSessionState,
-  NativePreviewStartSessionRequest,
-  NativePreviewStartSessionResult,
-  NativePreviewStateChangedEvent,
-  NativePreviewStopSessionRequest,
-  NativePreviewStopSessionResult,
-} from './nativePreviewTypes'
 
 export type { PersonalWorkspaceMembership, Session, User, WorkspaceMembership } from './types'
 
@@ -1560,7 +1540,6 @@ export interface WorkbenchSessionSnapshot {
   terminalBindings: Record<string, string>
   devServer: WorkbenchSessionDevServerState
   hasBrowserSurface: boolean
-  hasNativePreviewSession: boolean
 }
 
 export type {
@@ -2169,15 +2148,6 @@ export interface ElectronAPI {
       tileId: string
       close?: boolean
     }) => Promise<{ success: boolean; terminalId?: string }>
-    setNativePreviewSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      workspaceId?: string | null
-      workspaceRevision?: number
-      locator: import('./nativePreviewTypes').NativePreviewSessionLocator | null
-      stopPrevious?: boolean
-    }) => Promise<WorkbenchSessionSnapshot | null>
     onStateChanged: (callback: (session: WorkbenchSessionSnapshot) => void) => () => void
   }
   desktopPersistence: {
@@ -2214,23 +2184,6 @@ export interface ElectronAPI {
     inspectSelection: (options: PreviewInspectorSelectionInput) => Promise<PreviewInspectorSelectionResult>
     updateSelectionStyles: (options: PreviewInspectorStyleMutationInput) => Promise<PreviewInspectorMutationResult>
     updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
-  }
-  nativePreview: {
-    listIosSimulators: () => Promise<NativePreviewListIosSimulatorsResult>
-    resolveLaunchConfig: (
-      options: NativePreviewResolveLaunchConfigRequest,
-    ) => Promise<NativePreviewResolveLaunchConfigResult>
-    startSession: (options: NativePreviewStartSessionRequest) => Promise<NativePreviewStartSessionResult>
-    stopSession: (options: NativePreviewStopSessionRequest) => Promise<NativePreviewStopSessionResult>
-    getSessionState: (options: NativePreviewSessionLocator) => Promise<NativePreviewSessionState | null>
-    sendTouches: (options: NativePreviewSendTouchesRequest) => Promise<NativePreviewActionResult>
-    sendWheel: (options: NativePreviewSendWheelRequest) => Promise<NativePreviewActionResult>
-    sendKey: (options: NativePreviewSendKeyRequest) => Promise<NativePreviewActionResult>
-    sendButton: (options: NativePreviewSendButtonRequest) => Promise<NativePreviewActionResult>
-    rotate: (options: NativePreviewRotateRequest) => Promise<NativePreviewActionResult>
-    captureScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewCaptureScreenshotResult>
-    copyLastScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewActionResult>
-    onStateChanged: (callback: (event: NativePreviewStateChangedEvent) => void) => () => void
   }
   project: {
     listGitBranches: (options: { workspaceId: string }) => Promise<ProjectGitBranchListResult>
