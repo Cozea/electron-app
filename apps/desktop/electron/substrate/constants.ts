@@ -54,7 +54,6 @@ export const PHASE5_IPC_ALLOWLIST_PREFIXES = [
   "workspace:",
   "yjs:",
   "devApps:",
-  "nativePreview:",
   "preview:",
   "collab:",
   "syncJournal:",

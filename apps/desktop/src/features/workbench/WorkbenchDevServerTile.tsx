@@ -7,7 +7,6 @@ import type {
   ExternalBrowserId,
 } from "@shared/electronApiTypes"
 import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
-import type { NativePreviewRotation } from "@shared/nativePreviewTypes"
 
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
@@ -24,14 +23,11 @@ import {
   runtimePreviewBrowserSurfaceKind,
   runtimePreviewBrowserSurfaceTabId,
 } from "@/features/browser/runtimePreviewBrowserSurface"
-import { IosSimulatorViewport } from "@/features/native-preview/IosSimulatorViewport"
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode"
 import {
   buildLocalDevServerUrl,
-  DEV_SERVER_TILE_COMMAND_EVENT,
   isSameDevServerPreviewUrl,
-  type DevServerTileCommand,
 } from "@/features/dev-server/devServerTileCommands"
 import {
   buildDevServerRunKey,
@@ -42,7 +38,6 @@ import {
   useDevServerProcessConfigStore,
 } from "@/features/dev-server/devServerProcessConfigStore"
 import { interruptDevServerSurfaceLease } from "@/features/dev-server/devServerSurfaceController"
-import { useIosNativePreview } from "@/features/native-preview/hooks/useIosNativePreview"
 import { KeepAliveTerminalView } from "@/features/terminal/KeepAliveTerminalView"
 import { useWorkbenchSessionTerminal } from "@/features/terminal/useWorkbenchSessionTerminal"
 import {
@@ -63,7 +58,6 @@ import {
   type WorkbenchRuntimeTarget,
 } from "@/features/devapps/model/projectDevAppRuntime"
 import { releaseProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntimeLifecycle"
-import type { PageRoute, ServerStatus } from "@/features/dev-server/model/previewRuntimeTypes"
 import {
   type WorkbenchDevServerTile as WorkbenchDevServerTileRecord,
   type WorkbenchMobileSimulatorTile as WorkbenchMobileSimulatorTileRecord,
@@ -79,44 +73,6 @@ import {
   PlayIcon as __PlayHugeIcon,
 } from "@hugeicons/core-free-icons"
 
-function devManagerStatusToServerStatus(status: DevServerStatus): ServerStatus {
-  switch (status) {
-    case "idle":
-    case "stopped":
-      return "stopped"
-    case "starting":
-      return "starting"
-    case "ready":
-      return "running"
-    case "unhealthy":
-      return "unhealthy"
-    case "error":
-      return "error"
-    default:
-      return "stopped"
-  }
-}
-
-function useNativeMobilePreviewMode(framework: string | undefined): "ios" | "android" | null {
-  if (framework === "expo" || framework === "react-native") {
-    return "ios"
-  }
-  return null
-}
-
-const NATIVE_PREVIEW_ROUTE: PageRoute = {
-  name: "App",
-  path: "/",
-  file: "",
-  type: "static",
-  status: "active",
-}
-
-// Inert placeholder scope used only while the workbench session key hasn't
-// resolved yet (enabled stays false, so the scope never accrues state). A
-// real key is required for any native-preview activity — fabricated
-// `projectId::laneId::unbound` scopes collided across workspaces.
-const NATIVE_PREVIEW_PENDING_SCOPE = "cozea::native-preview::pending"
 function RuntimePreviewStartState({
   status,
   error,
@@ -415,13 +371,9 @@ function WorkbenchRuntimePreviewTile({
   }, [runtimeWorkspaceId, storedDevCommand, storedDevPort, storedFramework])
 
   const framework = resolvedFramework ?? (storedFramework as Framework | null) ?? undefined
-  const nativePreviewPlatform = useNativeMobilePreviewMode(framework)
-  const supportsIosNativePreview = nativePreviewPlatform === "ios"
   const isMobileSimulatorSurface = surfaceType === "mobileSimulator"
-  const usesNativePreview = isMobileSimulatorSurface && supportsIosNativePreview
 
   const viewMode = tile.viewMode ?? "preview"
-  const [previewDevice] = useState<"desktop" | "tablet" | "mobile">("desktop")
   const [availableBrowsers, setAvailableBrowsers] = useState<AvailableExternalBrowser[]>([
     { id: "system", name: "System Default" },
   ])
@@ -463,8 +415,6 @@ function WorkbenchRuntimePreviewTile({
     storedDevCommand,
     storedDevPort,
     storedCommandSource,
-    previewMode: usesNativePreview ? "native" : "web",
-    nativePlatform: usesNativePreview ? nativePreviewPlatform : null,
     auxiliaryProcesses,
   })
   const previousDevAppReleaseIdRef = useRef(devAppReleaseId)
@@ -491,15 +441,6 @@ function WorkbenchRuntimePreviewTile({
     }
   }, [devAppReleaseId, devServer.restart, devServer.status, runtimeRunKey])
   const previewUrl = devServer.url ?? (devServer.port ? buildLocalDevServerUrl(devServer.port) : "")
-  const serverStatusForNative = devManagerStatusToServerStatus(devServer.status)
-  const nativePreview = useIosNativePreview({
-    scopeKey: runtimeSessionKey ?? NATIVE_PREVIEW_PENDING_SCOPE,
-    enabled: usesNativePreview && Boolean(runtimeSessionKey),
-    workspaceId: runtimeWorkspaceId,
-    serverStatus: serverStatusForNative,
-    keepAliveOnUnmount: true,
-  })
-  const nativeStreamUrl = nativePreview.sessionState?.streamUrl ?? null
   const previewServerActive =
     devServer.status === "ready" ||
     devServer.status === "unhealthy" ||
@@ -713,40 +654,6 @@ function WorkbenchRuntimePreviewTile({
     }
   }, [isMobileSimulatorSurface, previewDestination])
 
-  useEffect(() => {
-    if (!isMobileSimulatorSurface) {
-      return
-    }
-
-    const locator =
-      usesNativePreview && runtimeWorkspaceId && nativePreview.selectedSimulator
-        ? {
-            workspaceId: runtimeWorkspaceId,
-            deviceId: nativePreview.selectedSimulator.udid,
-            platform: "ios" as const,
-          }
-        : null
-
-    void window.electronAPI.workbenchSession
-      .setNativePreviewSession({
-        sessionKey: runtimeSessionKey,
-        projectId: runtimeProjectId,
-        laneId: runtimeLaneId,
-        locator,
-      })
-      .catch((error) => {
-        console.warn("[WorkbenchDevServerTile] Failed to sync native preview session", error)
-      })
-  }, [
-    isMobileSimulatorSurface,
-    usesNativePreview,
-    nativePreview.selectedSimulator,
-    runtimeLaneId,
-    runtimeProjectId,
-    runtimeSessionKey,
-    runtimeWorkspaceId,
-  ])
-
   const visibleBrowsers = useMemo(() => {
     return getVisibleExternalBrowsers(availableBrowsers, defaultBrowserId)
   }, [availableBrowsers, defaultBrowserId])
@@ -763,7 +670,7 @@ function WorkbenchRuntimePreviewTile({
     )
   }, [availableBrowsers, effectiveBrowserId, visibleBrowsers])
 
-  const externalPreviewUrl = usesNativePreview ? (nativeStreamUrl ?? previewUrl) : previewUrl
+  const externalPreviewUrl = previewUrl
 
   const openPreviewExternally = useCallback(
     async (force = false) => {
@@ -790,73 +697,6 @@ function WorkbenchRuntimePreviewTile({
       }
     },
     [effectiveBrowserId, externalPreviewUrl, t],
-  )
-
-  // The dock header owns the simulator refresh button but only this tile
-  // holds the native-preview hook, so the command arrives as a DOM event.
-  const refreshSimulators = nativePreview.refreshSimulators
-  useEffect(() => {
-    if (!isMobileSimulatorSurface) return
-
-    const onCommand = (event: Event) => {
-      const command = (event as CustomEvent<DevServerTileCommand>).detail
-      if (command?.tileId !== tile.id) return
-      if (command.type === "refresh-simulators") {
-        void refreshSimulators()
-      }
-    }
-    window.addEventListener(DEV_SERVER_TILE_COMMAND_EVENT, onCommand)
-    return () => {
-      window.removeEventListener(DEV_SERVER_TILE_COMMAND_EVENT, onCommand)
-    }
-  }, [isMobileSimulatorSurface, refreshSimulators, tile.id])
-
-  const handleNativeSendTouches = useCallback(
-    async (request: {
-      type: "start" | "move" | "end"
-      touches: Array<{ xRatio: number; yRatio: number }>
-
-      rotation?: NativePreviewRotation
-    }) => {
-      if (!runtimeWorkspaceId || !nativePreview.selectedSimulator) return
-      await window.electronAPI.nativePreview.sendTouches({
-        workspaceId: runtimeWorkspaceId,
-        deviceId: nativePreview.selectedSimulator.udid,
-        platform: "ios",
-        ...request,
-      })
-    },
-    [nativePreview.selectedSimulator, runtimeWorkspaceId],
-  )
-
-  const handleNativeSendWheel = useCallback(
-    async (request: {
-      point: { xRatio: number; yRatio: number }
-      deltaX: number
-      deltaY: number
-    }) => {
-      if (!runtimeWorkspaceId || !nativePreview.selectedSimulator) return
-      await window.electronAPI.nativePreview.sendWheel({
-        workspaceId: runtimeWorkspaceId,
-        deviceId: nativePreview.selectedSimulator.udid,
-        platform: "ios",
-        ...request,
-      })
-    },
-    [nativePreview.selectedSimulator, runtimeWorkspaceId],
-  )
-
-  const handleNativeSendKey = useCallback(
-    async (request: { direction: "down" | "up"; keyCode: number }) => {
-      if (!runtimeWorkspaceId || !nativePreview.selectedSimulator) return
-      await window.electronAPI.nativePreview.sendKey({
-        workspaceId: runtimeWorkspaceId,
-        deviceId: nativePreview.selectedSimulator.udid,
-        platform: "ios",
-        ...request,
-      })
-    },
-    [nativePreview.selectedSimulator, runtimeWorkspaceId],
   )
 
   useEffect(() => {
@@ -959,9 +799,9 @@ function WorkbenchRuntimePreviewTile({
   const nativeUnsupportedBody = (
     <div className="flex h-full items-center justify-center p-6 text-center">
       <div className="max-w-sm space-y-1">
-        <div className="text-sm text-foreground">No mobile simulator available</div>
+        <div className="text-sm text-foreground">iOS Simulator preview is unavailable</div>
         <div className="text-xs text-muted-foreground">
-          This project does not expose an iOS simulator preview yet.
+          Native iOS preview has been removed for now. Close this tile to dismiss it.
         </div>
       </div>
     </div>
@@ -1030,31 +870,7 @@ function WorkbenchRuntimePreviewTile({
     </div>
   )
 
-  const nativeIosPreviewBody = (
-    <div className="relative h-full min-h-0 overflow-hidden bg-content-surface p-px">
-      <IosSimulatorViewport
-        device={previewDevice}
-        route={NATIVE_PREVIEW_ROUTE}
-        serverRunning={previewServerActive && Boolean(nativePreview.selectedSimulator)}
-        sessionState={nativePreview.sessionState}
-        simulators={nativePreview.iosSimulators}
-        selectedSimulatorId={nativePreview.selectedIosSimulatorId}
-        simulatorsLoading={nativePreview.simulatorsLoading}
-        simulatorsError={nativePreview.simulatorsError}
-        sessionLoading={nativePreview.sessionLoading}
-        sessionError={nativePreview.sessionError}
-        taskOverlay={null}
-        onSelectSimulator={nativePreview.setSelectedIosSimulatorId}
-        onRefreshSimulators={nativePreview.refreshSimulators}
-        onOpenExternally={() => void openPreviewExternally(true)}
-        onSendTouches={handleNativeSendTouches}
-        onSendWheel={handleNativeSendWheel}
-        onSendKey={handleNativeSendKey}
-      />
-    </div>
-  )
-
-  const cozeaEmbeddedPreviewBody = usesNativePreview ? nativeIosPreviewBody : webEmbeddedPreviewBody
+  const cozeaEmbeddedPreviewBody = webEmbeddedPreviewBody
 
   const body = !runtimeWorkspaceId ? (
     <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
@@ -1072,9 +888,7 @@ function WorkbenchRuntimePreviewTile({
       >
         <div className={cn("h-full min-h-0", viewMode === "preview" ? "block" : "hidden")}>
           {isMobileSimulatorSurface
-            ? supportsIosNativePreview
-              ? nativeIosPreviewBody
-              : nativeUnsupportedBody
+            ? nativeUnsupportedBody
             : previewDestination === "cozea"
               ? cozeaEmbeddedPreviewBody
               : externalPreviewBody}

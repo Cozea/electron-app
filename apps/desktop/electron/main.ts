@@ -27,7 +27,6 @@ import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerProjectMemoryHandlers } from './ipc/registerProjectMemoryHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
-import { registerNativePreviewHandlers } from './ipc/registerNativePreviewHandlers'
 import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
@@ -1806,10 +1805,6 @@ registerCoreHandlers(ipcMain, {
 registerPreviewHandlers(ipcMain, {
   getMainWindow: () => win,
   getLatestPreviewHeaderDiagnostic,
-})
-
-registerNativePreviewHandlers(ipcMain, {
-  getMainWindow: () => win,
 })
 
 registerSettingsStorageHandlers(ipcMain, {

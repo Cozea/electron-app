@@ -1384,22 +1384,6 @@ export function useWorkbenchDockviewRuntime(
                 console.warn("[WorkbenchSession] Failed to release runtime terminal", error);
               });
           }
-          if (removedTile.type === "mobileSimulator") {
-            void window.electronAPI.workbenchSession
-              .setNativePreviewSession({
-                sessionKey: input.workbenchSessionKey,
-                projectId: input.projectId,
-                laneId: input.activeLaneId,
-                locator: null,
-                stopPrevious: true,
-              })
-              .catch((error) => {
-                console.warn(
-                  "[WorkbenchSession] Failed to stop native preview for removed panel",
-                  error,
-                );
-              });
-          }
         }
 
         workbenchActions.removeTile(

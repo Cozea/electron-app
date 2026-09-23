@@ -1,20 +1,3 @@
-/**
- * Commands the dock header sends to a mounted runtime-preview tile. The
- * header renders outside the tile's React tree (direct dock-header render),
- * so the few actions that genuinely need tile-instance state (the simulator
- * hook) travel as DOM events carrying plain data — never closures.
- */
-export const DEV_SERVER_TILE_COMMAND_EVENT = "cozea:devserver-tile-command"
-
-export interface DevServerTileCommand {
-  tileId: string
-  type: "refresh-simulators"
-}
-
-export function dispatchDevServerTileCommand(command: DevServerTileCommand): void {
-  window.dispatchEvent(new CustomEvent(DEV_SERVER_TILE_COMMAND_EVENT, { detail: command }))
-}
-
 /** Main probes IPv4 loopback, so renderer previews must use the same authority. */
 export function buildLocalDevServerUrl(port: number): string {
   return `http://127.0.0.1:${port}`

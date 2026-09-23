@@ -106,7 +106,6 @@ describe("buildAppStoreSections — built-in scope", () => {
       "browser",
       "dev-server",
       "terminal",
-      "mobile-simulator",
     ])
     expect(assistants.items.map((item) => item.app.id)).toEqual([
       "memory",

@@ -88,7 +88,7 @@ describe("Workbench tile registry — consumers do not compete", () => {
     expect(registry).toContain("import.meta.glob")
     expect(registry).toContain('"../apps/*/manifest.ts"')
     expect(registry).not.toMatch(/apps\/(browser|terminal|dev-server)\/manifest/)
-    expect(BUILTIN_DEV_APPS).toHaveLength(10)
+    expect(BUILTIN_DEV_APPS).toHaveLength(9)
     for (const manifest of BUILTIN_DEV_APPS) {
       expect(manifest.parts, manifest.id).toBeTruthy()
     }
