@@ -187,7 +187,7 @@ together: the parent gitlink and the SHA in
 Copyright (C) 2025-2026 Ramuse LLC.
 
 Licensed under the **GNU Affero General Public License v3.0 or later**. See
-[LICENSE](LICENSE) for the full text.
+[LICENSE](LICENSE) for the full text and [NOTICE](NOTICE) for the copyright notice.
 
 The AGPL's network clause applies: if you run a modified version of this software and make
 it available to users over a network, you must offer those users the corresponding source
