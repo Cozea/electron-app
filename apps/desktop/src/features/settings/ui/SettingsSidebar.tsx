@@ -7,7 +7,7 @@ import {
   SidebarGroupLabel,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { useLocation } from "@/lib/router"
 import { cn } from "@/lib/utils"
 import { resolveSettingsNavigationSections } from "@/lib/settings/settingsNavigation"
@@ -75,6 +75,7 @@ function SettingsSidebarNavRow({
 
 export function SettingsSidebar({ user }: SettingsSidebarProps) {
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const location = useLocation()
   const { t, language } = useTranslation()
   const navSections = React.useMemo(
@@ -136,7 +137,7 @@ export function SettingsSidebar({ user }: SettingsSidebarProps) {
                       // surface id it cannot see from here.
                       dataTour={href.endsWith("/organizations") ? "settings-organizations" : undefined}
                       onPrewarm={() => void prewarmDestination(href)}
-                      onClick={() => navigate(href, { replace: true })}
+                      onClick={() => navigateTo({ to: "settings", section: item.surface.id }, { replace: true })}
                     />
                   )
                 })}

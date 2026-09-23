@@ -18,7 +18,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { GhCliStatus } from "../../../../../../shared/electronApiTypes"
 import type { DevAppScaffoldStarter } from "../../../../../../shared/devAppAuthoringTypes"
 import { useAuth } from "@/contexts/AuthContext"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import {
   SettingsGroup,
@@ -27,7 +27,6 @@ import {
   SettingsRowLabel,
   settingsInlineInputWidth,
 } from "@/features/settings/ui/SettingsChrome"
-import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
 import { browseForDirectory } from "@/lib/browseForDirectory"
@@ -103,7 +102,7 @@ export function CreateProjectDialog({
   onOpenChange,
 }: CreateProjectDialogProps) {
   const { t } = useTranslation()
-  const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const { principalId } = useAuth()
   const createProject = useMutation(api.projects.create)
   const updateProjectStatus = useMutation(api.projects.updateStatus)
@@ -266,8 +265,8 @@ export function CreateProjectDialog({
       useProjectWorkbenchStore
         .getState()
         .actions.ensureWorkbench(projectId, DEFAULT_WORKBENCH_LANE_ID, workspaceId)
-      navigate(
-        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID),
+      navigateTo(
+        { to: "workbench", projectId, laneId: DEFAULT_WORKBENCH_LANE_ID },
         {
           state: buildProjectRouteNavigationState(
             {
@@ -293,7 +292,7 @@ export function CreateProjectDialog({
         },
       )
     },
-    [navigate, onOpenChange],
+    [navigateTo, onOpenChange],
   )
   const isCreateProjectDisabled =
     isSubmitting ||

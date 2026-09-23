@@ -29,7 +29,7 @@ import { prefersReducedMotion } from "@/lib/viewTransition"
 import { cn } from "@/lib/utils"
 import { useAssistantServerConfig } from "@/features/workbench/assistant/useAssistantServerConfig"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { WORKBENCH_SELECTION_LAUNCHER_LAYOUT } from "@/features/workbench/workbenchSelectionLauncherLayout"
 import { useLauncherGridLayout } from "./useLauncherGridLayout"
 import { resolveEnabledWorkbenchAssistantProviders } from "@/features/workbench/workbenchSelectionAssistantProviders"
@@ -344,6 +344,7 @@ export function WorkbenchSelectionTile({
 }: WorkbenchSelectionTileProps) {
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const isMac = useMemo(() => isMacPlatform(getNavigatorPlatform()), [])
   const { config } = useAssistantServerConfig(true)
   const densityConfig = LAUNCHER_CONFIG
@@ -529,7 +530,7 @@ export function WorkbenchSelectionTile({
   const handleCategoryChange = useCallback(
     (category: CategoryTab) => {
       if (category === "Explore DevApps Store") {
-        navigate("/projects/store")
+        navigateTo({ to: "store" })
         return
       }
       setActiveCategory(category)

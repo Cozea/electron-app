@@ -3,8 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { DockviewApi, DockviewReadyEvent, SerializedDockview } from "dockview-react";
 
 import type { WorkbenchSelectionTile, WorkbenchTile } from "@/lib/workbenchTileContract"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
 import { historyPlacement, type AssistantHistoryEntry } from "@/features/assistant/history/assistantHistory"
@@ -152,6 +151,7 @@ export function useWorkbenchDockviewRuntime(
   input: UseWorkbenchDockviewRuntimeInput,
 ): UseWorkbenchDockviewRuntimeResult {
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const { t } = useTranslation();
   const dockviewApiRef = useRef<DockviewApi | null>(null);
   const dockviewHostRef = useRef<HTMLDivElement | null>(null);
@@ -969,7 +969,7 @@ export function useWorkbenchDockviewRuntime(
         ? [{ bench: candidate, tile }] : []))[0]
     if (otherOpen) {
       workbenchActions.setActiveTile(input.projectId, otherOpen.bench.laneId, otherOpen.tile.id, otherOpen.bench.workspaceId)
-      navigate(buildProjectPath(input.projectId, "workbench"), { state: {
+      navigateTo({ to: "workbench", projectId: input.projectId }, { state: {
         ...buildProjectRouteNavigationState({ projectId: input.projectId, preferredWorkspaceId: otherOpen.bench.workspaceId }),
         ...buildWorkbenchIntentState({ laneId: otherOpen.bench.laneId, focusTileId: otherOpen.tile.id }),
       } })

@@ -7,8 +7,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { cleanConvexError } from "@/lib/convexError"
 import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { appToast } from "@/lib/appToast"
 import { SessionInvitationCard, type SessionInvitationItem } from "@/features/inbox/components/SessionInvitationCard"
@@ -207,6 +206,7 @@ function announceInviteeCopy(copy: InviteeCopyOutcome, projectName: string): voi
 export function InboxPage() {
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
 
   const {
     projectEnrollments: incoming,
@@ -355,7 +355,7 @@ export function InboxPage() {
 
   const handleOpenProject = useCallback(
     (projectId: string, workspaceId?: string | null) => {
-      navigate(buildProjectPath(projectId, "workbench"), {
+      navigateTo({ to: "workbench", projectId: projectId }, {
         state: buildProjectRouteNavigationState({ projectId, preferredWorkspaceId: workspaceId ?? null }),
       })
     },

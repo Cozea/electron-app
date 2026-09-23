@@ -75,7 +75,7 @@ import {
   useTranslation,
 } from '@/lib/i18n';
 import {
-  useViewTransitionNavigate,
+  useNavigateTo,
 } from '@/lib/navigation';
 import {
   cn,
@@ -205,7 +205,7 @@ export function TasksPage({
 }: TasksPageProps = {}) {
   const { t } = useTranslation()
   const isEmbedded = presentation === 'embedded'
-  const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const { project } = useAccessibleProject()
   const { principalId } = useAuth()
   // Plan pages live in the artifacts table (split off the project doc);
@@ -656,7 +656,7 @@ export function TasksPage({
       onRequestClose?.()
       return
     }
-    navigate(projectPagesPath, { replace: true })
+    navigateTo(projectId ? { to: 'workbench', projectId } : { to: 'projects' }, { replace: true })
   }
 
   useEffect(() => {

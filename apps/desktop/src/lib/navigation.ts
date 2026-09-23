@@ -1,6 +1,7 @@
 import { startTransition, useCallback } from 'react'
 import { createPath, type NavigateFunction, type NavigateOptions, type To, useNavigate } from '@/lib/router'
 
+import { destinationHref, type Destination } from '@/lib/destinations'
 import { warmNavigationDestination } from '@/lib/navigationWarmup'
 
 function resolveNavigationPathname(to: To | number): string | null {
@@ -44,6 +45,19 @@ export function useViewTransitionNavigate(): NavigateFunction {
       })
       return result
     },
+    [navigate]
+  )
+}
+
+/**
+ * Navigate to a screen described as data. Prefer this everywhere; the string
+ * form (useViewTransitionNavigate) remains for hrefs that arrive from outside
+ * the app's own code — deep links, persisted task links.
+ */
+export function useNavigateTo(): (destination: Destination, options?: NavigateOptions) => void | Promise<void> {
+  const navigate = useViewTransitionNavigate()
+  return useCallback(
+    (destination: Destination, options?: NavigateOptions) => navigate(destinationHref(destination), options),
     [navigate]
   )
 }

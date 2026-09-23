@@ -1,4 +1,4 @@
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { destinationHref } from "@/lib/destinations"
 
 const LAST_WORKBENCH_ROUTE_STORAGE_KEY = "cozea.lastWorkbenchRoute.v1"
 
@@ -73,19 +73,13 @@ export function buildWorkbenchHref(
   laneId?: string | null,
   options?: { openTile?: "assistantChat" | "terminal"; focusTileId?: string | null },
 ): string {
-  const params = new URLSearchParams()
-  if (laneId) {
-    params.set("lane", laneId)
-  }
-  if (options?.openTile) {
-    params.set("openTile", options.openTile)
-  }
-  if (options?.focusTileId) {
-    params.set("focusTile", options.focusTileId)
-  }
-  const basePath = `${buildProjectPath(projectId)}/workbench`
-  const search = params.toString()
-  return search ? `${basePath}?${search}` : basePath
+  return destinationHref({
+    to: "workbench",
+    projectId,
+    laneId,
+    openTile: options?.openTile,
+    focusTileId: options?.focusTileId,
+  })
 }
 
 export function readLastWorkbenchRoute(

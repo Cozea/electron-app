@@ -22,9 +22,8 @@ import "./productTour.css";
 
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { buildProjectPath } from "@/contexts/project/projectRoutes";
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore";
-import { useViewTransitionNavigate } from "@/lib/navigation";
+import { useNavigateTo } from "@/lib/navigation";
 import { useTranslation } from "@/lib/i18n";
 
 import {
@@ -124,7 +123,7 @@ function placeRing(ring: HTMLElement, rect: DOMRect): void {
 export function ProductTour() {
   const { principalId, isAuthenticated, isLoading, needsOnboarding } = useAuth();
   const { t } = useTranslation();
-  const navigate = useViewTransitionNavigate();
+  const navigateTo = useNavigateTo();
 
   const projects = useQuery(
     api.projects.listSummariesForCurrentUser,
@@ -240,14 +239,14 @@ export function ProductTour() {
       const step = activeStepsRef.current[index];
       if (!step) return;
 
-      const route =
+      const destination =
         step.routeToProject && firstProjectId
-          ? buildProjectPath(firstProjectId, "workbench")
+          ? ({ to: "workbench", projectId: firstProjectId } as const)
           : step.route;
 
-      if (route) navigate(route);
+      if (destination) navigateTo(destination);
     },
-    [firstProjectId, navigate],
+    [firstProjectId, navigateTo],
   );
 
   /** Moves forward, or finishes when the last step is the one just completed. */

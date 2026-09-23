@@ -17,7 +17,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { api } from "../../../../../../convex/_generated/api";
 
 import { cleanConvexErrorMessage } from "@/lib/convexError"
-import { useViewTransitionNavigate } from "@/lib/navigation";
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation";
 import { useLocation } from "@/lib/router";
 import { cn } from "@/lib/utils";
 import { useIncomingInvites } from "@/hooks/useIncomingInvites";
@@ -144,11 +144,15 @@ export function ProjectSidebar({
   const { t } = useTranslation();
   const { isMac } = useWindowChrome();
   const navigate = useViewTransitionNavigate();
+  const navigateTo = useNavigateTo();
   const pathname = useLocation({ select: (location) => location.pathname });
   // Agent Builds and Scheduled Tasks share one route and differ by ?view, so
   // the active row has to be read from the search string, not the path.
   const skillsView = useLocation({
     select: (location) => new URLSearchParams(location.search).get("view"),
+  });
+  const projectSettingsSection = useLocation({
+    select: (location) => new URLSearchParams(location.search).get("section"),
   });
   const { openProjectCreationMenu } = useProjectCreationMenu();
   const { principalId } = useAuth();
@@ -497,7 +501,7 @@ export function ProjectSidebar({
 
       // Clean URL; the intent rides navigation state. The search-param flow
       // remains only for external deep links (see lib/workbenchIntent.ts).
-      navigate(`${buildProjectPath(project.id)}/workbench`, {
+      navigateTo({ to: "workbench", projectId: project.id }, {
         state: {
           ...buildProjectRouteNavigationState({
             projectId: project.id,
@@ -555,11 +559,13 @@ export function ProjectSidebar({
         currentProjectId,
         currentWorkbenchPath,
         currentProjectSettingsBasePath,
+        projectSettingsSection,
         currentVisibleActiveTileId,
       }),
     [
       currentProjectId,
       currentProjectSettingsBasePath,
+      projectSettingsSection,
       currentVisibleActiveTileId,
       currentWorkbenchPath,
       pathname,
@@ -568,34 +574,34 @@ export function ProjectSidebar({
 
   const handleOpenProjectSettings = React.useCallback(
     (project: SidebarProjectItem) => {
-      navigate(`${buildProjectPath(project.id)}/workbench?settings=1`);
+      navigateTo({ to: "projectSettings", projectId: project.id });
     },
     [navigate],
   );
 
   const handleOpenMarketplace = React.useCallback(() => {
-    navigate("/projects/store");
+    navigateTo({ to: "store" });
   }, [navigate]);
 
   const isOnAppStore = pathname === "/projects/store";
   // Straight to Builds: it is the surface that does something, and the
   // library is one button away from there.
   const handleOpenAgentSkills = React.useCallback(() => {
-    navigate("/projects/skills?view=builds");
+    navigateTo({ to: "skills", view: "builds" });
   }, [navigate]);
   const handleOpenScheduledTasks = React.useCallback(() => {
-    navigate("/projects/skills?view=schedules");
+    navigateTo({ to: "skills", view: "schedules" });
   }, [navigate]);
   const isOnScheduledTasks = pathname === "/projects/skills" && skillsView === "schedules";
   const isOnAgentSkills = pathname === "/projects/skills" && !isOnScheduledTasks;
   const handleOpenInbox = React.useCallback(() => {
-    navigate("/projects/inbox");
+    navigateTo({ to: "inbox" });
   }, [navigate]);
   const isOnInbox = pathname === "/projects/inbox";
 
   const handleOpenProject = React.useCallback(
     async (project: SidebarProjectItem, workspaceId: string | null) => {
-      navigate(buildProjectPath(project.id, "workbench"), {
+      navigateTo({ to: "workbench", projectId: project.id }, {
         state: buildProjectRouteNavigationState({
           projectId: project.id,
           projectSlug: project.slug,
@@ -918,7 +924,7 @@ export function ProjectSidebar({
         );
 
         detachDeletedProjectFromUi(deletedProjectId);
-        navigate("/projects", { replace: true });
+        navigateTo({ to: "projects" }, { replace: true });
 
         await cleanupDeletedProjectLocally(deletedProjectId, {
           keepLocalFiles,
@@ -1115,7 +1121,7 @@ export function ProjectSidebar({
                       isActive && cn(SIDEBAR_PILL_ACTIVE_CLASS, "group-hover/glide:bg-transparent"),
                     )}
                     onClick={() => {
-                      navigate(`${buildProjectPath(currentProjectId)}/settings/${section.id}`);
+                      navigateTo({ to: "projectSettings", projectId: currentProjectId, section: section.id });
                     }}
                   >
                     <Icon />
@@ -1198,7 +1204,7 @@ export function ProjectSidebar({
               type="button"
               variant="ghost"
               className="h-7 w-full justify-start gap-2 rounded-md px-2 text-sm font-normal"
-              onClick={() => navigate(`${buildProjectPath(currentProjectId)}/workbench`)}
+              onClick={() => navigateTo({ to: "workbench", projectId: currentProjectId })}
             >
               <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5 shrink-0 text-muted-foreground/80" />
               Back to workbench

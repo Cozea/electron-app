@@ -755,6 +755,7 @@ const en = {
   "routeLoading.workbench": "Loading workbench…",
   "routeLoading.tasks": "Loading tasks…",
   "routeLoading.team": "Loading team…",
+  "routeLoading.projectSettings": "Loading project settings…",
   "routeLoading.store": "Loading DevApps Store…",
   "routeLoading.newProject": "Loading new project…",
   "routeLoading.account": "Loading account…",

@@ -64,10 +64,9 @@ describe("stale local project binding recovery", () => {
     for (const source of [importHookSource, createProjectDialogSource]) {
       expect(source).toContain("buildWorkbenchIntentState({")
       expect(source).toContain('openTile: "assistantChat"')
-      expect(source).toContain("buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID)")
-      expect(source).not.toContain(
-        "buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID, {",
-      )
+      // The URL names only the workbench; the chat to open travels in state.
+      expect(source).toContain('{ to: "workbench", projectId, laneId: DEFAULT_WORKBENCH_LANE_ID }')
+      expect(source).not.toContain("laneId: DEFAULT_WORKBENCH_LANE_ID, openTile")
     }
   })
 })

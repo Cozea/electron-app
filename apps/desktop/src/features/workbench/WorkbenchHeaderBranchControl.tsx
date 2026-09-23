@@ -8,8 +8,7 @@ import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteC
 import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
 import { useWorkbenchBranchControl } from "@/features/workbench/branch-control/useWorkbenchBranchControl"
 import { BranchCheckoutConflictDialog } from "@/features/workbench/branch-control/BranchCheckoutConflictDialog"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 
 import { WorkbenchBranchStatusIcon } from "@/features/workbench/branch-control/WorkbenchBranchStatusIcon"
 
@@ -70,10 +69,12 @@ export function WorkbenchHeaderBranchControl({
   })
 
   const navigate = useViewTransitionNavigate()
+
+  const navigateTo = useNavigateTo()
   const handleGoToCommit = useCallback(() => {
     dismissBranchConflict()
     if (projectId) {
-      navigate(buildProjectPath(projectId, "changes"))
+      navigateTo({ to: "workbench", projectId: projectId, changes: true })
     }
   }, [dismissBranchConflict, navigate, projectId])
 

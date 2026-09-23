@@ -35,7 +35,7 @@ import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
 import { featureFlags } from "@/lib/featureFlags"
 import { useSearchParams } from "@/lib/router"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
@@ -71,6 +71,7 @@ export function AppStorePage() {
   const { principalId } = useAuth()
   const convex = useConvex()
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const routeQuery = searchParams.get("q") ?? ""
@@ -228,7 +229,7 @@ export function AppStorePage() {
                   ]
                   const action = await showDesktopContextMenu(items, position)
                   if (action === "manage") {
-                    navigate("/projects/settings/devapps")
+                    navigateTo({ to: "settings", section: "devapps" })
                   }
                 }}
               >
@@ -278,7 +279,7 @@ export function AppStorePage() {
       ]
       const action = await showDesktopContextMenu(items, position)
       if (action === "manage") {
-        navigate("/projects/settings/devapps")
+        navigateTo({ to: "settings", section: "devapps" })
       } else if (action === "copyRef") {
         copyRef(latestRef)
       } else if (action === "uninstall") {
@@ -405,7 +406,7 @@ export function AppStorePage() {
                 variant="ghost"
                 size="icon-sm"
                 aria-label={t("appStore.page.orgSettings")}
-                onClick={() => navigate("/projects/settings/organizations?tab=devApps")}
+                onClick={() => navigateTo({ to: "settings", section: "organizations", search: { tab: "devApps" } })}
               >
                 <HugeiconsIcon icon={__SettingsHugeIcon} className="size-4" aria-hidden />
               </Button>
@@ -553,7 +554,7 @@ export function AppStorePage() {
                   variant="ghost"
                   size="icon-xs"
                   aria-label={t("appStore.page.manageDevApps")}
-                  onClick={() => navigate("/projects/settings/devapps")}
+                  onClick={() => navigateTo({ to: "settings", section: "devapps" })}
                 >
                   <HugeiconsIcon icon={__SettingsHugeIcon} className="size-3.5" aria-hidden />
                 </Button>
@@ -663,7 +664,7 @@ export function AppStorePage() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => navigate("/projects/settings/organizations?tab=devApps")}
+                onClick={() => navigateTo({ to: "settings", section: "organizations", search: { tab: "devApps" } })}
               >
                 {t("appStore.page.orgSettings")}
               </Button>
