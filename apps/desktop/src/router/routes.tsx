@@ -16,6 +16,12 @@ import { ProjectLayout } from "@/features/projects/layouts/ProjectLayout";
 import { destinationModules } from "@/app/navigation/destinationModules";
 import { settingsModules } from "@/lib/settings/settingsModules";
 
+// Ordinary pages the shell keeps mounted (hidden) after you leave them, so a
+// return shows them instantly with their scroll, filters and data. See
+// app/navigation/RetainedPageOutlet.tsx. Redirects, the workbench (retained by
+// its own surface) and one-off flows such as join links are not marked.
+const RETAINED_PAGE = { retainPage: true } as const;
+
 function createLazyRouteComponent(
   loader: () => Promise<{ default: ComponentType }>,
   labelKey: TranslationKey,
@@ -257,24 +263,28 @@ const projectsIndexRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "/",
   component: ProjectsLaunchPage,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsStoreRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "/store",
   component: AppStorePage,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsAgentSkillsRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "/skills",
   component: AgentSkillsPage,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsInboxRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: "/inbox",
   component: InboxPage,
+  staticData: RETAINED_PAGE,
 });
 
 const projectNewRoute = createRoute({
@@ -360,12 +370,14 @@ const projectTasksRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/tasks",
   component: TasksPage,
+  staticData: RETAINED_PAGE,
 });
 
 const projectTeamRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/team",
   component: ProjectTeamPage,
+  staticData: RETAINED_PAGE,
 });
 
 const projectSettingsRoute = createRoute({
@@ -390,42 +402,49 @@ const projectsPersonalAccountRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_ACCOUNT_ROUTE),
   component: Account,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsPersonalAppearanceRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_APPEARANCE_ROUTE),
   component: Appearance,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsPersonalDevAppsRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_DEVAPPS_ROUTE),
   component: DevAppSettings,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsPersonalOrganizationsRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_ORGANIZATIONS_ROUTE),
   component: Organizations,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsPersonalToolingRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_TOOLING_ROUTE),
   component: Tooling,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsPersonalComputerUseRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_COMPUTER_USE_ROUTE),
   component: ComputerUse,
+  staticData: RETAINED_PAGE,
 });
 
 const projectsPersonalGitHubRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
   path: toRoutePath(PERSONAL_GITHUB_ROUTE),
   component: GitHubSettings,
+  staticData: RETAINED_PAGE,
 });
 
 const personalAccountRoute = createRoute({
@@ -536,5 +555,8 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
 declare module "@tanstack/react-router" {
   interface Register {
     router: typeof appRouter;
+  }
+  interface StaticDataRouteOption {
+    retainPage?: boolean;
   }
 }

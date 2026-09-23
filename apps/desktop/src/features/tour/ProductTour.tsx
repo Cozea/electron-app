@@ -41,6 +41,13 @@ import {
   writeProductTourProgress,
   type ProductTourStatus,
 } from "./productTourStorage";
+import { queryActiveElement } from "@/lib/activePageDom";
+
+// driver.js calls a function element on every lookup and treats a null result
+// as "not there yet", which is exactly the wait it already applies to strings.
+function resolveTourAnchor(selector: string): () => Element {
+  return () => queryActiveElement(selector) as Element;
+}
 
 /** How long driver.js waits for a step's anchor after a route change. */
 const ANCHOR_WAIT_MS = 4000;
@@ -191,7 +198,7 @@ export function ProductTour() {
 
     writeProductTourProgress({ status: "pending", stepIndex: index });
     alreadySatisfiedRef.current = Boolean(
-      step.advance === "element" && step.awaitSelector && document.querySelector(step.awaitSelector),
+      step.advance === "element" && step.awaitSelector && queryActiveElement(step.awaitSelector),
     );
     if (step.advance === "project") projectBaselineRef.current = projectCountRef.current;
     if (step.advance === "organization") {
@@ -316,7 +323,8 @@ export function ProductTour() {
       steps: steps.map((step) => {
         const position = sectionProgress.get(step.id);
         return {
-        element: step.element,
+        // Resolved lazily so a hidden retained page's copy is never the anchor.
+        element: step.element ? resolveTourAnchor(step.element) : undefined,
         popover: {
           title: t(step.titleKey),
           description: t(step.descriptionKey),
@@ -426,7 +434,7 @@ export function ProductTour() {
       const active = activeIndexRef.current;
       const step = activeStepsRef.current[active];
       if (step?.advance === "element" && step.awaitSelector && !alreadySatisfiedRef.current) {
-        if (document.querySelector(step.awaitSelector)) {
+        if (queryActiveElement(step.awaitSelector)) {
           advance(active);
           return;
         }

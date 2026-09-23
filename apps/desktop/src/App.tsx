@@ -9,6 +9,7 @@ import { LanguageProvider } from './lib/i18n'
 import { CreateProjectDialogHost } from '@/features/projects/ui/CreateProjectDialogHost'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useViewTransitionNavigate } from './lib/navigation'
+import { useDesktopHistoryNavigation } from './app/navigation/useDesktopHistoryNavigation'
 import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
 import { useSettingsDrawerStore } from '@/features/settings/model/settingsDrawerStore'
 import { WorkspaceRuntimeHostsGate } from '@/features/workspace/WorkspaceRuntimeHostsGate'
@@ -127,6 +128,7 @@ function FullscreenLoading() {
 }
 
 function ElectronNavigationBridge() {
+  useDesktopHistoryNavigation()
   const navigate = useViewTransitionNavigate()
   const handleElectronNavigation = useEffectEvent((path: string) => {
     if (typeof path === 'string' && path.startsWith('/')) {

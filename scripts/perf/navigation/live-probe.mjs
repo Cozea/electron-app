@@ -79,12 +79,16 @@ await evaluate(`(() => {
     const surface = document.querySelector('[data-workbench-persistent-surface]')
     const content = surface?.parentElement
     if (!content) return null
+    // Retained pages each sit in a frame; only the visible one is on screen.
+    const visible = content.querySelector(':scope > [data-retained-page="visible"]')
+    if (visible) return visible
     return [...content.children].find((element) =>
-      element !== surface && !element.matches('[role=status]')) ?? null
+      element !== surface && !element.matches('[role=status]') &&
+      !element.matches('[data-retained-page]')) ?? null
   }
   const scroller = (page) => {
     if (!page) return null
-    const candidates = [page, ...page.querySelectorAll('*')].filter((element) =>
+    const candidates = [page.parentElement, page, ...page.querySelectorAll('*')].filter((element) => element &&
       element.scrollHeight > element.clientHeight + 40 &&
       /(auto|scroll)/.test(getComputedStyle(element).overflowY))
     return candidates.sort((a, b) => b.clientHeight - a.clientHeight)[0] ?? null
