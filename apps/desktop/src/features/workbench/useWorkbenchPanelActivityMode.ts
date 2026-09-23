@@ -7,12 +7,20 @@ export interface WorkbenchPanelActivityState {
   mode: "visible" | "hidden"
   visible: boolean
   focused: boolean
+  /**
+   * Visible in its own dock, and its workbench is still the foreground one
+   * even if an ordinary page currently covers the surface. Tiles that are
+   * costly to park and rebuild stay attached while this holds; anything that
+   * paints a native surface must keep gating on `visible`.
+   */
+  retained: boolean
 }
 
 const HIDDEN_ACTIVITY_STATE: WorkbenchPanelActivityState = {
   mode: "hidden",
   visible: false,
   focused: false,
+  retained: false,
 }
 
 function readPanelActivityState(panelApi: DockviewPanelApi): WorkbenchPanelActivityState {
@@ -22,7 +30,24 @@ function readPanelActivityState(panelApi: DockviewPanelApi): WorkbenchPanelActiv
     mode: visible ? "visible" : "hidden",
     visible,
     focused,
+    retained: visible,
   }
+}
+
+/**
+ * Combines a panel's own dock visibility with its workbench's presentation.
+ * A CSS-hidden surface hides every panel, but the foreground workbench's
+ * dock-visible panels stay `retained` while an ordinary page covers it.
+ */
+export function resolveWorkbenchPanelActivity(
+  dockState: WorkbenchPanelActivityState,
+  surfaceVisible: boolean,
+  surfaceForeground: boolean,
+): WorkbenchPanelActivityState {
+  if (surfaceVisible) return dockState
+  return surfaceForeground && dockState.visible
+    ? { ...HIDDEN_ACTIVITY_STATE, retained: true }
+    : HIDDEN_ACTIVITY_STATE
 }
 
 function subscribePanelActivity(
@@ -50,7 +75,9 @@ export function useWorkbenchPanelActivityMode(
   // panels still report visible, so native surfaces (browser views, embedded
   // previews) would keep painting over the active project. Gate on the
   // surface flag from the dock runtime.
-  const surfaceVisible = useOptionalWorkbenchDockRuntime()?.surfaceVisible ?? true
+  const dockRuntime = useOptionalWorkbenchDockRuntime()
+  const surfaceVisible = dockRuntime?.surfaceVisible ?? true
+  const surfaceForeground = dockRuntime?.surfaceForeground ?? surfaceVisible
   const [state, setState] = useState<WorkbenchPanelActivityState>(() =>
     readPanelActivityState(panelApi),
   )
@@ -62,7 +89,8 @@ export function useWorkbenchPanelActivityMode(
         if (
           previous.visible === next.visible &&
           previous.focused === next.focused &&
-          previous.mode === next.mode
+          previous.mode === next.mode &&
+          previous.retained === next.retained
         ) {
           return previous
         }
@@ -74,10 +102,8 @@ export function useWorkbenchPanelActivityMode(
     return subscribePanelActivity(panelApi, sync)
   }, [panelApi])
 
-  return useMemo(() => {
-    if (!surfaceVisible) {
-      return HIDDEN_ACTIVITY_STATE
-    }
-    return state
-  }, [state, surfaceVisible])
+  return useMemo(
+    () => resolveWorkbenchPanelActivity(state, surfaceVisible, surfaceForeground),
+    [state, surfaceForeground, surfaceVisible],
+  )
 }

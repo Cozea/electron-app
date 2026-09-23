@@ -43,6 +43,14 @@ export interface WorkbenchDockRuntimeValue {
    * AND this into their visibility.
    */
   surfaceVisible: boolean
+  /**
+   * True for the workbench the user will return to: the visible one, or the
+   * last visible one while an ordinary page (Store, Settings, …) covers the
+   * surface. False only when another workbench has taken the foreground.
+   * Tiles whose renderer is expensive to park and rebuild (terminals) stay
+   * attached while this holds, so a trip to a page and back costs nothing.
+   */
+  surfaceForeground: boolean
   getWorkbenchSession: () => WorkbenchSessionSnapshot | null
   getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
   onDuplicateAssistantTile: (sourceTileId: string) => void
@@ -84,6 +92,7 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       storedDevPort: props.storedDevPort,
       workbenchSessionKey: props.workbenchSessionKey,
       surfaceVisible: props.surfaceVisible,
+      surfaceForeground: props.surfaceForeground,
       getWorkbenchSession: props.getWorkbenchSession,
       getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
@@ -103,6 +112,7 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       props.storedDevPort,
       props.workbenchSessionKey,
       props.surfaceVisible,
+      props.surfaceForeground,
       props.getWorkbenchSession,
       props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,

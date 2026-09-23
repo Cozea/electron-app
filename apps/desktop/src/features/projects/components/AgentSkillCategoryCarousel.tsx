@@ -122,6 +122,23 @@ export function AgentSkillCategoryCarousel({
 
   const [metrics, setMetrics] = React.useState(() => measureCarouselMetrics(960));
 
+  // Only the centred card and its neighbours are on screen, so only they need
+  // their skill lists. A card keeps its list once rendered, so swiping back
+  // neither rebuilds it nor loses its scroll position.
+  const [renderedCategories, setRenderedCategories] = React.useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  React.useEffect(() => {
+    const nearby = groups
+      .slice(Math.max(0, activeIndex - 1), activeIndex + 2)
+      .map((group) => group.category);
+    setRenderedCategories((previous) =>
+      nearby.every((category) => previous.has(category))
+        ? previous
+        : new Set([...previous, ...nearby]),
+    );
+  }, [activeIndex, groups]);
+
   React.useLayoutEffect(() => {
     const track = trackRef.current;
     if (!track) return;
@@ -377,7 +394,9 @@ export function AgentSkillCategoryCarousel({
                 data-skill-list
               >
                 <div className="divide-y divide-border/25">
-                  {group.skills.map((skill) => renderSkill(skill))}
+                  {Math.abs(index - activeIndex) <= 1 || renderedCategories.has(group.category)
+                    ? group.skills.map((skill) => renderSkill(skill))
+                    : null}
                 </div>
               </ScrollArea>
             </div>
