@@ -56,6 +56,7 @@
     "build:navigation-test": "node scripts/build-navigation-test.mjs",
     "test:navigation:electron": "node scripts/perf/navigation/run.mjs --mode=correctness",
     "perf:navigation": "node scripts/perf/navigation/run.mjs --mode=performance",
+    "perf:navigation:live": "node scripts/perf/navigation/live-probe.mjs",
     "check:navigation-boundaries": "node scripts/check-navigation-boundaries.mjs",
     "models:sync": "bun run scripts/sync-model-picker.mjs",
     "devapp:generate": "bun run scripts/generate-devapp-authoring.ts",
