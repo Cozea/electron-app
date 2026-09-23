@@ -46,7 +46,7 @@ describe("application layer contract", () => {
 
   it("routes shared overlay primitives through semantic layers", () => {
     const sharedSources = [
-      "apps/desktop/src/components/ui/alert-dialog.tsx",
+      "apps/desktop/src/components/ui/unified-modal.tsx",
       "apps/desktop/src/components/ui/combobox.tsx",
       "apps/desktop/src/components/ui/dialog.tsx",
       "apps/desktop/src/components/ui/dropdown-menu.tsx",

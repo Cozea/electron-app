@@ -1,6 +1,6 @@
 import type { TurnId } from "@cozea/assistant-contracts";
 import type { TimelineEntry, WorkLogEntry } from "./session-logic";
-import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
+import { formatWorkspaceRelativePath } from "@/features/assistant/lib/filePathDisplay";
 import {
   normalizeCompactToolLabel,
   summarizeToolGroup,

@@ -5,7 +5,7 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import { ArrowLeft01Icon, Camera01Icon, Cancel01Icon, CheckmarkCircle02Icon, GithubIcon } from '@hugeicons/core-free-icons'
 
 import { api } from '../../../../convex/_generated/api'
-import { Avatar } from '@/components/ui/avatar'
+import { DeviceAvatar } from '@/components/ui/DeviceAvatar'
 import { AvatarUploader } from '@/components/ui/avatar-uploader'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,8 +14,6 @@ import { optimizeProjectDevAppLogo } from '@/features/devapps/projectDevAppLogo'
 import { useGitHubConnect } from '@/features/github/useGitHubConnect'
 import { useTranslation } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
-
-import { getDeviceInitials as initials } from '@/lib/devicePresentation'
 
 const GRADIENT_PALETTE: Array<'blue' | 'purple' | 'coral'> = ['blue', 'purple', 'coral']
 
@@ -286,27 +284,20 @@ export function Onboarding() {
                   <AvatarUploader onUpload={chooseAvatar}>
                     <button
                       type="button"
-                      className="relative size-24 rounded-3xl overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all active:scale-95 cursor-pointer shadow-xs"
+                      className="relative size-24 rounded-full overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all active:scale-95 cursor-pointer shadow-xs"
                       disabled={saving || processingAvatar}
                       aria-label={avatarPreview ? 'Change photo' : 'Upload photo'}
                       title={avatarPreview ? 'Change photo' : 'Upload photo'}
                     >
-                      <Avatar
-                        variant="gradient"
-                        color={getAvatarGradient(normalizedDeviceName || 'Device')}
-                        className="size-full rounded-3xl"
-                      >
-                        {avatarPreview ? (
-                          <Avatar.Image
-                            src={avatarPreview}
-                            alt={normalizedDeviceName || 'This device'}
-                          />
-                        ) : null}
-                        <Avatar.Fallback className="text-2xl font-bold text-white drop-shadow-sm">
-                          {initials(normalizedDeviceName || 'Device')}
-                        </Avatar.Fallback>
-                      </Avatar>
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white rounded-3xl">
+                      <DeviceAvatar
+                        displayName={normalizedDeviceName || 'Device'}
+                        avatarUrl={avatarPreview}
+                        useColor={false}
+                        gradientColor={getAvatarGradient(normalizedDeviceName || 'Device')}
+                        className="size-full"
+                        fallbackClassName="text-2xl font-bold text-white drop-shadow-sm"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white rounded-full">
                         <HugeiconsIcon icon={Camera01Icon} className="size-6" />
                       </div>
                     </button>

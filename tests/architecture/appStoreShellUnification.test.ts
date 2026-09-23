@@ -96,7 +96,7 @@ describe("DevApps Store shell unification", () => {
     expect(chrome).toContain("hideShare: hideShare || isSettingsModeRoute")
     expect(chrome).toContain("projectInviteContext: isSettingsModeRoute ? undefined")
 
-    const header = read("apps/desktop/src/components/layouts/UnifiedHeader.tsx")
+    const header = read("apps/desktop/src/features/projects/layouts/UnifiedHeader.tsx")
     expect(header).toContain("hideShare = false")
     expect(header).toContain("if (!hideShare) {")
   })

@@ -4,7 +4,6 @@ import {
   shouldExcludeGeneratedDirectory,
   shouldExcludeGeneratedFile,
 } from '../../apps/desktop/electron/services/generatedArtifactFilters'
-import { normalizeRelativePath as normalizeSyncRelativePath } from '../../apps/desktop/src/lib/sync/pathNormalization'
 
 describe('Generated Artifact Filters', () => {
   it('excludes known generated directories', () => {
@@ -22,15 +21,5 @@ describe('Generated Artifact Filters', () => {
 
   it('normalizes relative paths (slashes + lowercasing) for generated filtering', () => {
     expect(normalizeGeneratedRelativePath('Foo\\Bar.TS')).toBe('foo/bar.ts')
-  })
-})
-
-describe('Sync Path Normalization', () => {
-  it('normalizes slashes and removes leading ./ segments', () => {
-    expect(normalizeSyncRelativePath('./src\\pages\\App.tsx')).toBe('src/pages/App.tsx')
-  })
-
-  it('removes .. segments safely', () => {
-    expect(normalizeSyncRelativePath('src/../src/main.tsx')).toBe('src/main.tsx')
   })
 })

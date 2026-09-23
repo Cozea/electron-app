@@ -30,6 +30,7 @@ import type * as lib_planNames from "../lib/planNames.js";
 import type * as lib_projectAccess from "../lib/projectAccess.js";
 import type * as lib_projectGitMetadata from "../lib/projectGitMetadata.js";
 import type * as lib_projectSharing from "../lib/projectSharing.js";
+import type * as lib_seatLimits from "../lib/seatLimits.js";
 import type * as lib_sessionLifecycle from "../lib/sessionLifecycle.js";
 import type * as lib_storageHash from "../lib/storageHash.js";
 import type * as lib_usagePeriods from "../lib/usagePeriods.js";
@@ -73,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   "lib/projectAccess": typeof lib_projectAccess;
   "lib/projectGitMetadata": typeof lib_projectGitMetadata;
   "lib/projectSharing": typeof lib_projectSharing;
+  "lib/seatLimits": typeof lib_seatLimits;
   "lib/sessionLifecycle": typeof lib_sessionLifecycle;
   "lib/storageHash": typeof lib_storageHash;
   "lib/usagePeriods": typeof lib_usagePeriods;

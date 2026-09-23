@@ -11,8 +11,8 @@ import { commandLabel } from "@/features/workbench/command-palette/commandLabels
 import {
   formatShortcutLabel,
   resolveShortcutCommand,
-} from "@/lib/keybindings/matchShortcut"
-import { CLIENT_FALLBACK_KEYBINDINGS } from "@/lib/keybindings/defaults"
+} from "@/features/workbench/keybindings/matchShortcut"
+import { CLIENT_FALLBACK_KEYBINDINGS } from "@/features/workbench/keybindings/defaults"
 
 function cmd(
   partial: Partial<CommandPaletteCommand> & Pick<CommandPaletteCommand, "id" | "title">,

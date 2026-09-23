@@ -27,7 +27,7 @@ import {
   XTERM_LINE_HEIGHT,
   XTERM_RESCALE_OVERLAPPING_GLYPHS,
   XTERM_UNICODE_VERSION,
-} from '@/lib/xtermTheme'
+} from '@/features/terminal/xtermTheme'
 
 export interface TerminalAttachSize {
   cols: number

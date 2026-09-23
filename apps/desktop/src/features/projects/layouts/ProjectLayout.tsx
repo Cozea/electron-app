@@ -10,7 +10,7 @@ import { useCachedQuery } from "@/app/model/queryCache";
 import { ProjectSidebar } from "@/features/projects/ui/ProjectSidebar";
 import { AppSidebarShell } from "@/app/shell/sidebar/AppSidebarShell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
+import { UnifiedHeader } from "@/features/projects/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/terminal/TerminalEventBridge";
 import { usePageContextStore } from "@/features/browser/model/pageContextStore";
 import { useAuth } from "@/contexts/AuthContext";

@@ -10,7 +10,7 @@ import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { DeviceAvatar } from '@/components/ui/DeviceAvatar'
 import {
   Select,
   SelectContent,
@@ -40,8 +40,6 @@ const ROLE_OPTIONS: Array<{ value: ProjectRole; label: string }> = [
 ]
 
 
-
-import { getDeviceInitials as initials } from '@/lib/devicePresentation'
 
 function formatDate(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString()
@@ -189,10 +187,13 @@ export function ProjectTeamPage() {
                   <TableRow key={member._id}>
                     <TableCell>
                       <div className="flex min-w-0 items-center gap-3">
-                        <Avatar className="size-9 rounded-lg">
-                          {member.avatarUrl ? <AvatarImage src={member.avatarUrl} alt={member.displayName} /> : null}
-                          <AvatarFallback className="rounded-lg text-xs">{initials(member.displayName)}</AvatarFallback>
-                        </Avatar>
+                        <DeviceAvatar
+                          displayName={member.displayName}
+                          avatarUrl={member.avatarUrl}
+                          useColor={false}
+                          className="size-9"
+                          fallbackClassName="text-xs"
+                        />
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="truncate font-medium">{member.displayName}</span>

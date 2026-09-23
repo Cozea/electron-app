@@ -14,8 +14,7 @@ import { useMutation } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { getDeviceInitials } from "@/lib/devicePresentation"
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -108,11 +107,7 @@ export function SessionInvitationCard({
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border/90 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3 sm:items-center">
-        <Avatar className="size-10 shrink-0 rounded-lg">
-          <AvatarFallback className="rounded-lg text-xs font-medium">
-            {getDeviceInitials(item.projectName)}
-          </AvatarFallback>
-        </Avatar>
+        <DeviceAvatar displayName={item.projectName} useColor={false} className="size-10 shrink-0" fallbackClassName="text-xs font-medium" />
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-sm font-medium text-foreground">{item.projectName}</h3>

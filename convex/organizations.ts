@@ -8,6 +8,7 @@ import {
   requireOrgMember,
 } from "./lib/orgAccess"
 import { canEditProject } from "./lib/projectAccess"
+import { requireOrganizationSeats } from "./lib/seatLimits"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
 import {
   createGroupIdentityKey,
@@ -241,6 +242,7 @@ export const createDeviceEnrollment = mutation({
     if (existingEnrollment && existingEnrollment.expiresAt > Date.now()) {
       return { enrollmentId: existingEnrollment._id, created: false }
     }
+    await requireOrganizationSeats(ctx, args.organizationId)
     const now = Date.now()
     const enrollmentId = await ctx.db.insert("organizationDeviceEnrollments", {
       organizationId: args.organizationId,
@@ -319,6 +321,9 @@ export const resolveDeviceEnrollment = mutation({
         q.eq("organizationId", enrollment.organizationId).eq("principalId", user._id),
       ).unique()
     if (!existing) {
+      // The invitation held a seat; release it first so this check sees the truth.
+      await ctx.db.patch(enrollment._id, { status: "accepted", resolvedAt: now })
+      await requireOrganizationSeats(ctx, enrollment.organizationId)
       await ctx.db.insert("organizationMembers", {
         organizationId: enrollment.organizationId,
         principalId: user._id,
