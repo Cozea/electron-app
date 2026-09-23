@@ -397,6 +397,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('navigate', handler)
       return () => ipcRenderer.removeListener('navigate', handler)
     },
+    onHistoryNavigate: (callback: (direction: 'back' | 'forward') => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, direction: 'back' | 'forward') => callback(direction)
+      ipcRenderer.on('navigation:history', handler)
+      return () => ipcRenderer.removeListener('navigation:history', handler)
+    },
     onOpenSettings: (callback: (route: string) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, route: string) => callback(route)
       ipcRenderer.on('settings:open', handler)

@@ -1783,6 +1783,8 @@ export interface ElectronAPI {
   }
   app: {
     onNavigate: (callback: (path: string) => void) => () => void
+    /** Menu Go ▸ Back/Forward, trackpad swipes and mouse app-commands. */
+    onHistoryNavigate: (callback: (direction: 'back' | 'forward') => void) => () => void
     onOpenSettings: (callback: (route: string) => void) => () => void
     getGpuDiagnostics: () => Promise<GpuAccelerationDiagnostics>
     setNativeThemeSource: (source: 'system' | 'light' | 'dark') => Promise<void>

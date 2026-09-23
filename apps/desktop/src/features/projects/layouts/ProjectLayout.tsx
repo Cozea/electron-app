@@ -1,7 +1,8 @@
 "use client";
 
 import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useParams } from "@/lib/router";
+import { useLocation, useParams } from "@/lib/router";
+import { RetainedPageOutlet } from "@/app/navigation/RetainedPageOutlet";
 import { useViewTransitionNavigate } from "@/lib/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
@@ -652,7 +653,7 @@ export function ProjectLayout({
                   />
                 ) : (
                   <>
-                    {children || <Outlet />}
+                    {children || <RetainedPageOutlet />}
                     {featureFlags.localWorkspaceCatalog && workspaceProjectId && !workspaceResolution ? (
                       <div
                         className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"

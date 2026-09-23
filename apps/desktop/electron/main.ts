@@ -1608,10 +1608,26 @@ function createWindow() {
   })
 
   // Set application menu
+  const sendHistoryNavigation = (direction: 'back' | 'forward') => {
+    if (!win || win.isDestroyed()) return
+    win.webContents.send('navigation:history', direction)
+  }
   createApplicationMenu({
     onOpenSettings: () => {
       void openSettingsWindow()
     },
+    onHistoryNavigate: sendHistoryNavigation,
+  })
+  // Trackpad swipes (macOS, "Swipe between pages") and mouse back/forward
+  // buttons (Windows/Linux app commands) step through app history like a
+  // browser. Content follows the fingers, so swiping right goes back.
+  win.on('swipe', (_event, direction) => {
+    if (direction === 'right') sendHistoryNavigation('back')
+    else if (direction === 'left') sendHistoryNavigation('forward')
+  })
+  win.on('app-command', (_event, command) => {
+    if (command === 'browser-backward') sendHistoryNavigation('back')
+    else if (command === 'browser-forward') sendHistoryNavigation('forward')
   })
 
   // Register window state listeners
