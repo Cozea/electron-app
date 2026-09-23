@@ -655,12 +655,12 @@ Files created:
 - [tests/architecture/workbenchTileContract.test.ts](tests/architecture/workbenchTileContract.test.ts) (architecture test asserting Workbench tile contract has no collaboration-required source editor)
 
 Files modified:
-- [docs/collab-branch-and-personal-lane-plan.md](docs/collab-branch-and-personal-lane-plan.md) (added superseded notice)
+- [docs/archive/collab-branch-and-personal-lane-plan.md](docs/archive/collab-branch-and-personal-lane-plan.md) (added superseded notice)
 - [docs/collaboration-encryption-architecture.md](docs/collaboration-encryption-architecture.md) (added superseded notice)
-- [docs/git-backed-sync-migration-plan.md](docs/git-backed-sync-migration-plan.md) (added superseded notice)
-- [docs/git-collaboration-decoupling-refactor-map.md](docs/git-collaboration-decoupling-refactor-map.md) (added superseded notice)
-- [docs/git-truth-yjs-attribution-and-terminal-provenance-plan.md](docs/git-truth-yjs-attribution-and-terminal-provenance-plan.md) (added superseded notice)
-- [docs/saas-removal-collab-hosted-refactor-map.md](docs/saas-removal-collab-hosted-refactor-map.md) (added superseded notice)
+- [docs/archive/git-backed-sync-migration-plan.md](docs/archive/git-backed-sync-migration-plan.md) (added superseded notice)
+- [docs/archive/git-collaboration-decoupling-refactor-map.md](docs/archive/git-collaboration-decoupling-refactor-map.md) (added superseded notice)
+- [docs/archive/git-truth-yjs-attribution-and-terminal-provenance-plan.md](docs/archive/git-truth-yjs-attribution-and-terminal-provenance-plan.md) (added superseded notice)
+- [docs/archive/saas-removal-collab-hosted-refactor-map.md](docs/archive/saas-removal-collab-hosted-refactor-map.md) (added superseded notice)
 
 Files deleted:
 - None

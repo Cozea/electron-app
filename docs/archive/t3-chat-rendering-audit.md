@@ -8,7 +8,7 @@
 > supersedes the old all-thread global subscriptions and avoids relying on the
 > legacy message projector for T3 shell turn state. Do not reimplement those fixes
 > or claim the old path remains the current T3 authority. Remaining gaps and the
-> reviewed implementation scope are in [chat-rendering-refactor-plan.md](chat-rendering-refactor-plan.md).
+> reviewed implementation scope are in [chat-rendering-refactor-plan.md](../chat-rendering-refactor-plan.md).
 
 Checked at **2026-09-05T06:02:28+08:00**. Read-only application/source investigation;
 this report does not authorize an implementation, provider run, runtime repin, or

@@ -57,4 +57,4 @@ account plans, and rate-limit errors in saved Codex history. Generator overrides
 and generated schemas come from upstream fixes #8346, #8447, and #8897. Decode
 failures preserve the native thread binding and surface an actionable compatibility
 message. The broader upstream provider integration is tracked in
-`docs/upstream-provider-integration-plan.md`.
+`docs/archive/upstream-provider-integration-plan.md`.

@@ -169,7 +169,7 @@ Replace account login with device identity.
 - [electron/services/CollabEncryptionService.ts](apps/desktop/electron/services/CollabEncryptionService.ts)
 - [src/hooks/useCollabSession.ts](../src/hooks/useCollabSession.ts)
 - [src/contexts/YjsProjectContext.tsx](../src/contexts/YjsProjectContext.tsx)
-- [convex/yjs.ts](../convex/yjs.ts)
+- [convex/yjs.ts](../../convex/yjs.ts)
 
 ### What changes
 
@@ -329,7 +329,7 @@ These become the foundation for device identity and encrypted collaboration.
 
 - [convex/billing.ts](../convex/billing.ts)
 - [convex/invitations.ts](../convex/invitations.ts)
-- [convex/organizations.ts](../convex/organizations.ts)
+- [convex/organizations.ts](../../convex/organizations.ts)
 - [convex/sourceControl.ts](../convex/sourceControl.ts)
 - [convex/waitlist.ts](../convex/waitlist.ts)
 - [convex/projectRepoAccess.ts](../convex/projectRepoAccess.ts)
@@ -337,40 +337,40 @@ These become the foundation for device identity and encrypted collaboration.
 ### Delete helper libs
 
 - [convex/lib/accountEntitlements.ts](../convex/lib/accountEntitlements.ts)
-- [convex/lib/modelTiers.ts](../convex/lib/modelTiers.ts)
+- [convex/lib/modelTiers.ts](../../convex/lib/modelTiers.ts)
 - [convex/lib/organizationAccess.ts](../convex/lib/organizationAccess.ts)
 - [convex/lib/organizationRoles.ts](../convex/lib/organizationRoles.ts)
 - [convex/lib/permissions.ts](../convex/lib/permissions.ts)
-- [convex/lib/seatLimits.ts](../convex/lib/seatLimits.ts)
+- [convex/lib/seatLimits.ts](../../convex/lib/seatLimits.ts)
 - [convex/lib/walletPolicy.ts](../convex/lib/walletPolicy.ts)
 - [convex/lib/workspaceLimits.ts](../convex/lib/workspaceLimits.ts)
-- [convex/lib/workspaceProjectAccess.ts](../convex/lib/workspaceProjectAccess.ts)
-- [convex/lib/usagePeriods.ts](../convex/lib/usagePeriods.ts)
-- [convex/lib/planNames.ts](../convex/lib/planNames.ts) if only billing/plan UI still uses it
+- [convex/lib/workspaceProjectAccess.ts](../../convex/lib/workspaceProjectAccess.ts)
+- [convex/lib/usagePeriods.ts](../../convex/lib/usagePeriods.ts)
+- [convex/lib/planNames.ts](../../convex/lib/planNames.ts) if only billing/plan UI still uses it
 
 ### Rewrite
 
-- [convex/projects.ts](../convex/projects.ts)
+- [convex/projects.ts](../../convex/projects.ts)
   - remove organization/workspace gating
   - make project access project-collab scoped
-- [convex/projectMembers.ts](../convex/projectMembers.ts)
+- [convex/projectMembers.ts](../../convex/projectMembers.ts)
   - make this the primary collaborator authority
 - [convex/projectInvites.ts](../convex/projectInvites.ts)
   - make invites device/project based, not user/account based
-- [convex/projectJoinLinks.ts](../convex/projectJoinLinks.ts)
+- [convex/projectJoinLinks.ts](../../convex/projectJoinLinks.ts)
   - align with device trust model
-- [convex/schema.ts](../convex/schema.ts)
+- [convex/schema.ts](../../convex/schema.ts)
   - remove billing/org/source-control-account tables
   - add or promote device-trust tables
 
 ### Keep
 
-- [convex/yjs.ts](../convex/yjs.ts)
+- [convex/yjs.ts](../../convex/yjs.ts)
 - [convex/yjsAwareness.ts](../convex/yjsAwareness.ts)
-- [convex/projectPresence.ts](../convex/projectPresence.ts)
+- [convex/projectPresence.ts](../../convex/projectPresence.ts)
 - [convex/projectFiles.ts](../convex/projectFiles.ts)
 - [convex/projectAssets.ts](../convex/projectAssets.ts)
-- [convex/projectTasks.ts](../convex/projectTasks.ts)
+- [convex/projectTasks.ts](../../convex/projectTasks.ts)
 - [convex/fileTombstones.ts](../convex/fileTombstones.ts)
 
 ## 6. Convex schema target
@@ -482,18 +482,18 @@ Simplify:
 
 ### Rewrite or delete
 
-- [shared/types.ts](../shared/types.ts)
+- [shared/types.ts](../../shared/types.ts)
   - remove workspace membership model
-- [shared/workspaceIdentity.ts](../shared/workspaceIdentity.ts)
+- [shared/workspaceIdentity.ts](../../shared/workspaceIdentity.ts)
   - remove workspace identity fallback logic
-- [shared/versionControl.ts](../shared/versionControl.ts)
+- [shared/versionControl.ts](../../shared/versionControl.ts)
   - remove workspace source-control connection summaries and SaaS-hosted assumptions
 
 ### Keep and adapt
 
-- [shared/projectShare.ts](../shared/projectShare.ts)
+- [shared/projectShare.ts](../../shared/projectShare.ts)
   - make it pure project invite/deep-link logic
-- [shared/electronApiTypes.ts](../shared/electronApiTypes.ts)
+- [shared/electronApiTypes.ts](../../shared/electronApiTypes.ts)
   - remove auth/billing/source-control account IPC contracts
   - keep collab/device identity IPC contracts
 

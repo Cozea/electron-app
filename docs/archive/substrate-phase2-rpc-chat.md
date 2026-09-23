@@ -96,5 +96,5 @@ COZEA_SUBSTRATE_SHADOW_SERVER=1 COZEA_SUBSTRATE_RPC_CHAT=1 bun run dev
 - `electron/substrate-shadow-server/rpcChat.ts`
 - `src/substrate/`
 - Upstream pin: `docs/substrate-t3-pin.md`
-- Phase 1: `docs/substrate-shadow-server.md`
+- Phase 1: `docs/archive/substrate-shadow-server.md`
 - Completion: `docs/substrate-phases-complete.md`

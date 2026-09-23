@@ -6,7 +6,7 @@ Branch: `codex/ui-code-quality`
 
 Baseline: `c7442654`
 
-This change applies the program in `docs/ui-code-quality-implementation-plan.md` without restoring the rejected `revamp` branch. It preserves the existing product layout and provider/runtime authority while removing correctness defects, duplicate UI infrastructure, unbounded renderer work, and confirmed ownership cycles.
+This change applies the program in `docs/archive/ui-code-quality-implementation-plan.md` without restoring the rejected `revamp` branch. It preserves the existing product layout and provider/runtime authority while removing correctness defects, duplicate UI infrastructure, unbounded renderer work, and confirmed ownership cycles.
 
 ## Finding ledger
 

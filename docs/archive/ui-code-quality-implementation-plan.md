@@ -1,6 +1,6 @@
 # UI code quality and performance implementation plan
 
-Status: implemented on `codex/ui-code-quality`; see `docs/ui-code-quality-completion.md` for the finding ledger, validation, and residual limits.
+Status: implemented on `codex/ui-code-quality`; see `docs/archive/ui-code-quality-completion.md` for the finding ledger, validation, and residual limits.
 
 Source baseline: local merge `c7442654`, integrating typography/UI from `deb92d01` while retaining the repaired navigation runtime from `aa9e3712`. Revalidate against the checkout at execution time. Existing edits in SettingsSidebar and lastWorkbenchRoute, and the dirty T3 submodule, belong to other work and must be preserved.
 

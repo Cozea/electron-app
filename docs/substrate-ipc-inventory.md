@@ -3,7 +3,7 @@
 Date: 2026-08-26
 Source: Cozea `main` @ `197c7d25` — scanned all `ipcMain.handle` under `electron/` (**215** handlers).
 
-Companion docs: `docs/t3code-implementation-plan.md` (Track Inv), `docs/substrate-store-inventory.md`, `docs/substrate-gap-table.md`, `docs/substrate-t3-pin.md`.
+Companion docs: `docs/t3code-implementation-plan.md` (Track Inv), `docs/archive/substrate-store-inventory.md`, `docs/archive/substrate-gap-table.md`, `docs/substrate-t3-pin.md`.
 
 > **Removal delta (2026-08-31):** This remains a historical inventory of the stated source commit.
 > The current branch has deleted all 19 `workbenchBrowser:*` handlers plus

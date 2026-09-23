@@ -2,7 +2,7 @@
 
 Date: 2026-08-26  
 Pin: see `docs/substrate-t3-pin.md`  
-Related: `docs/agent-pipeline-restoration-audit.md`, `docs/t3code-upgrade-path.md`, `docs/t3code-implementation-plan.md`
+Related: `docs/archive/agent-pipeline-restoration-audit.md`, `docs/t3code-upgrade-path.md`, `docs/t3code-implementation-plan.md`
 
 Living table of **capabilities / contracts / reactors** Cozea must gain or rebase. Update as Wave 0–3 PRs land.
 

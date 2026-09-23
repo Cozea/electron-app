@@ -1,6 +1,6 @@
 # Substrate Phases 5–7 (spine continuation)
 
-Companion to Phase 1 (`docs/substrate-shadow-server.md`) and the Wave 0 plan.
+Companion to Phase 1 (`docs/archive/substrate-shadow-server.md`) and the Wave 0 plan.
 
 ## Phase 5 — Shrink Electron main
 

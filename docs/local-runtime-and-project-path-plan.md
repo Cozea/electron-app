@@ -172,7 +172,7 @@ Preview instability is not surprising. Several layers believe they partially own
 #### Sync / Durability
 
 - `electron/services/gitSyncService.ts` is a real Git-native local sync surface.
-- `docs/git-backed-sync-migration-plan.md` clearly states that Git-backed sync is the target architecture.
+- `docs/archive/git-backed-sync-migration-plan.md` clearly states that Git-backed sync is the target architecture.
 - the active sync journal still preserves migration from old replica-named persisted state.
 
 Implication:
@@ -498,7 +498,7 @@ Direction:
 
 Initial targets:
 
-- `docs/git-backed-sync-migration-plan.md`
+- `docs/archive/git-backed-sync-migration-plan.md`
 - `electron/services/gitSyncService.ts`
 - `electron/services/syncJournalStore.ts`
 - remaining replica-named migration shims and UI copy
@@ -608,7 +608,7 @@ Key files:
 - `convex/schema.ts`
 - `convex/projectFiles.ts`
 - `convex/lib/workspaceLimits.ts`
-- `docs/git-backed-sync-migration-plan.md`
+- `docs/archive/git-backed-sync-migration-plan.md`
 
 ### Phase 6 Completed: Server Roles Are Explicit
 

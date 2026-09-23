@@ -2,8 +2,8 @@
 
 > **Historical plan.** The `react-grid-layout` and `WebContentsView` decisions below were replaced
 > by Dockview plus the renderer-wide T3 `<webview>` host. Current implementation guidance lives in
-> [`docs/workbench-overlay-architecture.md`](./workbench-overlay-architecture.md) and
-> [`docs/integrated-browser-architecture.md`](./integrated-browser-architecture.md). Do not use this
+> [`docs/workbench-overlay-architecture.md`](../workbench-overlay-architecture.md) and
+> [`docs/integrated-browser-architecture.md`](../integrated-browser-architecture.md). Do not use this
 > plan to recreate the deleted native browser, geometry IPC, or occlusion adaptations.
 
 ## Summary
@@ -554,7 +554,7 @@ Goals:
 
 Deliverables:
 
-- `docs/hybrid-workbench-plan.md`
+- `docs/archive/hybrid-workbench-plan.md`
 - final library choice
 - workbench state/types draft
 

@@ -60,4 +60,4 @@ COZEA_SUBSTRATE_SHADOW_SERVER=1 bun run dev
 
 ## Next
 
-Phase 2 flagged RPC chat: [`docs/substrate-phase2-rpc-chat.md`](./substrate-phase2-rpc-chat.md).
+Phase 2 flagged RPC chat: [`docs/archive/substrate-phase2-rpc-chat.md`](./substrate-phase2-rpc-chat.md).

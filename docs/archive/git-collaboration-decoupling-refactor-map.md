@@ -151,7 +151,7 @@ not about avoiding the server entirely.
 
 Encryption is now part of the live websocket collaboration path.
 
-Detailed architecture: [collaboration-encryption-architecture.md](./collaboration-encryption-architecture.md)
+Detailed architecture: [collaboration-encryption-architecture.md](../collaboration-encryption-architecture.md)
 
 Target sequence:
 

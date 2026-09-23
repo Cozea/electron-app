@@ -466,7 +466,7 @@ Goal:
 
 ### Files
 
-- [docs/loading-state-inventory.md](<home>/Downloads/electron-app-main/docs/loading-state-inventory.md)
+- [docs/archive/loading-state-inventory.md](<home>/Downloads/electron-app-main/docs/loading-state-inventory.md)
 - [SettingsChrome.tsx](<home>/Downloads/electron-app-main/src/components/settings/SettingsChrome.tsx)
 - shared table components as needed
 
