@@ -55,7 +55,7 @@ describe("DevApps Store shell unification", () => {
 
   it("keeps the store nav row and its active state in project UI", () => {
     const sidebar = read(SIDEBAR)
-    expect(sidebar).toContain('navigate("/projects/store")')
+    expect(sidebar).toContain('navigateTo({ to: "store" })')
     expect(sidebar).toContain('const isOnAppStore = pathname === "/projects/store"')
 
     const activeIndex = sidebar.search(/isOnAppStore && (?:cn\()?SIDEBAR_PILL_ACTIVE_CLASS/)

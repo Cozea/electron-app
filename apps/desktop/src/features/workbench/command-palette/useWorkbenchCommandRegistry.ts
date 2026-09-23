@@ -7,8 +7,7 @@ import { useTheme } from "@/contexts/ThemeContext"
 import type { KeybindingCommand } from "@cozea/assistant-contracts"
 
 import { resolveDevAppPreviewManifestPath } from "@/features/devapps/model/devAppPreviewSelection"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
-import { useNavigate } from "@/lib/router"
+import { useNavigateTo } from "@/lib/navigation"
 import { type WorkbenchTileType } from "@/lib/workbenchTileContract"
 import {
   selectProjectWorkbench,
@@ -54,7 +53,7 @@ function findActiveTileOfType(
 export function useWorkbenchCommandRegistry(
   context: WorkbenchCommandRegistryContext,
 ): CommandPaletteCommand[] {
-  const navigate = useNavigate()
+  const navigateTo = useNavigateTo()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
   const { principalId } = useAuth()
   const { setTheme } = useTheme()
@@ -74,7 +73,7 @@ export function useWorkbenchCommandRegistry(
         group: "Navigation",
         searchTerms: ["projects", "home", "launch", "overview"],
         run: () => {
-          void navigate("/projects")
+          void navigateTo({ to: "projects" })
         },
       },
       {
@@ -84,7 +83,7 @@ export function useWorkbenchCommandRegistry(
         group: "Navigation",
         searchTerms: ["devapps", "store", "marketplace", "apps"],
         run: () => {
-          void navigate("/projects/store")
+          void navigateTo({ to: "store" })
         },
       },
       {
@@ -94,7 +93,7 @@ export function useWorkbenchCommandRegistry(
         group: "Navigation",
         searchTerms: ["skills", "agent", "builds", "capabilities"],
         run: () => {
-          void navigate("/projects/skills")
+          void navigateTo({ to: "skills" })
         },
       },
       {
@@ -104,7 +103,7 @@ export function useWorkbenchCommandRegistry(
         group: "Navigation",
         searchTerms: ["scheduled", "tasks", "cron", "schedules"],
         run: () => {
-          void navigate("/projects/skills?view=schedules")
+          void navigateTo({ to: "skills", view: "schedules" })
         },
       },
       {
@@ -114,7 +113,7 @@ export function useWorkbenchCommandRegistry(
         group: "Navigation",
         searchTerms: ["inbox", "notifications", "alerts", "messages"],
         run: () => {
-          void navigate("/projects/inbox")
+          void navigateTo({ to: "inbox" })
         },
       },
       {
@@ -124,7 +123,7 @@ export function useWorkbenchCommandRegistry(
         group: "Settings",
         searchTerms: ["account", "profile", "identity", "device", "settings"],
         run: () => {
-          void navigate("/projects/settings/account")
+          void navigateTo({ to: "settings", section: "account" })
         },
       },
       {
@@ -134,7 +133,7 @@ export function useWorkbenchCommandRegistry(
         group: "Settings",
         searchTerms: ["appearance", "theme", "dark", "light", "colors", "icons", "settings"],
         run: () => {
-          void navigate("/projects/settings/appearance")
+          void navigateTo({ to: "settings", section: "appearance" })
         },
       },
       {
@@ -144,7 +143,7 @@ export function useWorkbenchCommandRegistry(
         group: "Settings",
         searchTerms: ["tooling", "providers", "ai", "models", "antigravity", "settings"],
         run: () => {
-          void navigate("/projects/settings/tooling")
+          void navigateTo({ to: "settings", section: "tooling" })
         },
       },
       {
@@ -154,7 +153,7 @@ export function useWorkbenchCommandRegistry(
         group: "Settings",
         searchTerms: ["organizations", "orgs", "teams", "groups", "settings"],
         run: () => {
-          void navigate("/projects/settings/organizations")
+          void navigateTo({ to: "settings", section: "organizations" })
         },
       },
       {
@@ -164,7 +163,7 @@ export function useWorkbenchCommandRegistry(
         group: "Settings",
         searchTerms: ["devapps", "packages", "apps", "settings"],
         run: () => {
-          void navigate("/projects/settings/devapps")
+          void navigateTo({ to: "settings", section: "devapps" })
         },
       },
       {
@@ -206,7 +205,7 @@ export function useWorkbenchCommandRegistry(
       group: "Projects",
       searchTerms: [p.name, p.slug ?? "", "project", "open", "switch"],
       run: () => {
-        void navigate(buildProjectPath(String(p._id), "workbench"))
+        void navigateTo({ to: "workbench", projectId: String(p._id) })
       },
     }))
 
@@ -312,7 +311,7 @@ export function useWorkbenchCommandRegistry(
         }, resolvedWorkspaceId)
       }),
       runKeybinding("diff.toggle", () => {
-        void navigate(buildProjectPath(projectId, "changes"))
+        void navigateTo({ to: "workbench", projectId: projectId, changes: true })
       }),
       runKeybinding("editor.openFavorite", () => {
         addOrFocusTile("selection")
@@ -343,7 +342,7 @@ export function useWorkbenchCommandRegistry(
         group: "Workbench",
         searchTerms: ["tasks", "board", "todo"],
         run: () => {
-          void navigate(buildProjectPath(projectId, "tasks"))
+          void navigateTo({ to: "tasks", projectId: projectId })
         },
       },
       {
@@ -419,7 +418,7 @@ export function useWorkbenchCommandRegistry(
     context.projectRootPath,
     context.projectId,
     context.workspaceId,
-    navigate,
+    navigateTo,
     setTheme,
     workbenchActions,
   ])

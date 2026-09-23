@@ -4,8 +4,7 @@ import { useMutation } from "convex/react"
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { browseForDirectory } from "@/lib/browseForDirectory"
 import { formatWorkspaceBindFailure } from "@/features/workspace/formatWorkspaceBindFailure"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
@@ -39,6 +38,7 @@ function normalizeWorkspaceId(workspaceId: string | null | undefined): string | 
 
 export function useProjectWorkspaceActions() {
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const { principalId } = useAuth()
   const updateProjectStatus = useMutation(api.projects.updateStatus)
   const cloneWorkspaceState = useProjectWorkbenchStore((state) => state.actions.cloneWorkspaceState)
@@ -114,7 +114,7 @@ export function useProjectWorkspaceActions() {
         return null
       }
 
-      navigate(buildProjectPath(project.id, "workbench"), {
+      navigateTo({ to: "workbench", projectId: project.id }, {
         replace: options?.replace,
         state: buildProjectRouteNavigationState({
           projectId: project.id,
@@ -190,7 +190,7 @@ export function useProjectWorkspaceActions() {
       clearProjectBranchSession(project.id, normalizedWorkspaceId)
       clearCachedProjectLaneState(project.id, normalizedWorkspaceId)
 
-      navigate(buildProjectPath(project.id, "workbench"), {
+      navigateTo({ to: "workbench", projectId: project.id }, {
         replace: options?.replace ?? true,
         state: buildProjectRouteNavigationState({
           projectId: project.id,

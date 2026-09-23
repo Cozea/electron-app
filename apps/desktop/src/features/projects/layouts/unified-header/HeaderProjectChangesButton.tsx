@@ -3,7 +3,7 @@ import { useConvex } from "convex/react";
 
 import { api } from "../../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../../convex/_generated/dataModel";
-import { useViewTransitionNavigate } from "@/lib/navigation";
+import { useNavigateTo } from "@/lib/navigation";
 import { scheduleTask } from "@/lib/scheduler";
 import { useLocation } from "@/lib/router";
 import { buildProjectPath } from "@/contexts/project/projectRoutes";
@@ -18,7 +18,7 @@ import { useHeaderOverflow } from "./HeaderOverflowContext";
 
 export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
   const headerOverflow = useHeaderOverflow();
-  const navigate = useViewTransitionNavigate();
+  const navigateTo = useNavigateTo();
   const pathname = useLocation({ select: (location) => location.pathname });
   const convex = useConvex();
   const routeContext = useOptionalProjectRouteContext();
@@ -87,7 +87,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
 
             if (!isOnWorkbench) {
               sidebarActions.open();
-              navigate(workbenchPath);
+              navigateTo({ to: "workbench", projectId: String(projectId) });
               return;
             }
 

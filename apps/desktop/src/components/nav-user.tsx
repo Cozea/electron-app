@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useTheme } from "@/contexts/ThemeContext"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { useTranslation } from "@/lib/i18n"
 import { prewarmDestination } from "@/app/navigation/destinations"
 
@@ -40,6 +40,7 @@ export function NavUser({ user: userProp }: { user?: DevicePresentation | null |
   const user = userProp ?? authUser
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
 
   const menuTitle = user?.displayName?.trim() || t("nav.thisComputer")
   const avatarUrl = user?.avatarUrl ?? null
@@ -96,7 +97,7 @@ export function NavUser({ user: userProp }: { user?: DevicePresentation | null |
         setTheme(selectedTheme)
         return
       }
-      if (action === "device-settings") navigate("/projects/settings/account")
+      if (action === "device-settings") navigateTo({ to: "settings", section: "account" })
     },
     [isTourActive, menuSummarySublabel, menuTitle, navigate, setTheme, t, theme],
   )

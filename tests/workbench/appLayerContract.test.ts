@@ -151,7 +151,7 @@ describe("application layer contract", () => {
     expect(portal).toContain("createPortal(children, document.body)");
     expect(tileChrome).toContain("<AnchoredAppOverlayPortal");
     expect(tileChrome).not.toContain("z-[100]");
-    expect(workbench).toContain("<Dialog");
+    // Project settings is a page now, not a dialog over the workbench.
     expect(workbench).not.toContain("absolute inset-0 z-30");
     expect(orgDevApp).toContain("<DialogContent");
     expect(orgDevApp).not.toContain("absolute inset-x-4 bottom-4 z-20");

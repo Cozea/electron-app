@@ -54,9 +54,9 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
   {
     pair: ["projects", "settings"],
     thinEdge: "projects -> settings",
-    reaches: ["pages/ProjectSettingsPage", "ui/SettingsChrome", "ui/SettingsSidebar"],
+    reaches: ["ui/SettingsChrome", "ui/SettingsSidebar"],
     verdict:
-      "Accepted. Dense in both directions and specific in both: the settings page owns project deletion, local cleanup and the delete dialog, while the drawer and sidebar share the project sidebar's chrome. Peers that collaborate, not a capability reaching for ambient state.",
+      "Accepted. The project shell shares chrome with the settings sidebar in both directions; the project settings page is a route of its own now, reached through the router rather than imported. Peers that collaborate, not a capability reaching for ambient state.",
   },
 ];
 

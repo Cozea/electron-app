@@ -5,7 +5,7 @@ import { memo, useMemo } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { useNavigate } from "@/lib/router"
+import { useNavigateTo } from "@/lib/navigation"
 import {
   parseScheduledTaskProposals,
   type ScheduledTaskProposal,
@@ -74,7 +74,7 @@ export const ScheduledTaskProposalCard = memo(function ScheduledTaskProposalCard
   workspaceRoot?: string | null
   isStreaming?: boolean
 }) {
-  const navigate = useNavigate()
+  const navigateTo = useNavigateTo()
   const proposals = useMemo(
     // A block only half written is not an offer yet.
     () => (isStreaming ? [] : parseScheduledTaskProposals(message)),
@@ -128,11 +128,11 @@ export const ScheduledTaskProposalCard = memo(function ScheduledTaskProposalCard
             variant="outline"
             className="h-7 shrink-0"
             onClick={() => {
-              const params = new URLSearchParams({
+              navigateTo({
+                to: "skills",
                 view: "schedules",
-                draft: buildPrefillParam(proposal, workspaceRoot ?? null),
+                search: { draft: buildPrefillParam(proposal, workspaceRoot ?? null) },
               })
-              navigate(`/projects/skills?${params.toString()}`)
             }}
           >
             Review and schedule

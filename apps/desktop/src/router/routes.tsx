@@ -67,6 +67,13 @@ const TasksPage = createLazyRouteComponent(
     })),
   "routeLoading.tasks",
 );
+const ProjectSettingsPage = createLazyRouteComponent(
+  () =>
+    import("@/features/settings/pages/ProjectSettingsPage").then((module) => ({
+      default: module.ProjectSettingsPage,
+    })),
+  "routeLoading.projectSettings",
+);
 const ProjectTeamPage = createLazyRouteComponent(
   () =>
     import("@/features/projects/pages/ProjectTeamPage").then((module) => ({
@@ -162,50 +169,9 @@ function toRoutePath(route: string): string {
   return route.replace(/^\//, "");
 }
 
-function ProjectIndexRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string };
-  return (
-    <Navigate
-      to="/projects/p/$projectId/workbench"
-      params={{ projectId: params.projectId ?? "" }}
-      replace
-    />
-  );
-}
 
-function ProjectFilesRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string };
-  return (
-    <Navigate
-      to="/projects/p/$projectId/workbench"
-      params={{ projectId: params.projectId ?? "" }}
-      replace
-    />
-  );
-}
 
-function ProjectChangesRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string };
-  return (
-    <Navigate
-      to="/projects/p/$projectId/workbench"
-      params={{ projectId: params.projectId ?? "" }}
-      search={{ changes: "1" } as never}
-      replace
-    />
-  );
-}
 
-function ProjectWorkbenchRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string };
-  return (
-    <Navigate
-      to="/projects/p/$projectId/workbench"
-      params={{ projectId: params.projectId ?? "" }}
-      replace
-    />
-  );
-}
 
 function LegacyProjectJoinRedirect() {
   const params = useParams({ strict: false }) as { token?: string };
@@ -218,28 +184,7 @@ function LegacyProjectJoinRedirect() {
   );
 }
 
-function ProjectSettingsTeamRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string };
-  return (
-    <Navigate
-      to="/projects/p/$projectId/team"
-      params={{ projectId: params.projectId ?? "" }}
-      replace
-    />
-  );
-}
 
-function ProjectSettingsRedirect() {
-  const params = useParams({ strict: false }) as { projectId?: string };
-  return (
-    <Navigate
-      to="/projects/p/$projectId/workbench"
-      params={{ projectId: params.projectId ?? "" }}
-      search={{ settings: "1" } as never}
-      replace
-    />
-  );
-}
 
 export const rootRoute = createRootRoute({
   component: AppRoot,
@@ -306,11 +251,6 @@ const joinProjectRoute = createRoute({
   component: LegacyProjectJoinRedirect,
 });
 
-const projectBuildRoute = createRoute({
-  getParentRoute: () => projectsShellRoute,
-  path: "/$projectId/build",
-  component: ProjectWorkbenchRedirect,
-});
 
 const projectRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
@@ -318,23 +258,8 @@ const projectRoute = createRoute({
   component: Outlet,
 });
 
-const projectIndexRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/",
-  component: ProjectIndexRedirect,
-});
 
-const projectFilesRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/files",
-  component: ProjectFilesRedirect,
-});
 
-const projectPagesRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/pages",
-  component: ProjectWorkbenchRedirect,
-});
 
 const projectWorkbenchRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -342,29 +267,9 @@ const projectWorkbenchRoute = createRoute({
   component: ProjectWorkbenchPage,
 });
 
-const projectChangesRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/changes",
-  component: ProjectChangesRedirect,
-});
 
-const projectFeedRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/feed",
-  component: ProjectChangesRedirect,
-});
 
-const projectMergeQueueRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/merge-queue",
-  component: ProjectChangesRedirect,
-});
 
-const projectVersionControlRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/version-control",
-  component: ProjectChangesRedirect,
-});
 
 const projectTasksRoute = createRoute({
   getParentRoute: () => projectRoute,
@@ -383,20 +288,11 @@ const projectTeamRoute = createRoute({
 const projectSettingsRoute = createRoute({
   getParentRoute: () => projectRoute,
   path: "/settings",
-  component: ProjectSettingsRedirect,
+  component: ProjectSettingsPage,
+  staticData: RETAINED_PAGE,
 });
 
-const projectSettingsTeamRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/settings/team",
-  component: ProjectSettingsTeamRedirect,
-});
 
-const projectSettingsSectionRoute = createRoute({
-  getParentRoute: () => projectRoute,
-  path: "/settings/$section",
-  component: ProjectSettingsRedirect,
-});
 
 const projectsPersonalAccountRoute = createRoute({
   getParentRoute: () => projectsShellRoute,
@@ -447,58 +343,17 @@ const projectsPersonalGitHubRoute = createRoute({
   staticData: RETAINED_PAGE,
 });
 
-const personalAccountRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_ACCOUNT_ROUTE),
-  component: () => <Navigate to={"/projects/settings/account" as never} replace />,
-});
 
-const personalAppearanceRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_APPEARANCE_ROUTE),
-  component: () => <Navigate to={"/projects/settings/appearance" as never} replace />,
-});
 
-const personalDevAppsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_DEVAPPS_ROUTE),
-  component: () => <Navigate to={"/projects/settings/devapps" as never} replace />,
-});
 
-const personalOrganizationsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_ORGANIZATIONS_ROUTE),
-  component: () => <Navigate to={"/projects/settings/organizations" as never} replace />,
-});
 
-const personalToolingRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_TOOLING_ROUTE),
-  component: () => <Navigate to={"/projects/settings/tooling" as never} replace />,
-});
 
-const personalComputerUseRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_COMPUTER_USE_ROUTE),
-  component: () => <Navigate to={"/projects/settings/computer-use" as never} replace />,
-});
 
-const personalGitHubRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: toRoutePath(PERSONAL_GITHUB_ROUTE),
-  component: () => <Navigate to={"/projects/settings/github" as never} replace />,
-});
 
-const inboxRedirectRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/inbox",
-  component: () => <Navigate to={"/projects/inbox" as never} replace />,
-});
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   joinProjectRoute,
-  inboxRedirectRoute,
   projectsShellRoute.addChildren([
     projectsIndexRoute,
     projectsStoreRoute,
@@ -506,21 +361,11 @@ export const routeTree = rootRoute.addChildren([
     projectsInboxRoute,
     projectNewRoute,
     projectJoinRoute,
-    projectBuildRoute,
     projectRoute.addChildren([
-      projectIndexRoute,
-      projectFilesRoute,
       projectWorkbenchRoute,
-      projectPagesRoute,
-      projectChangesRoute,
-      projectFeedRoute,
-      projectMergeQueueRoute,
-      projectVersionControlRoute,
       projectTasksRoute,
       projectTeamRoute,
       projectSettingsRoute,
-      projectSettingsTeamRoute,
-      projectSettingsSectionRoute,
     ]),
     projectsPersonalAccountRoute,
     projectsPersonalAppearanceRoute,
@@ -530,18 +375,15 @@ export const routeTree = rootRoute.addChildren([
     projectsPersonalComputerUseRoute,
     projectsPersonalGitHubRoute,
   ]),
-  personalAccountRoute,
-  personalAppearanceRoute,
-  personalDevAppsRoute,
-  personalOrganizationsRoute,
-  personalToolingRoute,
-  personalComputerUseRoute,
-  personalGitHubRoute,
 ]);
 
 export const appRouter = createRouter({
   routeTree,
   defaultErrorComponent: AppErrorScreen,
+  // Old URLs are not kept alive as redirect routes. Anything that no longer
+  // matches — a route restored from an older build, a stale deep link — lands
+  // on Projects instead of an empty shell.
+  defaultNotFoundComponent: () => <Navigate to="/projects" replace />,
   // Keep selected router-state slices (search/params projections) identity-
   // stable across transitions so subscribers only re-render on real changes.
   defaultStructuralSharing: true,

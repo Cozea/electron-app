@@ -3,7 +3,7 @@
 import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "@/lib/router";
 import { RetainedPageOutlet } from "@/app/navigation/RetainedPageOutlet";
-import { useViewTransitionNavigate } from "@/lib/navigation";
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
@@ -92,14 +92,12 @@ function ProjectPresenceHeaderAddon({
   projectId,
   principalId,
   isWorkbenchView,
-  projectBasePath,
 }: {
   projectId: Id<"projects"> | null;
   principalId: Id<"devicePrincipals"> | null;
   isWorkbenchView: boolean;
-  projectBasePath: string | null;
 }) {
-  const navigate = useViewTransitionNavigate();
+  const navigateTo = useNavigateTo();
   const presenceActiveFile = usePageContextStore((state) =>
     isWorkbenchView ? (state.currentPage?.filePath ?? null) : null,
   );
@@ -115,13 +113,11 @@ function ProjectPresenceHeaderAddon({
   });
 
   const handlePresenceUserClick = useCallback(
-    (presenceUser: PresenceUser) => {
-      if (!projectBasePath) return;
-      navigate(
-        `${projectBasePath}/workbench?changes=1&principalId=${encodeURIComponent(presenceUser.principalId)}`,
-      );
+    (_presenceUser: PresenceUser) => {
+      if (!projectId) return;
+      navigateTo({ to: "workbench", projectId: String(projectId), changes: true });
     },
-    [navigate, projectBasePath],
+    [navigateTo, projectId],
   );
 
   if (presenceUsers.length === 0) {
@@ -149,7 +145,6 @@ export function ProjectLayout({
   // including no-op clicks to the current URL.
   const pathname = useLocation({ select: (location) => location.pathname });
   const currentHref = useLocation({ select: (location) => location.href });
-  const search = useLocation({ select: (location) => location.search });
   const stateProjectId = useLocation({
     select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectId ?? null,
   });
@@ -164,6 +159,7 @@ export function ProjectLayout({
       (location.state as ProjectLayoutLocationState | null)?.preferredWorkspaceId ?? null,
   });
   const navigate = useViewTransitionNavigate();
+  const navigateTo = useNavigateTo();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
 
   // Get project data (with caching)
@@ -264,7 +260,7 @@ export function ProjectLayout({
       setHasVisitedWorkbench(true);
     }
   }, [isWorkbenchView]);
-  const isChangesView = pathname.endsWith("/changes");
+  const isProjectSettingsView = /^\/projects\/p\/[^/]+\/settings\/?$/.test(pathname);
   const isSettingsModeRoute =
     pathname.startsWith("/projects/settings/") ||
     pathname.startsWith("/projects/workspace/") ||
@@ -274,29 +270,25 @@ export function ProjectLayout({
     saveLastAppRoute(currentHref);
   }, [currentHref, isSettingsModeRoute]);
 
+  // Settings are pages: inside a project the project's settings, elsewhere the
+  // device's. Closing returns to where the settings belong.
   const openSettings = useCallback(() => {
-    if (isWorkbenchView) {
-      const nextParams = new URLSearchParams(window.location.search);
-      nextParams.set("settings", "1");
-      navigate(`?${nextParams.toString()}`);
+    if (isWorkbenchView && routeProjectId) {
+      navigateTo({ to: "projectSettings", projectId: routeProjectId });
     } else {
-      navigate("/projects/settings/account");
+      navigateTo({ to: "settings", section: "account" });
     }
-  }, [isWorkbenchView, navigate]);
+  }, [isWorkbenchView, navigateTo, routeProjectId]);
 
   const closeSettings = useCallback(() => {
-    if (isWorkbenchView) {
-      const nextParams = new URLSearchParams(window.location.search);
-      nextParams.delete("settings");
-      navigate(`?${nextParams.toString()}`);
+    if (isProjectSettingsView && routeProjectId) {
+      navigateTo({ to: "workbench", projectId: routeProjectId });
     } else if (isSettingsModeRoute) {
-      navigate("/projects");
+      navigateTo({ to: "projects" });
     }
-  }, [isSettingsModeRoute, isWorkbenchView, navigate]);
+  }, [isProjectSettingsView, isSettingsModeRoute, navigateTo, routeProjectId]);
 
-  const isSettingsOpen =
-    isSettingsModeRoute ||
-    (isWorkbenchView && new URLSearchParams(search).get("settings") === "1");
+  const isSettingsOpen = isSettingsModeRoute || isProjectSettingsView;
 
   const isStickySearchPage =
     pathname.endsWith("/store") ||
@@ -388,7 +380,7 @@ export function ProjectLayout({
   const isInboxView = pathname.endsWith("/inbox");
   // Check if we are on views that need full-bleed content (no padding)
   const shouldRemovePadding =
-    isWorkbenchView || isChangesView || isBuildsView || isStoreView || isSkillsRoute || isInboxView;
+    isWorkbenchView || isProjectSettingsView || isBuildsView || isStoreView || isSkillsRoute || isInboxView;
 
   // Runtime readiness alone is not enough: it only means a workspace is mounted,
   // which happens well before the device token is re-established on the
@@ -408,7 +400,6 @@ export function ProjectLayout({
         projectId={presenceGateOpen ? project?._id ?? null : null}
         principalId={presenceGateOpen ? principalId ?? null : null}
         isWorkbenchView={isWorkbenchView}
-        projectBasePath={projectBasePath}
       />
     ),
     [
@@ -770,7 +761,7 @@ export function ProjectLayout({
   // thread until the renderer OOMs. Redirect from an effect instead.
   useEffect(() => {
     if (projectDefinitelyMissing) {
-      navigate("/projects", { replace: true });
+      navigateTo({ to: "projects" }, { replace: true });
     }
   }, [navigate, projectDefinitelyMissing]);
 
