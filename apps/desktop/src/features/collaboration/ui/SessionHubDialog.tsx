@@ -41,7 +41,6 @@ export interface SessionHubDialogProps {
   projectName?: string | null
   workspaceId?: string | null
   canManage: boolean
-  onStartSession?: () => void
 }
 
 export function SessionHubDialog({
@@ -53,7 +52,6 @@ export function SessionHubDialog({
   projectName,
   workspaceId,
   canManage,
-  onStartSession,
 }: SessionHubDialogProps) {
   const { members: projectMembers } = useProjectTeam(projectId)
   const [activeTab, setActiveTab] = useState<"dashboard" | "share">("dashboard")
@@ -134,7 +132,6 @@ export function SessionHubDialog({
               projectId={projectId}
               projectMembers={projectMembers}
               canManageProject={canManage}
-              onStartSession={onStartSession ?? (() => {})}
             />
           </div>
         ) : null}

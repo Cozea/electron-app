@@ -22,7 +22,6 @@ import {
   getTaskMigrationFlagStorageKey,
   normalizeSearchValue,
   createTaskId,
-  getInitials,
   createDefaultManualTaskMarkers,
   getClaimantIdentityKey,
   getDisplayFirstName,
@@ -91,10 +90,8 @@ import {
   useOptionalProjectSyncContext,
 } from '@/contexts/project/ProjectSyncContext';
 import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from '@/components/ui/avatar';
+  DeviceAvatar,
+} from '@/components/ui/DeviceAvatar';
 import {
   Badge,
 } from '@/components/ui/badge';
@@ -1154,15 +1151,13 @@ export function TasksPage({
                                 className="flex w-full items-center gap-3 rounded-[16px] px-2.5 py-2 text-left transition-colors hover:bg-background/50"
                                 onClick={() => handleToggleDraftClaimant(candidate)}
                               >
-                                <Avatar className="h-8 w-8">
-                                  <AvatarImage
-                                    src={candidate.avatarUrl ?? undefined}
-                                    alt={candidate.name}
-                                  />
-                                  <AvatarFallback className="text-xs">
-                                    {getInitials(candidate.name)}
-                                  </AvatarFallback>
-                                </Avatar>
+                                <DeviceAvatar
+                                  displayName={candidate.name}
+                                  avatarUrl={candidate.avatarUrl ?? null}
+                                  useColor={false}
+                                  className="h-8 w-8"
+                                  fallbackClassName="text-xs"
+                                />
                                 <div className="min-w-0 flex-1">
                                   <span className="block truncate text-sm font-medium text-foreground">
                                     {candidate.name}
@@ -1190,15 +1185,13 @@ export function TasksPage({
                           key={identityKey}
                           className="inline-flex items-center gap-2 rounded-full bg-secondary px-2 py-1"
                         >
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage
-                              src={claimant.avatarUrl ?? undefined}
-                              alt={claimant.name}
-                            />
-                            <AvatarFallback className="text-[10px]">
-                              {getInitials(claimant.name)}
-                            </AvatarFallback>
-                          </Avatar>
+                          <DeviceAvatar
+                            displayName={claimant.name}
+                            avatarUrl={claimant.avatarUrl ?? null}
+                            useColor={false}
+                            className="h-5 w-5"
+                            fallbackClassName="text-[10px]"
+                          />
                           <span
                             className="max-w-[160px] truncate text-xs font-medium text-foreground"
                             title={claimant.name}

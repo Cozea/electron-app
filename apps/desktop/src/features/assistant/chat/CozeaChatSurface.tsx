@@ -2168,7 +2168,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         event.preventDefault();
         void handleSendWithMode();
       }}
-      className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col"
+      className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col [--chat-composer-drawer-inset:1.375rem]"
     >
       {/* Plus menu: sources, modes and runtime (floating above) */}
       {isPlusMenuOpen ? (

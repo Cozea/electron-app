@@ -5,7 +5,6 @@
  */
 
 export { IntegrationCard } from './IntegrationCard'
-export { IntegrationConnectDialog } from './IntegrationConnectDialog'
 export { IntegrationIcon } from './IntegrationIcon'
 export {
   IntegrationStatusBadge,

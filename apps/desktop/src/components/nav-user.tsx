@@ -1,6 +1,6 @@
 import * as React from "react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
 import { useProductTourStore } from "@/features/tour/productTourStore"
 import {
   SidebarMenu,
@@ -28,8 +28,6 @@ type NavUserMenuAction =
   | "theme-group"
   | "separator-top"
   | "separator-bottom"
-
-import { getDeviceInitials as initials } from "@/lib/devicePresentation"
 
 type DevicePresentation = {
   displayName?: string | null
@@ -118,12 +116,13 @@ export function NavUser({ user: userProp }: { user?: DevicePresentation | null |
           aria-label={t("nav.openUserMenu")}
           title={t("nav.openUserMenu")}
         >
-          <Avatar className="size-5 shrink-0 rounded-[5px]">
-            {avatarUrl ? <AvatarImage src={avatarUrl} alt={menuTitle} /> : null}
-            <AvatarFallback className="rounded-[5px] text-2xs font-bold leading-none">
-              {initials(menuTitle)}
-            </AvatarFallback>
-          </Avatar>
+          <DeviceAvatar
+            displayName={menuTitle}
+            avatarUrl={avatarUrl}
+            useColor={false}
+            className="size-5 shrink-0"
+            fallbackClassName="text-2xs font-bold leading-none"
+          />
           <div className="flex min-w-0 flex-1 items-center text-left text-sm leading-none group-data-[collapsible=icon]:hidden">
             <span className="block w-full truncate font-normal leading-none text-sidebar-foreground">{menuTitle}</span>
           </div>

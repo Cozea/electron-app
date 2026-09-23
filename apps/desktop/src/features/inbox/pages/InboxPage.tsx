@@ -16,7 +16,7 @@ import { describeInviteeCopy, ensureInviteeCopy, type InviteeCopyOutcome } from 
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -30,10 +30,6 @@ import {
   ArrowRight01Icon as __ArrowRightHugeIcon,
   Clock01Icon as __ClockHugeIcon,
 } from "@hugeicons/core-free-icons"
-
-import { getDeviceInitials as initial } from "@/lib/devicePresentation"
-
-
 
 function formatExpiryDays(expiresAt: number): string {
   const ms = expiresAt - Date.now()
@@ -152,9 +148,7 @@ function InvitationRow({
   return (
     <div className="group flex flex-col gap-3 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border/90 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3 sm:items-center">
-        <Avatar className="size-10 shrink-0 rounded-lg">
-          <AvatarFallback className="rounded-lg text-xs font-medium">{initial(name)}</AvatarFallback>
-        </Avatar>
+        <DeviceAvatar displayName={name} useColor={false} className="size-10 shrink-0" fallbackClassName="text-xs font-medium" />
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-sm font-medium text-foreground">{name}</h3>

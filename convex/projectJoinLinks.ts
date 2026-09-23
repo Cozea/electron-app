@@ -4,6 +4,7 @@ import type { Doc } from "./_generated/dataModel"
 import { type MutationCtx } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
 import { requireAuthenticatedDevice } from "./lib/deviceAuth"
+import { requireProjectSeats } from "./lib/seatLimits"
 import {
   getProjectMembership,
   getProjectShareScope,
@@ -312,6 +313,7 @@ export const joinByToken = mutation({
       }
     }
 
+    await requireProjectSeats(ctx, project._id)
     await ctx.db.insert("projectMembers", {
       projectId: project._id,
       principalId: principal._id,

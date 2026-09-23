@@ -19,8 +19,7 @@ import {
   SquareArrowDownRightIcon as __ExternalLinkHugeIcon,
 } from "@hugeicons/core-free-icons"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { getDeviceInitials } from "@/lib/devicePresentation"
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -195,7 +194,7 @@ export function SessionWorkDashboard({
 
         <div className="space-y-1.5">
           {members.map((m) => {
-            const color = getUserColor(m.principalId)
+            const memberColor = getUserColor(m.principalId)
             const isSpeaking = m.microphoneState === "speaking"
             const isMuted = m.microphoneState === "muted"
             const isUpdating = roleUpdatingPrincipal === m.principalId
@@ -207,27 +206,26 @@ export function SessionWorkDashboard({
               >
                 {/* Member Identity & Audio State */}
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <div className="relative">
-                    <Avatar className="size-7 border-2 border-background">
-                      {m.avatarUrl ? <AvatarImage src={m.avatarUrl} alt={m.displayName} /> : null}
-                      <AvatarFallback
-                        className="text-[11px] font-semibold text-white"
-                        style={{ backgroundColor: color }}
-                      >
-                        {getDeviceInitials(m.displayName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    {isSpeaking ? (
-                      <span
-                        className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-500 animate-pulse"
-                        title="Speaking"
-                      />
-                    ) : isMuted ? (
-                      <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full border-2 border-background bg-muted">
-                        <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
-                      </span>
-                    ) : null}
-                  </div>
+                  <DeviceAvatar
+                    displayName={m.displayName}
+                    avatarUrl={m.avatarUrl}
+                    principalId={m.principalId}
+                    className="size-7"
+                    fallbackClassName="text-[11px] font-semibold"
+                    ringClassName="border-2 border-background"
+                    statusIndicator={
+                      isSpeaking ? (
+                        <span
+                          className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-500 animate-pulse"
+                          title="Speaking"
+                        />
+                      ) : isMuted ? (
+                        <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full border-2 border-background bg-muted">
+                          <HugeiconsIcon icon={MicOff01Icon} className="size-1.5 text-muted-foreground" />
+                        </span>
+                      ) : null
+                    }
+                  />
 
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
@@ -269,7 +267,7 @@ export function SessionWorkDashboard({
                         className="h-full rounded-full transition-all"
                         style={{
                           width: `${Math.max(4, m.sharePercentage)}%`,
-                          backgroundColor: color,
+                          backgroundColor: memberColor,
                         }}
                       />
                     </div>

@@ -231,6 +231,11 @@ if (ELECTRON_REMOTE_DEBUGGING_PORT) {
   app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
 }
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+// Maximize discrete GPU acceleration on dual-GPU Macs (e.g. AMD Radeon Pro)
+app.commandLine.appendSwitch('force_high_performance_gpu')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('enable-zero-copy')
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
 
 function matchesProtocolUrl(url: string, routePrefix: string): boolean {
   return SUPPORTED_PROTOCOLS.some((scheme) => url.startsWith(`${scheme}://${routePrefix}`))
