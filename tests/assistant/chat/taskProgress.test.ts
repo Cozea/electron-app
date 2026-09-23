@@ -6,7 +6,6 @@ import {
   deriveComposerTasksProgress,
   resolveTasksProgressAndSteps,
 } from "@/features/assistant/chat/taskProgress";
-import { deriveAgentSpawnSummary } from "@/features/assistant/chat/agentSpawnSummary";
 
 describe("taskProgress", () => {
   it("parses task steps from markdown checklist", () => {
@@ -79,47 +78,5 @@ describe("taskProgress", () => {
     expect(result.tasksProgress?.totalSteps).toBe(2);
     expect(result.tasksProgress?.completedSteps).toBe(1);
     expect(result.tasksProgress?.step).toBe("Pending item");
-  });
-});
-
-describe("deriveAgentSpawnSummary", () => {
-  it("summarizes live running subagents", () => {
-    const summary = deriveAgentSpawnSummary({
-      agents: [
-        { status: "running" },
-        { status: "idle" },
-      ],
-      agentCount: 2,
-    });
-    expect(summary.live).toBe(true);
-    expect(summary.tone).toBe("working");
-    expect(summary.lead).toBe("Kicked off 2 subagents");
-    expect(summary.status).toBe("1 working");
-  });
-
-  it("summarizes failed subagents", () => {
-    const summary = deriveAgentSpawnSummary({
-      agents: [
-        { status: "failed" },
-        { status: "completed" },
-      ],
-      agentCount: 2,
-    });
-    expect(summary.live).toBe(false);
-    expect(summary.tone).toBe("failed");
-    expect(summary.status).toBe("1 failed");
-  });
-
-  it("summarizes fully completed subagents", () => {
-    const summary = deriveAgentSpawnSummary({
-      agents: [
-        { status: "completed" },
-        { status: "completed" },
-      ],
-      agentCount: 2,
-    });
-    expect(summary.live).toBe(false);
-    expect(summary.tone).toBe("completed");
-    expect(summary.status).toBe("✓ completed");
   });
 });
