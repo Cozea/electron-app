@@ -2,7 +2,7 @@ import type { AssistantCitation } from "@cozea/contracts/t3";
 import {
   serializeAssistantCitation,
   withAssistantCitationComment,
-} from "@/lib/assistantCitations";
+} from "@/features/assistant/lib/assistantCitations";
 import { splitPromptIntoComposerSegments } from "./composer-editor-mentions";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "./lib/terminalContext";
 

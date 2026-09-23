@@ -2,7 +2,7 @@ import type { AssistantCitation } from "@cozea/contracts/t3";
 import {
   formatAssistantCitationHref,
   parseAssistantCitationHref,
-} from "@/lib/assistantCitations";
+} from "@/features/assistant/lib/assistantCitations";
 import * as Encoding from "effect/Encoding";
 import * as Result from "effect/Result";
 

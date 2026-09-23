@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { ProjectShellTitleBarLeft } from "@/features/projects/ui/ProjectShellTitleBarLeft";
 import { cn } from "@/lib/utils";
 import { useWindowChrome } from "@/hooks/useWindowChrome";

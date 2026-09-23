@@ -2,8 +2,8 @@ import { useHeaderOverflow } from "./HeaderOverflowContext";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 
-import { api } from "../../../../../../convex/_generated/api";
-import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { api } from "../../../../../../../convex/_generated/api";
+import type { Id } from "../../../../../../../convex/_generated/dataModel";
 import { cleanConvexError as cleanError } from "@/lib/convexError"
 import { appToast } from "@/lib/appToast"
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"

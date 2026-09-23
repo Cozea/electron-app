@@ -88,9 +88,9 @@ import {
   expandCollapsedComposerCursor,
   formatAssistantCitationForComposer,
 } from "@/features/assistant/composer-logic";
-import { assistantCitationFromLocation } from "@/lib/assistantCitationNavigation";
+import { assistantCitationFromLocation } from "@/features/assistant/lib/assistantCitationNavigation";
 import type { AssistantCitation, EnvironmentId, ScopedThreadRef, ThreadId } from "@cozea/contracts/t3";
-import type { AssistantCitationSourceAnchor } from "@/lib/assistantTextSelection";
+import type { AssistantCitationSourceAnchor } from "@/features/assistant/lib/assistantTextSelection";
 import type { AssistantCitationRequest } from "./AssistantCitationSource";
 import { basenameOfPath, getVscodeIconUrlForEntry } from "@/features/assistant/vscode-icons";
 import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWindow";
