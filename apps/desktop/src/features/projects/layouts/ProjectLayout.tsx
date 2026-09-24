@@ -583,6 +583,63 @@ export function ProjectLayout({
     [project, refreshWorkspace, routeSlug, t, workspaceProjectId],
   );
 
+  // The layout re-renders on every navigation because it reads the pathname.
+  // The sidebar, the kept-alive workbench, the page outlet and the command
+  // palette each track the route they need themselves, so they are held as
+  // stable elements and re-render only when their own inputs change; otherwise
+  // every page switch re-rendered the whole shell, hidden workbench included.
+  const projectIdForSidebar = project?._id ?? null;
+  const sidebarElement = useMemo(
+    () => (
+      <AppSidebarShell>
+        {isSettingsModeRoute ? (
+          <SettingsSidebar user={user} />
+        ) : (
+          <ProjectSidebar user={user} projectId={projectIdForSidebar} />
+        )}
+      </AppSidebarShell>
+    ),
+    [isSettingsModeRoute, projectIdForSidebar, user],
+  );
+  const workbenchVisible =
+    isWorkbenchView && (!featureFlags.localWorkspaceCatalog || workspaceResolution?.status === "ready");
+  const workbenchElement = useMemo(
+    () =>
+      hasVisitedWorkbench ? (
+        <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
+          <LazyProjectWorkbenchSurface visible={workbenchVisible} />
+        </Suspense>
+      ) : null,
+    [hasVisitedWorkbench, isWorkbenchView, workbenchVisible],
+  );
+  const outletElement = useMemo(() => children || <RetainedPageOutlet />, [children]);
+  const commandPaletteProjectId = isWorkbenchView ? workspaceProjectId : null;
+  const commandPaletteLaneId = isWorkbenchView && activeLane?.id ? activeLane.id : "default";
+  const commandPaletteWorkspaceId = isWorkbenchView ? activeWorkspaceId : null;
+  const commandPaletteRootPath = isWorkbenchView ? activeProjectRootPath : null;
+  const commandPaletteElement = useMemo(
+    () => (
+      <WorkbenchCommandPaletteHost
+        projectId={commandPaletteProjectId}
+        laneId={commandPaletteLaneId}
+        workspaceId={commandPaletteWorkspaceId}
+        projectRootPath={commandPaletteRootPath}
+        openSettings={openSettings}
+        closeSettings={closeSettings}
+        isSettingsOpen={isSettingsOpen}
+      />
+    ),
+    [
+      closeSettings,
+      commandPaletteLaneId,
+      commandPaletteProjectId,
+      commandPaletteRootPath,
+      commandPaletteWorkspaceId,
+      isSettingsOpen,
+      openSettings,
+    ],
+  );
+
   const layoutContent = (
     <SidebarProvider>
       <div
@@ -592,16 +649,7 @@ export function ProjectLayout({
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {/* Persistent shell: route-mode switches swap only the content. */}
-          <AppSidebarShell>
-            {isSettingsModeRoute ? (
-              <SettingsSidebar user={user} />
-            ) : (
-              <ProjectSidebar
-                user={user}
-                projectId={project?._id ?? null}
-              />
-            )}
-          </AppSidebarShell>
+          {sidebarElement}
           <SidebarInset
             color="currentColor"
             // bg-background: keep window vibrancy/transparency confined to the
@@ -621,16 +669,7 @@ export function ProjectLayout({
                     : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
-                {hasVisitedWorkbench ? (
-                  <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
-                    <LazyProjectWorkbenchSurface
-                      visible={
-                        isWorkbenchView &&
-                        (!featureFlags.localWorkspaceCatalog || workspaceResolution?.status === "ready")
-                      }
-                    />
-                  </Suspense>
-                ) : null}
+                {workbenchElement}
                 {featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
                   <WorkspaceRepairScreen
                     result={workspaceResolution}
@@ -644,7 +683,7 @@ export function ProjectLayout({
                   />
                 ) : (
                   <>
-                    {children || <RetainedPageOutlet />}
+                    {outletElement}
                     {featureFlags.localWorkspaceCatalog && workspaceProjectId && !workspaceResolution ? (
                       <div
                         className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
@@ -662,15 +701,7 @@ export function ProjectLayout({
             </div>
           </SidebarInset>
         </div>
-        <WorkbenchCommandPaletteHost
-          projectId={isWorkbenchView ? workspaceProjectId : null}
-          laneId={isWorkbenchView && activeLane?.id ? activeLane.id : "default"}
-          workspaceId={isWorkbenchView ? activeWorkspaceId : null}
-          projectRootPath={isWorkbenchView ? activeProjectRootPath : null}
-          openSettings={openSettings}
-          closeSettings={closeSettings}
-          isSettingsOpen={isSettingsOpen}
-        />
+        {commandPaletteElement}
         {liveSession.closeReview && (
           <CloseSessionDialog
             key={liveSession.closeReview.reviewId}

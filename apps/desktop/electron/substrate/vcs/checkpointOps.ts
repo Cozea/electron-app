@@ -143,6 +143,13 @@ async function executeGit(options: GitExecuteOptions): Promise<GitExecuteResult>
         LANG: 'C',
         // Callers still win: checkpoint capture sets authorship and GIT_INDEX_FILE.
         ...options.env,
+        // Reads must not write. `git status` otherwise refreshes `.git/index`
+        // as a side effect; the `.git` watcher reports that write as repository
+        // activity, which recomputes status, which writes the index again — a
+        // loop of `git status` + `git diff` about twice a second per open repo.
+        // Commands that need the index lock (add, commit, checkout) still take it.
+        // Set after the caller's env, which may spread an inherited value.
+        GIT_OPTIONAL_LOCKS: '0',
       },
     })
 

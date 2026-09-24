@@ -22,7 +22,7 @@ describe("DevApps Store shell unification", () => {
     const layout = read(LAYOUT)
     const block = layout.slice(
       layout.indexOf("<AppSidebarShell"),
-      layout.indexOf("<SidebarInset"),
+      layout.indexOf("</AppSidebarShell>"),
     )
     expect(block).toContain("isSettingsModeRoute ?")
     expect(block).toContain("<SettingsSidebar")

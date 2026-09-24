@@ -1,6 +1,7 @@
 import {
   Activity,
   Component,
+  memo,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -60,6 +61,10 @@ export function retainPage<T extends { key: string }>(
   return next
 }
 
+function stripTrailingSlash(pathname: string): string {
+  return pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname
+}
+
 /**
  * Hidden pages render inside `<Activity mode="hidden">`: React keeps their
  * state and DOM but disconnects their effects, so a hidden page cannot set the
@@ -91,14 +96,19 @@ export function RetainedPageOutlet() {
   // would change the context value and re-render the whole page on return,
   // which is the cost retaining it is meant to remove.
   const currentHref = current?.location.href ?? null
+  // While a navigation is pending, `location` already holds the destination
+  // but `matches` still describe the page being left. Pairing the two handed
+  // that page the new URL, re-rendering it several times per navigation.
+  const locationIsForLeaf =
+    !current || stripTrailingSlash(current.location.pathname) === stripTrailingSlash(current.key)
   const snapshot = useMemo<RouteSnapshot | null>(() => {
     if (!current) return null
-    if (existing && existing.snapshot.location.href === current.location.href) {
+    if (existing && (!locationIsForLeaf || existing.snapshot.location.href === current.location.href)) {
       return existing.snapshot
     }
     return { location: current.location, params: current.params, search: current.search }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentKey, currentHref])
+  }, [currentKey, currentHref, locationIsForLeaf])
 
   if (current && snapshot) {
     const Component =
@@ -123,23 +133,47 @@ export function RetainedPageOutlet() {
   return (
     <>
       {showsRetainedPage ? null : <Outlet />}
-      {retained.map((page) => {
-        const visible = page.key === currentKey
-        return (
-          <RetainedPageFrame key={page.key} visible={visible}>
-            <Activity mode={visible ? "visible" : "hidden"} name={`page:${page.key}`}>
-              <RouteSnapshotContext.Provider value={page.snapshot}>
-                <RetainedPageErrorBoundary>
-                  <page.Component />
-                </RetainedPageErrorBoundary>
-              </RouteSnapshotContext.Provider>
-            </Activity>
-          </RetainedPageFrame>
-        )
-      })}
+      {retained.map((page) => (
+        <RetainedPageSlot
+          key={page.key}
+          pageKey={page.key}
+          visible={page.key === currentKey}
+          Component={page.Component}
+          snapshot={page.snapshot}
+        />
+      ))}
     </>
   )
 }
+
+/**
+ * One kept page. Memoized on primitive and stable props so that navigating
+ * elsewhere skips every page whose visibility and route did not change;
+ * without it each navigation re-rendered all hidden pages as well.
+ */
+const RetainedPageSlot = memo(function RetainedPageSlot({
+  pageKey,
+  visible,
+  Component,
+  snapshot,
+}: {
+  pageKey: string
+  visible: boolean
+  Component: ComponentType
+  snapshot: RouteSnapshot
+}) {
+  return (
+    <RetainedPageFrame visible={visible}>
+      <Activity mode={visible ? "visible" : "hidden"} name={`page:${pageKey}`}>
+        <RouteSnapshotContext.Provider value={snapshot}>
+          <RetainedPageErrorBoundary>
+            <Component />
+          </RetainedPageErrorBoundary>
+        </RouteSnapshotContext.Provider>
+      </Activity>
+    </RetainedPageFrame>
+  )
+})
 
 /**
  * Hidden elements lose their scroll offset, so positions are recorded while
