@@ -27,6 +27,7 @@ import {
   type OrgDevAppPublishStage,
 } from "@/features/devapps/orgDevAppPublishing";
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
+import { useStableActions } from "@/hooks/useStableActions";
 import { useWindowChrome } from "@/hooks/useWindowChrome";
 import { useOptionalProjectSyncContext } from "@/contexts/project/ProjectSyncContext";
 import { useProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState";
@@ -64,6 +65,7 @@ import {
   SIDEBAR_PILL_ACTIVE_CLASS,
   type SidebarDevAppPublishMode,
   type SidebarProjectItem,
+  type SidebarProjectTreeItemActions,
 } from "@/features/projects/ui/sidebar/projectSidebarShared";
 import {
   getProjectSidebarRouteState,
@@ -958,6 +960,27 @@ export function ProjectSidebar({
     [currentProjectItem, handleSyncCurrentProject],
   );
 
+  // One object for every row, whose functions call the latest handlers. The
+  // row's memo compares `actions` by identity, so a fresh literal here
+  // re-rendered every project row on each page switch.
+  const projectItemActions = useStableActions<SidebarProjectTreeItemActions>({
+    toggleExpanded: toggleExpandedProject,
+    openProject: handleOpenProject,
+    openProjectFolder: handleOpenProjectFolder,
+    openProjectSettings: handleOpenProjectSettings,
+    publishDevApp: handleRequestPublishDevApp,
+    renameProject: handleStartRenameProject,
+    archiveProject: handleArchiveProject,
+    restoreProject: handleRestoreProject,
+    deleteProject: handleStartDeleteProject,
+    relinkProjectWorkspace: handleRelinkProjectWorkspace,
+    closeProjectWorkspace: handleCloseProjectWorkspace,
+    syncProject: handleSyncProject,
+    moveProject,
+    reorderProject: handleReorderProject,
+    openLaneWorkbench,
+  });
+
   return (
     <>
       <SidebarHeader className="gap-2 px-2 pt-2.5 pb-1.5">
@@ -1172,23 +1195,7 @@ export function ProjectSidebar({
                       prefetchedActiveLane:
                         project.id === currentProjectId ? displayedCurrentActiveLane : undefined,
                     }}
-                    actions={{
-                      toggleExpanded: toggleExpandedProject,
-                      openProject: handleOpenProject,
-                      openProjectFolder: handleOpenProjectFolder,
-                      openProjectSettings: handleOpenProjectSettings,
-                      publishDevApp: handleRequestPublishDevApp,
-                      renameProject: handleStartRenameProject,
-                      archiveProject: handleArchiveProject,
-                      restoreProject: handleRestoreProject,
-                      deleteProject: handleStartDeleteProject,
-                      relinkProjectWorkspace: handleRelinkProjectWorkspace,
-                      closeProjectWorkspace: handleCloseProjectWorkspace,
-                      syncProject: handleSyncProject,
-                      moveProject,
-                      reorderProject: handleReorderProject,
-                      openLaneWorkbench,
-                    }}
+                    actions={projectItemActions}
                   />
                 );
               })

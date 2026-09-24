@@ -73,7 +73,11 @@ export function WorkbenchKeepAliveHost({
     current ? [current] : [],
   )
   const frozenSnapshotsRef = useRef(new Map<string, WorkbenchSessionSnapshot | null>())
-  const frozenGettersRef = useRef(new Map<string, () => WorkbenchSessionSnapshot | null>())
+  const sessionGettersRef = useRef(new Map<string, () => WorkbenchSessionSnapshot | null>())
+  // Read by each session's getter. Written during render, like the foreground
+  // key below, so a tile reading it in the same commit sees this render's value.
+  const liveRef = useRef({ instanceKey: current?.instanceKey ?? null, getWorkbenchSession })
+  liveRef.current = { instanceKey: current?.instanceKey ?? null, getWorkbenchSession }
 
   useLayoutEffect(() => {
     if (!current) {
@@ -81,13 +85,6 @@ export function WorkbenchKeepAliveHost({
     }
 
     frozenSnapshotsRef.current.set(current.instanceKey, getWorkbenchSession())
-    if (!frozenGettersRef.current.has(current.instanceKey)) {
-      const instanceKey = current.instanceKey
-      frozenGettersRef.current.set(
-        instanceKey,
-        () => frozenSnapshotsRef.current.get(instanceKey) ?? null,
-      )
-    }
 
     setSessions((previous) => {
       const themedPrevious = previous.map((session) =>
@@ -103,7 +100,7 @@ export function WorkbenchKeepAliveHost({
       for (const instanceKey of Array.from(frozenSnapshotsRef.current.keys())) {
         if (!kept.has(instanceKey)) {
           frozenSnapshotsRef.current.delete(instanceKey)
-          frozenGettersRef.current.delete(instanceKey)
+          sessionGettersRef.current.delete(instanceKey)
         }
       }
       if (
@@ -137,6 +134,22 @@ export function WorkbenchKeepAliveHost({
       ? foregroundInstanceKeyRef.current
       : null)
 
+  // One getter per session for its whole life. It reads the live session while
+  // this session is the current one and the frozen snapshot while it is parked.
+  // Swapping between two getters instead gave the dock runtime context a new
+  // value on every hide and show, re-rendering every tile, chat included.
+  const sessionGetter = (instanceKey: string) => {
+    let getter = sessionGettersRef.current.get(instanceKey)
+    if (!getter) {
+      getter = () =>
+        liveRef.current.instanceKey === instanceKey
+          ? liveRef.current.getWorkbenchSession()
+          : (frozenSnapshotsRef.current.get(instanceKey) ?? null)
+      sessionGettersRef.current.set(instanceKey, getter)
+    }
+    return getter
+  }
+
   if (sessions.length === 0) {
     return <>{fallback}</>
   }
@@ -159,11 +172,7 @@ export function WorkbenchKeepAliveHost({
                 session={session}
                 isActive={session.instanceKey === visibleInstanceKey}
                 isForeground={session.instanceKey === foregroundInstanceKey}
-                getWorkbenchSession={
-                  current?.instanceKey === session.instanceKey
-                    ? getWorkbenchSession
-                    : (frozenGettersRef.current.get(session.instanceKey) ?? getWorkbenchSession)
-                }
+                getWorkbenchSession={sessionGetter(session.instanceKey)}
               />
             )}
           </FrozenWorkbenchContextBoundary>
