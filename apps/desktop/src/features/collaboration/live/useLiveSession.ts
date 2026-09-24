@@ -176,8 +176,12 @@ export function useLiveSession(input: {
     api.collaborationSessions.listMembers,
     sessionId && signedIn ? { sessionId } : "skip",
   )
-  const members: LiveSessionMember[] =
-    membersQuery.data?.map((member) => ({ ...member, principalId: String(member.principalId) })) ?? NO_MEMBERS
+  // Memoized: a fresh array per render made every consumer of the session
+  // (the project context among them) see a change on each layout render.
+  const members = useMemo<LiveSessionMember[]>(
+    () => membersQuery.data?.map((member) => ({ ...member, principalId: String(member.principalId) })) ?? NO_MEMBERS,
+    [membersQuery.data],
+  )
   const membership = resolveMembership(session?.viewerMembership, members)
   const canManage = membership === "active" && members.some((member) => member.isSelf && member.role === "project_manager")
   const canEdit = membership === "active" && members.some((member) => member.isSelf && member.role !== "viewer")
@@ -314,6 +318,26 @@ export function useLiveSession(input: {
     if (waitingForGitHub && repositoryLinked) recheckGitAccess()
   }, [waitingForGitHub, repositoryLinked, recheckGitAccess])
 
+  const sessionLifecycle = session?.lifecycle ?? null
+  const inSessionWorkbench = workspaceId ? isSessionWorkspace : undefined
+  // The project context depends on this; rebuilding it every render re-rendered
+  // every page and panel that reads the project on each navigation.
+  const sync = useMemo(
+    () =>
+      sessionLifecycle
+        ? describeLiveSessionSync({
+            lifecycle: sessionLifecycle,
+            membership,
+            phase: daemon.phase,
+            status: daemon.status,
+            error: daemon.error,
+            // The workspace isn't known while the project loads; "off" covers that wait.
+            inSessionWorkbench,
+          })
+        : null,
+    [sessionLifecycle, membership, daemon.phase, daemon.status, daemon.error, inSessionWorkbench],
+  )
+
   const leaderName =
     members.find((member) => member.principalId === daemonStatus?.autoGit?.leaderPrincipalId)?.displayName ?? null
 
@@ -326,17 +350,7 @@ export function useLiveSession(input: {
     members,
     membership,
     canManage,
-    sync: session
-      ? describeLiveSessionSync({
-          lifecycle: session.lifecycle,
-          membership,
-          phase: daemon.phase,
-          status: daemon.status,
-          error: daemon.error,
-          // The workspace isn't known while the project loads; "off" covers that wait.
-          inSessionWorkbench: workspaceId ? isSessionWorkspace : undefined,
-        })
-      : null,
+    sync,
     autoGit: session ? describeAutoGit(daemonStatus, leaderName) : null,
     target: session ? describeTarget(daemonStatus?.target ?? null) : null,
     canEdit,

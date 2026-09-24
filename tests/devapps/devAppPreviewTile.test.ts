@@ -145,7 +145,8 @@ describe("Preview tile — registration", () => {
     // The palette host moved from the workbench surface to the project layout
     // (bf847c30f) so it is global; outside the workbench it gets no root.
     const paletteMount = projectLayoutSource.slice(projectLayoutSource.indexOf("<WorkbenchCommandPaletteHost"))
-    expect(paletteMount).toContain("projectRootPath={isWorkbenchView ? activeProjectRootPath : null}")
+    expect(paletteMount).toContain("projectRootPath={commandPaletteRootPath}")
+    expect(projectLayoutSource).toContain("const commandPaletteRootPath = isWorkbenchView ? activeProjectRootPath : null")
   })
 
   it("is registered as a dock component", () => {
