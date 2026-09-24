@@ -100,15 +100,7 @@ import {
 } from '@/components/ui/button';
 
 
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { UnifiedModal, UnifiedModalField } from '@/components/ui/unified-modal';
 import {
   Empty,
   EmptyContent,
@@ -1055,7 +1047,7 @@ export function TasksPage({
         shell
       )}
 
-      <Dialog
+      <UnifiedModal
         open={isCreateDialogOpen}
         onOpenChange={(open) => {
           setIsCreateDialogOpen(open)
@@ -1063,45 +1055,56 @@ export function TasksPage({
             resetDraft()
           }
         }}
-      >
-        <DialogContent className="sm:max-w-[860px]" showCloseButton={false}>
-          <DialogClose asChild>
-            <button
+        title={t('tasks.create.title')}
+        size="2xl"
+        dismissable={!isCreatingTask}
+        footer={
+          <>
+            <Button
               type="button"
-              className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent/70 text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/85 dark:bg-sidebar-accent/80 dark:hover:bg-sidebar-accent"
-              aria-label={t('tasks.action.close')}
+              variant="outline"
+              disabled={isCreatingTask}
+              onClick={() => {
+                setIsCreateDialogOpen(false)
+                resetDraft()
+              }}
             >
-              <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
-            </button>
-          </DialogClose>
-          <DialogHeader>
-            <DialogTitle>{t('tasks.create.title')}</DialogTitle>
-            <DialogDescription>
-              {t('tasks.create.desc')}
-            </DialogDescription>
-          </DialogHeader>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                void handleCreateTask()
+              }}
+              disabled={draftTitle.trim().length === 0 || isCreatingTask || !selectedDraftContext}
+            >
+              {isCreatingTask ? 'Adding...' : 'Add Task'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('tasks.create.desc')}</p>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="task-title">{t('tasks.label.title')}</Label>
-                <Input
-                  id="task-title"
-                  value={draftTitle}
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  placeholder={t('tasks.placeholder.title')}
-                />
-              </div>
+              <UnifiedModalField
+                id="task-title"
+                label={t('tasks.label.title')}
+                value={draftTitle}
+                onChange={setDraftTitle}
+                autoFocus
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="task-description">{t('tasks.label.desc')}</Label>
-                <Textarea
-                  id="task-description"
-                  value={draftDescription}
-                  onChange={(event) => setDraftDescription(event.target.value)}
-                  placeholder={t('tasks.placeholder.desc')}
-                />
-              </div>
+              {/* The modal field is single-line; a description needs rows, so
+                  it follows the same rule by hand: its title is the placeholder. */}
+              <Textarea
+                id="task-description"
+                value={draftDescription}
+                onChange={(event) => setDraftDescription(event.target.value)}
+                placeholder={t('tasks.label.desc')}
+                aria-label={t('tasks.label.desc')}
+              />
 
               <div className="space-y-2">
                 <Label htmlFor="task-deadline">{t('tasks.label.deadline')}</Label>
@@ -1126,7 +1129,7 @@ export function TasksPage({
                   />
 
                   {hasDraftClaimantSearch ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur dark:shadow-[0_22px_48px_rgba(0,0,0,0.36)]">
+                    <div className="mt-2 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5">
                       <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                         {claimantCandidatesLoading ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
@@ -1226,64 +1229,66 @@ export function TasksPage({
 
                 <div className="space-y-2">
                   <div className="relative">
-                    <Input
-                      className="pr-24"
-                      value={draftContextSearch}
-                      onChange={(event) => setDraftContextSearch(event.target.value)}
-                      placeholder={
-                        draftContextKind === 'page'
-                          ? t('tasks.placeholder.searchPreviews')
-                          : t('tasks.placeholder.searchFiles')
-                      }
-                    />
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                      <div className="relative inline-flex rounded-full bg-secondary p-1">
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            'pointer-events-none absolute left-1 top-1 h-7 w-7 rounded-full bg-black transition-transform duration-200 ease-out',
-                            draftContextKind === 'page' ? 'translate-x-0' : 'translate-x-7',
-                          )}
-                        />
-                      <button
-                        type="button"
-                        className={cn(
-                          'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                    <div className="relative">
+                      <Input
+                        className="pr-24"
+                        value={draftContextSearch}
+                        onChange={(event) => setDraftContextSearch(event.target.value)}
+                        placeholder={
                           draftContextKind === 'page'
-                            ? 'text-white'
-                            : 'text-muted-foreground hover:text-foreground',
-                        )}
-                        onClick={() => {
-                          setDraftContextKind('page')
-                          setDraftContextSearch('')
-                        }}
-                        aria-label={t('tasks.action.choosePreview')}
-                        title={t('tasks.action.choosePreview')}
-                      >
-                        <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className={cn(
-                          'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
-                          draftContextKind === 'file'
-                            ? 'text-white'
-                            : 'text-muted-foreground hover:text-foreground',
-                        )}
-                        onClick={() => {
-                          setDraftContextKind('file')
-                          setDraftContextSearch('')
-                        }}
-                        aria-label={t('tasks.action.chooseFile')}
-                        title={t('tasks.action.chooseFile')}
-                      >
-                        <HugeiconsIcon icon={__FileTextHugeIcon} className="h-3.5 w-3.5" />
-                      </button>
+                            ? t('tasks.placeholder.searchPreviews')
+                            : t('tasks.placeholder.searchFiles')
+                        }
+                      />
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                        <div className="relative inline-flex rounded-full bg-secondary p-1">
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              'pointer-events-none absolute left-1 top-1 h-7 w-7 rounded-full bg-black transition-transform duration-200 ease-out',
+                              draftContextKind === 'page' ? 'translate-x-0' : 'translate-x-7',
+                            )}
+                          />
+                        <button
+                          type="button"
+                          className={cn(
+                            'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                            draftContextKind === 'page'
+                              ? 'text-white'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                          onClick={() => {
+                            setDraftContextKind('page')
+                            setDraftContextSearch('')
+                          }}
+                          aria-label={t('tasks.action.choosePreview')}
+                          title={t('tasks.action.choosePreview')}
+                        >
+                          <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                            draftContextKind === 'file'
+                              ? 'text-white'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                          onClick={() => {
+                            setDraftContextKind('file')
+                            setDraftContextSearch('')
+                          }}
+                          aria-label={t('tasks.action.chooseFile')}
+                          title={t('tasks.action.chooseFile')}
+                        >
+                          <HugeiconsIcon icon={__FileTextHugeIcon} className="h-3.5 w-3.5" />
+                        </button>
+                        </div>
                       </div>
                     </div>
 
                     {hasDraftContextSearch ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur dark:shadow-[0_22px_48px_rgba(0,0,0,0.36)]">
+                      <div className="mt-2 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5">
                         <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                           {isVisibleContextLoading ? (
                             <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
@@ -1411,20 +1416,8 @@ export function TasksPage({
               </div>
             </div>
           </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              onClick={() => {
-                void handleCreateTask()
-              }}
-              disabled={draftTitle.trim().length === 0 || isCreatingTask || !selectedDraftContext}
-            >
-              {isCreatingTask ? 'Adding...' : 'Add Task'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </UnifiedModal>
     </>
   )
 }

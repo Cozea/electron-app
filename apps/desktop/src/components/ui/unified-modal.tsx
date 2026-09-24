@@ -74,6 +74,8 @@ export interface UnifiedModalProps {
   footer?: React.ReactNode;
   /** `data-tour` on the popup, for a product tour step that rings the modal. */
   tourTarget?: string;
+  /** Where focus goes on close, when the element that opened it may be gone. */
+  finalFocus?: React.ComponentProps<typeof BaseDialog.Popup>["finalFocus"];
   children: React.ReactNode;
 }
 
@@ -86,6 +88,7 @@ export function UnifiedModal({
   dismissable = true,
   footer,
   tourTarget,
+  finalFocus,
   children,
 }: UnifiedModalProps) {
   const handleOpenChange = React.useCallback(
@@ -110,6 +113,7 @@ export function UnifiedModal({
         <BaseDialog.Popup
           data-slot="unified-modal-content"
           data-tour={tourTarget}
+          finalFocus={finalFocus}
           className={cn(
             "fixed top-[50%] left-[50%] z-[var(--cozea-layer-dialog)] flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-2xl border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             UNIFIED_MODAL_SIZES[size],

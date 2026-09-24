@@ -89,6 +89,8 @@ export function CommandPalette({
 
   const keybindingIssues = issues.filter((issue) => issue.kind.startsWith("keybindings."))
 
+  // Deliberately not a UnifiedModal: a palette is a search surface pinned
+  // near the top, with no title or footer. It keeps the same popup surface.
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent

@@ -1,5 +1,5 @@
 import { useHeaderOverflow } from "./HeaderOverflowContext";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 
 import { api } from "../../../../../../../convex/_generated/api";
@@ -19,15 +19,7 @@ import { MAX_PROJECT_USERS } from "@shared/seatLimits";
 import { DeviceAvatar } from "@/components/ui/DeviceAvatar";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { UnifiedModal } from "@/components/ui/unified-modal";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getUserColor } from "@/components/presence/PresenceAvatarGroup";
 import { cn } from "@/lib/utils";
@@ -143,6 +135,9 @@ export function HeaderProjectShareButton({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Nothing opens the share modal through a trigger it knows about, so it is
+  // told where focus goes back to (see finalFocus below).
+  const shareTriggerRef = useRef<HTMLButtonElement>(null);
 
   const canManage = memberRole === "project_manager";
   // The server refuses past this; the field stops asking rather than failing late.
@@ -445,6 +440,78 @@ export function HeaderProjectShareButton({
     );
   }
 
+  // The footer carries every action that is not about one row: the join
+  // link, starting a group session, and closing.
+  const shareDialogFooter = (
+    <div className="flex w-full items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        {canManage ? (
+          <div className="inline-flex h-7 items-stretch overflow-hidden rounded-[calc(var(--radius-md)-1px)] bg-secondary text-secondary-foreground">
+            <Button
+              variant="ghost"
+              className="h-7 gap-1.5 rounded-none px-2.5 text-xs shadow-none"
+              disabled={busy !== null}
+              onClick={copyOrCreateLink}
+              title="Anyone with the link can authorize a Cozea device for this project"
+            >
+              {busy === "link" ? (
+                <Spinner size="xs" />
+              ) : (
+                <HugeiconsIcon icon={activeLink ? __CopyHugeIcon : __LinkHugeIcon} className="size-3.5" />
+              )}
+              {activeLink ? "Copy link" : "Create link"}
+            </Button>
+            <span aria-hidden="true" className="my-1 w-px bg-border" />
+            <Button
+              variant="ghost"
+              className="h-7 rounded-none px-2 text-xs shadow-none"
+              disabled={busy !== null}
+              aria-haspopup="menu"
+              aria-label={`Join link grants ${roleLabel(joinRole)}. Change it, or rotate and disable the link.`}
+              onClick={async (event) => {
+                const choice = await pickRole(
+                  event.currentTarget,
+                  joinRole,
+                  activeLink
+                    ? [
+                        { id: "link:sep", type: "separator" },
+                        { id: "link:rotate", label: "Rotate link" },
+                        { id: "link:disable", label: "Disable link", destructive: true },
+                      ]
+                    : [],
+                );
+                if (choice === "link:rotate") return rotateLink();
+                if (choice === "link:disable") return disableLink();
+                const picked = roleFromMenuId(choice);
+                if (picked) setJoinRole(picked);
+              }}
+            >
+              <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3" />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          onClick={() => {
+            setOpen(false);
+            setStartSessionOpen(true);
+          }}
+        >
+          <HugeiconsIcon icon={__PlayHugeIcon} className="size-3.5" />
+          Group session
+        </Button>
+        <Button onClick={() => setOpen(false)}>Done</Button>
+      </div>
+    </div>
+  );
+
+  const openShareDialog = () => {
+    headerOverflow?.dismiss();
+    setOpen(true);
+  };
+
   return (
     <>
     {branchSession ? (
@@ -494,77 +561,75 @@ export function HeaderProjectShareButton({
         </TooltipContent>
       </Tooltip>
     ) : null}
-    <Dialog open={open} onOpenChange={(next) => {
-      setOpen(next);
-      if (next) headerOverflow?.dismiss();
-    }}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <DialogTrigger asChild>
-            {hasActiveSession ? (
-              <Button
-                variant="ghost"
-                className="group inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground titlebar-no-drag cursor-pointer transition-[background-color,color,transform] duration-150 active:scale-[0.98]"
-                disabled={roleCheckPending || shareStatePending}
-                aria-label={`Live session with ${inSession.length} participant${inSession.length === 1 ? "" : "s"}. Click to open session menu.`}
-              >
-                <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
-                  {visible.map((member, index) => {
-                    const isSpeaking = member.microphoneState === "speaking";
+          {hasActiveSession ? (
+            <Button
+              ref={shareTriggerRef}
+              onClick={openShareDialog}
+              variant="ghost"
+              className="group inline-flex h-7 items-center justify-center rounded-md bg-transparent px-1 py-0 text-muted-foreground shadow-none hover:bg-accent hover:text-foreground titlebar-no-drag cursor-pointer transition-[background-color,color,transform] duration-150 active:scale-[0.98]"
+              disabled={roleCheckPending || shareStatePending}
+              aria-label={`Live session with ${inSession.length} participant${inSession.length === 1 ? "" : "s"}. Click to open session menu.`}
+            >
+              <div className="flex items-center -space-x-1.5 px-0.5 shrink-0">
+                {visible.map((member, index) => {
+                  const isSpeaking = member.microphoneState === "speaking";
 
-                    return (
-                      <span
-                        key={member.principalId}
-                        className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20"
-                        style={{ zIndex: visible.length - index }}
-                      >
-                        <DeviceAvatar
-                          displayName={member.displayName}
-                          avatarUrl={member.avatarUrl}
-                          principalId={member.principalId}
-                          className="size-6"
-                          fallbackClassName="text-[10px] font-medium"
-                          ringClassName={cn(
-                            "border-2 transition-all duration-150",
-                            isSpeaking
-                              ? "border-emerald-500 ring-2 ring-emerald-500 ring-offset-1 ring-offset-background group-hover:ring-offset-accent"
-                              : "border-background group-hover:border-accent",
-                          )}
-                        />
-                      </span>
-                    );
-                  })}
-                  {overflow > 0 ? (
+                  return (
                     <span
-                      className="relative inline-flex items-center"
-                      style={{ zIndex: 0 }}
+                      key={member.principalId}
+                      className="relative inline-flex items-center transition-transform hover:scale-110 hover:z-20"
+                      style={{ zIndex: visible.length - index }}
                     >
                       <DeviceAvatar
-                        overflowCount={overflow}
+                        displayName={member.displayName}
+                        avatarUrl={member.avatarUrl}
+                        principalId={member.principalId}
                         className="size-6"
                         fallbackClassName="text-[10px] font-medium"
-                        ringClassName="border-2 border-background group-hover:border-accent bg-muted transition-colors duration-150"
+                        ringClassName={cn(
+                          "border-2 transition-all duration-150",
+                          isSpeaking
+                            ? "border-emerald-500 ring-2 ring-emerald-500 ring-offset-1 ring-offset-background group-hover:ring-offset-accent"
+                            : "border-background group-hover:border-accent",
+                        )}
                       />
                     </span>
-                  ) : null}
-                </div>
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
-                disabled={roleCheckPending || shareStatePending}
-                aria-label="Share project"
-                title="Share project"
-              >
-                {roleCheckPending || shareStatePending ? (
-                  <Spinner size="sm" className="text-muted-foreground" />
-                ) : (
-                  <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
-                )}
-              </Button>
-            )}
-          </DialogTrigger>
+                  );
+                })}
+                {overflow > 0 ? (
+                  <span
+                    className="relative inline-flex items-center"
+                    style={{ zIndex: 0 }}
+                  >
+                    <DeviceAvatar
+                      overflowCount={overflow}
+                      className="size-6"
+                      fallbackClassName="text-[10px] font-medium"
+                      ringClassName="border-2 border-background group-hover:border-accent bg-muted transition-colors duration-150"
+                    />
+                  </span>
+                ) : null}
+              </div>
+            </Button>
+          ) : (
+            <Button
+              ref={shareTriggerRef}
+              onClick={openShareDialog}
+              variant="ghost"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent p-0 text-muted-foreground shadow-none hover:bg-muted/40 hover:text-foreground titlebar-no-drag transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
+              disabled={roleCheckPending || shareStatePending}
+              aria-label="Share project"
+              title="Share project"
+            >
+              {roleCheckPending || shareStatePending ? (
+                <Spinner size="sm" className="text-muted-foreground" />
+              ) : (
+                <HugeiconsIcon icon={__AddTeamHugeIcon} className="size-4 shrink-0" />
+              )}
+            </Button>
+          )}
         </TooltipTrigger>
         <TooltipContent
           side="bottom"
@@ -616,241 +681,179 @@ export function HeaderProjectShareButton({
         </TooltipContent>
       </Tooltip>
 
-      <DialogContent
-        finalFocus={headerOverflow?.returnFocus}
-        showCloseButton={false}
-        className="max-h-[82vh] max-w-lg overflow-y-auto"
+      <UnifiedModal
+        open={open}
+        onOpenChange={setOpen}
+        title={hasActiveSession
+          ? `Live session · ${projectName || "project"}`
+          : `Share ${projectName || "project"}`}
+        size="lg"
+        finalFocus={() => {
+          // The header button while it is on screen; when the header was
+          // collapsed it lived in the overflow menu, which has closed since.
+          const trigger = shareTriggerRef.current;
+          if (trigger?.isConnected && trigger.offsetParent) return trigger;
+          return headerOverflow?.returnFocus() ?? true;
+        }}
+        footer={shareDialogFooter}
       >
-        <DialogHeader>
-          <div className="flex items-center justify-between gap-3">
-            <DialogTitle className="min-w-0 truncate">
-              {hasActiveSession
-                ? `Live session · ${projectName || "project"}`
-                : `Share ${projectName || "project"}`}
-            </DialogTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 shrink-0 gap-1.5 text-xs"
-              onClick={() => {
-                setOpen(false);
-                setStartSessionOpen(true);
-              }}
-            >
-              <HugeiconsIcon icon={__PlayHugeIcon} className="size-3.5" />
-              Group session
-            </Button>
-          </div>
-        </DialogHeader>
+        <div className="space-y-4">
 
-        {error ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p> : null}
-        {notice ? <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{notice}</p> : null}
+          {error ? <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p> : null}
+          {notice ? <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{notice}</p> : null}
 
-        {!canManage ? (
-          <div>
-            <p className="rounded-md border border-border/60 px-3 py-3 text-sm text-muted-foreground">
-              Your role is {memberRole?.replace(/_/g, " ") || "member"}. Only project managers can change access.
-            </p>
-          </div>
-        ) : (
-          <section className="space-y-2">
-            <InviteDevicesField
-              projectId={projectId}
-              value={inviteTargets}
-              onChange={setInviteTargets}
-              disabled={busy !== null}
-              maxTargets={seatsLeft}
-              endAddon={
-                inviteTargets.length > 0 ? (
-                  <div className="inline-flex h-7 items-stretch overflow-hidden rounded-[calc(var(--radius-md)-1px)] bg-secondary text-secondary-foreground">
-                    <Button
-                      variant="ghost"
-                      className="h-7 rounded-none pl-2.5 pr-2 text-xs shadow-none"
-                      disabled={busy !== null}
-                      aria-haspopup="menu"
-                      aria-label={`Invite as ${roleLabel(inviteRole)}. Change the role for everyone on this invite.`}
-                      onClick={async (event) => {
-                        const picked = roleFromMenuId(await pickRole(event.currentTarget, inviteRole));
-                        if (picked) setInviteRole(picked);
-                      }}
-                    >
-                      {roleLabel(inviteRole)}
-                      <HugeiconsIcon icon={__ChevronDownHugeIcon} className="ml-1 size-3" />
-                    </Button>
-                    <span aria-hidden="true" className="my-1 w-px bg-border" />
-                    <Button
-                      variant="ghost"
-                      className="h-7 rounded-none px-2.5 text-xs shadow-none"
-                      disabled={busy !== null}
-                      onClick={inviteDevice}
-                      aria-label={`Send ${inviteTargets.length === 1 ? "the invitation" : `${inviteTargets.length} invitations`} as ${roleLabel(inviteRole)}`}
-                      title={`Send as ${roleLabel(inviteRole)}`}
-                    >
-                      {busy === "invite" ? (
-                        <Spinner size="xs" />
-                      ) : (
-                        <HugeiconsIcon icon={__SentHugeIcon} className="size-3.5" />
-                      )}
-                    </Button>
-                  </div>
-                ) : null
-              }
-            />
-          </section>
-        )}
-
-        <section className="space-y-2 pt-4">
-          <p className="text-sm font-medium text-foreground">Devices with access</p>
-          {members === undefined ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : members.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No project members.</p>
+          {!canManage ? (
+            <div>
+              <p className="rounded-md border border-border/60 px-3 py-3 text-sm text-muted-foreground">
+                Your role is {memberRole?.replace(/_/g, " ") || "member"}. Only project managers can change access.
+              </p>
+            </div>
           ) : (
-            <div className="space-y-1.5">
-              {members.map((member) => {
-                const self = principalId === member.principalId;
-                const rowBusy = busy === `member:${String(member.principalId)}`;
-                return (
-                  <div key={member._id} className="flex items-center gap-2.5 rounded-lg border border-border/50 px-2.5 py-2">
-                    <DeviceAvatar
-                      displayName={member.displayName}
-                      avatarUrl={member.avatarUrl}
-                      useColor={false}
-                      className="size-7"
-                      fallbackClassName="text-xs font-medium"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">{member.displayName}{self ? " · This device" : ""}</p>
+            <section className="space-y-2">
+              <InviteDevicesField
+                projectId={projectId}
+                value={inviteTargets}
+                onChange={setInviteTargets}
+                disabled={busy !== null}
+                maxTargets={seatsLeft}
+                endAddon={
+                  inviteTargets.length > 0 ? (
+                    <div className="inline-flex h-7 items-stretch overflow-hidden rounded-[calc(var(--radius-md)-1px)] bg-secondary text-secondary-foreground">
+                      <Button
+                        variant="ghost"
+                        className="h-7 rounded-none pl-2.5 pr-2 text-xs shadow-none"
+                        disabled={busy !== null}
+                        aria-haspopup="menu"
+                        aria-label={`Invite as ${roleLabel(inviteRole)}. Change the role for everyone on this invite.`}
+                        onClick={async (event) => {
+                          const picked = roleFromMenuId(await pickRole(event.currentTarget, inviteRole));
+                          if (picked) setInviteRole(picked);
+                        }}
+                      >
+                        {roleLabel(inviteRole)}
+                        <HugeiconsIcon icon={__ChevronDownHugeIcon} className="ml-1 size-3" />
+                      </Button>
+                      <span aria-hidden="true" className="my-1 w-px bg-border" />
+                      <Button
+                        variant="ghost"
+                        className="h-7 rounded-none px-2.5 text-xs shadow-none"
+                        disabled={busy !== null}
+                        onClick={inviteDevice}
+                        aria-label={`Send ${inviteTargets.length === 1 ? "the invitation" : `${inviteTargets.length} invitations`} as ${roleLabel(inviteRole)}`}
+                        title={`Send as ${roleLabel(inviteRole)}`}
+                      >
+                        {busy === "invite" ? (
+                          <Spinner size="xs" />
+                        ) : (
+                          <HugeiconsIcon icon={__SentHugeIcon} className="size-3.5" />
+                        )}
+                      </Button>
                     </div>
-                    {canManage && !self ? (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 px-2 text-xs text-muted-foreground"
-                          disabled={rowBusy}
-                          aria-haspopup="menu"
-                          aria-label={`${member.displayName} is ${roleLabel(member.role as ProjectRole)}. Change their role.`}
-                          onClick={async (event) => {
-                            const picked = roleFromMenuId(await pickRole(event.currentTarget, member.role as ProjectRole));
-                            if (!picked || picked === member.role) return;
-                            void run(`member:${String(member.principalId)}`, async () => {
-                              await updateMemberRole({ projectId, actorPrincipalId: principalId!, memberPrincipalId: member.principalId, newRole: picked });
-                            });
-                          }}
-                        >
-                          {roleLabel(member.role as ProjectRole)}
-                          <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          disabled={rowBusy}
-                          onClick={() => void run(`member:${String(member.principalId)}`, async () => {
-                            await removeMember({ projectId, actorPrincipalId: principalId!, memberPrincipalId: member.principalId });
-                          })}
-                          aria-label={`Remove ${member.displayName}`}
-                        >
-                          <HugeiconsIcon icon={__DeleteHugeIcon} className="size-3.5" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">{member.role.replace(/_/g, " ")}</span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  ) : null
+                }
+              />
+            </section>
           )}
-        </section>
 
-        {canManage && (pendingEnrollments ?? []).length > 0 ? (
-          <section className="space-y-2 pt-4">
-            <p className="text-sm font-medium text-foreground">Pending invitations</p>
-            <div className="space-y-1.5">
-              {(pendingEnrollments ?? []).map((enrollment) => (
-                <div key={enrollment._id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{enrollment.targetIdentityKey}</span>
-                  <span className="text-xs text-muted-foreground">{enrollment.role.replace(/_/g, " ")}</span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2.5 text-xs"
-                    disabled={busy !== null}
-                    onClick={() => void run(`cancel:${String(enrollment._id)}`, async () => {
-                      await cancelEnrollment({ enrollmentId: enrollment._id });
-                    })}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        <LiveSessionShareSection
-          projectId={projectId}
-          projectMembers={members}
-          canManageProject={canManage}
-          className="pt-4"
-        />
-
-        <DialogFooter className="items-center gap-2 pt-4 sm:justify-between">
-          <div className="flex items-center gap-2">
-            {canManage ? (
-              <div className="inline-flex h-7 items-stretch overflow-hidden rounded-[calc(var(--radius-md)-1px)] bg-secondary text-secondary-foreground">
-                <Button
-                  variant="ghost"
-                  className="h-7 gap-1.5 rounded-none px-2.5 text-xs shadow-none"
-                  disabled={busy !== null}
-                  onClick={copyOrCreateLink}
-                  title="Anyone with the link can authorize a Cozea device for this project"
-                >
-                  {busy === "link" ? (
-                    <Spinner size="xs" />
-                  ) : (
-                    <HugeiconsIcon icon={activeLink ? __CopyHugeIcon : __LinkHugeIcon} className="size-3.5" />
-                  )}
-                  {activeLink ? "Copy link" : "Create link"}
-                </Button>
-                <span aria-hidden="true" className="my-1 w-px bg-border" />
-                <Button
-                  variant="ghost"
-                  className="h-7 rounded-none px-2 text-xs shadow-none"
-                  disabled={busy !== null}
-                  aria-haspopup="menu"
-                  aria-label={`Join link grants ${roleLabel(joinRole)}. Change it, or rotate and disable the link.`}
-                  onClick={async (event) => {
-                    const choice = await pickRole(
-                      event.currentTarget,
-                      joinRole,
-                      activeLink
-                        ? [
-                            { id: "link:sep", type: "separator" },
-                            { id: "link:rotate", label: "Rotate link" },
-                            { id: "link:disable", label: "Disable link", destructive: true },
-                          ]
-                        : [],
-                    );
-                    if (choice === "link:rotate") return rotateLink();
-                    if (choice === "link:disable") return disableLink();
-                    const picked = roleFromMenuId(choice);
-                    if (picked) setJoinRole(picked);
-                  }}
-                >
-                  <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3" />
-                </Button>
+          <section className="space-y-2">
+            <p className="text-sm font-medium text-foreground">Devices with access</p>
+            {members === undefined ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : members.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No project members.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {members.map((member) => {
+                  const self = principalId === member.principalId;
+                  const rowBusy = busy === `member:${String(member.principalId)}`;
+                  return (
+                    <div key={member._id} className="flex items-center gap-2.5 rounded-lg border border-border/50 px-2.5 py-2">
+                      <DeviceAvatar
+                        displayName={member.displayName}
+                        avatarUrl={member.avatarUrl}
+                        useColor={false}
+                        className="size-7"
+                        fallbackClassName="text-xs font-medium"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{member.displayName}{self ? " · This device" : ""}</p>
+                      </div>
+                      {canManage && !self ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+                            disabled={rowBusy}
+                            aria-haspopup="menu"
+                            aria-label={`${member.displayName} is ${roleLabel(member.role as ProjectRole)}. Change their role.`}
+                            onClick={async (event) => {
+                              const picked = roleFromMenuId(await pickRole(event.currentTarget, member.role as ProjectRole));
+                              if (!picked || picked === member.role) return;
+                              void run(`member:${String(member.principalId)}`, async () => {
+                                await updateMemberRole({ projectId, actorPrincipalId: principalId!, memberPrincipalId: member.principalId, newRole: picked });
+                              });
+                            }}
+                          >
+                            {roleLabel(member.role as ProjectRole)}
+                            <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7"
+                            disabled={rowBusy}
+                            onClick={() => void run(`member:${String(member.principalId)}`, async () => {
+                              await removeMember({ projectId, actorPrincipalId: principalId!, memberPrincipalId: member.principalId });
+                            })}
+                            aria-label={`Remove ${member.displayName}`}
+                          >
+                            <HugeiconsIcon icon={__DeleteHugeIcon} className="size-3.5" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{member.role.replace(/_/g, " ")}</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ) : null}
-          </div>
-          <DialogClose asChild>
-            <Button variant="outline" size="sm" className="h-8 text-sm">Done</Button>
-          </DialogClose>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            )}
+          </section>
+
+          {canManage && (pendingEnrollments ?? []).length > 0 ? (
+            <section className="space-y-2">
+              <p className="text-sm font-medium text-foreground">Pending invitations</p>
+              <div className="space-y-1.5">
+                {(pendingEnrollments ?? []).map((enrollment) => (
+                  <div key={enrollment._id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm">
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">{enrollment.targetIdentityKey}</span>
+                    <span className="text-xs text-muted-foreground">{enrollment.role.replace(/_/g, " ")}</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2.5 text-xs"
+                      disabled={busy !== null}
+                      onClick={() => void run(`cancel:${String(enrollment._id)}`, async () => {
+                        await cancelEnrollment({ enrollmentId: enrollment._id });
+                      })}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <LiveSessionShareSection
+            projectId={projectId}
+            projectMembers={members}
+            canManageProject={canManage}
+          />
+
+        </div>
+      </UnifiedModal>
     <StartCollaborationDialog
       isOpen={startSessionOpen}
       onOpenChange={setStartSessionOpen}
