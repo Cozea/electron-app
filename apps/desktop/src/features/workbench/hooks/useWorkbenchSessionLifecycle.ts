@@ -90,8 +90,11 @@ export function useWorkbenchSessionLifecycle({
 
   useEffect(() => {
     if (!enabled || !projectId || !laneId || !workspaceId || !workspaceRevision) {
+      // The last snapshot is kept, not cleared: nothing reads it while there is
+      // no current identity (the return below yields null), and when the same
+      // workbench is shown again it answers at once. Clearing it made the
+      // session key go null and back on every return, restarting every tile.
       activeSessionKeyRef.current = null
-      setScopedSnapshot(null)
       void navigationController.setPresentation(null, retainedRef.current)
       return
     }

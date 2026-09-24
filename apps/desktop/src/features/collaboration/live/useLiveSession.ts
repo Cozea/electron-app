@@ -13,13 +13,14 @@
  * member, and offers the membership and lifecycle actions the bar shows.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation } from "convex/react"
 import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/projectd-protocol"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
+import { useStableActions } from "@/hooks/useStableActions"
 import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
@@ -117,27 +118,6 @@ type LiveSessionActions = Pick<
   | "end"
   | "openSessionWorkbench"
 >
-
-/**
- * Stable functions that always call the latest version of each action, so a
- * memoized consumer is not invalidated by closures recreated every render.
- */
-function useStableActions<T extends Record<string, (...args: never[]) => void>>(actions: T): T {
-  const latest = useRef(actions)
-  useLayoutEffect(() => {
-    latest.current = actions
-  })
-  const [stable] = useState(
-    () =>
-      Object.fromEntries(
-        Object.keys(actions).map((name) => [
-          name,
-          (...args: never[]) => latest.current[name](...args),
-        ]),
-      ) as T,
-  )
-  return stable
-}
 
 /** Saves the session to its branch now, or asks the Mac that saves it to. */
 async function saveSessionNow(publicSessionId: string, branchName: string): Promise<void> {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { create } from 'zustand'
 import { scheduleTask } from '@/lib/scheduler'
 import { desktopPersistenceClient } from '@/app/model/persistence/desktopPersistenceClient'
@@ -239,6 +239,29 @@ function useCachedQueryEntry<T>(key: string, maxAge: number): T | undefined {
 }
 
 /**
+ * Returns the previous value while a new one has the same content. A cached
+ * copy and the fresh query result are different objects for the same record,
+ * so switching from one to the other re-rendered every consumer for nothing.
+ * Content is compared only when the reference changes.
+ */
+function useSameContentIdentity<T>(value: T): T {
+  const previous = useRef(value)
+  if (previous.current !== value && !sameContent(previous.current, value)) {
+    previous.current = value
+  }
+  return previous.current
+}
+
+function sameContent(a: unknown, b: unknown): boolean {
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
+  try {
+    return JSON.stringify(a) === JSON.stringify(b)
+  } catch {
+    return false
+  }
+}
+
+/**
  * Hook to use cached query data with automatic cache updates.
  * Returns cached data immediately, updates when fresh data arrives.
  */
@@ -257,9 +280,10 @@ export function useCachedQueryState<T>(
   }, [key, freshData])
 
   const hasResolved = freshData !== undefined
+  const data = useSameContentIdentity(freshData === undefined ? cachedData : freshData)
 
   return {
-    data: freshData === undefined ? cachedData : freshData,
+    data,
     cachedData,
     freshData,
     hasResolved,
