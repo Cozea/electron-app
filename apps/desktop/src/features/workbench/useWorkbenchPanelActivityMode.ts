@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import type { DockviewPanelApi } from "dockview-react"
 
-import { useOptionalWorkbenchDockRuntime } from "@/features/workbench/WorkbenchDockRuntimeContext"
+import { useOptionalWorkbenchSurfaceVisibility } from "@/features/workbench/WorkbenchDockRuntimeContext"
 
 export interface WorkbenchPanelActivityState {
   mode: "visible" | "hidden"
@@ -75,9 +75,9 @@ export function useWorkbenchPanelActivityMode(
   // panels still report visible, so native surfaces (browser views, embedded
   // previews) would keep painting over the active project. Gate on the
   // surface flag from the dock runtime.
-  const dockRuntime = useOptionalWorkbenchDockRuntime()
-  const surfaceVisible = dockRuntime?.surfaceVisible ?? true
-  const surfaceForeground = dockRuntime?.surfaceForeground ?? surfaceVisible
+  const surface = useOptionalWorkbenchSurfaceVisibility()
+  const surfaceVisible = surface?.surfaceVisible ?? true
+  const surfaceForeground = surface?.surfaceForeground ?? surfaceVisible
   const [state, setState] = useState<WorkbenchPanelActivityState>(() =>
     readPanelActivityState(panelApi),
   )

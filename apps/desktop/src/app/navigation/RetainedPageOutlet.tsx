@@ -6,14 +6,18 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ComponentType,
   type ReactNode,
 } from "react"
 import { useRouter, useRouterState } from "@tanstack/react-router"
+import { ConvexProvider, useConvex } from "convex/react"
 
 import { AppErrorScreen } from "@/components/AppErrorScreen"
 import { RETAINED_PAGE_ATTRIBUTE } from "@/lib/activePageDom"
 import { Outlet, RouteSnapshotContext, type RouteSnapshot } from "@/lib/router"
+
+import { createRetainedPageQueries } from "./retainedPageQueries"
 
 /**
  * Pages kept mounted at once: the visible one plus four hidden. A desktop app
@@ -162,7 +166,22 @@ const RetainedPageSlot = memo(function RetainedPageSlot({
   Component: ComponentType
   snapshot: RouteSnapshot
 }) {
-  return (
+  const convex = useConvex()
+  const [queries] = useState(() => (convex ? createRetainedPageQueries(convex) : null))
+
+  // Layout effect: runs before the hidden page's own effects are disconnected,
+  // so its Convex unsubscribes on hide see the page as hidden.
+  useLayoutEffect(() => {
+    queries?.setVisible(visible)
+  }, [queries, visible])
+  // Passive effect: runs after the page's own effects, so on reveal the page
+  // has resubscribed before its held subscriptions are dropped.
+  useEffect(() => {
+    if (visible) queries?.release()
+  }, [queries, visible])
+  useEffect(() => () => queries?.release(), [queries])
+
+  const page = (
     <RetainedPageFrame visible={visible}>
       <Activity mode={visible ? "visible" : "hidden"} name={`page:${pageKey}`}>
         <RouteSnapshotContext.Provider value={snapshot}>
@@ -173,6 +192,7 @@ const RetainedPageSlot = memo(function RetainedPageSlot({
       </Activity>
     </RetainedPageFrame>
   )
+  return queries ? <ConvexProvider client={queries.client}>{page}</ConvexProvider> : page
 })
 
 /**
