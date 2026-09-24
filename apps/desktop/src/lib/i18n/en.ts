@@ -116,7 +116,6 @@ const en = {
   "settings.account.resetConfirmLabel":
     'Type "RESET" to confirm',
   "settings.account.deleteConfirmPlaceholder": "delete my account",
-  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Settings: Appearance ────────────────────────────────────────────
   "settings.appearance.theme": "Theme",
@@ -417,9 +416,7 @@ const en = {
   "tasks.create.title": "Add Task",
   "tasks.create.desc": "Create a task with a deadline, objectives, an optional assignee, and a linked file or preview.",
   "tasks.label.title": "Title",
-  "tasks.placeholder.title": "Ship billing settings",
   "tasks.label.desc": "Description",
-  "tasks.placeholder.desc": "Short context for this task",
   "tasks.label.deadline": "Deadline",
   "tasks.label.assignee": "Assignee",
   "tasks.placeholder.searchPeople": "Search people...",
@@ -735,9 +732,7 @@ const en = {
   "workbench.devserver.processes.automatic": "Detected automatically",
   "workbench.devserver.processes.default": "Default",
   "workbench.devserver.processes.name": "Name",
-  "workbench.devserver.processes.namePlaceholder": "Backend",
   "workbench.devserver.processes.command": "Command",
-  "workbench.devserver.processes.commandPlaceholder": "bun run dev",
   "workbench.devserver.processes.remove": "Remove process",
   "workbench.devserver.processes.toggleDetails": "Show or hide process details",
   "workbench.devserver.processes.untitled": "Untitled process",

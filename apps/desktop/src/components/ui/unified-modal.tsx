@@ -4,7 +4,8 @@ import * as React from "react";
 import { Dialog as BaseDialog } from "@base-ui/react";
 
 import { cn } from "@/lib/utils";
-import { Dialog, DialogOverlay, DialogPortal, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogOverlay, DialogPortal } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 /**
  * Unified modal shell for the Cozea design system.
@@ -12,6 +13,9 @@ import { Dialog, DialogOverlay, DialogPortal, DialogTitle } from "@/components/u
  * Codified rules (do not work around them per call site):
  * - Title is a required plain string. No icons, no subtitles, no description
  *   slot — context belongs in the body.
+ * - Body copy is minimal: as little text as possible, a sentence or two.
+ * - Typography always inherits the app font (`font-sans`). Never a
+ *   display face, never a per-modal font treatment.
  * - Never renders a top close button. Dismissal happens through footer
  *   actions (or `dismissable` outside/escape behavior).
  * - The footer is a shaded band (`bg-muted/50` + top border) with
@@ -29,6 +33,8 @@ export const UNIFIED_MODAL_SIZES = {
   xl: "sm:max-w-2xl",
   /** Full task-scale forms. */
   "2xl": "sm:max-w-[860px]",
+  /** Full-bleed review surfaces (diffs). */
+  "3xl": "sm:max-w-6xl",
 } as const;
 
 export type UnifiedModalSize = keyof typeof UNIFIED_MODAL_SIZES;
@@ -66,6 +72,10 @@ export interface UnifiedModalProps {
   dismissable?: boolean;
   /** Rendered inside the shaded footer band. Omit for no footer. */
   footer?: React.ReactNode;
+  /** `data-tour` on the popup, for a product tour step that rings the modal. */
+  tourTarget?: string;
+  /** Where focus goes on close, when the element that opened it may be gone. */
+  finalFocus?: React.ComponentProps<typeof BaseDialog.Popup>["finalFocus"];
   children: React.ReactNode;
 }
 
@@ -77,6 +87,8 @@ export function UnifiedModal({
   animation = "pop",
   dismissable = true,
   footer,
+  tourTarget,
+  finalFocus,
   children,
 }: UnifiedModalProps) {
   const handleOpenChange = React.useCallback(
@@ -100,22 +112,31 @@ export function UnifiedModal({
         <DialogOverlay />
         <BaseDialog.Popup
           data-slot="unified-modal-content"
+          data-tour={tourTarget}
+          finalFocus={finalFocus}
           className={cn(
-            "fixed top-[50%] left-[50%] z-[var(--cozea-layer-dialog)] flex w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-2xl border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+            "fixed top-[50%] left-[50%] z-[var(--cozea-layer-dialog)] flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] flex-col overflow-hidden rounded-2xl border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
             UNIFIED_MODAL_SIZES[size],
             UNIFIED_MODAL_ANIMATIONS[animation],
           )}
         >
-          <div data-slot="unified-modal-header" className="px-6 pt-5">
-            <DialogTitle className="text-left">{title}</DialogTitle>
+          <div data-slot="unified-modal-header" className="shrink-0 px-6 pt-5">
+            <BaseDialog.Title
+              data-slot="unified-modal-title"
+              className="text-left font-sans text-lg font-semibold leading-snug tracking-tight"
+            >
+              {title}
+            </BaseDialog.Title>
           </div>
-          <div data-slot="unified-modal-body" className="px-6 py-4">
+          {/* The popup never outgrows the window; a tall body scrolls
+              between the fixed title and footer instead of being clipped. */}
+          <div data-slot="unified-modal-body" className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
             {children}
           </div>
           {footer ? (
             <div
               data-slot="unified-modal-footer"
-              className="flex items-center justify-end gap-2 border-t border-border/60 bg-muted/50 px-6 py-4"
+              className="flex shrink-0 items-center justify-end gap-2 border-t border-border/60 bg-muted/50 px-6 py-4"
             >
               {footer}
             </div>
@@ -123,5 +144,67 @@ export function UnifiedModal({
         </BaseDialog.Popup>
       </DialogPortal>
     </Dialog>
+  );
+}
+
+export interface UnifiedModalFieldProps {
+  id: string;
+  /** Field title. Visible only as placeholder text when the field is empty —
+   *  never a label above, never floated. Exposed to assistive tech via aria-label. */
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoFocus?: boolean;
+  disabled?: boolean;
+  autoComplete?: string;
+  spellCheck?: boolean;
+  maxLength?: number;
+  required?: boolean;
+  /** Suffix inside the field (e.g. character counters). */
+  trailing?: React.ReactNode;
+  className?: string;
+}
+
+/**
+ * The single codified text field for modals: a shared `Input` whose title
+ * is the placeholder, shown only while empty. No label above, no floated
+ * label, no per-modal field chrome.
+ * Instruction-style prompts (type-to-confirm) use a plain `Input` with a
+ * merged instruction placeholder instead — see ConfirmModal usage.
+ */
+export function UnifiedModalField({
+  id,
+  label,
+  value,
+  onChange,
+  autoFocus,
+  disabled,
+  autoComplete,
+  spellCheck,
+  maxLength,
+  required,
+  trailing,
+  className,
+}: UnifiedModalFieldProps) {
+  return (
+    <div className={cn("relative", className)}>
+      <Input
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={label}
+        aria-label={label}
+        autoFocus={autoFocus}
+        disabled={disabled}
+        autoComplete={autoComplete}
+        spellCheck={spellCheck}
+        maxLength={maxLength}
+        required={required}
+        className={cn(trailing && "pr-12")}
+      />
+      {trailing ? (
+        <span className="absolute right-3 top-1/2 -translate-y-1/2">{trailing}</span>
+      ) : null}
+    </div>
   );
 }

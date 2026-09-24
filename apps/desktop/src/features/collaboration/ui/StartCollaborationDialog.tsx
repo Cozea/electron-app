@@ -17,14 +17,7 @@ import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
@@ -230,14 +223,37 @@ export function StartCollaborationDialog({
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={close}>
-      <DialogContent className="sm:max-w-[460px]">
-        <DialogHeader>
-          <DialogTitle className="text-base font-semibold">Start live session</DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
-            Collaborate in real time on <strong className="text-foreground">{projectName}</strong>.
-          </DialogDescription>
-        </DialogHeader>
+    <UnifiedModal
+      open={isOpen}
+      onOpenChange={close}
+      title="Start live session"
+      size="lg"
+      dismissable={!submitting}
+      footer={
+        <>
+          <Button type="button" variant="outline" size="sm" onClick={() => close(false)} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleStart}
+            disabled={
+              submitting ||
+              plan.status !== "ready" ||
+              Boolean(repositoryUrl && remoteCarriesCredentials(originUrl) && !acknowledgeCredentialRemote)
+            }
+          >
+            {submitting ? <Spinner size="xs" className="mr-1.5" /> : null}
+            {submitting ? "Starting…" : createdSession ? "Retry setup" : "Start session"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Collaborate in real time on <strong className="text-foreground">{projectName}</strong>.
+        </p>
 
         <div className="space-y-4 py-1">
           {/* Branch Selection */}
@@ -430,26 +446,7 @@ export function StartCollaborationDialog({
             </p>
           ) : null}
         </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" size="sm" onClick={() => close(false)} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={handleStart}
-            disabled={
-              submitting ||
-              plan.status !== "ready" ||
-              Boolean(repositoryUrl && remoteCarriesCredentials(originUrl) && !acknowledgeCredentialRemote)
-            }
-          >
-            {submitting ? <Spinner size="xs" className="mr-1.5" /> : null}
-            {submitting ? "Starting…" : createdSession ? "Retry setup" : "Start session"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </UnifiedModal>
   )
 }

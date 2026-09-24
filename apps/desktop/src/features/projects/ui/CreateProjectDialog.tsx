@@ -4,16 +4,9 @@ import { useMutation } from "convex/react"
 import { api } from "../../../../../../convex/_generated/api"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { GhCliStatus } from "../../../../../../shared/electronApiTypes"
 import type { DevAppScaffoldStarter } from "../../../../../../shared/devAppAuthoringTypes"
@@ -454,30 +447,39 @@ export function CreateProjectDialog({
   ])
 
   return (
-    <Dialog
+    <UnifiedModal
       open={open}
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
           closeDialog()
         }
       }}
+      title={copy.title}
+      size="md"
+      dismissable={!isSubmitting}
+      tourTarget="create-project-dialog"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={closeDialog} disabled={isSubmitting}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={isCreateProjectDisabled}
+          >
+            {isSubmitting ? (
+              <div className="loader" />
+            ) : null}
+            {copy.submitLabel}
+          </Button>
+        </>
+      }
     >
-      <DialogContent
-        data-tour="create-project-dialog"
-        showCloseButton={false}
-        className="border-border/70 bg-popover p-4 shadow-xl sm:max-w-md"
-      >
-        <DialogHeader className="items-start space-y-1 text-left">
-          <DialogTitle>{copy.title}</DialogTitle>
-          <DialogDescription className="text-sm">{copy.description}</DialogDescription>
-        </DialogHeader>
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">{copy.description}</p>
 
-        <div
-          className={cn(
-            "max-h-[calc(100vh-16rem)] overflow-y-auto",
-            isLocalMode ? "space-y-2" : "space-y-2.5",
-          )}
-        >
+        <div className={isLocalMode ? "space-y-2" : "space-y-2.5"}>
           <section>
             <SettingsGroup>
               <SettingsRow isFirst>
@@ -641,35 +643,6 @@ export function CreateProjectDialog({
                 </SettingsRow>
               ) : null}
 
-              {isFreshMode ? (
-                <SettingsRow>
-                  <div className="min-w-0 flex-1" />
-                  <SettingsRowControl className="gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="rounded-full"
-                      onClick={closeDialog}
-                      disabled={isSubmitting}
-                    >
-                      {t('common.cancel')}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="rounded-full"
-                      onClick={() => void handleSubmit()}
-                      disabled={isCreateProjectDisabled}
-                    >
-                      {isSubmitting ? (
-                        <div className="loader" />
-                      ) : null}
-                      {copy.submitLabel}
-                    </Button>
-                  </SettingsRowControl>
-                </SettingsRow>
-              ) : null}
             </SettingsGroup>
           </section>
 
@@ -696,35 +669,7 @@ export function CreateProjectDialog({
           ) : null}
         </div>
 
-        {isLocalMode ? (
-          <DialogFooter className="flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-            <div className="flex shrink-0 justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                onClick={closeDialog}
-                disabled={isSubmitting}
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="rounded-full"
-                onClick={() => void handleSubmit()}
-                disabled={isCreateProjectDisabled}
-              >
-                {isSubmitting ? (
-                  <div className="loader" />
-                ) : null}
-                {copy.submitLabel}
-              </Button>
-            </div>
-          </DialogFooter>
-        ) : null}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </UnifiedModal>
   )
 }

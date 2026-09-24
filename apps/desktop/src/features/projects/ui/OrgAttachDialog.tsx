@@ -3,14 +3,7 @@ import { useEffect, useMemo, useState } from "react"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useMyOrganizations } from "@/hooks/useMyOrganizations"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { UnifiedModal, UnifiedModalField } from "@/components/ui/unified-modal"
 import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import { HugeiconsIcon } from "@hugeicons/react"
@@ -66,12 +59,37 @@ export function OrgAttachDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("orgDevApp.attach.title")}</DialogTitle>
-          <DialogDescription>{t("orgDevApp.attach.description")}</DialogDescription>
-        </DialogHeader>
+    <UnifiedModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("orgDevApp.attach.title")}
+      size="md"
+      dismissable={!busy}
+      footer={
+        <>
+          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+            {t("common.cancel")}
+          </Button>
+          {mode === "existing" && defaultOrgId ? (
+            <Button
+              disabled={busy || !defaultOrgId}
+              onClick={() => void run(() => onAttach(defaultOrgId))}
+            >
+              {confirmAttachLabel}
+            </Button>
+          ) : (
+            <Button
+              disabled={busy || !name.trim()}
+              onClick={() => void run(() => onCreate(name.trim()))}
+            >
+              {confirmCreateLabel}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">{t("orgDevApp.attach.description")}</p>
 
         {hasExistingOrgs ? (
           <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted/50 p-1">
@@ -138,21 +156,14 @@ export function OrgAttachDialog({
               })}
             </div>
           ) : (
-            <div className="flex h-full flex-col justify-start pt-1 space-y-2">
-              <div className="rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5">
-                <label htmlFor="org-name-input" className="block text-[11px] font-medium text-muted-foreground">
-                  {t("orgDevApp.attach.name")}
-                </label>
-                <input
-                  id="org-name-input"
-                  type="text"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Organization name"
-                  className="mt-1 h-7 w-full border-0 border-none bg-transparent p-0 text-sm font-normal text-foreground shadow-none outline-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none"
-                  autoFocus={!hasExistingOrgs}
-                />
-              </div>
+            <div className="flex h-full flex-col justify-start space-y-2 pt-1">
+              <UnifiedModalField
+                id="org-name-input"
+                label={t("orgDevApp.attach.name")}
+                value={name}
+                onChange={setName}
+                autoFocus={!hasExistingOrgs}
+              />
               <p className="px-1 text-xs text-muted-foreground/70">
                 You will be the administrator of this organization.
               </p>
@@ -160,27 +171,7 @@ export function OrgAttachDialog({
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          {mode === "existing" && defaultOrgId ? (
-            <Button
-              disabled={busy || !defaultOrgId}
-              onClick={() => void run(() => onAttach(defaultOrgId))}
-            >
-              {confirmAttachLabel}
-            </Button>
-          ) : (
-            <Button
-              disabled={busy || !name.trim()}
-              onClick={() => void run(() => onCreate(name.trim()))}
-            >
-              {confirmCreateLabel}
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </UnifiedModal>
   )
 }

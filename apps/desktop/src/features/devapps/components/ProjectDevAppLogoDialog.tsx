@@ -7,16 +7,7 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { UnifiedModal, UnifiedModalField } from "@/components/ui/unified-modal";
 import {
   optimizeProjectDevAppLogo,
   PROJECT_DEVAPP_LOGO_ACCEPT,
@@ -152,12 +143,39 @@ export function ProjectDevAppLogoDialog(props: ProjectDevAppLogoDialogProps) {
     (props.mode === "change" && (!isNameValid || !hasIdentityChanged));
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{projectTitle}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+    <UnifiedModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={projectTitle}
+      size="md"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            type="button"
+            disabled={isConfirmDisabled}
+            aria-describedby={logoDataUrl ? undefined : "project-devapp-logo-required"}
+            onClick={() => {
+              if (!logoDataUrl) return;
+
+              if (props.mode === "change") {
+                if (!isNameValid || !hasIdentityChanged) return;
+                void props.onConfirm(logoDataUrl, normalizedName);
+                return;
+              }
+
+              void props.onConfirm(logoDataUrl);
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">{description}</p>
 
         <input
           ref={inputRef}
@@ -172,29 +190,22 @@ export function ProjectDevAppLogoDialog(props: ProjectDevAppLogoDialogProps) {
         />
 
         {props.mode === "change" ? (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="project-devapp-name" className="text-xs font-medium text-foreground">
-                {t("projectDevApp.logo.nameLabel")}
-              </Label>
+          <UnifiedModalField
+            id="project-devapp-name"
+            label={t("projectDevApp.logo.nameLabel")}
+            value={devAppName}
+            onChange={setDevAppName}
+            maxLength={PROJECT_DEVAPP_NAME_MAX_LENGTH}
+            required
+            autoFocus
+            autoComplete="off"
+            spellCheck={false}
+            trailing={
               <span className="text-[11px] tabular-nums text-muted-foreground">
                 {devAppName.length}/{PROJECT_DEVAPP_NAME_MAX_LENGTH}
               </span>
-            </div>
-            <Input
-              id="project-devapp-name"
-              value={devAppName}
-              maxLength={PROJECT_DEVAPP_NAME_MAX_LENGTH}
-              required
-              autoFocus
-              autoComplete="off"
-              spellCheck={false}
-              className="bg-muted/35 shadow-none dark:bg-input/40"
-              onChange={(event) => {
-                setDevAppName(event.currentTarget.value);
-              }}
-            />
-          </div>
+            }
+          />
         ) : null}
 
         <div
@@ -275,30 +286,7 @@ export function ProjectDevAppLogoDialog(props: ProjectDevAppLogoDialogProps) {
           </div>
         ) : null}
 
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button
-            type="button"
-            disabled={isConfirmDisabled}
-            aria-describedby={logoDataUrl ? undefined : "project-devapp-logo-required"}
-            onClick={() => {
-              if (!logoDataUrl) return;
-
-              if (props.mode === "change") {
-                if (!isNameValid || !hasIdentityChanged) return;
-                void props.onConfirm(logoDataUrl, normalizedName);
-                return;
-              }
-
-              void props.onConfirm(logoDataUrl);
-            }}
-          >
-            {confirmLabel}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </UnifiedModal>
   );
 }

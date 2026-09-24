@@ -15,14 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import type { ProjectdMergePreview, ProjectdMergeResult, ProjectdMergeStrategy, ProjectdPullRequestResult } from "@cozea/projectd-protocol"
 
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { Spinner } from "@/components/ui/spinner"
 import { appToast } from "@/lib/appToast"
 
@@ -285,34 +278,14 @@ export function MergeSessionDialog({
   const close = () => onOpenChange(false)
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => (merging ? undefined : onOpenChange(open))}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>
-            Merge <span className="font-mono">{branchName}</span> into <span className="font-mono">{targetBranch}</span>
-          </DialogTitle>
-          <DialogDescription>
-            The merge takes the session&apos;s last save to Git, never the live files, so everyone&apos;s unsaved edits
-            stay out of it.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="py-2">
-          <MergeSessionBody
-            targetBranch={targetBranch}
-            preview={preview}
-            loading={loading}
-            error={error}
-            result={result}
-            strategy={strategy}
-            onStrategyChange={setStrategy}
-            saveNote={saveNote}
-            onSaveNow={() => void saveNow()}
-            onCheckAgain={() => void load()}
-          />
-        </div>
-
-        <DialogFooter>
+    <UnifiedModal
+      open={isOpen}
+      onOpenChange={(open) => (merging ? undefined : onOpenChange(open))}
+      title={`Merge ${branchName} into ${targetBranch}`}
+      size="lg"
+      dismissable={!merging}
+      footer={
+        <>
           {merged ? (
             <>
               {canManage ? (
@@ -380,8 +353,30 @@ export function MergeSessionDialog({
               ) : null}
             </>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          The merge takes the session&apos;s last save to Git, never the live files, so everyone&apos;s unsaved edits
+          stay out of it.
+        </p>
+
+        <div className="py-2">
+          <MergeSessionBody
+            targetBranch={targetBranch}
+            preview={preview}
+            loading={loading}
+            error={error}
+            result={result}
+            strategy={strategy}
+            onStrategyChange={setStrategy}
+            saveNote={saveNote}
+            onSaveNow={() => void saveNow()}
+            onCheckAgain={() => void load()}
+          />
+        </div>
+      </div>
+    </UnifiedModal>
   )
 }

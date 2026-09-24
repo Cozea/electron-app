@@ -120,7 +120,6 @@ const es: Record<TranslationKey, string> = {
   "settings.account.resetConfirmLabel":
     'Escribe "RESET" para confirmar',
   "settings.account.deleteConfirmPlaceholder": "eliminar mi cuenta",
-  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Configuración: Apariencia ───────────────────────────────────────
   "settings.appearance.theme": "Tema",
@@ -427,9 +426,7 @@ const es: Record<TranslationKey, string> = {
   "tasks.create.title": "Añadir Tarea",
   "tasks.create.desc": "Crea una tarea con fecha límite, objetivos, un responsable y un archivo vinculado.",
   "tasks.label.title": "Título",
-  "tasks.placeholder.title": "Configuración de facturación",
   "tasks.label.desc": "Descripción",
-  "tasks.placeholder.desc": "Contexto breve para esta tarea",
   "tasks.label.deadline": "Fecha límite",
   "tasks.label.assignee": "Responsable",
   "tasks.placeholder.searchPeople": "Buscar personas...",
@@ -745,9 +742,7 @@ const es: Record<TranslationKey, string> = {
   "workbench.devserver.processes.automatic": "Detectado automáticamente",
   "workbench.devserver.processes.default": "Predeterminado",
   "workbench.devserver.processes.name": "Nombre",
-  "workbench.devserver.processes.namePlaceholder": "Backend",
   "workbench.devserver.processes.command": "Comando",
-  "workbench.devserver.processes.commandPlaceholder": "bun run dev",
   "workbench.devserver.processes.remove": "Eliminar proceso",
   "workbench.devserver.processes.toggleDetails": "Mostrar u ocultar los detalles del proceso",
   "workbench.devserver.processes.untitled": "Proceso sin título",

@@ -42,14 +42,7 @@ import { useTranslation } from "@/lib/i18n";
 import { featureFlags } from "@/lib/featureFlags";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { UnifiedModal } from "@/components/ui/unified-modal";
 import { Progress } from "@/components/ui/progress";
 import { buildProjectPath } from "@/contexts/project/projectRoutes";
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent";
@@ -1293,18 +1286,35 @@ export function ProjectSidebar({
           />
         </React.Suspense>
       ) : null}
-      <Dialog open={Boolean(devAppPublishing)} onOpenChange={() => undefined}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {devAppPublishing?.mode === "update"
-                ? t("orgDevApp.publish.updateTitle")
-                : t("orgDevApp.publish.title")}
-            </DialogTitle>
-            <DialogDescription>
-              {devAppPublishing?.projectName ?? "Preparing the project"}
-            </DialogDescription>
-          </DialogHeader>
+      {/* A progress surface: it closes when publishing ends, never on its own. */}
+      <UnifiedModal
+        open={Boolean(devAppPublishing)}
+        onOpenChange={() => undefined}
+        title={
+          devAppPublishing?.mode === "update"
+            ? t("orgDevApp.publish.updateTitle")
+            : t("orgDevApp.publish.title")
+        }
+        size="md"
+        dismissable={false}
+        footer={
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!devAppPublishing || devAppPublishing.stage === "complete" || devAppPublishing.stage === "cancelling"}
+            onClick={() => {
+              setDevAppPublishing((current) => current ? { ...current, stage: "cancelling" } : current);
+              devAppPublishAbortRef.current?.abort();
+            }}
+          >
+            {t("orgDevApp.publish.cancel")}
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {devAppPublishing?.projectName ?? "Preparing the project"}
+          </p>
           <Progress
             value={devAppPublishing ? ({
               building: 20,
@@ -1328,21 +1338,8 @@ export function ProjectSidebar({
               cancelling: t("orgDevApp.publish.cancelling"),
             } as const)[devAppPublishing.stage] : null}
           </p>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!devAppPublishing || devAppPublishing.stage === "complete" || devAppPublishing.stage === "cancelling"}
-              onClick={() => {
-                setDevAppPublishing((current) => current ? { ...current, stage: "cancelling" } : current);
-                devAppPublishAbortRef.current?.abort();
-              }}
-            >
-              {t("orgDevApp.publish.cancel")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </UnifiedModal>
     </>
   );
 }

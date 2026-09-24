@@ -8,16 +8,7 @@ import {
   CollapsiblePanel,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { UnifiedModal, UnifiedModalField } from "@/components/ui/unified-modal"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   EMPTY_DEV_SERVER_AUXILIARY_PROCESSES,
@@ -134,16 +125,30 @@ export function DevServerProcessesDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[min(82vh,44rem)] overflow-hidden p-0 sm:max-w-xl">
-        <DialogHeader className="border-b border-border/60 px-5 py-4">
-          <DialogTitle className="text-lg">{t("workbench.devserver.processes.title")}</DialogTitle>
-          <DialogDescription className="text-xs leading-5">
-            {t("workbench.devserver.processes.description")}
-          </DialogDescription>
-        </DialogHeader>
+    <UnifiedModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("workbench.devserver.processes.title")}
+      size="lg"
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            {t("common.cancel")}
+          </Button>
+          <Button type="button" disabled={!isValid} onClick={handleSave}>
+            {running
+              ? t("workbench.devserver.processes.saveRestart")
+              : t("workbench.devserver.processes.save")}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {t("workbench.devserver.processes.description")}
+        </p>
 
-        <ScrollArea scrollFade fadeSize="1.5rem" className="min-h-0 flex-1" viewportClassName="px-5">
+        <ScrollArea scrollFade fadeSize="1.5rem" className="min-h-0 -mx-6 max-h-[50vh] flex-1 px-6">
           <div className="flex h-12 items-center justify-between border-b border-border/60">
             <div className="min-w-0">
               <div className="text-[13px] font-medium text-foreground">
@@ -200,18 +205,15 @@ export function DevServerProcessesDialog({
                   <CollapsiblePanel>
                     <div className="space-y-3 pb-4">
                       <div className="flex items-end gap-2">
-                        <div className="min-w-0 flex-1 space-y-1.5">
-                          <Label htmlFor={`dev-process-name-${process.id}`} className="text-xs">
-                            {t("workbench.devserver.processes.name")}
-                          </Label>
-                          <Input
+                        <div className="min-w-0 flex-1">
+                          <UnifiedModalField
                             id={`dev-process-name-${process.id}`}
+                            label={t("workbench.devserver.processes.name")}
                             value={process.name}
-                            maxLength={MAX_DEV_SERVER_PROCESS_NAME_LENGTH}
-                            placeholder={t("workbench.devserver.processes.namePlaceholder")}
-                            onChange={(event) =>
-                              updateProcess(process.id, { name: event.target.value })
+                            onChange={(value) =>
+                              updateProcess(process.id, { name: value })
                             }
+                            maxLength={MAX_DEV_SERVER_PROCESS_NAME_LENGTH}
                           />
                         </div>
                         <Button
@@ -226,21 +228,15 @@ export function DevServerProcessesDialog({
                         </Button>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <Label htmlFor={`dev-process-command-${process.id}`} className="text-xs">
-                          {t("workbench.devserver.processes.command")}
-                        </Label>
-                        <Input
-                          id={`dev-process-command-${process.id}`}
-                          value={process.command}
-                          maxLength={MAX_DEV_SERVER_PROCESS_COMMAND_LENGTH}
-                          className="font-mono text-xs"
-                          placeholder={t("workbench.devserver.processes.commandPlaceholder")}
-                          onChange={(event) =>
-                            updateProcess(process.id, { command: event.target.value })
-                          }
-                        />
-                      </div>
+                      <UnifiedModalField
+                        id={`dev-process-command-${process.id}`}
+                        label={t("workbench.devserver.processes.command")}
+                        value={process.command}
+                        onChange={(value) =>
+                          updateProcess(process.id, { command: value })
+                        }
+                        maxLength={MAX_DEV_SERVER_PROCESS_COMMAND_LENGTH}
+                      />
                     </div>
                   </CollapsiblePanel>
                 </div>
@@ -261,18 +257,7 @@ export function DevServerProcessesDialog({
             </Button>
           ) : null}
         </ScrollArea>
-
-        <DialogFooter className="border-t border-border/60 px-5 py-4">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-            {t("common.cancel")}
-          </Button>
-          <Button type="button" disabled={!isValid} onClick={handleSave}>
-            {running
-              ? t("workbench.devserver.processes.saveRestart")
-              : t("workbench.devserver.processes.save")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </UnifiedModal>
   )
 }
