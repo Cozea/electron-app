@@ -13,7 +13,7 @@
  * member, and offers the membership and lifecycle actions the bar shows.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation } from "convex/react"
 import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/projectd-protocol"
 
@@ -100,6 +100,44 @@ export interface LiveSessionController {
 }
 
 const NO_MEMBERS: LiveSessionMember[] = []
+const NO_SESSIONS: LiveSessionRecord[] = []
+
+type LiveSessionActions = Pick<
+  LiveSessionController,
+  | "saveNow"
+  | "ignoreEnvironmentFiles"
+  | "checkTarget"
+  | "dismissTarget"
+  | "join"
+  | "leave"
+  | "pause"
+  | "resume"
+  | "cancelClose"
+  | "confirmClose"
+  | "end"
+  | "openSessionWorkbench"
+>
+
+/**
+ * Stable functions that always call the latest version of each action, so a
+ * memoized consumer is not invalidated by closures recreated every render.
+ */
+function useStableActions<T extends Record<string, (...args: never[]) => void>>(actions: T): T {
+  const latest = useRef(actions)
+  useLayoutEffect(() => {
+    latest.current = actions
+  })
+  const [stable] = useState(
+    () =>
+      Object.fromEntries(
+        Object.keys(actions).map((name) => [
+          name,
+          (...args: never[]) => latest.current[name](...args),
+        ]),
+      ) as T,
+  )
+  return stable
+}
 
 /** Saves the session to its branch now, or asks the Mac that saves it to. */
 async function saveSessionNow(publicSessionId: string, branchName: string): Promise<void> {
@@ -291,14 +329,19 @@ export function useLiveSession(input: {
     })
   }
 
-  const otherSessions = enabled
-    ? (sessions ?? []).filter(
-        (candidate) =>
-          candidate.publicSessionId !== session?.publicSessionId &&
-          candidate.lifecycle !== "CLOSED" &&
-          candidate.viewerMembership === "active",
-      )
-    : []
+  const activePublicSessionId = session?.publicSessionId ?? null
+  const otherSessions = useMemo(
+    () =>
+      enabled
+        ? (sessions ?? []).filter(
+            (candidate) =>
+              candidate.publicSessionId !== activePublicSessionId &&
+              candidate.lifecycle !== "CLOSED" &&
+              candidate.viewerMembership === "active",
+          )
+        : NO_SESSIONS,
+    [activePublicSessionId, enabled, sessions],
+  )
 
   const daemonStatus = daemon.phase === "attached" ? daemon.status : null
 
@@ -341,20 +384,10 @@ export function useLiveSession(input: {
   const leaderName =
     members.find((member) => member.principalId === daemonStatus?.autoGit?.leaderPrincipalId)?.displayName ?? null
 
-  return {
-    projectId,
-    session,
-    repository,
-    recheckGitAccess,
-    otherSessions,
-    members,
-    membership,
-    canManage,
-    sync,
-    autoGit: session ? describeAutoGit(daemonStatus, leaderName) : null,
-    target: session ? describeTarget(daemonStatus?.target ?? null) : null,
-    canEdit,
-    busyAction,
+  // The latest actions, called through stable wrappers: the controller then
+  // changes only when session data does, instead of on every render. The
+  // project header and route context are memoized on it.
+  const actions: LiveSessionActions = {
     saveNow: () => {
       if (session) run("save", "Could not save to Git", () => saveSessionNow(session.publicSessionId, session.branchName))
     },
@@ -402,7 +435,6 @@ export function useLiveSession(input: {
       })
     },
     resume: onSession("resume", "Could not resume the session", resumeSession),
-    closeReview: closeReview?.publicSessionId === session?.publicSessionId ? closeReview : null,
     cancelClose: () => setCloseReview(null),
     confirmClose: (choice) => {
       if (session) run("end", "Could not close the session", async () => {
@@ -480,8 +512,57 @@ export function useLiveSession(input: {
           return describeWorkbenchError(target?.repositoryUrl)(error)
         },
       ),
-    media,
   }
+  const stableActions = useStableActions(actions)
+
+  const autoGit = useMemo(
+    () => (session ? describeAutoGit(daemonStatus, leaderName) : null),
+    [session, daemonStatus, leaderName],
+  )
+  const target = useMemo(
+    () => (session ? describeTarget(daemonStatus?.target ?? null) : null),
+    [session, daemonStatus],
+  )
+  const visibleCloseReview = closeReview?.publicSessionId === session?.publicSessionId ? closeReview : null
+
+  return useMemo(
+    () => ({
+      projectId,
+      session,
+      repository,
+      recheckGitAccess,
+      otherSessions,
+      members,
+      membership,
+      canManage,
+      sync,
+      autoGit,
+      target,
+      canEdit,
+      busyAction,
+      closeReview: visibleCloseReview,
+      media,
+      ...stableActions,
+    }),
+    [
+      projectId,
+      session,
+      repository,
+      recheckGitAccess,
+      otherSessions,
+      members,
+      membership,
+      canManage,
+      sync,
+      autoGit,
+      target,
+      canEdit,
+      busyAction,
+      visibleCloseReview,
+      media,
+      stableActions,
+    ],
+  )
 }
 
 export type LiveSessionContext = ReturnType<typeof useLiveSession>

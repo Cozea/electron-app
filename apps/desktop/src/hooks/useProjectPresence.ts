@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react"
+import { useEffect, useCallback, useMemo, useRef } from "react"
 import { useMutation } from "convex/react"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -17,6 +17,9 @@ interface UseProjectPresenceOptions {
   activeFile?: string | null
   activeRoute?: string | null
 }
+
+// Shared empty result, so "nobody here" keeps one identity across renders.
+const NO_USERS: never[] = []
 
 export interface PresenceUser {
   id: string
@@ -38,7 +41,9 @@ export function useProjectPresence({
   activeFile,
   activeRoute,
 }: UseProjectPresenceOptions) {
-  const location = useLocation()
+  // Only the pathname is used; the whole location would re-render the
+  // project layout on search and state changes too.
+  const pathname = useLocation({ select: (location) => location.pathname })
   const { isConvexAuthReady } = useAuth()
   const heartbeat = useMutation(api.projectPresence.heartbeat)
   const leave = useMutation(api.projectPresence.leave)
@@ -60,12 +65,12 @@ export function useProjectPresence({
   })
 
   const getActiveTab = useCallback(() => {
-    const path = location.pathname
+    const path = pathname
     if (path.includes("/workbench")) return "workbench"
     if (path.includes("/settings")) return "settings"
     if (path.includes("/deployments")) return "deployments"
     return "editor"
-  }, [location.pathname])
+  }, [pathname])
   const activeTab = getActiveTab()
 
   useEffect(() => {
@@ -181,10 +186,15 @@ export function useProjectPresence({
   }, [activeUsersQuery.error, activeUsersQuery.status])
 
   const activeUsers = activeUsersQuery.data
-  const otherUsers = activeUsers?.filter((u) => u.principalId !== principalId) ?? []
+  // Stable between renders so the header's online set is rebuilt only when
+  // presence actually changes.
+  const otherUsers = useMemo(
+    () => activeUsers?.filter((u) => u.principalId !== principalId) ?? NO_USERS,
+    [activeUsers, principalId],
+  )
 
   return {
-    activeUsers: activeUsers ?? [],
+    activeUsers: activeUsers ?? NO_USERS,
     otherUsers,
     isLoading: activeUsersQuery.status === "loading",
     error: activeUsersQuery.error,

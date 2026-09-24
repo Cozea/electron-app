@@ -69,6 +69,7 @@ import {
 } from "@/lib/workbenchStore"
 import {
   type WorkbenchDockPanelParams,
+  useOptionalWorkbenchSurfaceVisibility,
   useWorkbenchDockRuntime,
 } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime"
@@ -966,6 +967,7 @@ const BrowserPanel = memo(function BrowserPanel(
   props: IDockviewPanelProps<WorkbenchDockPanelParams>,
 ) {
   const runtime = useWorkbenchDockRuntime()
+  const surface = useOptionalWorkbenchSurfaceVisibility()
   const tile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
@@ -991,7 +993,7 @@ const BrowserPanel = memo(function BrowserPanel(
         tile={tile as WorkbenchBrowserTileRecord}
         workspaceId={runtime.workspaceId}
         workbenchSessionKey={runtime.workbenchSessionKey}
-        surfaceVisible={runtime.surfaceVisible}
+        surfaceVisible={surface?.surfaceVisible ?? true}
         panelApi={props.api}
         containerApi={props.containerApi}
       />

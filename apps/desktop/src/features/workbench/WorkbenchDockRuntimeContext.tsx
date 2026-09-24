@@ -36,6 +36,24 @@ export interface WorkbenchDockRuntimeValue {
    * key; read content through the getter when an effect/handler needs it.
    */
   workbenchSessionKey: string | null
+  getWorkbenchSession: () => WorkbenchSessionSnapshot | null
+  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
+  onDuplicateAssistantTile: (sourceTileId: string) => void
+  onOpenAssistantConversation: (sourceTileId: string, entry: AssistantHistoryEntry, busy: boolean) => void
+  onResolveSelectionTile: (
+    selectionTileId: string,
+    request: WorkbenchSelectionLaunchRequest,
+  ) => void
+  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
+}
+
+/**
+ * Whether the workbench is on screen, kept apart from the runtime value: it
+ * flips every time a page covers the workbench, and only tiles that drive
+ * native surfaces or park expensive renderers read it. In the runtime value
+ * it re-rendered every tile — assistant chats included — on each flip.
+ */
+export interface WorkbenchSurfaceVisibility {
   /**
    * False while this workbench is kept alive but CSS-hidden behind another
    * project. Dockview panel visibility cannot see that hiding, so tiles that
@@ -51,18 +69,14 @@ export interface WorkbenchDockRuntimeValue {
    * attached while this holds, so a trip to a page and back costs nothing.
    */
   surfaceForeground: boolean
-  getWorkbenchSession: () => WorkbenchSessionSnapshot | null
-  getSelectionPreviewTile: (tileId: string) => WorkbenchSelectionTileRecord | null
-  onDuplicateAssistantTile: (sourceTileId: string) => void
-  onOpenAssistantConversation: (sourceTileId: string, entry: AssistantHistoryEntry, busy: boolean) => void
-  onResolveSelectionTile: (
-    selectionTileId: string,
-    request: WorkbenchSelectionLaunchRequest,
-  ) => void
-  onSplitTile: (sourceTileId: string, direction: "right" | "bottom" | "left" | "top") => void
 }
 
 const WorkbenchDockRuntimeContext = createContext<WorkbenchDockRuntimeValue | null>(null)
+const WorkbenchSurfaceVisibilityContext = createContext<WorkbenchSurfaceVisibility | null>(null)
+
+export function useOptionalWorkbenchSurfaceVisibility(): WorkbenchSurfaceVisibility | null {
+  return useContext(WorkbenchSurfaceVisibilityContext)
+}
 
 export function useWorkbenchDockRuntime(): WorkbenchDockRuntimeValue {
   const value = useContext(WorkbenchDockRuntimeContext)
@@ -76,7 +90,7 @@ export function useOptionalWorkbenchDockRuntime(): WorkbenchDockRuntimeValue | n
   return useContext(WorkbenchDockRuntimeContext)
 }
 
-export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & {
+export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & WorkbenchSurfaceVisibility & {
   children: ReactNode
 }) {
   const value = useMemo<WorkbenchDockRuntimeValue>(
@@ -91,8 +105,6 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       storedDevCommand: props.storedDevCommand,
       storedDevPort: props.storedDevPort,
       workbenchSessionKey: props.workbenchSessionKey,
-      surfaceVisible: props.surfaceVisible,
-      surfaceForeground: props.surfaceForeground,
       getWorkbenchSession: props.getWorkbenchSession,
       getSelectionPreviewTile: props.getSelectionPreviewTile,
       onDuplicateAssistantTile: props.onDuplicateAssistantTile,
@@ -111,8 +123,6 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
       props.storedDevCommand,
       props.storedDevPort,
       props.workbenchSessionKey,
-      props.surfaceVisible,
-      props.surfaceForeground,
       props.getWorkbenchSession,
       props.getSelectionPreviewTile,
       props.onDuplicateAssistantTile,
@@ -122,9 +132,16 @@ export function WorkbenchDockRuntimeProvider(props: WorkbenchDockRuntimeValue & 
     ],
   )
 
+  const visibility = useMemo<WorkbenchSurfaceVisibility>(
+    () => ({ surfaceVisible: props.surfaceVisible, surfaceForeground: props.surfaceForeground }),
+    [props.surfaceVisible, props.surfaceForeground],
+  )
+
   return (
     <WorkbenchDockRuntimeContext.Provider value={value}>
-      {props.children}
+      <WorkbenchSurfaceVisibilityContext.Provider value={visibility}>
+        {props.children}
+      </WorkbenchSurfaceVisibilityContext.Provider>
     </WorkbenchDockRuntimeContext.Provider>
   )
 }

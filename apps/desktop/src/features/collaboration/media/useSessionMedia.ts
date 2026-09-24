@@ -642,19 +642,38 @@ export function useSessionMedia(input: {
     }
   }, [sessionId, leaveMediaSession])
 
-  return {
-    microphoneState: currentMicrophoneState,
-    isMuted,
-    isSpeaking,
-    permissionStatus,
-    allowBackgroundAudio,
-    setAllowBackgroundAudio,
-    toggleMute,
-    requestMicrophonePermission,
-    analyserNode,
-    error,
-    audioDevices,
-    selectedDeviceId,
-    selectAudioDevice,
-  }
+  // One object per change, not per render: the live session controller and
+  // the project header are memoized on it.
+  return useMemo(
+    () => ({
+      microphoneState: currentMicrophoneState,
+      isMuted,
+      isSpeaking,
+      permissionStatus,
+      allowBackgroundAudio,
+      setAllowBackgroundAudio,
+      toggleMute,
+      requestMicrophonePermission,
+      analyserNode,
+      error,
+      audioDevices,
+      selectedDeviceId,
+      selectAudioDevice,
+    }),
+    [
+      currentMicrophoneState,
+      isMuted,
+      isSpeaking,
+      permissionStatus,
+      allowBackgroundAudio,
+      setAllowBackgroundAudio,
+      toggleMute,
+      requestMicrophonePermission,
+      analyserNode,
+      error,
+      audioDevices,
+      selectedDeviceId,
+      selectAudioDevice,
+    ],
+  )
 }

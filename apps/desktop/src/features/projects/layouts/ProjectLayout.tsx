@@ -390,9 +390,16 @@ export function ProjectLayout({
     projectId: presenceGateOpen ? project?._id ?? null : null,
     principalId: presenceGateOpen ? principalId ?? null : null,
   });
-  const onlinePrincipalIds = useMemo(() => {
-    return new Set((presenceUsers ?? []).map((u) => String(u.principalId)));
-  }, [presenceUsers]);
+  // Keyed on who is online, not on the presence rows: every navigation sends a
+  // heartbeat with the new route, which returns fresh rows for the same people.
+  const onlinePrincipalKey = (presenceUsers ?? [])
+    .map((u) => String(u.principalId))
+    .sort()
+    .join(",");
+  const onlinePrincipalIds = useMemo(
+    () => new Set(onlinePrincipalKey ? onlinePrincipalKey.split(",") : []),
+    [onlinePrincipalKey],
+  );
 
   const presenceHeaderAddon = useMemo(
     () => (
