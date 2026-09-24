@@ -1,13 +1,7 @@
 
 
-import {
-
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 
 import type { DiffDialogState } from "./workbenchAssistantShared"
 
@@ -21,16 +15,23 @@ export function WorkbenchAssistantDiffDialog({
   onOpenChange,
 }: WorkbenchAssistantDiffDialogProps) {
   return (
-    <Dialog open={Boolean(state)} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[min(84vh,56rem)] max-w-[min(72rem,calc(100%-2rem))] overflow-hidden p-0">
-        <DialogHeader className="border-b border-border/60 px-6 py-4">
-          <DialogTitle>{state?.title ?? "Diff"}</DialogTitle>
-          <DialogDescription>
-            Review the unified diff captured for this local assistant thread.
-          </DialogDescription>
-        </DialogHeader>
+    <UnifiedModal
+      open={Boolean(state)}
+      onOpenChange={onOpenChange}
+      title={state?.title ?? "Diff"}
+      size="3xl"
+      footer={
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          Close
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Review the unified diff captured for this local assistant thread.
+        </p>
 
-        <div className="min-h-0 flex-1 overflow-auto p-6">
+        <div className="h-[min(65vh,46rem)] overflow-auto">
           {state?.isLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
               <div className="loader" />
@@ -46,8 +47,8 @@ export function WorkbenchAssistantDiffDialog({
             </pre>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </UnifiedModal>
   )
 }
 

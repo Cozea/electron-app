@@ -120,7 +120,6 @@ const es: Record<TranslationKey, string> = {
   "settings.account.resetConfirmLabel":
     'Escribe "RESET" para confirmar',
   "settings.account.deleteConfirmPlaceholder": "eliminar mi cuenta",
-  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Configuración: Apariencia ───────────────────────────────────────
   "settings.appearance.theme": "Tema",
@@ -745,9 +744,7 @@ const es: Record<TranslationKey, string> = {
   "workbench.devserver.processes.automatic": "Detectado automáticamente",
   "workbench.devserver.processes.default": "Predeterminado",
   "workbench.devserver.processes.name": "Nombre",
-  "workbench.devserver.processes.namePlaceholder": "Backend",
   "workbench.devserver.processes.command": "Comando",
-  "workbench.devserver.processes.commandPlaceholder": "bun run dev",
   "workbench.devserver.processes.remove": "Eliminar proceso",
   "workbench.devserver.processes.toggleDetails": "Mostrar u ocultar los detalles del proceso",
   "workbench.devserver.processes.untitled": "Proceso sin título",

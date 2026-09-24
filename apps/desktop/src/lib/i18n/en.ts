@@ -116,7 +116,6 @@ const en = {
   "settings.account.resetConfirmLabel":
     'Type "RESET" to confirm',
   "settings.account.deleteConfirmPlaceholder": "delete my account",
-  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Settings: Appearance ────────────────────────────────────────────
   "settings.appearance.theme": "Theme",
@@ -735,9 +734,7 @@ const en = {
   "workbench.devserver.processes.automatic": "Detected automatically",
   "workbench.devserver.processes.default": "Default",
   "workbench.devserver.processes.name": "Name",
-  "workbench.devserver.processes.namePlaceholder": "Backend",
   "workbench.devserver.processes.command": "Command",
-  "workbench.devserver.processes.commandPlaceholder": "bun run dev",
   "workbench.devserver.processes.remove": "Remove process",
   "workbench.devserver.processes.toggleDetails": "Show or hide process details",
   "workbench.devserver.processes.untitled": "Untitled process",

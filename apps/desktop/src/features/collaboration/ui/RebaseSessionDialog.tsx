@@ -13,14 +13,7 @@ import { useEffect, useState } from "react"
 import type { ProjectdRebaseResult } from "@cozea/projectd-protocol"
 
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { Spinner } from "@/components/ui/spinner"
 import { RebaseRecoveryEditor } from "./RebaseRecoveryEditor"
 import { appToast } from "@/lib/appToast"
@@ -121,24 +114,14 @@ export function RebaseSessionDialog({
   const finished = Boolean(result && result.outcome !== "conflicts")
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => (rebasing ? undefined : onOpenChange(open))}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>
-            Rebase <span className="font-mono">{branchName}</span> onto <span className="font-mono">{targetBranch}</span>
-          </DialogTitle>
-          <DialogDescription>
-            This is an explicit Git history rewrite of the session branch. Cozea uses the last save as the reviewed base
-            and updates the live session with the result.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="py-2">
-          <RebaseSessionBody targetBranch={targetBranch} result={result} error={error} rebasing={rebasing} />
-          {isOpen && !rebasing && <RebaseRecoveryEditor publicSessionId={publicSessionId} recoveryId={result?.recoveryId} onApplied={setResult} />}
-        </div>
-
-        <DialogFooter>
+    <UnifiedModal
+      open={isOpen}
+      onOpenChange={(open) => (rebasing ? undefined : onOpenChange(open))}
+      title={`Rebase ${branchName} onto ${targetBranch}`}
+      size="lg"
+      dismissable={!rebasing}
+      footer={
+        <>
           <Button type="button" variant="outline" disabled={rebasing} onClick={() => onOpenChange(false)}>
             {finished ? "Close" : "Cancel"}
           </Button>
@@ -148,8 +131,20 @@ export function RebaseSessionDialog({
               Rebase onto {targetBranch}
             </Button>
           ) : null}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          This is an explicit Git history rewrite of the session branch. Cozea uses the last save as the reviewed base
+          and updates the live session with the result.
+        </p>
+
+        <div className="py-2">
+          <RebaseSessionBody targetBranch={targetBranch} result={result} error={error} rebasing={rebasing} />
+          {isOpen && !rebasing && <RebaseRecoveryEditor publicSessionId={publicSessionId} recoveryId={result?.recoveryId} onApplied={setResult} />}
+        </div>
+      </div>
+    </UnifiedModal>
   )
 }

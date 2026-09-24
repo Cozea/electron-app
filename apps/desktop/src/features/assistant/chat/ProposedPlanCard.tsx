@@ -14,7 +14,7 @@ import {
 } from "../proposedPlan";
 import ChatMarkdown from "./ChatMarkdown";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { UnifiedModal, UnifiedModalField } from "@/components/ui/unified-modal";
 import {
   DropdownMenu as Menu,
   DropdownMenuContent as MenuPopup,
@@ -23,14 +23,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { toastManager } from "@/components/ui/toast";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
@@ -178,35 +170,14 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         ) : null}
       </div>
 
-      <Dialog
+      <UnifiedModal
         open={isSaveDialogOpen}
-        onOpenChange={(open) => {
-          if (!isSavingToWorkspace) {
-            setIsSaveDialogOpen(open);
-          }
-        }}
-      >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Save plan to workspace</DialogTitle>
-            <DialogDescription>
-              Enter a path relative to <code>the workspace</code>.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <label htmlFor={savePathInputId} className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Workspace path</span>
-              <Input
-                id={savePathInputId}
-                value={savePath}
-                onChange={(event) => setSavePath(event.target.value)}
-                placeholder={downloadFilename}
-                spellCheck={false}
-                disabled={isSavingToWorkspace}
-              />
-            </label>
-          </div>
-          <DialogFooter>
+        onOpenChange={setIsSaveDialogOpen}
+        title="Save plan to workspace"
+        size="lg"
+        dismissable={!isSavingToWorkspace}
+        footer={
+          <>
             <Button
               variant="outline"
               size="sm"
@@ -222,9 +193,23 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             >
               {isSavingToWorkspace ? "Saving..." : "Save"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Enter a path relative to <code>the workspace</code>.
+          </p>
+          <UnifiedModalField
+            id={savePathInputId}
+            label="Workspace path"
+            value={savePath}
+            onChange={setSavePath}
+            spellCheck={false}
+            disabled={isSavingToWorkspace}
+          />
+        </div>
+      </UnifiedModal>
     </div>
   );
 });

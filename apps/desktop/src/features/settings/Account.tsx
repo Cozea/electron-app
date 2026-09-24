@@ -22,7 +22,6 @@ import { PublicIdDisclosure } from "@/features/settings/ui/PublicIdDisclosure";
 import { optimizeProjectDevAppLogo } from "@/features/devapps/projectDevAppLogo";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { useTranslation } from "@/lib/i18n";
@@ -331,15 +330,13 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 isConfirming={resetting}
                 confirmDisabled={resetConfirmation !== "RESET"}
               >
-                <div className="space-y-2">
-                  <Label>{t("settings.account.resetConfirmLabel")}</Label>
-                  <Input
-                    placeholder={t("settings.account.resetConfirmPlaceholder")}
-                    value={resetConfirmation}
-                    onChange={(event) => setResetConfirmation(event.target.value)}
-                    disabled={resetting}
-                  />
-                </div>
+                <Input
+                  placeholder={t("settings.account.resetConfirmLabel")}
+                  aria-label={t("settings.account.resetConfirmLabel")}
+                  value={resetConfirmation}
+                  onChange={(event) => setResetConfirmation(event.target.value)}
+                  disabled={resetting}
+                />
               </ConfirmModal>
             </SettingsRowControl>
           </SettingsRow>

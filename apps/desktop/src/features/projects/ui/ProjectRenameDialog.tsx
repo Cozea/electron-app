@@ -1,20 +1,8 @@
-
-
 import { Button } from '@/components/ui/button'
-import {
-
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { UnifiedModal, UnifiedModalField } from '@/components/ui/unified-modal'
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { Alert01Icon as __AlertTriangleHugeIcon, Edit01Icon as __PencilHugeIcon } from '@hugeicons/core-free-icons'
+import { Alert01Icon as __AlertTriangleHugeIcon } from '@hugeicons/core-free-icons'
 
 interface ProjectRenameDialogProps {
   open: boolean
@@ -41,40 +29,14 @@ export function ProjectRenameDialog({
   const isUnchanged = trimmedValue === currentName.trim()
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <HugeiconsIcon icon={__PencilHugeIcon} className="h-4 w-4" />
-            Rename Project
-          </DialogTitle>
-          <DialogDescription>
-            Update the project name shown across your workspace. Existing access and project data
-            stay the same.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-2">
-          <Label htmlFor="project-rename-name">Project Name</Label>
-          <Input
-            id="project-rename-name"
-            value={value}
-            onChange={(event) => {
-              onValueChange(event.target.value)
-            }}
-            placeholder={currentName}
-            autoFocus
-          />
-        </div>
-
-        {errorMessage ? (
-          <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-            <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="mt-0.5 h-4 w-4 shrink-0" />
-            <p className="leading-6">{errorMessage}</p>
-          </div>
-        ) : null}
-
-        <DialogFooter>
+    <UnifiedModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Rename Project"
+      size="md"
+      dismissable={!isSaving}
+      footer={
+        <>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
             Cancel
           </Button>
@@ -86,9 +48,30 @@ export function ProjectRenameDialog({
           >
             {isSaving ? 'Saving...' : 'Save Name'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Update the project name shown across your workspace. Existing access and project data
+          stay the same.
+        </p>
+
+        <UnifiedModalField
+          id="project-rename-name"
+          label="Project Name"
+          value={value}
+          onChange={onValueChange}
+          autoFocus
+        />
+
+        {errorMessage ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+            <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="mt-0.5 h-4 w-4 shrink-0" />
+            <p className="leading-6">{errorMessage}</p>
+          </div>
+        ) : null}
+      </div>
+    </UnifiedModal>
   )
 }
-

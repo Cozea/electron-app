@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { ProjectdBinaryConflictRequest, ProjectdBinaryConflictResponse } from "@cozea/projectd-protocol"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 
 interface BinaryConflictDialogProps {
   publicSessionId: string
@@ -71,50 +71,54 @@ export function BinaryConflictDialog({ publicSessionId, canEdit, onClose }: Bina
     return () => { generation.current++; pending.current = false }
   }, [run])
 
-  return <Dialog open onOpenChange={(open) => { if (!open && !pending.current) onClose() }}>
-    <DialogContent className="sm:max-w-2xl">
-      <DialogHeader>
-        <DialogTitle>Binary file conflicts</DialogTitle>
-        <DialogDescription>Choose the version to use across this session. Other versions are retained in its history.</DialogDescription>
-      </DialogHeader>
-      <div className="space-y-3" aria-busy={busy}>
-        {error && <p role="alert" className="text-sm text-destructive">{error} Refresh to review current versions.</p>}
-        {notice && <p role="status" className="text-sm">{notice}</p>}
-        {!canEdit && <p className="text-sm text-muted-foreground">Viewers can review versions. A collaborator with edit access must resolve them.</p>}
-        {!page && busy && <p className="text-sm">Loading file versions…</p>}
-        {page?.conflicts.length === 0 && <p className="text-sm">No binary conflicts on this page.</p>}
-        <div className="max-h-80 space-y-4 overflow-auto">
-          {page?.conflicts.map((conflict) => <fieldset key={conflict.fileId} disabled={busy} className="space-y-2 rounded-md border p-3">
-            <legend className="break-all px-1 font-mono text-xs">{conflict.path}</legend>
-            {conflict.variants.map((variant) => <div key={variant.revisionId} className="space-y-2 text-sm">
-              <label className="flex items-start gap-2">
-              <input type="radio" disabled={!canEdit} name={`binary-${conflict.fileId}`} checked={choices[conflict.fileId] === variant.revisionId}
-                onChange={() => setChoices((prior) => ({ ...prior, [conflict.fileId]: variant.revisionId }))} />
-              <span>{new Date(variant.createdAt).toLocaleString()} · {variant.size.toLocaleString()} bytes
-                <span className="block break-all font-mono text-xs text-muted-foreground">SHA-256 {variant.contentHash}</span>
-              </span>
-              </label>
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => void run({ action: "preview", fileId: conflict.fileId,
-                revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>Preview version</Button>
-              <Button variant="outline" size="sm" disabled={busy} onClick={() => void run({ action: "export", fileId: conflict.fileId,
-                revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>Export copy</Button>
-              {previews[variant.revisionId] && <div className="rounded border p-2">
-                {previews[variant.revisionId]!.imageDataUrl && <img className="max-h-48 max-w-full object-contain" src={previews[variant.revisionId]!.imageDataUrl!} alt={`Version of ${conflict.path}`} />}
-                <p className="text-xs text-muted-foreground">{previews[variant.revisionId]!.truncated ? "First 256 bytes" : "File bytes"} · hexadecimal</p>
-                <pre className="whitespace-pre-wrap break-all text-xs">{previews[variant.revisionId]!.hex}</pre>
-              </div>}
-            </div>)}
-            <Button size="sm" disabled={busy || !canEdit || !choices[conflict.fileId] || Boolean(error)} onClick={() => void run({
-              action: "resolve", fileId: conflict.fileId, revisionId: choices[conflict.fileId]!, fingerprint: conflict.fingerprint,
-            })}>Use selected version</Button>
-          </fieldset>)}
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list" })}>Refresh</Button>
-          {page?.nextFileId && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list", afterFileId: page.nextFileId! })}>Next page</Button>}
-          <Button variant="outline" disabled={busy} onClick={onClose}>Close</Button>
+  return (
+    <UnifiedModal
+      open
+      onOpenChange={(open) => { if (!open && !pending.current) onClose() }}
+      title="Binary file conflicts"
+      size="xl"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">Choose the version to use across this session. Other versions are retained in its history.</p>
+        <div className="space-y-3" aria-busy={busy}>
+          {error && <p role="alert" className="text-sm text-destructive">{error} Refresh to review current versions.</p>}
+          {notice && <p role="status" className="text-sm">{notice}</p>}
+          {!canEdit && <p className="text-sm text-muted-foreground">Viewers can review versions. A collaborator with edit access must resolve them.</p>}
+          {!page && busy && <p className="text-sm">Loading file versions…</p>}
+          {page?.conflicts.length === 0 && <p className="text-sm">No binary conflicts on this page.</p>}
+          <div className="max-h-80 space-y-4 overflow-auto">
+            {page?.conflicts.map((conflict) => <fieldset key={conflict.fileId} disabled={busy} className="space-y-2 rounded-md border p-3">
+              <legend className="break-all px-1 font-mono text-xs">{conflict.path}</legend>
+              {conflict.variants.map((variant) => <div key={variant.revisionId} className="space-y-2 text-sm">
+                <label className="flex items-start gap-2">
+                <input type="radio" disabled={!canEdit} name={`binary-${conflict.fileId}`} checked={choices[conflict.fileId] === variant.revisionId}
+                  onChange={() => setChoices((prior) => ({ ...prior, [conflict.fileId]: variant.revisionId }))} />
+                <span>{new Date(variant.createdAt).toLocaleString()} · {variant.size.toLocaleString()} bytes
+                  <span className="block break-all font-mono text-xs text-muted-foreground">SHA-256 {variant.contentHash}</span>
+                </span>
+                </label>
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => void run({ action: "preview", fileId: conflict.fileId,
+                  revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>Preview version</Button>
+                <Button variant="outline" size="sm" disabled={busy} onClick={() => void run({ action: "export", fileId: conflict.fileId,
+                  revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>Export copy</Button>
+                {previews[variant.revisionId] && <div className="rounded border p-2">
+                  {previews[variant.revisionId]!.imageDataUrl && <img className="max-h-48 max-w-full object-contain" src={previews[variant.revisionId]!.imageDataUrl!} alt={`Version of ${conflict.path}`} />}
+                  <p className="text-xs text-muted-foreground">{previews[variant.revisionId]!.truncated ? "First 256 bytes" : "File bytes"} · hexadecimal</p>
+                  <pre className="whitespace-pre-wrap break-all text-xs">{previews[variant.revisionId]!.hex}</pre>
+                </div>}
+              </div>)}
+              <Button size="sm" disabled={busy || !canEdit || !choices[conflict.fileId] || Boolean(error)} onClick={() => void run({
+                action: "resolve", fileId: conflict.fileId, revisionId: choices[conflict.fileId]!, fingerprint: conflict.fingerprint,
+              })}>Use selected version</Button>
+            </fieldset>)}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list" })}>Refresh</Button>
+            {page?.nextFileId && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list", afterFileId: page.nextFileId! })}>Next page</Button>}
+            <Button variant="outline" disabled={busy} onClick={onClose}>Close</Button>
+          </div>
         </div>
       </div>
-    </DialogContent>
-  </Dialog>
+    </UnifiedModal>
+  )
 }
