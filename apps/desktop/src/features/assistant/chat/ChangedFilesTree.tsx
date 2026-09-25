@@ -1,4 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useTranslation } from "@/lib/i18n"
 import {
   ChevronDoubleCloseIcon as __ChevronRightIconHugeIcon,
   ArrowUpDownIcon as __ChevronsUpDownIconHugeIcon,
@@ -183,6 +184,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
   onToggleAllDirectories: () => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
 }) {
+  const { t } = useTranslation()
   const {
     turnId,
     files,
@@ -273,8 +275,8 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
             type="button"
             className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => onOpenTurnDiff(turnId, files[0]?.path)}
-            title="Open the full diff"
-            aria-label="Open the full diff"
+            title={t("assistant.openTheFullDiff")}
+            aria-label={t("assistant.openTheFullDiff")}
           >
             <HugeiconsIcon icon={__FileDiffIconHugeIcon} className="size-3.5" />
           </button>

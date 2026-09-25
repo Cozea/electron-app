@@ -9,6 +9,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 
 import type { ProjectdRebaseResult } from "@cozea/projectd-protocol"
 
@@ -31,6 +32,7 @@ export interface RebaseSessionBodyProps {
 }
 
 export function RebaseSessionBody({ targetBranch, result, error, rebasing }: RebaseSessionBodyProps) {
+  const { t } = useTranslation()
   if (error) {
     return (
       <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
@@ -47,8 +49,7 @@ export function RebaseSessionBody({ targetBranch, result, error, rebasing }: Reb
   if (!result) {
     return (
       <p className="text-sm text-muted-foreground">
-        Cozea first saves the live session, then computes the rebase away from everyone&apos;s working folders. Editing can
-        continue while it runs.
+        {t("collab.rebaseRunsAwayFromFolders")}
       </p>
     )
   }
@@ -58,7 +59,7 @@ export function RebaseSessionBody({ targetBranch, result, error, rebasing }: Reb
       <div className="space-y-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
         <p>{result.message}</p>
         {paths.length > 0 ? <p className="font-mono">{listPaths(paths)}</p> : null}
-        <p>Choose the retained variants below, then apply the resolved rebase when ready.</p>
+        <p>{t("collab.chooseTheRetainedVariantsBelowThen")}</p>
       </div>
     )
   }
@@ -80,6 +81,7 @@ export function RebaseSessionDialog({
   branchName,
   targetBranch,
 }: RebaseSessionDialogProps) {
+  const { t } = useTranslation()
   const [result, setResult] = useState<ProjectdRebaseResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rebasing, setRebasing] = useState(false)
@@ -101,7 +103,7 @@ export function RebaseSessionDialog({
       if (response.result.outcome === "rebased") {
         appToast.success({ title: `Rebased onto ${targetBranch}`, description: response.result.message })
       } else if (response.result.outcome === "requested") {
-        appToast.info({ title: "Rebase requested", description: response.result.message })
+        appToast.info({ title: t("collab.rebaseRequested"), description: response.result.message })
       }
     } catch (rebaseError) {
       setError(rebaseError instanceof Error ? rebaseError.message : String(rebaseError))
@@ -136,8 +138,7 @@ export function RebaseSessionDialog({
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          This is an explicit Git history rewrite of the session branch. Cozea uses the last save as the reviewed base
-          and updates the live session with the result.
+          {t("collab.rebaseRewritesHistory")}
         </p>
 
         <div className="py-2">

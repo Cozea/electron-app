@@ -7,6 +7,7 @@ import {
   type ServerProvider,
 } from "@cozea/assistant-contracts";
 import { getProviderOptionCurrentValue, resolveSelectableModel } from "@cozea/assistant-shared/model";
+import { useTranslation } from "@/lib/i18n"
 import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   ArrowRight01Icon as __ArrowRightHugeIcon,
@@ -111,6 +112,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     instanceId?: ProviderInstanceId,
   ) => void;
 }) {
+  const { t } = useTranslation();
   const { onOptionChange, onProviderModelChange, onRequestClose } = props;
   const [activeView, setActiveView] = useState<string>(props.initialView ?? "models");
 
@@ -299,7 +301,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             type="button"
             onClick={() => setActiveView("capabilities")}
             className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Back to capabilities"
+            aria-label={t("assistant.backToCapabilities")}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
           </button>
@@ -351,7 +353,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         style={{ maxHeight }}
       >
         <div className="shrink-0 px-3.5 pb-1.5 pt-2.5 text-sm font-medium text-muted-foreground">
-          Select model
+          {t("assistant.selectModel")}
         </div>
         <div
           data-model-picker-model-list
@@ -360,7 +362,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         >
           {visibleModels.length === 0 ? (
             <div className="px-3 py-5 text-center text-sm text-muted-foreground">
-              No models available.
+              {t("assistant.noModelsAvailable")}
             </div>
           ) : (
             visibleModels.map((model, index) => {

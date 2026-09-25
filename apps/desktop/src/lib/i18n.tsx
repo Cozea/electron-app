@@ -24,13 +24,22 @@ import {
   type ComputerUseTranslationKey,
 } from "./i18n/computerUse"
 import { githubTranslations, type GitHubTranslationKey } from "./i18n/github"
+import { collaborationTranslations, type CollaborationTranslationKey } from "./i18n/collaboration"
+import { browserTranslations, type BrowserTranslationKey } from "./i18n/browser"
+import { assistantTranslations, type AssistantTranslationKey } from "./i18n/assistant"
 import en, { type TranslationKey as BaseTranslationKey } from "./i18n/en"
 import es from "./i18n/es"
 
 // ── Public types ──────────────────────────────────────────────────────
 
 export type Language = "en" | "es"
-export type TranslationKey = BaseTranslationKey | ComputerUseTranslationKey | GitHubTranslationKey
+export type TranslationKey =
+  | BaseTranslationKey
+  | ComputerUseTranslationKey
+  | GitHubTranslationKey
+  | CollaborationTranslationKey
+  | BrowserTranslationKey
+  | AssistantTranslationKey
 
 export interface LanguageOption {
   code: Language
@@ -45,8 +54,22 @@ export const LANGUAGES: readonly LanguageOption[] = [
 // ── Translation maps ─────────────────────────────────────────────────
 
 const translations: Record<Language, Record<TranslationKey, string>> = {
-  en: { ...en, ...computerUseTranslations.en, ...githubTranslations.en },
-  es: { ...es, ...computerUseTranslations.es, ...githubTranslations.es },
+  en: {
+    ...en,
+    ...computerUseTranslations.en,
+    ...githubTranslations.en,
+    ...collaborationTranslations.en,
+    ...browserTranslations.en,
+    ...assistantTranslations.en,
+  },
+  es: {
+    ...es,
+    ...computerUseTranslations.es,
+    ...githubTranslations.es,
+    ...collaborationTranslations.es,
+    ...browserTranslations.es,
+    ...assistantTranslations.es,
+  },
 }
 
 // ── Storage helpers ──────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import type { LegendListRef } from "@legendapp/list/react";
+import { getStoredLanguage, getTranslation } from "@/lib/i18n";
 import type { AssistantCitation, MessageId, ScopedThreadRef } from "@cozea/contracts/t3";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import {
@@ -197,8 +198,8 @@ export function observeAssistantCitationSource({
             clear();
             request.onComplete();
             appToast.warning({
-              title: "Could not open the cited response",
-              description: "Click the citation to try again.",
+              title: getTranslation(getStoredLanguage(), "assistant.couldNotOpenTheCitedResponse"),
+              description: getTranslation(getStoredLanguage(), "assistant.clickTheCitationToTryAgain"),
             });
           },
         );
@@ -210,8 +211,8 @@ export function observeAssistantCitationSource({
       request.onComplete();
       if (!range) {
         appToast.warning({
-          title: "The quoted text has changed",
-          description: "Showing the source response. The saved quote is unchanged.",
+          title: getTranslation(getStoredLanguage(), "assistant.theQuotedTextHasChanged"),
+          description: getTranslation(getStoredLanguage(), "assistant.showingTheSourceResponseTheSaved"),
         });
       }
     }

@@ -1,4 +1,5 @@
 import type { DesktopPreviewColorScheme } from "@cozea/contracts/t3/ipc"
+import { useTranslation } from "@/lib/i18n"
 import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useShallow } from "zustand/react/shallow"
@@ -47,6 +48,7 @@ export function BrowserPreviewActionsForTile({ tileId }: { readonly tileId: stri
 }
 
 export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId: string }) {
+  const { t } = useTranslation()
   const preview = window.desktopBridge?.preview
   const entry = useBrowserSurfaceRegistry((state) => state.byTabId[runtimeTabId])
   const state = useBrowserSurfaceStateStore((store) => store.byTabId[runtimeTabId])
@@ -75,7 +77,7 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
     if (!available) return
     void operation(runtimeTabId).catch((error) =>
       appToast.error({
-        title: "Preview action failed",
+        title: t("browser.previewActionFailed"),
         description: error instanceof Error ? error.message : String(error),
       }),
     )
@@ -92,7 +94,7 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
         : ({ _tag: "fill" } as const)
     void commitBrowserViewportChange(runtimeTabId, next).catch((error) =>
       appToast.error({
-        title: "Unable to resize browser viewport",
+        title: t("browser.unableToResizeBrowserViewport"),
         description: error instanceof Error ? error.message : String(error),
       }),
     )
@@ -105,11 +107,11 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
         (artifact) => {
           if (!artifact) return
           useBrowserArtifactStore.getState().setRecording(artifact)
-          appToast.success({ title: "Recording saved", description: artifact.path })
+          appToast.success({ title: t("browser.recordingSaved"), description: artifact.path })
         },
         (error) =>
           appToast.error({
-            title: "Unable to stop recording",
+            title: t("browser.unableToStopRecording"),
             description: error instanceof Error ? error.message : String(error),
           }),
       )
@@ -118,7 +120,7 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
     if (record) {
       void startBrowserRecording(runtimeTabId).catch((error) =>
         appToast.error({
-          title: "Unable to start recording",
+          title: t("browser.unableToStartRecording"),
           description: error instanceof Error ? error.message : String(error),
         }),
       )
@@ -127,11 +129,11 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
     void preview.captureScreenshot(runtimeTabId).then(
       (artifact) => {
         useBrowserArtifactStore.getState().setScreenshot(artifact)
-        appToast.success({ title: "Screenshot saved", description: artifact.path })
+        appToast.success({ title: t("browser.screenshotSaved"), description: artifact.path })
       },
       (error) =>
         appToast.error({
-          title: "Unable to capture screenshot",
+          title: t("browser.unableToCaptureScreenshot"),
           description: error instanceof Error ? error.message : String(error),
         }),
     )
@@ -157,8 +159,8 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
         )
         if (!attached)
           appToast.warning({
-            title: "No assistant composer is open",
-            description: "Open an assistant tile in this workbench to attach the annotation.",
+            title: t("browser.noAssistantComposerIsOpen"),
+            description: t("browser.openAnAssistantTileInThis"),
           })
       })
       .catch(() => undefined)
@@ -404,7 +406,7 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
             variant={pickActive || recording || state?.pictureInPicture ? "secondary" : "ghost"}
             size="icon-xs"
             className="relative"
-            aria-label="Browser and preview menu"
+            aria-label={t("browser.browserAndPreviewMenu")}
             aria-haspopup="menu"
             onClick={handleOpenMenu}
           >
@@ -414,7 +416,7 @@ export function BrowserPreviewActions({ runtimeTabId }: { readonly runtimeTabId:
             ) : null}
           </Button>
         </TooltipTrigger>
-        <TooltipContent>Browser and preview controls</TooltipContent>
+        <TooltipContent>{t("browser.browserAndPreviewControls")}</TooltipContent>
       </Tooltip>
     </div>
   )

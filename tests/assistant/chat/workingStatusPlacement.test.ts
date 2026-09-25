@@ -31,7 +31,7 @@ describe("active agent working status placement", () => {
     expect(statusRow).toContain("const isActive = summary === null;");
     expect(statusRow).toContain('!isActive && "border-b border-border/60"');
     expect(statusRow.match(/\bborder-b\b/g)).toHaveLength(1);
-    expect(statusRow).toContain("<LiveShimmerText>Working</LiveShimmerText>");
+    expect(statusRow).toContain("<LiveShimmerText>{t(\"assistant.working\")}</LiveShimmerText>");
     expect(statusRow).toContain("<WorkingTimer startedAtIso={startedAtIso} />");
   });
 

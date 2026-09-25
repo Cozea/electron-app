@@ -6,6 +6,7 @@
  */
 
 import { useMemo } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
@@ -47,6 +48,7 @@ export function SessionActivityHeatmap({
   sessionDuration,
   className,
 }: SessionActivityHeatmapProps) {
+  const { t } = useTranslation()
   // Ensure we have at least 16 grid cells to show a smooth punch card timeline
   const normalizedGrid = useMemo(() => {
     const minSlots = 16
@@ -71,7 +73,7 @@ export function SessionActivityHeatmap({
     <div className={cn("rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2.5", className)}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-foreground">Session Activity</span>
+          <span className="text-xs font-semibold text-foreground">{t("collab.sessionActivity")}</span>
           <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal">
             {sessionDuration} lifetime
           </Badge>
@@ -119,15 +121,15 @@ export function SessionActivityHeatmap({
         <div className="flex items-center justify-between text-[10px] text-muted-foreground/80 pt-0.5 px-0.5">
           <span>{formatBucketTime(normalizedGrid[0]?.bucketStart ?? Date.now())}</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-2xs">Less</span>
+            <span className="text-2xs">{t("collab.less")}</span>
             <span className="size-2 rounded-[1.5px] bg-muted/40 border border-border/50" />
             <span className="size-2 rounded-[1.5px] bg-emerald-500/25 border border-emerald-500/30" />
             <span className="size-2 rounded-[1.5px] bg-emerald-500/50 border border-emerald-500/60" />
             <span className="size-2 rounded-[1.5px] bg-emerald-500/80 border border-emerald-500/80" />
             <span className="size-2 rounded-[1.5px] bg-emerald-500 border border-emerald-400" />
-            <span className="text-2xs">More</span>
+            <span className="text-2xs">{t("collab.more")}</span>
           </div>
-          <span>Now</span>
+          <span>{t("collab.now")}</span>
         </div>
       </div>
     </div>

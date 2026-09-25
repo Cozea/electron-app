@@ -1,4 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useTranslation } from "@/lib/i18n"
 import { Spinner } from "@/components/ui/spinner"
 import {
   AlertCircleIcon as __CircleAlertIconHugeIcon,
@@ -118,6 +119,7 @@ function ProviderUpdateOutcome({
   error: string | null
   feedback: NonNullable<ServerProvider["updateState"]> | null
 }): ReactNode {
+  const { t } = useTranslation()
   if (error) {
     return (
       <p className="px-4 pb-2 text-xs text-destructive" role="status">
@@ -139,7 +141,7 @@ function ProviderUpdateOutcome({
       </p>
       {feedback.output ? (
         <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer select-none">Update details</summary>
+          <summary className="cursor-pointer select-none">{t("assistant.updateDetails")}</summary>
           <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-secondary/95 p-2.5 font-mono text-caption">
             {feedback.output}
           </pre>

@@ -9,6 +9,7 @@
  */
 
 import { useState, type ReactNode } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { useMutation, useQuery } from "convex/react"
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
@@ -53,6 +54,7 @@ export function LiveSessionShareSection({
   onLeaveSession?: () => void
   className?: string
 }) {
+  const { t } = useTranslation()
   const { principalId } = useAuth()
   const sync = useOptionalProjectSyncContext()
   const route = useOptionalProjectRouteContext()
@@ -192,8 +194,8 @@ export function LiveSessionShareSection({
 
       if (retainedBatches > 0 || retainedBinaryVersions > 0) {
         appToast.info({
-          title: "Left collaboration",
-          description: "Some edits were not confirmed by the session. Their recovery data remains on this Mac.",
+          title: t("collab.leftCollaboration"),
+          description: t("collab.someEditsWereNotConfirmedBy"),
         })
       }
       return "Left the live session."
@@ -223,7 +225,7 @@ export function LiveSessionShareSection({
         console.warn("[LiveSessionShareSection] detach warning:", err)
       }
       appToast.success({
-        title: "Collaboration ended",
+        title: t("collab.collaborationEnded"),
         description: `Live session on ${activeSession.branchName} has been closed for everyone.`,
       })
       return "Ended the live session."
@@ -232,11 +234,11 @@ export function LiveSessionShareSection({
 
   let body: ReactNode
   if (sessions === undefined) {
-    body = <p className="text-sm text-muted-foreground">Loading…</p>
+    body = <p className="text-sm text-muted-foreground">{t("collab.loading")}</p>
   } else if (!sync?.gitCwd || !activeBranch) {
     body = (
       <p className="rounded-md border border-border/60 px-3 py-3 text-sm text-muted-foreground">
-        Live sessions follow a Git branch. Open a project folder that is a Git repository to start one.
+        {t("collab.liveSessionsFollowAGitBranch")}
       </p>
     )
   } else if (!activeSession) {
@@ -247,7 +249,7 @@ export function LiveSessionShareSection({
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/20 p-3">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground">
-              Live session on <span className="font-mono">{activeSession.branchName}</span>
+              {t("collab.liveSessionOn")} <span className="font-mono">{activeSession.branchName}</span>
             </p>
             <p className="text-xs text-muted-foreground">
               {inSession.length} {inSession.length === 1 ? "person is" : "people are"} currently collaborating
@@ -338,20 +340,20 @@ export function LiveSessionShareSection({
               <Input
                 value={identityKey}
                 onChange={(event) => setIdentityKey(event.target.value)}
-                placeholder="Another device's czd_… ID"
-                aria-label="Device ID to invite"
+                placeholder={t("collab.anotherDevicesCzdId")}
+                aria-label={t("collab.deviceIdToInvite")}
                 className="h-9 flex-1 font-mono text-sm"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") inviteDevice()
                 }}
               />
               <Button size="sm" className="h-9 text-sm" disabled={!identityKey.trim() || busy !== null} onClick={inviteDevice}>
-                Invite
+                {t("collab.invite")}
               </Button>
             </div>
           </>
         ) : (
-          <p className="text-xs text-muted-foreground">Only session managers can invite people to the session.</p>
+          <p className="text-xs text-muted-foreground">{t("collab.onlySessionManagersCanInvitePeople")}</p>
         )}
       </div>
     )
@@ -362,7 +364,7 @@ export function LiveSessionShareSection({
   if (!body && !message && otherSessions.length === 0) return null
 
   return (
-    <section className={cn("space-y-2", className)} aria-label="Live session">
+    <section className={cn("space-y-2", className)} aria-label={t("collab.liveSession")}>
       {message ? (
         <p
           className={cn(
@@ -376,7 +378,7 @@ export function LiveSessionShareSection({
       {body}
       {otherSessions.length > 0 ? (
         <div className="space-y-1.5">
-          <p className="text-sm font-medium text-muted-foreground">Other live sessions in this project</p>
+          <p className="text-sm font-medium text-muted-foreground">{t("collab.otherLiveSessionsInThisProject")}</p>
           {otherSessions.map((candidate) => (
             <div key={String(candidate._id)} className="flex items-center gap-2 px-1 text-sm">
               <span className="min-w-0 flex-1 truncate font-mono text-sm">{candidate.branchName}</span>
@@ -418,7 +420,7 @@ export function LiveSessionShareSection({
                         console.warn("[LiveSessionShareSection] detach warning:", err)
                       }
                       appToast.success({
-                        title: "Collaboration ended",
+                        title: t("collab.collaborationEnded"),
                         description: `Live session on ${candidate.branchName} has been closed.`,
                       })
                       return `Ended session on ${candidate.branchName}.`

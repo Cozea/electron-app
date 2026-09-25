@@ -1,4 +1,5 @@
 import { Cancel01Icon, Search01Icon } from "@hugeicons/core-free-icons";
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
@@ -9,6 +10,7 @@ import { useBrowserFindUiStore } from "./browserFindUiStore";
 import { useBrowserSurfaceStateStore } from "./browserSurfaceStateStore";
 
 export function BrowserFindOverlay({ runtimeTabId }: { readonly runtimeTabId: string }) {
+  const { t } = useTranslation();
   const preview = window.desktopBridge?.preview;
   const inputRef = useRef<HTMLInputElement | null>(null);
   const visible = useBrowserFindUiStore((store) => store.visibleByTabId[runtimeTabId] ?? false);
@@ -57,9 +59,9 @@ export function BrowserFindOverlay({ runtimeTabId }: { readonly runtimeTabId: st
         value={query}
         onChange={(event) => find(event.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="Find in page"
+        placeholder={t("browser.findInPage")}
         className="h-7 w-48 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
-        aria-label="Find in page"
+        aria-label={t("browser.findInPage")}
       />
       <span className="min-w-12 text-center text-caption tabular-nums text-muted-foreground">
         {matchLabel}
@@ -70,7 +72,7 @@ export function BrowserFindOverlay({ runtimeTabId }: { readonly runtimeTabId: st
         size="icon-xs"
         disabled={!query.trim()}
         onClick={() => find(query, false, true)}
-        aria-label="Previous match"
+        aria-label={t("browser.previousMatch")}
       >
         ↑
       </Button>
@@ -80,11 +82,11 @@ export function BrowserFindOverlay({ runtimeTabId }: { readonly runtimeTabId: st
         size="icon-xs"
         disabled={!query.trim()}
         onClick={() => find(query, true, true)}
-        aria-label="Next match"
+        aria-label={t("browser.nextMatch")}
       >
         ↓
       </Button>
-      <Button type="button" variant="ghost" size="icon-xs" onClick={close} aria-label="Close find">
+      <Button type="button" variant="ghost" size="icon-xs" onClick={close} aria-label={t("browser.closeFind")}>
         <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
       </Button>
     </div>

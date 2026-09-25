@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "@/lib/i18n"
 import { LuCheck as CheckIcon, LuCircle as CircleIcon, LuListTodo as ListTodoIcon } from "react-icons/lu";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 import { cn } from "@/lib/utils";
@@ -14,18 +15,19 @@ export const ProviderPlanSteps = memo(function ProviderPlanSteps({
   plan,
   isActive = true,
 }: ProviderPlanStepsProps) {
+  const { t } = useTranslation();
   const completedCount = plan.steps.filter((s) => s.status === "completed").length;
   const totalCount = plan.steps.length;
 
   return (
     <section
-      aria-label="Agent plan"
+      aria-label={t("assistant.agentPlan")}
       className="my-2.5 rounded-xl border border-border/80 bg-card p-3.5 text-xs shadow-xs text-card-foreground"
     >
       <div className="mb-2.5 flex items-center justify-between border-b border-border/60 pb-2 text-muted-foreground">
         <div className="flex items-center gap-1.5 font-medium text-foreground/80">
           <ListTodoIcon className="size-3.5 text-primary" />
-          <span>Tasks Plan</span>
+          <span>{t("assistant.tasksPlan")}</span>
         </div>
         <span className="font-mono text-2xs tabular-nums">
           {completedCount} of {totalCount} completed

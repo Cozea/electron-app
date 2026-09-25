@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n"
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "../lib/contextWindow";
 import {
   type AccountUsageLimitSnapshot,
@@ -238,11 +239,12 @@ function UsagePanel({
   contextPercentage: number | null;
   windows: ReadonlyArray<AccountUsageLimitWindow>;
 }) {
+  const { t } = useTranslation()
   return (
     <div className="space-y-3 text-xs leading-tight">
       <div data-usage-row="context">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="shrink-0 text-muted-foreground">Context window</span>
+          <span className="shrink-0 text-muted-foreground">{t("assistant.contextWindow")}</span>
           <span className="min-w-0 truncate text-right tabular-nums text-foreground">
             {contextValue}
           </span>
@@ -251,9 +253,9 @@ function UsagePanel({
       </div>
 
       <div data-usage-row="account" className="border-t border-border/60 pt-2.5">
-        <div className="text-muted-foreground">Plan usage limits</div>
+        <div className="text-muted-foreground">{t("assistant.planUsageLimits")}</div>
         {windows.length === 0 ? (
-          <div className="mt-1.5 text-muted-foreground">Not reported</div>
+          <div className="mt-1.5 text-muted-foreground">{t("assistant.notReported")}</div>
         ) : (
           <div className="mt-2 space-y-2.5">
             {windows.map((window) => {
