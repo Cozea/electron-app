@@ -111,7 +111,9 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
   const counts = useMemo(() => {
     const builtinSurfacesCount = builtinApps.filter((a) => a.launcher.group === "Development").length
     const assistantsCount = builtinApps.filter((a) => a.launcher.group === "Assistant").length
-    const installedCount = installations.filter((i) => i.active).length
+    // Built-ins ship with the app, so they count as installed, as the Store's
+    // Installed row counts them; this tab said 0 beside nine enabled apps.
+    const installedCount = builtinApps.length + installations.filter((i) => i.active).length
     const totalCount = builtinApps.length + (orgDevApps?.length ?? installations.length)
 
     return {
@@ -172,7 +174,6 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
 
   const filteredBuiltins = useMemo(() => {
     return builtinApps.filter((app) => {
-      if (activeTab === "installed") return false
       if (activeTab === "builtin" && app.launcher.group !== "Development") return false
       if (activeTab === "assistants" && app.launcher.group !== "Assistant") return false
       if (query) {

@@ -105,6 +105,7 @@ const es: Record<TranslationKey, string> = {
   "settings.account.localDeviceControls": "Controles del dispositivo local",
   "settings.account.deleteAccount": "Eliminar cuenta",
   "settings.account.resetDeviceIdentity": "Restablecer identidad del dispositivo",
+  "settings.account.resetAction": "Restablecer",
   "settings.account.deleteAccountDesc":
     "Eliminar permanentemente tu cuenta y todos los datos",
   "settings.account.resetDeviceDesc":
@@ -190,7 +191,7 @@ const es: Record<TranslationKey, string> = {
   "settings.organizations.error": "Esa acción de organización falló.",
 
   // ── Configuración: Herramientas ─────────────────────────────────────
-  "settings.tooling.title": "Soporte de herramientas y frameworks",
+  "settings.tooling.title": "Entorno local",
   "settings.tooling.description":
     "Esta página refleja lo que tu instancia actual de Cozea puede ejecutar en este dispositivo.",
   "settings.tooling.gitRuntime": "Entorno Git",
@@ -662,6 +663,7 @@ const es: Record<TranslationKey, string> = {
   "errorScreen.description": "Ocurrió un error inesperado en esta vista. Puedes intentarlo de nuevo o recargar la aplicación.",
   "errorScreen.tryAgain": "Intentar de nuevo",
   "errorScreen.reload": "Recargar aplicación",
+  "errorScreen.details": "Detalles",
 
   // ── Workbench panels / header ───────────────────────────────────────
   "workbench.panel.close": "Cerrar panel",

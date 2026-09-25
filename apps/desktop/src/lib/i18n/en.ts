@@ -101,6 +101,7 @@ const en = {
   "settings.account.localDeviceControls": "Local device controls",
   "settings.account.deleteAccount": "Delete account",
   "settings.account.resetDeviceIdentity": "Reset device identity",
+  "settings.account.resetAction": "Reset",
   "settings.account.deleteAccountDesc":
     "Permanently delete your account and all data",
   "settings.account.resetDeviceDesc":
@@ -183,7 +184,7 @@ const en = {
   "settings.organizations.error": "That organization action failed.",
 
   // ── Settings: Tooling ───────────────────────────────────────────────
-  "settings.tooling.title": "Tooling and Framework Support",
+  "settings.tooling.title": "Local environment",
   "settings.tooling.description":
     "This page reflects what your current Cozea instance can execute on this device.",
   "settings.tooling.gitRuntime": "Git Runtime",
@@ -652,6 +653,7 @@ const en = {
   "errorScreen.description": "An unexpected error occurred in this view. You can try again, or reload the app.",
   "errorScreen.tryAgain": "Try again",
   "errorScreen.reload": "Reload app",
+  "errorScreen.details": "Details",
 
   // ── Workbench panels / header ───────────────────────────────────────
   "workbench.panel.close": "Close panel",
