@@ -18,7 +18,7 @@ describe('desktop-first boot graph', () => {
     // layout-shaped skeletons instead of nothing; the workbench and anything
     // unlisted still render nothing at all.
     expect(routeLoading).toContain('resolvedLabelKey === "routeLoading.projectInvite"')
-    expect(routeLoading.match(/className="loader"/g)).toHaveLength(1)
+    expect(routeLoading.match(/<Spinner\b/g)).toHaveLength(1)
     expect(routeLoading).toContain('return null')
     expect(routeLoading).not.toContain('"routeLoading.workbench"')
   })

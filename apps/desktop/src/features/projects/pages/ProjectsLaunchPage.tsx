@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type DragEvent } from "react"
+import { appToast } from "@/lib/appToast"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { EmptyFolder } from "@/components/ui/empty-folder"
@@ -39,14 +40,9 @@ export function ProjectsLaunchPage() {
   }, [legacyLastWorkbenchRoute, workspaceSelectionId])
 
   const showDropError = useCallback(async (detail: string) => {
-    await window.electronAPI.dialog.showMessageBox({
-      type: "error",
-      buttons: ["OK"],
-      defaultId: 0,
-      title: "Could not import folder",
-      message: "Cozea couldn't import that local folder.",
-      detail,
-      noLink: true,
+    appToast.error({
+      title: "Cozea couldn't import that local folder.",
+      description: detail,
     })
   }, [])
 

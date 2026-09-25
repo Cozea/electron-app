@@ -1,4 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react"
+import { Spinner } from "@/components/ui/spinner"
 import {
   AlertCircleIcon as __CircleAlertIconHugeIcon,
   Copy01Icon as __CopyIconHugeIcon,
@@ -89,7 +90,7 @@ export const ProviderUpdateNotice = memo(function ProviderUpdateNotice({
               void update.run()
             }}
           >
-            {update.isUpdating ? <div className="loader mr-1.5" /> : null}
+            {update.isUpdating ? <Spinner size="xs" className="mr-1.5" /> : null}
             {update.isUpdating ? "Updating…" : `Update ${providerLabel}`}
           </Button>
         ) : updateCommand ? (

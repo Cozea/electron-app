@@ -1,6 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
+import { Spinner } from "@/components/ui/spinner"
 import { AlertCircleIcon as __CircleAlertIconHugeIcon } from '@hugeicons/core-free-icons'
 
 import { PROVIDER_DISPLAY_NAMES, type ServerProvider } from "@cozea/assistant-contracts";
@@ -84,7 +85,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
             void update.run();
           }}
         >
-          {update.isUpdating ? <div className="loader mr-1.5" /> : null}
+          {update.isUpdating ? <Spinner size="xs" className="mr-1.5" /> : null}
           {update.isUpdating ? `Updating ${providerLabel}…` : `Update ${providerLabel}`}
         </Button>
       ) : null}

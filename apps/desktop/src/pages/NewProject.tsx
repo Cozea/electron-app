@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { Spinner } from "@/components/ui/spinner"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
@@ -70,7 +71,7 @@ export default function NewProject() {
 
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      <div className="loader mr-2" />
+      <Spinner size="xs" className="mr-2" />
       {t("newProject.openingSetup")}
     </div>
   )

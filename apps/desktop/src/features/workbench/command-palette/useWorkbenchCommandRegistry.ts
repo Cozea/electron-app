@@ -1,4 +1,5 @@
 import { useMemo } from "react"
+import { appToast } from "@/lib/appToast"
 import { useQuery } from "convex/react"
 import { api } from "../../../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -425,14 +426,9 @@ export function useWorkbenchCommandRegistry(
 }
 
 async function showDevAppPreviewSelectionError(detail: string): Promise<void> {
-  await window.electronAPI.dialog.showMessageBox({
-    type: "error",
-    buttons: ["OK"],
-    defaultId: 0,
-    title: "Could not preview DevApp",
-    message: "Cozea couldn't open that development package.",
-    detail,
-    noLink: true,
+  appToast.error({
+    title: "Cozea couldn't open that development package.",
+    description: detail,
   })
 }
 

@@ -1,4 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Spinner } from "@/components/ui/spinner"
+import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { useNavigateTo, useViewTransitionNavigate } from '@/lib/navigation'
 import { useSearchParams } from '@/lib/router'
@@ -22,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   SettingsGroup,
+  SettingsDangerButton,
   SettingsDangerGroup,
   SettingsRow,
   SettingsRowLabel,
@@ -160,11 +163,9 @@ export function ProjectSettingsPage() {
       navigateTo({ to: "projects" })
     } catch (error) {
       const message = cleanConvexError(error, t('settings.error.archiveFailed'))
-      await window.electronAPI.dialog.showMessageBox({
-        type: 'error',
+      appToast.error({
         title: t('settings.error.archiveFailed'),
-        message: t('settings.error.archiveFailed'),
-        detail: message,
+        description: message,
       })
     } finally {
       setIsArchiving(false)
@@ -199,11 +200,9 @@ export function ProjectSettingsPage() {
       const message = presentation.detail
         ? `${presentation.message} ${presentation.detail}`
         : presentation.message
-      await window.electronAPI.dialog.showMessageBox({
-        type: 'error',
-        title: 'Delete Failed',
-        message: 'Failed to delete project',
-        detail: message,
+      appToast.error({
+        title: 'Failed to delete project',
+        description: message,
       })
     } finally {
       setIsDeleting(false)
@@ -224,7 +223,7 @@ export function ProjectSettingsPage() {
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <div className="loader mr-2" />
+        <Spinner size="xs" className="mr-2" />
         {t('settings.loading')}
       </div>
     )
@@ -261,7 +260,7 @@ export function ProjectSettingsPage() {
                   disabled={!canSave}
                 >
                   {isSaving ? (
-                    <div className="loader" />
+                    <Spinner size="xs" />
                   ) : (
                     <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
                   )}
@@ -421,9 +420,8 @@ export function ProjectSettingsPage() {
                         description={t('settings.desc.archiveProject')}
                       />
                       <SettingsRowControl>
-                        <Button
-                          variant="outline"
-                          className="h-7 text-xs text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
+                        <SettingsDangerButton
+                          tone="reversible"
                           disabled={!principalId || !isManager || project.status === 'archived' || isArchiving}
                           onClick={async () => {
                             const result = await window.electronAPI.dialog.showMessageBox({
@@ -442,7 +440,7 @@ export function ProjectSettingsPage() {
                           }}
                         >
                           {project.status === 'archived' ? t('settings.action.archived') : t('settings.action.archive')}
-                        </Button>
+                        </SettingsDangerButton>
                       </SettingsRowControl>
                     </SettingsRow>
                     <SettingsRow>
@@ -451,10 +449,9 @@ export function ProjectSettingsPage() {
                         description={t('settings.desc.deleteProject')}
                       />
                       <SettingsRowControl>
-                        <Button
-                          variant="destructive"
+                        <SettingsDangerButton
+                          tone="irreversible"
                           disabled={!principalId || isDeleting}
-                          className="h-7 text-xs"
                           onClick={async () => {
                             const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
                               projectId: String(project._id),
@@ -465,9 +462,8 @@ export function ProjectSettingsPage() {
                             }
                           }}
                         >
-                          <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-1.5 h-4 w-4" />
                           {isDeleting ? 'Deleting...' : t('settings.action.delete')}
-                        </Button>
+                        </SettingsDangerButton>
                       </SettingsRowControl>
                     </SettingsRow>
                   </SettingsDangerGroup>

@@ -1,3 +1,4 @@
+import { Spinner } from '@/components/ui/spinner'
 import {
   useEffect,
   useMemo,
@@ -791,7 +792,7 @@ export function TasksPage({
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <div className="loader mr-2" />
+        <Spinner size="xs" className="mr-2" />
         {t('tasks.loading')}
       </div>
     )
@@ -1236,7 +1237,7 @@ export function TasksPage({
                         <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                           {isVisibleContextLoading ? (
                             <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
-                              <div className="loader" />
+                              <Spinner size="xs" />
                               {t('tasks.loadingContext')}
                             </div>
                           ) : visibleContextOptions.length === 0 ? (

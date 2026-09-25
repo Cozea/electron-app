@@ -5,6 +5,7 @@ import { useAuth } from "../../contexts/AuthContext";
 import { DeviceAvatar } from "@/components/ui/DeviceAvatar";
 import { AvatarUploader } from "@/components/ui/avatar-uploader";
 import {
+  SettingsDangerButton,
   SettingsDangerGroup,
   SettingsFooterActions,
   SettingsGroup,
@@ -308,14 +309,9 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
               description={t("settings.account.resetDeviceDesc")}
             />
             <SettingsRowControl>
-              <Button
-                variant="destructive"
-                size="sm"
-                className="h-7 gap-1.5 text-caption"
-                onClick={() => setResetDialogOpen(true)}
-              >
+              <SettingsDangerButton tone="irreversible" onClick={() => setResetDialogOpen(true)}>
                 {t("settings.account.resetAction")}
-              </Button>
+              </SettingsDangerButton>
               <ConfirmModal
                 kind="destructive-confirm"
                 open={resetDialogOpen}

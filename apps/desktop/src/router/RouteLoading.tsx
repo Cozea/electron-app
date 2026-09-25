@@ -1,4 +1,5 @@
 import { useTranslation } from "@/lib/i18n"
+import { Spinner } from "@/components/ui/spinner"
 import type { TranslationKey } from "@/lib/i18n/en"
 import { cn } from "@/lib/utils"
 
@@ -71,7 +72,7 @@ export function RouteLoading({ className, labelKey }: RouteLoadingProps) {
         )}
       >
         <div className="flex items-center gap-2">
-          <div className="loader" />
+          <Spinner size="xs" />
           <span>{t(resolvedLabelKey)}</span>
         </div>
       </div>

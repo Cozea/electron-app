@@ -1,4 +1,5 @@
 import { useCallback } from "react"
+import { appToast } from "@/lib/appToast"
 import { useConvex, useMutation } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -103,14 +104,9 @@ export function useLocalProjectImport() {
   )
 
   const showImportError = useCallback(async (detail: string) => {
-    await window.electronAPI.dialog.showMessageBox({
-      type: "error",
-      buttons: ["OK"],
-      defaultId: 0,
-      title: "Could not open folder",
-      message: "Cozea couldn't attach that local folder.",
-      detail,
-      noLink: true,
+    appToast.error({
+      title: "Cozea couldn't attach that local folder.",
+      description: detail,
     })
   }, [])
 

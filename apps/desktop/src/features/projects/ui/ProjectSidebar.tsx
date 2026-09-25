@@ -1,6 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
+import { appToast } from "@/lib/appToast"
 import {
   Add01Icon as __Add01HugeIcon,
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
@@ -627,11 +628,9 @@ export function ProjectSidebar({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to open project folder.";
 
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Open Folder Failed",
-          message: "Failed to open project folder",
-          detail: message,
+        appToast.error({
+          title: "Failed to open project folder",
+          description: message,
         });
       }
     },
@@ -651,21 +650,17 @@ export function ProjectSidebar({
       if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
       if (!principalId) {
         console.warn("[orgDevApp] Publish blocked: no authenticated Convex user.");
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.needsAccount"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.needsAccount"),
         });
         return;
       }
 
       if (!project.organizationId) {
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.needsOrg"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.needsOrg"),
         });
         return;
       }
@@ -690,11 +685,9 @@ export function ProjectSidebar({
         if (error instanceof DOMException && error.name === "AbortError") return;
         const fallback = t("orgDevApp.publish.failed");
         const detail = cleanConvexErrorMessage(error instanceof Error ? error.message : fallback);
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: fallback,
-          detail,
+        appToast.error({
+          title: fallback,
+          description: detail,
         });
       } finally {
         devAppPublishingRef.current = false;
@@ -726,21 +719,17 @@ export function ProjectSidebar({
       if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
       if (!principalId) {
         console.warn("[orgDevApp] Publish request blocked: no authenticated Convex user.");
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.needsAccount"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.needsAccount"),
         });
         return;
       }
 
       if (!workspaceId) {
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.noFolder"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.noFolder"),
         });
         return;
       }
@@ -842,11 +831,9 @@ export function ProjectSidebar({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to archive project";
         const cleanMessage = cleanConvexErrorMessage(message);
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Archive Failed",
-          message: "Failed to archive project",
-          detail: cleanMessage,
+        appToast.error({
+          title: "Failed to archive project",
+          description: cleanMessage,
         });
       }
     },
@@ -879,11 +866,9 @@ export function ProjectSidebar({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to restore project";
         const cleanMessage = cleanConvexErrorMessage(message);
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Restore Failed",
-          message: "Failed to restore project",
-          detail: cleanMessage,
+        appToast.error({
+          title: "Failed to restore project",
+          description: cleanMessage,
         });
       }
     },
@@ -928,11 +913,9 @@ export function ProjectSidebar({
         const message = presentation.detail
           ? `${presentation.message} ${presentation.detail}`
           : presentation.message;
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Delete Failed",
-          message: "Failed to delete project",
-          detail: message,
+        appToast.error({
+          title: "Failed to delete project",
+          description: message,
         });
       } finally {
         setIsDeletingProject(false);
