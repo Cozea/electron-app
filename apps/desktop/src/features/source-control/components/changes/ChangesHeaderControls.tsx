@@ -89,7 +89,7 @@ export const ChangesHeaderControls = memo(function ChangesHeaderControls({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={viewMode === 'tree' ? t('changes.placeholder.filterFiles') : "Search within code"}
-          className="h-full min-w-0 flex-1 bg-transparent px-2 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/70"
+          className="h-full min-w-0 flex-1 bg-transparent px-2 text-xs text-foreground outline-none placeholder:text-muted-foreground/70"
         />
       </div>
 

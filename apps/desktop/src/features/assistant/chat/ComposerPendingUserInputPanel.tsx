@@ -370,7 +370,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                   aria-hidden={isActive ? undefined : true}
                   style={questionStyle}
                 >
-                  <span className="text-[11px] font-semibold text-muted-foreground/50">
+                  <span className="text-caption font-semibold text-muted-foreground/50">
                     {question.header.charAt(0).toUpperCase() +
                       question.header.slice(1).toLowerCase()}
                   </span>
@@ -421,7 +421,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                           <span className="min-w-0 flex-1">
                             <span
                               className={cn(
-                                "block text-[13px] leading-snug transition-colors duration-200",
+                                "block text-sm leading-snug transition-colors duration-200",
                                 isSelected ? "text-foreground" : "text-foreground/80",
                               )}
                             >
@@ -434,7 +434,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                             ) : null}
                           </span>
                           {shortcutKey !== null ? (
-                            <kbd className="flex size-5 shrink-0 items-center justify-center rounded-[5px] border border-border/60 bg-background/50 text-[10px] font-medium tabular-nums text-muted-foreground/50">
+                            <kbd className="flex size-5 shrink-0 items-center justify-center rounded-[5px] border border-border/60 bg-background/50 text-2xs font-medium tabular-nums text-muted-foreground/50">
                               {shortcutKey}
                             </kbd>
                           ) : null}
@@ -458,7 +458,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                           }}
                           placeholder="Something else…"
                           aria-label={`Custom answer: ${question.question}`}
-                          className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60"
+                          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
                         />
                       </label>
                     ) : null}
@@ -483,7 +483,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               >
                 <HugeiconsIcon icon={__ChevronUpHugeIcon} className="size-3.5" />
               </button>
-              <span className="inline-flex items-center text-[12px] font-medium tabular-nums leading-none text-muted-foreground">
+              <span className="inline-flex items-center text-xs font-medium tabular-nums leading-none text-muted-foreground">
                 <RollingDigits value={stepLabel} />
               </span>
               <button

@@ -308,7 +308,7 @@ function ChangesScopeMenu(props: {
       className="flex h-7 max-w-[14rem] items-center gap-1.5 rounded-md px-1.5 text-foreground outline-none transition-colors hover:bg-muted/70"
       onClick={handleOpenMenu}
     >
-      <span className="truncate text-[13px] font-medium">{selectedOption?.label ?? 'Current'}</span>
+      <span className="truncate text-sm font-medium">{selectedOption?.label ?? 'Current'}</span>
       <ScopeCountBadge count={selectedOption?.count ?? null} />
       <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground" />
     </button>

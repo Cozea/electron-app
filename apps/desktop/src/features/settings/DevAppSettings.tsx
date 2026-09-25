@@ -351,7 +351,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
                 <span>{tab.label}</span>
                 <span
                   className={cn(
-                    "text-[10px] tabular-nums",
+                    "text-2xs tabular-nums",
                     isActive ? "text-foreground/80 font-semibold" : "text-muted-foreground/70",
                   )}
                 >

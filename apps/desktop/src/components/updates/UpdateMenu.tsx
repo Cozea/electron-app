@@ -108,7 +108,7 @@ export function UpdateMenu({ disableAutoUpdaterHook = false }: UpdateMenuProps) 
         </div>
 
         <div className="space-y-1.5">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500">{t('update.changelog')}</div>
+          <div className="text-caption font-semibold uppercase tracking-[0.12em] text-zinc-500">{t('update.changelog')}</div>
           <div className="space-y-1 text-sm text-zinc-700">
             {changelogItems.length > 0 ? (
               changelogItems.map((item, index) => (

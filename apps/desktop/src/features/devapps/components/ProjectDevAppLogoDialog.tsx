@@ -201,7 +201,7 @@ export function ProjectDevAppLogoDialog(props: ProjectDevAppLogoDialogProps) {
             autoComplete="off"
             spellCheck={false}
             trailing={
-              <span className="text-[11px] tabular-nums text-muted-foreground">
+              <span className="text-caption tabular-nums text-muted-foreground">
                 {devAppName.length}/{PROJECT_DEVAPP_NAME_MAX_LENGTH}
               </span>
             }
@@ -271,7 +271,7 @@ export function ProjectDevAppLogoDialog(props: ProjectDevAppLogoDialogProps) {
 
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           <span>{t("projectDevApp.logo.scope")}</span>
-          <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
+          <span className="shrink-0 rounded-full bg-warning/10 px-2 py-1 text-warning">
             {t("appStore.page.privateBadge")}
           </span>
         </div>

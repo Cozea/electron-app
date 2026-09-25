@@ -139,8 +139,8 @@ export function TaskFocusOverlay({
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <p className="text-[11px] font-medium text-muted-foreground">Task</p>
-              <span className="inline-flex h-5 min-w-5 items-center justify-center bg-secondary px-1.5 text-[10px] tabular-nums text-secondary-foreground">
+              <p className="text-caption font-medium text-muted-foreground">Task</p>
+              <span className="inline-flex h-5 min-w-5 items-center justify-center bg-secondary px-1.5 text-2xs tabular-nums text-secondary-foreground">
                 {checkedCount}/{markers.length}
               </span>
             </div>

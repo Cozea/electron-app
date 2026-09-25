@@ -70,10 +70,10 @@ export const ProviderUpdateNotice = memo(function ProviderUpdateNotice({
     : `${providerLabel} is behind its latest release. ${callToAction}`
 
   return (
-    <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/5">
+    <div className="shrink-0 border-b border-warning/30 bg-warning/5">
       <div
         role="status"
-        className="flex min-w-0 items-center gap-2 px-4 py-3 text-xs leading-normal text-amber-700 dark:text-amber-500"
+        className="flex min-w-0 items-center gap-2 px-4 py-3 text-xs leading-normal text-warning"
       >
         <HugeiconsIcon icon={__CircleAlertIconHugeIcon} className="h-3.5 w-3.5 shrink-0" />
         <span className="line-clamp-2 min-w-0 flex-1">
@@ -139,7 +139,7 @@ function ProviderUpdateOutcome({
       {feedback.output ? (
         <details className="text-xs text-muted-foreground">
           <summary className="cursor-pointer select-none">Update details</summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-secondary/95 p-2.5 font-mono text-[11px]">
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-secondary/95 p-2.5 font-mono text-caption">
             {feedback.output}
           </pre>
         </details>

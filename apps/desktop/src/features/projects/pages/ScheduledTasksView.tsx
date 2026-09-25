@@ -937,7 +937,7 @@ export function ComputerUseTag({ available }: { available: boolean }) {
     <Badge
       variant="outline"
       className={cn(
-        "h-5 gap-1.5 rounded-full border-0 bg-amber-500/15 px-2 text-[10px] font-medium text-amber-800 dark:bg-amber-400/15 dark:text-amber-300",
+        "h-5 gap-1.5 rounded-full border-0 bg-warning/15 px-2 text-2xs font-medium text-warning",
         !available && "opacity-60",
       )}
     >
@@ -964,7 +964,7 @@ function ProjectTag({ project }: { project: ScheduledTaskProjectTarget | null })
     return (
       <Badge
         variant="outline"
-        className="h-5 gap-1.5 rounded-full border-0 bg-muted/60 px-2 text-[10px] font-medium text-muted-foreground"
+        className="h-5 gap-1.5 rounded-full border-0 bg-muted/60 px-2 text-2xs font-medium text-muted-foreground"
       >
         General task
       </Badge>
@@ -976,7 +976,7 @@ function ProjectTag({ project }: { project: ScheduledTaskProjectTarget | null })
         <span className="inline-flex">
           <Badge
             variant="outline"
-            className="h-5 gap-1.5 rounded-full border-0 bg-muted/60 px-2 text-[10px] font-medium text-muted-foreground"
+            className="h-5 gap-1.5 rounded-full border-0 bg-muted/60 px-2 text-2xs font-medium text-muted-foreground"
           >
             <HugeiconsIcon icon={__ProjectHugeIcon} className="size-3 shrink-0 text-muted-foreground/80" aria-hidden />
             {project.label}
@@ -993,7 +993,7 @@ function ProviderTag({ provider }: { provider: ScheduledTaskProvider }) {
   return (
     <Badge
       variant="secondary"
-      className="h-5 gap-1.5 rounded-full border-0 bg-secondary px-2 text-[10px] font-medium text-foreground"
+      className="h-5 gap-1.5 rounded-full border-0 bg-secondary px-2 text-2xs font-medium text-foreground"
     >
       <Mark aria-hidden className="size-3 shrink-0" />
       {PROVIDER_LABELS[provider]}
@@ -1032,7 +1032,7 @@ function ScheduledTaskRow({
           "mt-0.5 size-4 shrink-0 cursor-pointer rounded-full border transition-colors",
           task.enabled
             ? overdue
-              ? "border-amber-500/70"
+              ? "border-warning/70"
               : "border-muted-foreground/60 hover:border-foreground"
             : "border-muted-foreground/30 bg-muted-foreground/20",
         )}
@@ -1363,7 +1363,7 @@ function ScheduledTaskEditor({
         className={cn(
           "flex items-start gap-3 rounded-xl border p-3 transition-colors",
           draft.computerUse
-            ? "border-amber-500/40 bg-amber-500/10"
+            ? "border-warning/40 bg-warning/10"
             : "border-border/60 bg-background/40",
         )}
       >
@@ -1371,7 +1371,7 @@ function ScheduledTaskEditor({
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-xl transition-colors",
             draft.computerUse
-              ? "bg-amber-500/20 text-amber-700 dark:text-amber-500"
+              ? "bg-warning/20 text-warning"
               : "bg-muted/60 text-muted-foreground",
           )}
         >
@@ -1386,7 +1386,7 @@ function ScheduledTaskEditor({
               className={cn(
                 "text-xs font-medium",
                 draft.computerUse
-                  ? "text-amber-700 dark:text-amber-500"
+                  ? "text-warning"
                   : "text-muted-foreground",
               )}
             >
@@ -1398,7 +1398,7 @@ function ScheduledTaskEditor({
             Tasks like this carry a Computer use tag in the list.
           </p>
           {draft.computerUse && !computerUseEnabled ? (
-            <p className="text-xs text-amber-700 dark:text-amber-500">
+            <p className="text-xs text-warning">
               Computer use is switched off in Settings. Turn it on there before this task can
               drive the desktop.
             </p>
@@ -1410,7 +1410,7 @@ function ScheduledTaskEditor({
           onCheckedChange={(checked) => patch({ computerUse: checked })}
           // The shared switch's unchecked track is near-invisible on this
           // panel; only this instance is strengthened.
-          className="mt-0.5 shrink-0 data-[state=unchecked]:bg-muted-foreground/30 data-[state=checked]:bg-amber-500"
+          className="mt-0.5 shrink-0 data-[state=unchecked]:bg-muted-foreground/30 data-[state=checked]:bg-warning"
         />
       </div>
 

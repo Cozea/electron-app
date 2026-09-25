@@ -130,7 +130,7 @@ export function CommandPalette({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search commands…"
             aria-label="Search commands"
-            className="h-11 flex-1 min-w-0 border-0 bg-transparent dark:bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/72 outline-none shadow-none focus:outline-none focus:ring-0 focus-visible:ring-0"
+            className="h-11 flex-1 min-w-0 border-0 bg-transparent px-0 text-sm text-foreground placeholder:text-muted-foreground/72 outline-none shadow-none focus:outline-none focus:ring-0 focus-visible:ring-0"
           />
           <Kbd className="shrink-0">Esc</Kbd>
         </div>
@@ -166,7 +166,7 @@ export function CommandPalette({
             ) : (
               groups.map((group) => (
                 <div key={group.value} className="mb-2">
-                  <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <p className="px-2 py-1 text-caption font-medium uppercase tracking-wide text-muted-foreground">
                     {group.label}
                   </p>
                   <ul className="space-y-0.5">

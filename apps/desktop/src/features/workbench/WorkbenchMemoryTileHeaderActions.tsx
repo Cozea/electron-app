@@ -59,14 +59,14 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
   return (
     <>
       {dispatchError ? (
-        <span className="mr-1 text-[11px] text-destructive">
+        <span className="mr-1 text-caption text-destructive">
           {t("workbench.memory.update.unreachable")}
         </span>
       ) : run.error && !run.updating ? (
         // The agent stopped rather than finished — usually a usage limit.
         <button
           type="button"
-          className="mr-1 max-w-56 truncate text-[11px] text-destructive underline-offset-2 hover:underline"
+          className="mr-1 max-w-56 truncate text-caption text-destructive underline-offset-2 hover:underline"
           title={run.error}
           onClick={() => key && clearProjectMemoryError(key)}
         >
@@ -124,7 +124,7 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-64">
-          <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+          <DropdownMenuLabel className="text-caption font-normal text-muted-foreground">
             {agents.length > 0
               ? t("workbench.memory.settings.defaultAgent")
               : t("workbench.memory.update.noAgents")}
@@ -140,7 +140,7 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
           ))}
 
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+          <DropdownMenuLabel className="text-caption font-normal text-muted-foreground">
             {t("workbench.memory.legend.position")}
           </DropdownMenuLabel>
           {/* Four short words do not need four full rows; a 2x2 grid reads as
@@ -171,7 +171,7 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
           {settings.selectableSkills.length > 1 ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+              <DropdownMenuLabel className="text-caption font-normal text-muted-foreground">
                 {t("workbench.memory.skill.label")}
               </DropdownMenuLabel>
               {settings.selectableSkills.map((skill) => (
@@ -181,7 +181,7 @@ export const WorkbenchMemoryTileHeaderActions = memo(function WorkbenchMemoryTil
                 >
                   <span className="flex-1 truncate">{skill.name}</span>
                   {skill.isCozeaDefault ? (
-                    <span className="shrink-0 rounded bg-secondary px-1.5 py-px text-[10px] font-medium text-muted-foreground">
+                    <span className="shrink-0 rounded bg-secondary px-1.5 py-px text-2xs font-medium text-muted-foreground">
                       {t("workbench.memory.skill.cozeaTag")}
                     </span>
                   ) : null}

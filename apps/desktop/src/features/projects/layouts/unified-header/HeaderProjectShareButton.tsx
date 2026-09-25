@@ -345,11 +345,11 @@ export function HeaderProjectShareButton({
                         avatarUrl={member.avatarUrl}
                         principalId={member.principalId}
                         className="size-6"
-                        fallbackClassName="text-[10px] font-medium"
+                        fallbackClassName="text-2xs font-medium"
                         ringClassName={cn(
                           "border-2 transition-all duration-150",
                           isSpeaking
-                            ? "border-emerald-500 ring-2 ring-emerald-500 ring-offset-1 ring-offset-background group-hover:ring-offset-accent"
+                            ? "border-success ring-2 ring-success ring-offset-1 ring-offset-background group-hover:ring-offset-accent"
                             : "border-background group-hover:border-accent",
                         )}
                       />
@@ -364,7 +364,7 @@ export function HeaderProjectShareButton({
                     <DeviceAvatar
                       overflowCount={overflow}
                       className="size-6"
-                      fallbackClassName="text-[10px] font-medium"
+                      fallbackClassName="text-2xs font-medium"
                       ringClassName="border-2 border-background group-hover:border-accent bg-muted transition-colors duration-150"
                     />
                   </span>
@@ -397,7 +397,7 @@ export function HeaderProjectShareButton({
                     </span>
                     <span className="text-muted-foreground text-2xs ml-auto">
                       {isSpeaking ? (
-                        <span className="text-emerald-500 font-medium">Speaking</span>
+                        <span className="text-success font-medium">Speaking</span>
                       ) : isMuted ? (
                         "Muted"
                       ) : (
@@ -547,7 +547,7 @@ export function HeaderProjectShareButton({
               <span className="relative flex items-center justify-center">
                 <HugeiconsIcon icon={__GitBranchHugeIcon} className="size-4 shrink-0" />
                 <span
-                  className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-emerald-500 ring-2 ring-background"
+                  className="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-success ring-2 ring-background"
                   aria-hidden="true"
                 />
               </span>
@@ -587,11 +587,11 @@ export function HeaderProjectShareButton({
                         avatarUrl={member.avatarUrl}
                         principalId={member.principalId}
                         className="size-6"
-                        fallbackClassName="text-[10px] font-medium"
+                        fallbackClassName="text-2xs font-medium"
                         ringClassName={cn(
                           "border-2 transition-all duration-150",
                           isSpeaking
-                            ? "border-emerald-500 ring-2 ring-emerald-500 ring-offset-1 ring-offset-background group-hover:ring-offset-accent"
+                            ? "border-success ring-2 ring-success ring-offset-1 ring-offset-background group-hover:ring-offset-accent"
                             : "border-background group-hover:border-accent",
                         )}
                       />
@@ -606,7 +606,7 @@ export function HeaderProjectShareButton({
                     <DeviceAvatar
                       overflowCount={overflow}
                       className="size-6"
-                      fallbackClassName="text-[10px] font-medium"
+                      fallbackClassName="text-2xs font-medium"
                       ringClassName="border-2 border-background group-hover:border-accent bg-muted transition-colors duration-150"
                     />
                   </span>
@@ -660,7 +660,7 @@ export function HeaderProjectShareButton({
                       </span>
                       <span className="text-muted-foreground text-2xs ml-auto">
                         {isSpeaking ? (
-                          <span className="text-emerald-500 font-medium">Speaking</span>
+                          <span className="text-success font-medium">Speaking</span>
                         ) : isMuted ? (
                           "Muted"
                         ) : (

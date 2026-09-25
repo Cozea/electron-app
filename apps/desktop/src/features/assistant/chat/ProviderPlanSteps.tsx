@@ -27,7 +27,7 @@ export const ProviderPlanSteps = memo(function ProviderPlanSteps({
           <ListTodoIcon className="size-3.5 text-primary" />
           <span>Tasks Plan</span>
         </div>
-        <span className="font-mono text-[10px] tabular-nums">
+        <span className="font-mono text-2xs tabular-nums">
           {completedCount} of {totalCount} completed
         </span>
       </div>
@@ -71,7 +71,7 @@ export const ProviderPlanSteps = memo(function ProviderPlanSteps({
 
               <span
                 className={cn(
-                  "ml-auto shrink-0 text-[10px] font-medium",
+                  "ml-auto shrink-0 text-2xs font-medium",
                   isDone
                     ? "text-success"
                     : isInProgress

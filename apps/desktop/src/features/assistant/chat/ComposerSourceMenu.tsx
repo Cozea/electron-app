@@ -184,7 +184,7 @@ export function ComposerSourceMenu({
                     {row.name}
                   </span>
                   {row.description ? (
-                    <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
+                    <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                       {row.description}
                     </span>
                   ) : (
@@ -193,8 +193,8 @@ export function ComposerSourceMenu({
                   {row.status ? (
                     <span
                       className={cn(
-                        "shrink-0 text-[12px] font-medium",
-                        row.statusTone === "positive" ? "text-emerald-500" : "text-muted-foreground",
+                        "shrink-0 text-xs font-medium",
+                        row.statusTone === "positive" ? "text-success" : "text-muted-foreground",
                       )}
                     >
                       {row.status}
@@ -206,7 +206,7 @@ export function ComposerSourceMenu({
           </div>
         ))}
         {flatRows.length === 0 ? (
-          <div className="flex h-9 items-center px-2 text-[12px] text-muted-foreground">
+          <div className="flex h-9 items-center px-2 text-xs text-muted-foreground">
             No matches for “{query.trim()}”
           </div>
         ) : null}
@@ -219,7 +219,7 @@ export function ComposerSourceMenu({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Type to search sources & files"
           aria-label="Search sources and files"
-          className="h-4 w-full bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground"
+          className="h-4 w-full bg-transparent text-caption text-foreground outline-none placeholder:text-muted-foreground"
         />
       </div>
     </div>

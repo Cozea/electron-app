@@ -112,21 +112,21 @@ function RecoveryPreview({
       <span>{preview.pendingBinaryVersions} staged binary {preview.pendingBinaryVersions === 1 ? "version" : "versions"}</span>
       <span>{conflictTotal === 0 ? "No retained conflicts detected" : `${conflictTotal} retained conflict${conflictTotal === 1 ? "" : "s"}`}</span>
     </div>
-    {conflictTotal > 0 && <p className="text-xs text-amber-700 dark:text-amber-400">
+    {conflictTotal > 0 && <p className="text-xs text-warning">
       Conflicts in retained state: {preview.conflicts.pathCollisions} path collision, {preview.conflicts.concurrentRenames} concurrent rename, {preview.conflicts.deleteModify} delete/modify, {preview.conflicts.binary} binary.
     </p>}
     <div className="max-h-[420px] space-y-2 overflow-auto pr-1">
       {preview.entries.map((entry) => <div key={entry.cursor} className="rounded-lg border border-border/50 bg-background/40 px-3 py-2">
         <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <span className={entry.deleted ? "min-w-0 break-all font-mono text-xs text-muted-foreground line-through" : "min-w-0 break-all font-mono text-xs text-foreground"}>{entry.path}</span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">{recoveryEntryMeta(entry)}</span>
+          <span className="shrink-0 text-caption text-muted-foreground">{recoveryEntryMeta(entry)}</span>
         </div>
         {entry.conflictKinds.length > 0 && <div className="mt-1 flex flex-wrap gap-1">
-          {entry.conflictKinds.map((kind) => <span key={kind} className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">{conflictLabel(kind)}</span>)}
+          {entry.conflictKinds.map((kind) => <span key={kind} className="rounded bg-warning/10 px-1.5 py-0.5 text-2xs text-warning">{conflictLabel(kind)}</span>)}
         </div>}
-        {entry.kind === "text" && entry.textPreview !== null && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 font-mono text-[11px] leading-relaxed text-foreground/90">{entry.textPreview}{entry.textTruncated ? "\n… preview truncated" : ""}</pre>}
-        {entry.kind === "symlink" && entry.symlinkTarget !== null && <p className="mt-2 break-all font-mono text-[11px] text-muted-foreground">→ {entry.symlinkTarget}{entry.symlinkTargetTruncated ? "…" : ""}</p>}
-        {entry.kind === "binary" && <p className="mt-2 text-[11px] text-muted-foreground">Binary payload bytes are not loaded for this preview. {formatBytes(entry.size)} retained metadata is shown above.</p>}
+        {entry.kind === "text" && entry.textPreview !== null && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 font-mono text-caption leading-relaxed text-foreground/90">{entry.textPreview}{entry.textTruncated ? "\n… preview truncated" : ""}</pre>}
+        {entry.kind === "symlink" && entry.symlinkTarget !== null && <p className="mt-2 break-all font-mono text-caption text-muted-foreground">→ {entry.symlinkTarget}{entry.symlinkTargetTruncated ? "…" : ""}</p>}
+        {entry.kind === "binary" && <p className="mt-2 text-caption text-muted-foreground">Binary payload bytes are not loaded for this preview. {formatBytes(entry.size)} retained metadata is shown above.</p>}
       </div>)}
     </div>
     <div className="flex flex-wrap items-center gap-2">
@@ -361,7 +361,7 @@ export function SessionRecoveryPanel({ projectId }: SessionRecoveryPanelProps) {
                   title={
                     <span className="flex items-center gap-2">
                       <span>{entry.branchName ?? entry.publicSessionId}</span>
-                      <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      <span className="rounded bg-muted px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
                         Local record
                       </span>
                     </span>
@@ -448,7 +448,7 @@ export function SessionRecoveryPanel({ projectId }: SessionRecoveryPanelProps) {
                   title={
                     <span className="flex items-center gap-2 font-mono text-xs">
                       <span>{entry.publicSessionId}</span>
-                      <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-destructive">
+                      <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wider text-destructive">
                         Unreadable
                       </span>
                     </span>

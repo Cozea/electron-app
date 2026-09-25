@@ -62,7 +62,7 @@ function BrowserErrorState({ title, description, url, onReload }: BrowserErrorSt
         {description ? (
           <p className="text-xs text-muted-foreground truncate">{description}</p>
         ) : null}
-        <p className="font-mono text-[11px] text-muted-foreground/70 truncate" title={url}>
+        <p className="font-mono text-caption text-muted-foreground/70 truncate" title={url}>
           {url}
         </p>
         <div className="pt-1">

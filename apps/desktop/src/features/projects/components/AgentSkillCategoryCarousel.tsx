@@ -384,7 +384,7 @@ export function AgentSkillCategoryCarousel({
                 )}
               >
                 <span className="text-sm font-semibold text-foreground">{group.label}</span>
-                <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                <span className="text-caption tabular-nums text-muted-foreground/70">
                   {group.skills.length}
                 </span>
               </button>

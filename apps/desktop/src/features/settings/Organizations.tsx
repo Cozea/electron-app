@@ -360,7 +360,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
               value={recoveryCode}
               onChange={(event) => setRecoveryCode(event.target.value)}
               placeholder="czr_…"
-              className="h-7 w-full border-0 border-none bg-transparent px-0 font-mono text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
+              className="h-7 w-full border-0 border-none bg-transparent px-0 font-mono text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:bg-transparent"
             />
           </div>
           <SettingsRowControl>
@@ -478,7 +478,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                     }
                   }}
                   placeholder={t("settings.organizations.createPlaceholder")}
-                  className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
+                  className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:bg-transparent"
                   autoFocus
                 />
               </div>
@@ -552,7 +552,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                     </div>
                   </div>
                   <SettingsRowControl>
-                    <Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] font-normal">
+                    <Badge variant="secondary" className="h-5 rounded-full px-2 text-2xs font-normal">
                       {org.role === "admin"
                         ? t("settings.organizations.role.admin")
                         : t("settings.organizations.role.member")}
@@ -690,7 +690,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
                             value={deviceIdentityId}
                             onChange={(event) => setDeviceIdentityId(event.target.value)}
                             placeholder={t("settings.organizations.deviceIdPlaceholder")}
-                            className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
+                            className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:bg-transparent"
                             autoFocus
                           />
                         </div>

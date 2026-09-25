@@ -58,7 +58,7 @@ export function MergeSessionBody({
   if (result) {
     return (
       <div className="space-y-2 text-sm">
-        <p className={result.outcome === "merged" ? "text-foreground" : "text-amber-700 dark:text-amber-400"}>
+        <p className={result.outcome === "merged" ? "text-foreground" : "text-warning"}>
           {result.message}
         </p>
         {result.outcome === "merged" ? (
@@ -97,7 +97,7 @@ export function MergeSessionBody({
       </p>
 
       {unsaved > 0 ? (
-        <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+        <div className="space-y-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
           <p>
             {unsaved === 1 ? "1 session change isn't" : `${unsaved} session changes aren't`} saved to Git yet, so the
             merge leaves {unsaved === 1 ? "it" : "them"} out.

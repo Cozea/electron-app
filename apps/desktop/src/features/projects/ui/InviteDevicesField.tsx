@@ -217,7 +217,7 @@ export function InviteDevicesField({
                     avatarUrl={item.avatarUrl}
                     principalId={item.principalId}
                     className="size-7"
-                    fallbackClassName="text-[11px] font-medium"
+                    fallbackClassName="text-caption font-medium"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-foreground">{item.displayName}</p>

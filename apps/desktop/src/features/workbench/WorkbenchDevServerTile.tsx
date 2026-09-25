@@ -177,7 +177,7 @@ function RuntimePreviewPageError({
         {description ? (
           <p className="text-xs text-muted-foreground truncate">{description}</p>
         ) : null}
-        <p className="font-mono text-[11px] text-muted-foreground/70 truncate" title={url}>
+        <p className="font-mono text-caption text-muted-foreground/70 truncate" title={url}>
           {url}
         </p>
         <div className="pt-1">
@@ -750,7 +750,7 @@ function WorkbenchRuntimePreviewTile({
               key={process.id}
               type="button"
               className={cn(
-                "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md px-2 text-caption font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                 process.id === selectedLogProcess.id
                   ? "bg-secondary text-foreground"
                   : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
@@ -760,7 +760,7 @@ function WorkbenchRuntimePreviewTile({
               <span
                 className={cn(
                   "size-1.5 rounded-full",
-                  process.running ? "bg-emerald-500" : "bg-muted-foreground/50",
+                  process.running ? "bg-success" : "bg-muted-foreground/50",
                 )}
                 aria-hidden="true"
               />

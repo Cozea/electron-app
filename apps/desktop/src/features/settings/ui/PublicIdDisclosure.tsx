@@ -89,7 +89,7 @@ export function PublicIdDisclosure({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1 px-2 text-2xs text-muted-foreground hover:text-foreground"
             aria-label={`${t("common.copy")} ${label}`}
             onClick={(event) => {
               event.stopPropagation()

@@ -104,7 +104,7 @@ export const ScheduledTaskProposalCard = memo(function ScheduledTaskProposalCard
                 <Badge
                   variant="outline"
                   size="sm"
-                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-500"
+                  className="border-warning/40 bg-warning/10 text-warning"
                 >
                   Computer use
                 </Badge>
