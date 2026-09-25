@@ -515,7 +515,6 @@ const en = {
   "settings.error.archiveFailed": "Failed to archive project",
   "settings.error.projectNotFound": "Project not found",
   "settings.loading": "Loading project settings…",
-  "settings.action.close": "Close settings",
   "settings.action.save": "Save Changes",
   "settings.action.saving": "Saving...",
   "settings.action.archive": "Archive",

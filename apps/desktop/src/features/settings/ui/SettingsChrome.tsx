@@ -1,5 +1,6 @@
 import { type ReactNode } from "react";
 
+import { PageHeader } from "@/components/PageHeader";
 import { cn } from "@/lib/utils";
 
 /** Header for top of settings pages (large clean title) */
@@ -13,9 +14,7 @@ export function SettingsPageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-6 px-1", className)}>
-      <h1 className="text-settings-title font-bold tracking-tight text-foreground">{title}</h1>
-    </div>
+    <PageHeader title={title} className={cn("mb-6 px-1", className)} />
   );
 }
 

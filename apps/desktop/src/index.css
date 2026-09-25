@@ -1273,6 +1273,11 @@ body {
   --text-lg--line-height: 24px;
   --text-xl: 18px;
   --text-xl--line-height: 26px;
+  /* Every page's title: Store, Skills, Inbox, Tasks, Team, settings. */
+  --text-page-title: 26px;
+  --text-page-title--line-height: 1.25;
+  --text-page-title--letter-spacing: -0.03em;
+  --text-page-title--font-weight: 500;
   --text-settings-title: 22px;
   --text-settings-title--line-height: 28px;
   --font-sans: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

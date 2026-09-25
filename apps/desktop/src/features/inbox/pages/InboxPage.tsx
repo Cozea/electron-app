@@ -16,6 +16,7 @@ import { invalidateProjectWorkspaceResolution } from "@/features/workspace/usePr
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 
 import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
+import { PageHeader } from "@/components/PageHeader"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -398,11 +399,7 @@ export function InboxPage() {
             </div>
           ) : null}
 
-          <header className="shrink-0">
-            <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
-              {t("inbox.title")}
-            </h1>
-          </header>
+          <PageHeader title={t("inbox.title")} />
 
           {isLoading ? (
             <div className="space-y-3 pt-2">
