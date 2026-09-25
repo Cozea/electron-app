@@ -33,9 +33,15 @@ export function AppErrorScreen({
           </p>
         </div>
         {message && (
-          <pre className="max-h-32 w-full select-text overflow-auto rounded-md bg-muted/60 px-3 py-2 text-left font-mono text-[11px] leading-4 text-muted-foreground">
-            {message}
-          </pre>
+          // Kept for bug reports, but not the first thing a person reads.
+          <details className="w-full text-left">
+            <summary className="cursor-pointer text-center text-xs text-muted-foreground hover:text-foreground">
+              {getTranslation(lang, "errorScreen.details")}
+            </summary>
+            <pre className="mt-2 max-h-32 select-text overflow-auto rounded-md bg-muted/60 px-3 py-2 font-mono text-[11px] leading-4 text-muted-foreground">
+              {message}
+            </pre>
+          </details>
         )}
         <div className="flex items-center gap-2">
           {reset && (

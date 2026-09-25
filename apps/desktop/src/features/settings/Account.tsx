@@ -33,7 +33,6 @@ import {
   Alert01Icon as __AlertTriangleHugeIcon,
   Camera01Icon,
   Cancel01Icon,
-  Delete02Icon as __Trash2HugeIcon,
 } from '@hugeicons/core-free-icons'
 
 interface UserPrefs {
@@ -164,7 +163,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
 
   return (
     <SettingsPageBody surface={surface}>
-      <SettingsPageHeader title="Device Identity" />
+      <SettingsPageHeader title={t("settings.account.deviceIdentity")} />
 
       <section>
         <SettingsSectionTitle>Device presentation</SettingsSectionTitle>
@@ -315,8 +314,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 className="h-7 gap-1.5 text-[11px]"
                 onClick={() => setResetDialogOpen(true)}
               >
-                <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
-                {t("common.delete")}
+                {t("settings.account.resetAction")}
               </Button>
               <ConfirmModal
                 kind="destructive-confirm"

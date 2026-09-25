@@ -10,6 +10,7 @@ import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { useCachedQuery } from "@/app/model/queryCache";
 import { ProjectSidebar } from "@/features/projects/ui/ProjectSidebar";
 import { AppSidebarShell } from "@/app/shell/sidebar/AppSidebarShell";
+import { RegionErrorBoundary } from "@/components/RegionErrorBoundary";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/features/projects/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/terminal/TerminalEventBridge";
@@ -458,13 +459,15 @@ export function ProjectLayout({
   // the chrome inputs actually changed (chromeHeader is memoized upstream).
   const headerElement = useMemo(
     () => (
-      <UnifiedHeader
-        layoutMode="embedded"
-        leftWindowControlsInset
-        compactHeaderActions
-        className={isBuildsView ? "absolute top-0 left-0 right-0 z-40" : undefined}
-        {...chromeHeader}
-      />
+      <RegionErrorBoundary compact>
+        <UnifiedHeader
+          layoutMode="embedded"
+          leftWindowControlsInset
+          compactHeaderActions
+          className={isBuildsView ? "absolute top-0 left-0 right-0 z-40" : undefined}
+          {...chromeHeader}
+        />
+      </RegionErrorBoundary>
     ),
     [chromeHeader, isBuildsView],
   );
@@ -599,11 +602,13 @@ export function ProjectLayout({
   const sidebarElement = useMemo(
     () => (
       <AppSidebarShell>
-        {isSettingsModeRoute ? (
-          <SettingsSidebar user={user} />
-        ) : (
-          <ProjectSidebar user={user} projectId={projectIdForSidebar} />
-        )}
+        <RegionErrorBoundary compact>
+          {isSettingsModeRoute ? (
+            <SettingsSidebar user={user} />
+          ) : (
+            <ProjectSidebar user={user} projectId={projectIdForSidebar} />
+          )}
+        </RegionErrorBoundary>
       </AppSidebarShell>
     ),
     [isSettingsModeRoute, projectIdForSidebar, user],
@@ -613,9 +618,11 @@ export function ProjectLayout({
   const workbenchElement = useMemo(
     () =>
       hasVisitedWorkbench ? (
-        <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
-          <LazyProjectWorkbenchSurface visible={workbenchVisible} />
-        </Suspense>
+        <RegionErrorBoundary>
+          <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
+            <LazyProjectWorkbenchSurface visible={workbenchVisible} />
+          </Suspense>
+        </RegionErrorBoundary>
       ) : null,
     [hasVisitedWorkbench, isWorkbenchView, workbenchVisible],
   );
