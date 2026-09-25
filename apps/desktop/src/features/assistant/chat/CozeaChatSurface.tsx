@@ -1770,7 +1770,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       return (
         <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-rose-500/12 text-rose-600 dark:bg-[#3a1820]/90 dark:text-rose-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
           <DebugBugIcon className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
-          <span>Debug</span>
+          <span>{t("assistant.debug")}</span>
           <button
             type="button"
             onClick={(e) => {
@@ -1779,8 +1779,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               updateComposerMode(null);
             }}
             className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-rose-600/70 hover:bg-rose-500/20 hover:text-rose-700 dark:text-rose-400/80 dark:hover:bg-rose-500/25 dark:hover:text-rose-200 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
-            aria-label="Remove debug mode"
-            title="Remove debug mode"
+            aria-label={t("assistant.removeDebugMode")}
+            title={t("assistant.removeDebugMode")}
           >
             <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
           </button>
@@ -1794,7 +1794,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             icon={__ListTodoIconHugeIcon}
             className="size-3.5 shrink-0 text-warning"
           />
-          <span>Plan</span>
+          <span>{t("assistant.plan")}</span>
           <button
             type="button"
             onClick={(e) => {
@@ -1803,8 +1803,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               updateComposerMode(null);
             }}
             className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-warning/70 hover:bg-warning/25 hover:text-warning dark:text-warning/80 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
-            aria-label="Remove plan mode"
-            title="Remove plan mode"
+            aria-label={t("assistant.removePlanMode")}
+            title={t("assistant.removePlanMode")}
           >
             <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
           </button>
@@ -1818,7 +1818,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             icon={__ChatIconHugeIcon}
             className="size-3.5 shrink-0 text-info"
           />
-          <span>Ask</span>
+          <span>{t("assistant.ask")}</span>
           <button
             type="button"
             onClick={(e) => {
@@ -1827,8 +1827,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               updateComposerMode(null);
             }}
             className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-info/70 hover:bg-info/25 hover:text-info dark:text-info/80 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
-            aria-label="Remove ask mode"
-            title="Remove ask mode"
+            aria-label={t("assistant.removeAskMode")}
+            title={t("assistant.removeAskMode")}
           >
             <HugeiconsIcon icon={__XIconHugeIcon} className="size-2.5" />
           </button>
@@ -1984,8 +1984,8 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       aria-expanded={isPlusMenuOpen}
       aria-haspopup="menu"
       className="size-8 shrink-0 rounded-full flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/80 dark:text-zinc-400 dark:hover:text-zinc-200 dark:hover:bg-white/10 transition-[background-color,color,transform] duration-150 active:scale-95 cursor-pointer outline-none"
-      title="Add context or change mode"
-      aria-label="Add context or change mode"
+      title={t("assistant.addContextOrChangeMode")}
+      aria-label={t("assistant.addContextOrChangeMode")}
       onClick={() => {
         setIsModelPickerOpen(false);
         setIsPlusMenuOpen((current) => !current);
@@ -2032,7 +2032,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               onClick={handlePreviousPendingQuestion}
               disabled={activePendingIsResponding}
             >
-              Prev
+              {t("assistant.prev")}
             </Button>
           ) : null}
           <Button
@@ -2192,7 +2192,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                   : "Commands"}
           </div>
           {isComposerMenuLoading ? (
-            <div className="px-2 py-1.5 text-xs text-muted-foreground">Searching files...</div>
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">{t("assistant.searchingFiles")}</div>
           ) : composerMenuItems.length === 0 ? (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">
               {composerPathTrigger
@@ -2650,9 +2650,9 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             icon={__ImageAdd01IconHugeIcon}
             className="size-7 text-muted-foreground mb-4"
           />
-          <h3 className="text-base font-medium text-foreground">Drop files to add them</h3>
+          <h3 className="text-base font-medium text-foreground">{t("assistant.dropFilesToAddThem")}</h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Images attach to your draft, other files are added as paths
+            {t("assistant.imagesAttachToYourDraftOther")}
           </p>
         </div>
       )}
@@ -2677,14 +2677,13 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             role="status"
             className="shrink-0 border-b border-border/60 px-4 py-2 text-xs text-muted-foreground"
           >
-            This provider is unavailable. Saved history is still readable; reconnect or update the
-            provider to continue.
+            {t("assistant.providerUnavailable")}
           </div>
         ) : null}
         {!props.workspaceId && timelineEntries.length === 0 ? (
           <div className="px-3 py-3 sm:px-5 sm:py-4">
             <div className="rounded-3xl border border-dashed border-border/80 bg-secondary/20 p-6 text-sm text-muted-foreground">
-              This agent tile needs a local project path before it can start a thread.
+              {t("assistant.thisAgentTileNeedsALocal")}
             </div>
           </div>
         ) : hasProviderBanner && timelineEntries.length === 0 ? (
@@ -2829,12 +2828,12 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             className="fixed inset-0 z-[var(--cozea-layer-dialog)] flex items-center justify-center bg-black/75 px-4 py-6"
             role="dialog"
             aria-modal="true"
-            aria-label="Expanded image preview"
+            aria-label={t("assistant.expandedImagePreview")}
           >
             <button
               type="button"
               className="absolute inset-0 z-0 cursor-zoom-out"
-              aria-label="Close image preview"
+              aria-label={t("assistant.closeImagePreview")}
               onClick={closeExpandedImage}
             />
             {expandedImage.images.length > 1 ? (
@@ -2843,7 +2842,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 size="icon"
                 variant="ghost"
                 className="absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6"
-                aria-label="Previous image"
+                aria-label={t("assistant.previousImage")}
                 onClick={() => {
                   navigateExpandedImage(-1);
                 }}
@@ -2858,7 +2857,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 variant="ghost"
                 className="absolute right-2 top-2"
                 onClick={closeExpandedImage}
-                aria-label="Close image preview"
+                aria-label={t("assistant.closeImagePreview")}
               >
                 <HugeiconsIcon icon={__XIconHugeIcon} className="size-4" />
               </Button>
@@ -2881,7 +2880,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 size="icon"
                 variant="ghost"
                 className="absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6"
-                aria-label="Next image"
+                aria-label={t("assistant.nextImage")}
                 onClick={() => {
                   navigateExpandedImage(1);
                 }}

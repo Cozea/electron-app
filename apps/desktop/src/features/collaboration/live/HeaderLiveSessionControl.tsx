@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { ArrowDown01Icon, MicOff01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MdCloud, MdCloudOff } from "react-icons/md"
@@ -82,6 +83,7 @@ function SessionStatusPill({
   onResume: () => void
   onEnd: () => void
 }) {
+  const { t } = useTranslation()
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -305,7 +307,7 @@ function SessionStatusPill({
           {displayedSaveAge}
         </span>
         <span className="t-icon flex items-center justify-center" data-icon="loading">
-          <Spinner size="xs" className="shrink-0 text-muted-foreground" label="Loading save status…" />
+          <Spinner size="xs" className="shrink-0 text-muted-foreground" label={t("collab.loadingSaveStatus")} />
         </span>
       </span>
     </Button>
@@ -319,6 +321,7 @@ function AudioControlPill({
   media: SessionMediaController | null
   visible?: boolean
 }) {
+  const { t } = useTranslation()
   if (!visible || !media) {
     return (
       <div
@@ -435,9 +438,9 @@ function AudioControlPill({
           </span>
         </span>
         {isDenied ? (
-          <span className="text-caption leading-none">Mic error</span>
+          <span className="text-caption leading-none">{t("collab.micError")}</span>
         ) : !isMuted ? (
-          <span className="text-caption leading-none">Voice</span>
+          <span className="text-caption leading-none">{t("collab.voice")}</span>
         ) : null}
       </Button>
 
@@ -446,8 +449,8 @@ function AudioControlPill({
         size="sm"
         variant="ghost"
         className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l border-border/40 transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
-        title="Audio settings"
-        aria-label="Select audio input device"
+        title={t("collab.audioSettings")}
+        aria-label={t("collab.selectAudioInputDevice")}
         aria-haspopup="menu"
         onClick={handleOpenAudioMenu}
       >

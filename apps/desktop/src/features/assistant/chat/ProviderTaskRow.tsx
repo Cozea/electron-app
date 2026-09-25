@@ -1,14 +1,16 @@
 import { memo, useState } from "react";
+import { useTranslation } from "@/lib/i18n"
 import { Collapsible, CollapsibleTrigger, CollapsiblePanel } from "@/components/ui/collapsible";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 import { cn } from "@/lib/utils";
 import { groupOwnedActivity, type ProviderTaskActivity } from "./providerActivity";
 
 function NativeDetails({ value }: { value: unknown }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <details onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className="h-6 cursor-pointer text-muted-foreground">Native details</summary>
+      <summary className="h-6 cursor-pointer text-muted-foreground">{t("assistant.nativeDetails")}</summary>
       {open ? (
         <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all text-2xs">
           {JSON.stringify(value, null, 2)}
@@ -104,6 +106,7 @@ export const ProviderTaskRow = memo(function ProviderTaskRow({
   onToggle,
   isActive = true,
 }: ProviderTaskRowProps) {
+  const { t } = useTranslation();
   const running = isActive && ["running", "inProgress", "in_progress"].includes(task.status);
   const title = task.title || "Provider task";
   const ownedGroups = expanded ? groupOwnedActivity(task.activities ?? []) : [];
@@ -142,7 +145,7 @@ export const ProviderTaskRow = memo(function ProviderTaskRow({
             task.status
           )}
         </span>
-        {task.isBackgrounded ? <span className="shrink-0 text-2xs">Background</span> : null}
+        {task.isBackgrounded ? <span className="shrink-0 text-2xs">{t("assistant.background")}</span> : null}
       </CollapsibleTrigger>
       <CollapsiblePanel className="motion-reduce:transition-none">
         <div className="space-y-2 pb-2 pl-5">
@@ -166,7 +169,7 @@ export const ProviderTaskRow = memo(function ProviderTaskRow({
               ))}
           </dl>
           {expanded && task.activities?.length ? (
-            <div className="space-y-1" aria-label="Owned activity">
+            <div className="space-y-1" aria-label={t("assistant.ownedActivity")}>
               {ownedGroups.map((group) => (
                 <OwnedActivityRow key={group.id} group={group} isActive={isActive} />
               ))}

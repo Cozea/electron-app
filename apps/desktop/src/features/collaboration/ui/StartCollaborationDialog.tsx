@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { useQuery } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -69,6 +70,7 @@ export function StartCollaborationDialog({
   repositoryBindingId = "repo_default",
   onSessionStarted,
 }: StartCollaborationDialogProps) {
+  const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
   const [accessMode, setAccessMode] = useState<AccessMode>("invite_only")
   const accessModeTouchedRef = useRef(false)
@@ -202,7 +204,7 @@ export function StartCollaborationDialog({
 
       invalidateProjectWorkspaceResolution(String(projectId))
       appToast.success({
-        title: "Live session started",
+        title: t("collab.liveSessionStarted"),
         description: `The Session Workbench for ${plan.branch} is ready. Invite people from Share.`,
       })
       onSessionStarted?.({ sessionId: String(result.sessionId), publicSessionId: result.publicSessionId })
@@ -226,13 +228,13 @@ export function StartCollaborationDialog({
     <UnifiedModal
       open={isOpen}
       onOpenChange={close}
-      title="Start live session"
+      title={t("collab.startLiveSession")}
       size="lg"
       dismissable={!submitting}
       footer={
         <>
           <Button type="button" variant="outline" size="sm" onClick={() => close(false)} disabled={submitting}>
-            Cancel
+            {t("collab.cancel")}
           </Button>
           <Button
             type="button"
@@ -252,14 +254,14 @@ export function StartCollaborationDialog({
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Collaborate in real time on <strong className="text-foreground">{projectName}</strong>.
+          {t("collab.collaborateInRealTimeOn")} <strong className="text-foreground">{projectName}</strong>.
         </p>
 
         <div className="space-y-4 py-1">
           {/* Branch Selection */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium text-foreground">Session branch</Label>
+              <Label className="text-sm font-medium text-foreground">{t("collab.sessionBranch")}</Label>
               <div className="flex rounded-md bg-muted/60 p-0.5 text-xs">
                 <button
                   type="button"
@@ -272,7 +274,7 @@ export function StartCollaborationDialog({
                   onClick={() => setBranchMode("existing")}
                   disabled={submitting || createdSession !== null}
                 >
-                  Existing
+                  {t("collab.existing")}
                 </button>
                 <button
                   type="button"
@@ -285,7 +287,7 @@ export function StartCollaborationDialog({
                   onClick={() => setBranchMode("new")}
                   disabled={submitting || createdSession !== null}
                 >
-                  New branch
+                  {t("collab.newBranch")}
                 </button>
               </div>
             </div>
@@ -297,7 +299,7 @@ export function StartCollaborationDialog({
                 onChange={(event) => setExistingBranch(event.target.value)}
                 disabled={submitting || createdSession !== null}
               >
-                {branches.length === 0 ? <option value="">No local branches found</option> : null}
+                {branches.length === 0 ? <option value="">{t("collab.noLocalBranchesFound")}</option> : null}
                 {branches.map((branch) => (
                   <option key={branch} value={branch}>{branch}</option>
                 ))}
@@ -316,7 +318,7 @@ export function StartCollaborationDialog({
                   value={baseBranch}
                   onChange={(event) => setBaseBranch(event.target.value)}
                   disabled={submitting || createdSession !== null}
-                  aria-label="Base branch"
+                  aria-label={t("collab.baseBranch")}
                 >
                   {branches.map((branch) => (
                     <option key={branch} value={branch}>{`from ${branch}`}</option>
@@ -326,14 +328,14 @@ export function StartCollaborationDialog({
             )}
             {selectedBranch && targetBranch !== selectedBranch ? (
               <p className="text-xs text-muted-foreground">
-                Merges into <span className="font-mono text-foreground">{targetBranch}</span>
+                {t("collab.mergesInto")} <span className="font-mono text-foreground">{targetBranch}</span>
               </p>
             ) : null}
           </div>
 
           {/* Access Mode */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-foreground">Who can join</Label>
+            <Label className="text-sm font-medium text-foreground">{t("collab.whoCanJoin")}</Label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -349,8 +351,8 @@ export function StartCollaborationDialog({
                 }}
                 disabled={submitting}
               >
-                <span className="font-medium text-foreground text-sm">Project</span>
-                <span className="text-xs text-muted-foreground">Anyone on this project</span>
+                <span className="font-medium text-foreground text-sm">{t("collab.project")}</span>
+                <span className="text-xs text-muted-foreground">{t("collab.anyoneOnThisProject")}</span>
               </button>
               <button
                 type="button"
@@ -371,14 +373,13 @@ export function StartCollaborationDialog({
                     : "Attach this project to an organization first (Project Settings → Organization)"
                 }
               >
-                <span className="font-medium text-foreground text-sm">Organization</span>
-                <span className="text-xs text-muted-foreground">Anyone in project org</span>
+                <span className="font-medium text-foreground text-sm">{t("collab.organization")}</span>
+                <span className="text-xs text-muted-foreground">{t("collab.anyoneInProjectOrg")}</span>
               </button>
             </div>
             {project !== undefined && !projectOrganizationId ? (
               <p className="text-xs text-muted-foreground">
-                This project isn&apos;t in an organization yet, so new sessions stay limited to this project.
-                Attach it to an organization in Project Settings to open sessions to the whole organization.
+                {t("collab.projectNotInOrganization")}
               </p>
             ) : null}
           </div>
@@ -392,9 +393,9 @@ export function StartCollaborationDialog({
                 disabled={submitting}
               />
               <div className="space-y-0.5">
-                <span className="font-medium text-foreground text-sm">Share environment files (.env)</span>
+                <span className="font-medium text-foreground text-sm">{t("collab.shareEnvironmentFilesEnv")}</span>
                 <span className="block text-xs text-muted-foreground">
-                  End-to-end encrypted across session members.
+                  {t("collab.endToEndEncryptedAcrossSession")}
                 </span>
               </div>
             </label>
@@ -411,7 +412,7 @@ export function StartCollaborationDialog({
                     Include uncommitted changes ({uncommittedFileCount} {uncommittedFileCount === 1 ? "file" : "files"})
                   </span>
                   <span className="block text-xs text-muted-foreground">
-                    Copies your working files into the session workbench.
+                    {t("collab.copiesYourWorkingFilesIntoThe")}
                   </span>
                 </div>
               </label>
@@ -428,7 +429,7 @@ export function StartCollaborationDialog({
                 disabled={submitting}
               />
               <span>
-                This Git remote contains credentials that will be shared with session members so their Git can clone it.
+                {t("collab.thisGitRemoteContainsCredentialsThat")}
               </span>
             </label>
           ) : null}

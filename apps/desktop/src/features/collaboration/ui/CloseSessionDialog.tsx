@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import type { ProjectdCloseChoice, ProjectdClosePreflight } from "@cozea/projectd-protocol"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -12,6 +13,7 @@ interface CloseSessionDialogProps {
 }
 
 export function CloseSessionDialog({ review, busy, onCancel, onConfirm }: CloseSessionDialogProps) {
+  const { t } = useTranslation()
   const [allowUnpublishedGit, setAllowUnpublishedGit] = useState(true)
   const [allowUnresolvedConflicts, setAllowUnresolvedConflicts] = useState(true)
   const conflictCount = Object.values(review.conflicts).reduce((sum, count) => sum + count, 0)
@@ -19,12 +21,12 @@ export function CloseSessionDialog({ review, busy, onCancel, onConfirm }: CloseS
     <UnifiedModal
       open
       onOpenChange={(open) => { if (!open) onCancel() }}
-      title="Close collaboration for everyone?"
+      title={t("collab.closeCollaborationForEveryone")}
       size="sm"
       dismissable={!busy}
       footer={
         <>
-          <Button variant="outline" disabled={busy} onClick={onCancel}>Cancel</Button>
+          <Button variant="outline" disabled={busy} onClick={onCancel}>{t("collab.cancel")}</Button>
           <Button variant="destructive" disabled={busy || (review.gitLag && !allowUnpublishedGit) || (conflictCount > 0 && !allowUnresolvedConflicts)}
             onClick={() => onConfirm({ reviewId: review.reviewId, allowUnpublishedGit, allowUnresolvedConflicts })}>
             {busy ? "Closing…" : "Close collaboration"}
@@ -33,7 +35,7 @@ export function CloseSessionDialog({ review, busy, onCancel, onConfirm }: CloseS
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">The reviewed session is retained in encrypted cloud storage. Closing keeps its Git branch.</p>
+        <p className="text-sm text-muted-foreground">{t("collab.theReviewedSessionIsRetainedIn")}</p>
         <div className="space-y-4 text-sm">
           <p>{review.gitLag ? "Some session changes have not been saved to Git." : "Git includes all reviewed session changes."}</p>
           <p>{conflictCount ? `${conflictCount} unresolved conflicts remain.` : "No unresolved session conflicts were detected."}</p>
@@ -43,11 +45,11 @@ export function CloseSessionDialog({ review, busy, onCancel, onConfirm }: CloseS
             : review.mergeUnavailable}</p>
           {review.gitLag && <label className="flex items-start gap-2">
             <Checkbox checked={allowUnpublishedGit} disabled={busy} onCheckedChange={(value) => setAllowUnpublishedGit(value === true)} />
-            Close with unpublished changes retained in encrypted cloud storage.
+            {t("collab.closeWithUnpublishedChangesRetainedIn")}
           </label>}
           {conflictCount > 0 && <label className="flex items-start gap-2">
             <Checkbox checked={allowUnresolvedConflicts} disabled={busy} onCheckedChange={(value) => setAllowUnresolvedConflicts(value === true)} />
-            Close with these unresolved conflicts retained.
+            {t("collab.closeWithTheseUnresolvedConflictsRetained")}
           </label>}
         </div>
       </div>

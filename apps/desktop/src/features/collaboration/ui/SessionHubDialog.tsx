@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   FolderGitIcon,
@@ -45,6 +46,7 @@ export function SessionHubDialog({
   workspaceId,
   canManage,
 }: SessionHubDialogProps) {
+  const { t } = useTranslation()
   const { members: projectMembers } = useProjectTeam(projectId)
   const [activeTab, setActiveTab] = useState<"dashboard" | "share">("dashboard")
 
@@ -72,7 +74,7 @@ export function SessionHubDialog({
                 onClick={() => void liveSession.saveNow()}
               >
                 <HugeiconsIcon icon={FolderGitIcon} className="size-3.5 text-muted-foreground" />
-                <span>Save to Git now</span>
+                <span>{t("collab.saveToGitNow")}</span>
               </Button>
             ) : null}
           </div>
@@ -81,7 +83,7 @@ export function SessionHubDialog({
             {/* The only plain way out: the modal has no close button, and
                 without this one "Leave session" read as the exit. */}
             <Button variant="ghost" size="sm" className="h-8 text-sm" onClick={() => onOpenChange(false)}>
-              Close
+              {t("collab.close")}
             </Button>
             <Button
               variant="outline"
@@ -92,7 +94,7 @@ export function SessionHubDialog({
                 liveSession.leave()
               }}
             >
-              Leave session
+              {t("collab.leaveSession")}
             </Button>
             {canManage ? (
               <Button
@@ -131,7 +133,7 @@ export function SessionHubDialog({
             onClick={() => setActiveTab("dashboard")}
           >
             <HugeiconsIcon icon={GitBranchIcon} className="size-4" />
-            <span>Work & Call Dashboard</span>
+            <span>{t("collab.workCallDashboard")}</span>
           </button>
           <button
             type="button"
@@ -144,7 +146,7 @@ export function SessionHubDialog({
             onClick={() => setActiveTab("share")}
           >
             <HugeiconsIcon icon={Share01Icon} className="size-4" />
-            <span>Share & Invites</span>
+            <span>{t("collab.shareInvites")}</span>
           </button>
         </div>
 

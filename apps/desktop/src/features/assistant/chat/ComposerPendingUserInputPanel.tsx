@@ -8,6 +8,7 @@ import {
   type CSSProperties,
 } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useTranslation } from "@/lib/i18n"
 import {
   ArrowDown01Icon as __ChevronDownHugeIcon,
   ArrowUp01Icon as __ChevronUpHugeIcon,
@@ -198,6 +199,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
   onPrevious: () => void;
   onSubmit: () => void;
 }) {
+  const { t } = useTranslation();
   const progress = derivePendingUserInputProgress(prompt.questions, answers, questionIndex);
   const activeQuestion = progress.activeQuestion;
   const autoAdvanceTimerRef = useRef<number | null>(null);
@@ -456,7 +458,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                             if (!isActive) return;
                             onCustomAnswerChange(question.id, event.target.value);
                           }}
-                          placeholder="Something else…"
+                          placeholder={t("assistant.somethingElse")}
                           aria-label={`Custom answer: ${question.question}`}
                           className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
                         />
@@ -476,7 +478,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             <>
               <button
                 type="button"
-                aria-label="Previous question"
+                aria-label={t("assistant.previousQuestion")}
                 disabled={progress.questionIndex <= 0 || isResponding}
                 onClick={onPrevious}
                 className="flex size-[18px] items-center justify-center rounded-[5px] transition-colors duration-100 enabled:hover:text-foreground disabled:opacity-30"
@@ -488,7 +490,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               </span>
               <button
                 type="button"
-                aria-label="Next question"
+                aria-label={t("assistant.nextQuestion")}
                 disabled={progress.isLastQuestion || isResponding}
                 onClick={onAdvance}
                 className="flex size-[18px] items-center justify-center rounded-[5px] transition-colors duration-100 enabled:hover:text-foreground disabled:opacity-30"
@@ -508,7 +510,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               disabled={isResponding}
               onClick={onAdvance}
             >
-              Skip
+              {t("assistant.skip")}
             </Button>
           ) : null}
           <Button

@@ -1,4 +1,5 @@
 import { workEntryPreview, workEntryPreviewDuplicatesSingleChangedFile, workEntryRawCommand, liveWorkEntryLabel, isRunningWorkEntry, isCommandLikeWorkEntry, toolWorkEntryHeading, workEntryStatusBadge, buildWorkEntryExpandedBody } from "./workEntryPresentation";
+import { useTranslation } from "@/lib/i18n"
 import { MessageAttachments } from "./MessageAttachments";
 import {
   type MessageId,
@@ -280,6 +281,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   loadEarlier,
   onManualNavigation,
 }: MessagesTimelineProps) {
+  const { t } = useTranslation();
   const EmptyAssistantIcon = resolveAssistantIdentityIcon(selectedProvider);
   const timelineRootRef = useRef<HTMLDivElement | null>(null);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(null);
@@ -972,7 +974,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             type="button"
                             disabled
                             className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                            aria-label="Copy not available"
+                            aria-label={t("assistant.copyNotAvailable")}
                           >
                             <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5" />
                           </button>
@@ -983,8 +985,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             className="cursor-pointer p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:text-muted-foreground/30"
                             disabled={isRevertingCheckpoint || isWorking}
                             onClick={() => onRevertUserMessage(row.message.id)}
-                            title="Revert to this message"
-                            aria-label="Revert to this message"
+                            title={t("assistant.revertToThisMessage")}
+                            aria-label={t("assistant.revertToThisMessage")}
                           >
                             <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
                           </button>
@@ -993,8 +995,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                             type="button"
                             disabled
                             className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                            aria-label="Revert not available"
-                            title="No earlier checkpoint to revert to"
+                            aria-label={t("assistant.revertNotAvailable")}
+                            title={t("assistant.noEarlierCheckpointToRevertTo")}
                           >
                             <HugeiconsIcon icon={__UndoIconHugeIcon} className="size-3.5" />
                           </button>
@@ -1003,8 +1005,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                           type="button"
                           disabled
                           className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-                          title="Branch (coming soon)"
-                          aria-label="Branch thread"
+                          title={t("assistant.branchComingSoon")}
+                          aria-label={t("assistant.branchThread")}
                         >
                           <HugeiconsIcon icon={__GitForkIconHugeIcon} className="size-3.5" />
                         </button>
@@ -1174,9 +1176,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             <EmptyMedia className="h-auto w-auto rounded-none bg-transparent [&>svg]:h-7 [&>svg]:w-7 [&>svg]:text-muted-foreground">
               <EmptyAssistantIcon className="h-7 w-7" />
             </EmptyMedia>
-            <EmptyTitle className="text-base font-medium">Ready to assist</EmptyTitle>
+            <EmptyTitle className="text-base font-medium">{t("assistant.readyToAssist")}</EmptyTitle>
             <EmptyDescription>
-              Send a message to start the conversation and begin building.
+              {t("assistant.sendAMessageToStartThe")}
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -1333,6 +1335,7 @@ const TurnStatusRow = memo(function TurnStatusRow(props: {
   startedAtIso: string | null;
   summary: string | null;
 }) {
+  const { t } = useTranslation();
   const { startedAtIso, summary } = props;
   const isActive = summary === null;
 
@@ -1345,7 +1348,7 @@ const TurnStatusRow = memo(function TurnStatusRow(props: {
         className="px-1"
       >
         <GenerationStatusLine textKey="working">
-          <LiveShimmerText>Working</LiveShimmerText>
+          <LiveShimmerText>{t("assistant.working")}</LiveShimmerText>
           {startedAtIso ? (
             <>
               <span className="text-muted-foreground/75">for</span>
@@ -1379,6 +1382,7 @@ const TurnStatusRow = memo(function TurnStatusRow(props: {
 });
 
 const ThinkingIndicatorRow = memo(function ThinkingIndicatorRow() {
+  const { t } = useTranslation()
   return (
     <div
       role="status"
@@ -1387,7 +1391,7 @@ const ThinkingIndicatorRow = memo(function ThinkingIndicatorRow() {
       data-assistant-generation-phase="thinking"
     >
       <GenerationStatusLine textKey="thinking">
-        <LiveShimmerText>Thinking</LiveShimmerText>
+        <LiveShimmerText>{t("assistant.thinking")}</LiveShimmerText>
       </GenerationStatusLine>
     </div>
   );

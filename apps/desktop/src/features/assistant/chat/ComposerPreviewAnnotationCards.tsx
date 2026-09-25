@@ -1,4 +1,5 @@
 import type { PreviewAnnotationPayload } from "@cozea/contracts/t3/ipc"
+import { useTranslation } from "@/lib/i18n"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +17,7 @@ export function ComposerPreviewAnnotationCards(props: {
   readonly onExpandImage: (imageId: string) => void
   readonly className?: string
 }) {
+  const { t } = useTranslation()
   if (props.annotations.length === 0) return null
   const imagesById = new Map(props.images.map((image) => [image.id, image]))
   return (
@@ -40,7 +42,7 @@ export function ComposerPreviewAnnotationCards(props: {
               >
                 <img
                   src={image.previewUrl}
-                  alt="Annotated preview crop"
+                  alt={t("assistant.annotatedPreviewCrop")}
                   className="size-full object-cover"
                 />
               </button>
@@ -95,7 +97,7 @@ export function ComposerPreviewAnnotationCards(props: {
               type="button"
               size="icon-xs"
               variant="ghost"
-              aria-label="Remove preview annotation"
+              aria-label={t("assistant.removePreviewAnnotation")}
               className="absolute right-1 top-1 size-5"
               onClick={() => props.onRemove(annotation.id)}
             >

@@ -12,6 +12,7 @@ import React, {
   type ReactNode,
 } from "react";
 import type { Components } from "react-markdown";
+import { useTranslation } from "@/lib/i18n"
 import ReactMarkdown from "react-markdown";
 import { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -272,6 +273,7 @@ function ViewportCodeHighlighter({
 }
 
 function ChatMarkdown({ text, cwd, isStreaming = false, className }: ChatMarkdownProps) {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const appliedTheme = resolveAppliedTheme(theme);
   const diffThemeName = resolveDiffThemeName(appliedTheme === "light" ? "light" : "dark");
@@ -291,7 +293,7 @@ function ChatMarkdown({ text, cwd, isStreaming = false, className }: ChatMarkdow
       },
       a({ node: _node, href, ...props }) {
         const citation = href ? parseChatAssistantCitation(href) : null;
-        if (citation) return <span title="Quoted response. Source navigation is unavailable in this view." className="inline-flex flex-col rounded border px-2 py-1"><q>{citation.text}</q>{citation.comment ? <span>{citation.comment}</span> : null}</span>;
+        if (citation) return <span title={t("assistant.quotedResponseSourceNavigationIsUnavailable")} className="inline-flex flex-col rounded border px-2 py-1"><q>{citation.text}</q>{citation.comment ? <span>{citation.comment}</span> : null}</span>;
         const targetPath = resolveMarkdownFileLinkTarget(href);
         if (!targetPath) {
           return <a {...props} href={href} target="_blank" rel="noreferrer" />;

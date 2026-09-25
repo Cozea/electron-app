@@ -1,6 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
+import { useTranslation } from "@/lib/i18n"
 import { Spinner } from "@/components/ui/spinner"
 import { AlertCircleIcon as __CircleAlertIconHugeIcon } from '@hugeicons/core-free-icons'
 
@@ -19,6 +20,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
 }: {
   status: ServerProvider | null;
 }) {
+  const { t } = useTranslation();
   const update = useProviderUpdate(status);
   const updateAvailable = update.updateAvailable;
 
@@ -101,7 +103,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
           </p>
           {updateFeedback.output ? (
             <details className="relative text-xs text-muted-foreground">
-              <summary className="cursor-pointer select-none">Update details</summary>
+              <summary className="cursor-pointer select-none">{t("assistant.updateDetails")}</summary>
               <pre className="absolute left-0 right-0 top-full z-10 mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-secondary/95 p-2.5 font-mono text-caption shadow-lg backdrop-blur-md">
                 {updateFeedback.output}
               </pre>

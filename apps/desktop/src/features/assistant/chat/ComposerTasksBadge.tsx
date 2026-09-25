@@ -1,4 +1,5 @@
 import { LuListTodo as ListTodoIcon } from "react-icons/lu";
+import { useTranslation } from "@/lib/i18n"
 import { memo, type ComponentProps } from "react";
 
 import { formatDuration } from "./session-logic";
@@ -56,13 +57,14 @@ function TaskSummary({
   readonly progress: ComposerTasksProgress;
   readonly steps: readonly ComposerTaskStep[];
 }) {
+  const { t } = useTranslation()
   return (
     <>
       <ComposerBanner.Icon>
         <ListTodoIcon className="size-3.5" />
       </ComposerBanner.Icon>
       <ComposerBanner.Content>
-        <span className="shrink-0 text-muted-foreground">Tasks</span>
+        <span className="shrink-0 text-muted-foreground">{t("assistant.tasks")}</span>
         <span
           className="min-w-0 flex-1 truncate text-left font-medium text-foreground/80"
           data-composer-task-current="true"

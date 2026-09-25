@@ -1,4 +1,5 @@
 import { memo, useState, type ReactNode } from "react";
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertCircleIcon as __CircleAlertIconHugeIcon,
@@ -63,6 +64,7 @@ function bannerPresentation(state: ThreadRuntimeBannerState, isForceStopAvailabl
 export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
   props: ThreadRuntimeBannerProps,
 ) {
+  const { t } = useTranslation();
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const presentation = bannerPresentation(props.state, props.isForceStopAvailable);
   const detail = props.detail?.trim() || presentation.detail;
@@ -105,7 +107,7 @@ export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
         <button
           onClick={() => setDismissedKey(currentKey)}
           className="mt-0.5 ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-white text-black shadow-sm transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/50"
-          aria-label="Dismiss"
+          aria-label={t("assistant.dismiss")}
         >
           <HugeiconsIcon icon={__XIconHugeIcon} strokeWidth={2.5} className="size-3 text-black stroke-[2.5]" />
         </button>

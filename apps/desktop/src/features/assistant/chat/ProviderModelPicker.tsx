@@ -7,6 +7,7 @@ import {
   type ProviderOptionDescriptor,
 } from "@cozea/assistant-contracts";
 import { getProviderOptionCurrentValue } from "@cozea/assistant-shared/model";
+import { useTranslation } from "@/lib/i18n"
 import { memo, useMemo, type Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -50,6 +51,7 @@ interface ProviderModelPickerProps {
 }
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: ProviderModelPickerProps) {
+  const { t } = useTranslation()
   const instanceEntries = useMemo(
     () => sortProviderInstanceEntries(deriveProviderInstanceEntries(props.providers ?? [])),
     [props.providers],
@@ -212,7 +214,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
         <HugeiconsIcon
           icon={__ZapIconHugeIcon}
           className="size-3 shrink-0 fill-current text-warning"
-          aria-label="Fast mode on"
+          aria-label={t("assistant.fastModeOn")}
         />
       ) : null}
     </div>

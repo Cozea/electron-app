@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react";
 import { GitForkIcon, Volume02Icon } from "@hugeicons/core-free-icons";
 import type { ChatMessage } from "../model/types";
@@ -21,6 +22,7 @@ export const AssistantResponseActions = memo(function AssistantResponseActions({
   isLatest = false,
   showActions = true,
 }: AssistantResponseActionsProps) {
+  const { t } = useTranslation();
   const isReady = showActions && !message.streaming && Boolean(message.text);
 
   return (
@@ -42,8 +44,8 @@ export const AssistantResponseActions = memo(function AssistantResponseActions({
           type="button"
           disabled
           className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-          title="Branch (coming soon)"
-          aria-label="Branch thread"
+          title={t("assistant.branchComingSoon")}
+          aria-label={t("assistant.branchThread")}
         >
           <HugeiconsIcon icon={GitForkIcon} className="size-3.5" />
         </button>
@@ -51,8 +53,8 @@ export const AssistantResponseActions = memo(function AssistantResponseActions({
           type="button"
           disabled
           className="cursor-not-allowed p-0.5 text-muted-foreground/25"
-          title="Read aloud (coming soon)"
-          aria-label="Read aloud"
+          title={t("assistant.readAloudComingSoon")}
+          aria-label={t("assistant.readAloud")}
         >
           <HugeiconsIcon icon={Volume02Icon} className="size-3.5" />
         </button>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import type { ProjectdBinaryConflictRequest, ProjectdBinaryConflictResponse } from "@cozea/projectd-protocol"
 import { Button } from "@/components/ui/button"
 import { UnifiedModal } from "@/components/ui/unified-modal"
@@ -10,6 +11,7 @@ interface BinaryConflictDialogProps {
 }
 
 export function BinaryConflictDialog({ publicSessionId, canEdit, onClose }: BinaryConflictDialogProps) {
+  const { t } = useTranslation()
   const [page, setPage] = useState<ProjectdBinaryConflictResponse | null>(null)
   const [choices, setChoices] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -75,17 +77,17 @@ export function BinaryConflictDialog({ publicSessionId, canEdit, onClose }: Bina
     <UnifiedModal
       open
       onOpenChange={(open) => { if (!open && !pending.current) onClose() }}
-      title="Binary file conflicts"
+      title={t("collab.binaryFileConflicts")}
       size="xl"
     >
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">Choose the version to use across this session. Other versions are retained in its history.</p>
+        <p className="text-sm text-muted-foreground">{t("collab.chooseTheVersionToUseAcross")}</p>
         <div className="space-y-3" aria-busy={busy}>
           {error && <p role="alert" className="text-sm text-destructive">{error} Refresh to review current versions.</p>}
           {notice && <p role="status" className="text-sm">{notice}</p>}
-          {!canEdit && <p className="text-sm text-muted-foreground">Viewers can review versions. A collaborator with edit access must resolve them.</p>}
-          {!page && busy && <p className="text-sm">Loading file versions…</p>}
-          {page?.conflicts.length === 0 && <p className="text-sm">No binary conflicts on this page.</p>}
+          {!canEdit && <p className="text-sm text-muted-foreground">{t("collab.viewersCanReviewVersionsACollaborator")}</p>}
+          {!page && busy && <p className="text-sm">{t("collab.loadingFileVersions")}</p>}
+          {page?.conflicts.length === 0 && <p className="text-sm">{t("collab.noBinaryConflictsOnThisPage")}</p>}
           <div className="max-h-80 space-y-4 overflow-auto">
             {page?.conflicts.map((conflict) => <fieldset key={conflict.fileId} disabled={busy} className="space-y-2 rounded-md border p-3">
               <legend className="break-all px-1 font-mono text-xs">{conflict.path}</legend>
@@ -98,9 +100,9 @@ export function BinaryConflictDialog({ publicSessionId, canEdit, onClose }: Bina
                 </span>
                 </label>
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => void run({ action: "preview", fileId: conflict.fileId,
-                  revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>Preview version</Button>
+                  revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>{t("collab.previewVersion")}</Button>
                 <Button variant="outline" size="sm" disabled={busy} onClick={() => void run({ action: "export", fileId: conflict.fileId,
-                  revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>Export copy</Button>
+                  revisionId: variant.revisionId, fingerprint: conflict.fingerprint })}>{t("collab.exportCopy")}</Button>
                 {previews[variant.revisionId] && <div className="rounded border p-2">
                   {previews[variant.revisionId]!.imageDataUrl && <img className="max-h-48 max-w-full object-contain" src={previews[variant.revisionId]!.imageDataUrl!} alt={`Version of ${conflict.path}`} />}
                   <p className="text-xs text-muted-foreground">{previews[variant.revisionId]!.truncated ? "First 256 bytes" : "File bytes"} · hexadecimal</p>
@@ -109,13 +111,13 @@ export function BinaryConflictDialog({ publicSessionId, canEdit, onClose }: Bina
               </div>)}
               <Button size="sm" disabled={busy || !canEdit || !choices[conflict.fileId] || Boolean(error)} onClick={() => void run({
                 action: "resolve", fileId: conflict.fileId, revisionId: choices[conflict.fileId]!, fingerprint: conflict.fingerprint,
-              })}>Use selected version</Button>
+              })}>{t("collab.useSelectedVersion")}</Button>
             </fieldset>)}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list" })}>Refresh</Button>
-            {page?.nextFileId && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list", afterFileId: page.nextFileId! })}>Next page</Button>}
-            <Button variant="outline" disabled={busy} onClick={onClose}>Close</Button>
+            <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list" })}>{t("collab.refresh")}</Button>
+            {page?.nextFileId && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "list", afterFileId: page.nextFileId! })}>{t("collab.nextPage")}</Button>}
+            <Button variant="outline" disabled={busy} onClick={onClose}>{t("collab.close")}</Button>
           </div>
         </div>
       </div>

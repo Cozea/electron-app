@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   Folder01Icon as __FolderHugeIcon,
@@ -60,6 +61,7 @@ export function SessionWorkDashboard({
   canManage,
   className,
 }: SessionWorkDashboardProps) {
+  const { t } = useTranslation()
   const [roleUpdatingPrincipal, setRoleUpdatingPrincipal] = useState<string | null>(null)
 
   const handleRoleChange = async (
@@ -127,7 +129,7 @@ export function SessionWorkDashboard({
             </Button>
           ) : (
             <Badge variant="outline" className="text-2xs text-muted-foreground font-normal">
-              Direct branch
+              {t("collab.directBranch")}
             </Badge>
           )}
         </div>
@@ -162,12 +164,12 @@ export function SessionWorkDashboard({
               </span>
               {gitLeader?.isSelf ? (
                 <Badge variant="secondary" className="text-2xs h-4 px-1.5 font-normal bg-success/15 text-success">
-                  Your Mac
+                  {t("collab.yourMac")}
                 </Badge>
               ) : null}
             </div>
             <p className="text-2xs text-muted-foreground truncate">
-              Batches edits from all session members into Git commits on this branch.
+              {t("collab.batchesEditsFromAllSessionMembers")}
             </p>
           </div>
         </div>
@@ -217,7 +219,7 @@ export function SessionWorkDashboard({
                       isSpeaking ? (
                         <span
                           className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-success animate-pulse"
-                          title="Speaking"
+                          title={t("collab.speaking")}
                         />
                       ) : isMuted ? (
                         <span className="absolute -bottom-0.5 -right-0.5 flex size-2.5 items-center justify-center rounded-full border-2 border-background bg-muted">
@@ -237,7 +239,7 @@ export function SessionWorkDashboard({
                       ) : null}
                       {m.isCurrentGitCommitter ? (
                         <Badge variant="outline" className="text-[9px] h-3.5 px-1 font-normal text-success border-success/30">
-                          Committer
+                          {t("collab.committer")}
                         </Badge>
                       ) : null}
                     </div>
@@ -319,15 +321,15 @@ export function SessionWorkDashboard({
       {media ? (
         <div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-foreground">Voice & Call Controls</span>
+            <span className="text-xs font-semibold text-foreground">{t("collab.voiceCallControls")}</span>
             {media.isSpeaking ? (
               <span className="text-2xs font-medium text-success animate-pulse">
-                You are speaking
+                {t("collab.youAreSpeaking")}
               </span>
             ) : media.isMuted ? (
-              <span className="text-2xs text-muted-foreground">Microphone muted</span>
+              <span className="text-2xs text-muted-foreground">{t("collab.microphoneMuted")}</span>
             ) : (
-              <span className="text-2xs text-muted-foreground">Microphone active</span>
+              <span className="text-2xs text-muted-foreground">{t("collab.microphoneActive")}</span>
             )}
           </div>
 
@@ -364,7 +366,7 @@ export function SessionWorkDashboard({
                   onValueChange={(id) => void media.selectAudioDevice(id)}
                 >
                   <SelectTrigger className="h-8 w-44 text-2xs truncate">
-                    <SelectValue placeholder="Microphone" />
+                    <SelectValue placeholder={t("collab.microphone")} />
                   </SelectTrigger>
                   <SelectContent>
                     {media.audioDevices.map((d) => (
@@ -385,7 +387,7 @@ export function SessionWorkDashboard({
                 onCheckedChange={media.setAllowBackgroundAudio}
               />
               <label htmlFor="bg-audio" className="text-2xs text-muted-foreground cursor-pointer">
-                Play in background
+                {t("collab.playInBackground")}
               </label>
             </div>
           </div>

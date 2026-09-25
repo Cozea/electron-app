@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "@/lib/i18n"
 
 import { cn } from "@/lib/utils";
 
@@ -54,6 +55,7 @@ export function ComposerSourceMenu({
   onClose: () => void;
   className?: string;
 }) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
   const [engaged, setEngaged] = useState(false);
@@ -217,8 +219,8 @@ export function ComposerSourceMenu({
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Type to search sources & files"
-          aria-label="Search sources and files"
+          placeholder={t("assistant.typeToSearchSourcesFiles")}
+          aria-label={t("assistant.searchSourcesAndFiles")}
           className="h-4 w-full bg-transparent text-caption text-foreground outline-none placeholder:text-muted-foreground"
         />
       </div>
