@@ -44,6 +44,8 @@
   --table-row-selected: color-mix(in oklch, var(--secondary) 88%, var(--foreground) 12%);
   --destructive: oklch(0.55 0.19 27.325);
   --success: oklch(0.53 0.14 149.214);
+  --warning: oklch(0.555 0.163 48.998);
+  --info: oklch(0.5 0.134 242.749);
   --border: oklch(0.84 0 0);
   --input: oklch(0.86 0 0);
   --ring: oklch(0.55 0 0);
@@ -1258,6 +1260,9 @@ body {
 @theme inline {
   --text-2xs: 10px;
   --text-2xs--line-height: 14px;
+  /* Captions, meta and badges: the 11px the UI kept writing by hand. */
+  --text-caption: 11px;
+  --text-caption--line-height: 16px;
   --text-xs: 12px;
   --text-xs--line-height: 16px;
   --text-sm: 13px;
@@ -1296,6 +1301,8 @@ body {
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -1338,6 +1345,8 @@ body {
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
   --destructive: oklch(0.704 0.191 22.216);
   --success: oklch(0.723 0.167 149.214);
+  --warning: oklch(0.828 0.189 84.429);
+  --info: oklch(0.746 0.16 232.661);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -1388,6 +1397,8 @@ body {
   --table-row-selected: color-mix(in oklch, var(--secondary) 84%, var(--foreground) 16%);
   --destructive: hsl(0 65% 54%);
   --success: hsl(152 65% 54%);
+  --warning: hsl(38 92% 62%);
+  --info: hsl(199 89% 66%);
   --border: hsl(222 24% 30%);
   --input: hsl(222 24% 14%);
   --ring: hsl(210 78% 62%);
@@ -1433,6 +1444,8 @@ body {
   --accent-foreground: hsl(330 22% 94%);
   --destructive: hsl(0 70% 48%);
   --success: hsl(152 70% 48%);
+  --warning: hsl(38 92% 60%);
+  --info: hsl(199 85% 64%);
   --border: hsl(340 24% 32%);
   --input: hsl(340 24% 16%);
   --ring: hsl(345 72% 50%);
@@ -1478,6 +1491,8 @@ body {
   --accent-foreground: hsl(35 25% 94%);
   --destructive: hsl(0 65% 55%);
   --success: hsl(152 65% 55%);
+  --warning: hsl(38 90% 62%);
+  --info: hsl(199 85% 66%);
   --border: hsl(25 22% 28%);
   --input: hsl(25 20% 18%);
   --ring: hsl(28 65% 52%);
@@ -1534,6 +1549,8 @@ body {
   --accent-foreground: hsl(148 18% 94%);
   --destructive: hsl(0 68% 45%);
   --success: hsl(152 68% 45%);
+  --warning: hsl(38 90% 58%);
+  --info: hsl(199 85% 62%);
   --border: hsl(150 18% 30%);
   --input: hsl(150 20% 17%);
   --ring: hsl(150 42% 34%);

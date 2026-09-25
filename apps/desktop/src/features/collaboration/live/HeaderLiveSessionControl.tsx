@@ -277,7 +277,7 @@ function SessionStatusPill({
     >
       <span className="t-icon-swap size-4 shrink-0" data-state={isActive ? "active" : "inactive"}>
         <span className="t-icon flex items-center justify-center" data-icon="active">
-          <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+          <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-info" />
         </span>
         <span className="t-icon flex items-center justify-center" data-icon="inactive">
           <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
@@ -400,7 +400,7 @@ function AudioControlPill({
             ? "text-destructive hover:bg-destructive/10"
             : isMuted
               ? "text-muted-foreground hover:text-foreground hover:bg-accent/60"
-              : "text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 font-medium shadow-[0_0_8px_rgba(16,185,129,0.15)]",
+              : "text-success hover:text-success bg-success/10 hover:bg-success/15 font-medium shadow-[0_0_8px_rgba(16,185,129,0.15)]",
         )}
         onClick={() => {
           if (isDenied) {
@@ -435,9 +435,9 @@ function AudioControlPill({
           </span>
         </span>
         {isDenied ? (
-          <span className="text-[11px] leading-none">Mic error</span>
+          <span className="text-caption leading-none">Mic error</span>
         ) : !isMuted ? (
-          <span className="text-[11px] leading-none">Voice</span>
+          <span className="text-caption leading-none">Voice</span>
         ) : null}
       </Button>
 

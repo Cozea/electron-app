@@ -321,7 +321,7 @@ export function ProjectSettingsPage() {
                         htmlFor="slug"
                       />
                       <SettingsRowControl>
-                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none opacity-50 cursor-not-allowed text-right dark:border-none dark:bg-transparent" />
+                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none opacity-50 cursor-not-allowed text-right dark:bg-transparent" />
                       </SettingsRowControl>
                     </SettingsRow>
                     {saveError ? (
@@ -395,7 +395,7 @@ export function ProjectSettingsPage() {
                               {orgDevApp.name}
                             </p>
                             {orgDevApp.version != null ? (
-                              <span className="shrink-0 rounded-md bg-background/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                              <span className="shrink-0 rounded-md bg-background/70 px-1.5 py-0.5 text-2xs font-medium tabular-nums text-muted-foreground">
                                 V{orgDevApp.version}
                               </span>
                             ) : null}

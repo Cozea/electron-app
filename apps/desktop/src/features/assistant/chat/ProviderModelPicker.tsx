@@ -171,7 +171,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
             <span ref={containerRef} className="min-w-0 truncate">
               <span className="truncate">{triggerTitle}</span>
               {currentAgentLabel && currentAgentLabel.toLowerCase() !== "build" ? (
-                <span className="ml-1.5 shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="ml-1.5 shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                   {currentAgentLabel}
                 </span>
               ) : null}
@@ -211,7 +211,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
       {isFastModeActive ? (
         <HugeiconsIcon
           icon={__ZapIconHugeIcon}
-          className="size-3 shrink-0 fill-current text-amber-500"
+          className="size-3 shrink-0 fill-current text-warning"
           aria-label="Fast mode on"
         />
       ) : null}

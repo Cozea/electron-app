@@ -240,7 +240,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
         <button
           type="button"
           aria-expanded={displayExpanded}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-[11px] font-normal text-muted-foreground/60 transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left text-caption font-normal text-muted-foreground/60 transition-colors hover:text-foreground/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => setExpanded(!displayExpanded)}
         >
           <HugeiconsIcon
@@ -254,7 +254,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
         </button>
         <div className="flex shrink-0 items-center gap-1.5">
           {hasNonZeroStat(summaryStat) && (
-            <div className="font-mono text-[10px] tabular-nums">
+            <div className="font-mono text-2xs tabular-nums">
               <DiffStatLabel additions={summaryStat.additions} deletions={summaryStat.deletions} />
             </div>
           )}
@@ -291,7 +291,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
         />
       ) : (
         <div className="px-1.5 pb-1">
-          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] text-muted-foreground/60">
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-caption text-muted-foreground/60">
             {scopeSummary.map((scope, index) => (
               <span key={scope.label} className="inline-flex items-center gap-1">
                 {index > 0 ? <span aria-hidden="true">·</span> : null}
@@ -307,7 +307,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
               <button
                 key={file.path}
                 type="button"
-                className="inline-flex max-w-48 items-center gap-1 rounded-md border border-[var(--assistant-change-chip-border)] bg-[var(--assistant-change-chip-surface)] px-1.5 py-1 font-mono text-[10px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="inline-flex max-w-48 items-center gap-1 rounded-md border border-[var(--assistant-change-chip-border)] bg-[var(--assistant-change-chip-surface)] px-1.5 py-1 font-mono text-2xs text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 title={file.path}
                 aria-label={`Open diff for ${file.path}`}
                 onClick={() => onOpenTurnDiff(turnId, file.path)}
@@ -324,7 +324,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
             {files.length > previewFiles.length && (
               <button
                 type="button"
-                className="rounded-md px-1.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="rounded-md px-1.5 py-1 text-caption font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => setExpanded(true)}
               >
                 Show all {files.length} files

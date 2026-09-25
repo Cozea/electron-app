@@ -27,34 +27,34 @@ function bannerPresentation(state: ThreadRuntimeBannerState, isForceStopAvailabl
         detail: isForceStopAvailable
           ? "The agent is still settling. Force stop is available if it stays stuck."
           : "Waiting for the current run and any active tools to stop.",
-        className: "border-amber-300 bg-[#fffbeb] text-amber-900 dark:border-amber-500/40 dark:bg-[#231b0f] dark:text-amber-200",
+        className: "border-warning/40 bg-background bg-linear-to-b from-warning/10 to-warning/10 text-warning",
         icon: __LoadingIconHugeIcon,
       };
     case "interrupted":
       return {
         title: "Run interrupted",
         detail: "The last run was stopped before it finished.",
-        className: "border-amber-300 bg-[#fffbeb] text-amber-900 dark:border-amber-500/40 dark:bg-[#231b0f] dark:text-amber-200",
+        className: "border-warning/40 bg-background bg-linear-to-b from-warning/10 to-warning/10 text-warning",
         icon: __CircleAlertIconHugeIcon,
       };
     case "stopped":
       return {
         title: "Session stopped",
         detail: "The provider session ended. Send a message to start a fresh run.",
-        className: "border-border bg-[#f4f4f5] text-foreground dark:border-white/[0.12] dark:bg-[#202022] dark:text-foreground",
+        className: "border-border bg-muted text-foreground",
       };
     case "error":
       return {
         title: "Run error",
         detail: "The last run failed before it completed.",
-        className: "border-destructive/30 bg-[#fff1f2] text-destructive dark:border-red-500/40 dark:bg-[#231214] dark:text-red-400",
+        className: "border-destructive/30 bg-background bg-linear-to-b from-destructive/10 to-destructive/10 text-destructive",
         icon: __CircleAlertIconHugeIcon,
       };
     case "connecting":
       return {
         title: "Connecting",
         detail: "Waiting for the provider session to come online.",
-        className: "border-border bg-[#f4f4f5] text-foreground dark:border-white/[0.12] dark:bg-[#202022] dark:text-foreground",
+        className: "border-border bg-muted text-foreground",
         icon: __LoadingIconHugeIcon,
       };
   }

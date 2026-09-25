@@ -527,7 +527,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
   const legend = (
     <div
       className={cn(
-        "flex gap-1 text-[11px]",
+        "flex gap-1 text-caption",
         vertical
           ? "h-full flex-col items-stretch overflow-y-auto"
           : "items-center overflow-x-auto",
@@ -667,7 +667,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
         action={
           run.error && !run.updating ? (
             <div className="space-y-2">
-              <p className="text-[12px] leading-5 text-destructive">{run.error}</p>
+              <p className="text-xs leading-5 text-destructive">{run.error}</p>
               {defaultAgent ? (
                 <Button
                   type="button"
@@ -682,7 +682,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
           ) : run.updating ? (
             <div className="flex items-center justify-center gap-2">
               <Spinner size="sm" aria-hidden />
-              <span className="text-[12px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {run.updating.agentName} {t("workbench.memory.update.working")}
               </span>
             </div>
@@ -755,7 +755,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
 
         {run.loading ? (
           <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-            <span className="rounded-full bg-background/80 px-3 py-1 text-[11px] text-muted-foreground">
+            <span className="rounded-full bg-background/80 px-3 py-1 text-caption text-muted-foreground">
               {t("workbench.memory.loading")}
             </span>
           </div>
@@ -765,7 +765,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
           <aside className="absolute inset-y-0 right-0 flex w-80 flex-col border-l border-border/60 bg-background/95 backdrop-blur">
             <div className="flex items-start justify-between gap-2 border-b border-border/60 px-4 py-3">
               <div className="min-w-0">
-                <div className="truncate text-[13px] font-medium text-foreground">
+                <div className="truncate text-sm font-medium text-foreground">
                   {detail.node.label}
                 </div>
                 <div className="mt-0.5 flex items-center gap-1.5">
@@ -774,7 +774,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
                     style={{ backgroundColor: memoryPalette.state[detail.node.state] }}
                     aria-hidden
                   />
-                  <span className="text-[11px] text-muted-foreground">
+                  <span className="text-caption text-muted-foreground">
                     {t(STATE_LABEL_KEYS[detail.node.state])}
                   </span>
                 </div>
@@ -793,10 +793,10 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
               </Button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 text-[12px]">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-3 text-xs">
               {detail.node.sourceFile ? (
                 <DetailRow label={t("workbench.memory.detail.source")}>
-                  <span className="font-mono text-[11px] break-all text-foreground/85">
+                  <span className="font-mono text-caption break-all text-foreground/85">
                     {detail.node.sourceFile}
                     {detail.node.sourceLocation ? `:${detail.node.sourceLocation}` : ""}
                   </span>
@@ -820,13 +820,13 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
                   <div className="space-y-2">
                     {detail.changes.map((change) => (
                       <div key={change.field} className="rounded-md border border-border/60 p-2">
-                        <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <div className="mb-1 text-2xs uppercase tracking-wide text-muted-foreground">
                           {change.field}
                         </div>
-                        <div className="font-mono text-[11px] text-rose-300/80 line-through break-all">
+                        <div className="font-mono text-caption text-rose-300/80 line-through break-all">
                           {change.before ?? "—"}
                         </div>
-                        <div className="font-mono text-[11px] text-emerald-300/90 break-all">
+                        <div className="font-mono text-caption text-success/90 break-all">
                           {change.after ?? "—"}
                         </div>
                       </div>
@@ -854,11 +854,11 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
                         key && void selectProjectMemoryNode(key, workspaceId, laneId, neighbor.id)
                       }
                     >
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      <span className="shrink-0 text-2xs text-muted-foreground">
                         {neighbor.direction === "out" ? "→" : "←"}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{neighbor.label}</span>
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      <span className="shrink-0 text-2xs text-muted-foreground">
                         {neighbor.relation}
                       </span>
                     </button>
@@ -876,7 +876,7 @@ export function WorkbenchMemoryTile({ projectId, workspaceId, laneId }: Workbenc
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div className="mb-1 text-2xs uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="text-foreground/90">{children}</div>
     </div>
   )
@@ -899,7 +899,7 @@ function MemoryEmptyState({
         </div>
         <div className="text-[15px] font-medium text-foreground">{title}</div>
         {description ? (
-          <p className="text-[12px] leading-5 text-muted-foreground">{description}</p>
+          <p className="text-xs leading-5 text-muted-foreground">{description}</p>
         ) : null}
         {action ? <div className="pt-1">{action}</div> : null}
       </div>

@@ -171,20 +171,20 @@ const STATUS_META: Record<
   planned: {
     ariaLabelKey: 'tasks.status.backlog',
     icon: ListTodo,
-    iconClassName: 'text-amber-700 dark:text-amber-900',
-    surfaceClassName: 'bg-amber-200 dark:bg-amber-300',
+    iconClassName: 'text-warning ',
+    surfaceClassName: 'bg-warning ',
   },
   active: {
     ariaLabelKey: 'tasks.status.inProgress',
     icon: Clock3,
-    iconClassName: 'text-sky-700 dark:text-sky-900',
-    surfaceClassName: 'bg-sky-200 dark:bg-sky-300',
+    iconClassName: 'text-info ',
+    surfaceClassName: 'bg-info ',
   },
   done: {
     ariaLabelKey: 'tasks.status.done',
     icon: CheckCircle2,
-    iconClassName: 'text-emerald-700 dark:text-emerald-900',
-    surfaceClassName: 'bg-emerald-200 dark:bg-emerald-300',
+    iconClassName: 'text-success ',
+    surfaceClassName: 'bg-success ',
   },
 }
 
@@ -1193,7 +1193,7 @@ export function TasksPage({
                             avatarUrl={claimant.avatarUrl ?? null}
                             useColor={false}
                             className="h-5 w-5"
-                            fallbackClassName="text-[10px]"
+                            fallbackClassName="text-2xs"
                           />
                           <span
                             className="max-w-[160px] truncate text-xs font-medium text-foreground"

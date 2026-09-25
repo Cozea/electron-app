@@ -500,7 +500,7 @@ export function CreateProjectDialog({
                     }
                     disabled={isSubmitting}
                     autoFocus
-                    className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:border-none dark:bg-transparent"
+                    className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:bg-transparent"
                   />
                 </SettingsRowControl>
               </SettingsRow>

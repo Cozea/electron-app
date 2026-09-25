@@ -322,7 +322,7 @@ export function ProviderRemediationAction(props: {
             {isCopied ? "Copied" : "Copy"}
           </Button>
         </div>
-        <p className="text-[11px] leading-4 text-muted-foreground">{remediation.nextStep}</p>
+        <p className="text-caption leading-4 text-muted-foreground">{remediation.nextStep}</p>
         {runState.phase === "failed" ? (
           <p className="text-xs text-destructive" role="alert">
             {runState.error}

@@ -580,7 +580,7 @@ function DetailSheet({
             <Logo size={18} className="shrink-0 opacity-90" />
           )}
           <h2 className="text-[15px] tracking-[0.17em] text-foreground uppercase">{title}</h2>
-          <span className="text-[13px] leading-none tabular-nums text-muted-foreground">
+          <span className="text-sm leading-none tabular-nums text-muted-foreground">
             <span className="font-medium text-foreground">{inBuild}</span>/{choosable.length}
           </span>
         </span>
@@ -609,10 +609,10 @@ function DetailSheet({
               {/* Plain type, no frame: the hub carries the drawn structure,
                   and a page of lists is easier to read without it. */}
               <div className="flex items-baseline gap-2 pb-1.5">
-                <h3 className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
+                <h3 className="text-caption tracking-[0.14em] text-muted-foreground uppercase">
                   {group.label}
                 </h3>
-                <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                <span className="text-2xs tabular-nums text-muted-foreground/60">
                   {held}/{group.skills.length}
                 </span>
               </div>
@@ -661,13 +661,13 @@ function DetailSheet({
                           <span className="min-w-0 flex-1">
                             <span
                               className={cn(
-                                "block truncate text-[13px] font-medium transition-colors",
+                                "block truncate text-sm font-medium transition-colors",
                                 isChosen ? "text-foreground" : "text-muted-foreground",
                               )}
                             >
                               {prettifySkillName(skill.name)}
                             </span>
-                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                            <span className="mt-0.5 block truncate text-caption text-muted-foreground/80">
                               {conciseDescription(skill.description)}
                             </span>
                           </span>
@@ -684,10 +684,10 @@ function DetailSheet({
         {essential.length > 0 ? (
           <section className="pt-6">
             <div className="flex items-baseline gap-2 pb-1.5">
-              <h3 className="text-[11px] tracking-[0.14em] text-muted-foreground uppercase">
+              <h3 className="text-caption tracking-[0.14em] text-muted-foreground uppercase">
                 Essential
               </h3>
-              <span className="text-[10px] tabular-nums text-muted-foreground/60">
+              <span className="text-2xs tabular-nums text-muted-foreground/60">
                 {essential.length}
               </span>
               <Tooltip>
@@ -734,10 +734,10 @@ function DetailSheet({
                     >
                       <SkillMark name={skill.name} lit={false} />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium text-muted-foreground">
+                        <span className="block truncate text-sm font-medium text-muted-foreground">
                           {prettifySkillName(skill.name)}
                         </span>
-                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/80">
+                        <span className="mt-0.5 block truncate text-caption text-muted-foreground/80">
                           {conciseDescription(skill.description)}
                         </span>
                       </span>
@@ -772,7 +772,7 @@ function SkillMark({ name, lit }: { name: string; lit: boolean }) {
           : "border-[var(--hub-ln)] bg-[var(--hub-fill)] text-muted-foreground",
       )}
     >
-      <span className="text-[10px] leading-none font-medium tracking-[0.04em]">
+      <span className="text-2xs leading-none font-medium tracking-[0.04em]">
         {skillMonogram(name)}
       </span>
     </span>
@@ -786,7 +786,7 @@ function RingKey({ label, onClick }: { label: string; onClick: () => void }) {
       type="button"
       onClick={onClick}
       aria-label={label === "A" ? "Previous agent" : "Next agent"}
-      className="flex h-[22px] min-w-[26px] items-center justify-center rounded-[4px] border border-[var(--hub-ln)] px-1.5 font-mono text-[11px] text-muted-foreground transition-colors hover:border-[var(--hub-ln-hi)] hover:text-foreground"
+      className="flex h-[22px] min-w-[26px] items-center justify-center rounded-[4px] border border-[var(--hub-ln)] px-1.5 font-mono text-caption text-muted-foreground transition-colors hover:border-[var(--hub-ln-hi)] hover:text-foreground"
     >
       {label}
     </button>
@@ -889,7 +889,7 @@ function BuildStrip({
               >
                 {build.name}
               </span>
-              <span className="relative flex items-center gap-1 text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
+              <span className="relative flex items-center gap-1 text-2xs tracking-[0.12em] text-muted-foreground uppercase">
                 {build.skillIds.length}
                 {build.id === activeBuildId ? (
                   <>
@@ -979,7 +979,7 @@ function BuildEditor({
           autoFocus
           className="h-8 max-w-xs"
         />
-        <span className="text-[11px] text-muted-foreground/70">{skillIds.length} selected</span>
+        <span className="text-caption text-muted-foreground/70">{skillIds.length} selected</span>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <Button variant="outline" size="sm" onClick={onCancel} disabled={busy}>
             Cancel
@@ -1028,13 +1028,13 @@ function BuildEditor({
             return (
               <div key={group.category} className="mb-4 last:mb-0">
                 <div className="flex items-center justify-between gap-3 px-2 pb-1.5">
-                  <h3 className="text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">
+                  <h3 className="text-caption font-medium tracking-wide text-muted-foreground/70 uppercase">
                     {group.label}
                   </h3>
                   <button
                     type="button"
                     onClick={() => onSetSkillIds(toggleCategorySelection(skillIds, ids))}
-                    className="text-[11px] text-muted-foreground/70 transition-colors hover:text-foreground"
+                    className="text-caption text-muted-foreground/70 transition-colors hover:text-foreground"
                   >
                     {allChosen ? "Clear" : "Select all"}
                   </button>
@@ -1071,7 +1071,7 @@ function BuildEditor({
                             <span className="block truncate text-sm font-medium">
                               {prettifySkillName(skill.name)}
                             </span>
-                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground/70">
+                            <span className="mt-0.5 block truncate text-caption text-muted-foreground/70">
                               {conciseDescription(skill.description)}
                             </span>
                           </span>
@@ -1106,7 +1106,7 @@ function CategoryChip({
       aria-pressed={isActive}
       onClick={onClick}
       className={cn(
-        "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] transition-colors",
+        "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-caption transition-colors",
         isActive
           ? "border-transparent bg-foreground/12 font-medium text-foreground"
           : "border-border/50 text-muted-foreground hover:border-border hover:text-foreground",

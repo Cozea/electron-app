@@ -57,7 +57,7 @@ export function ComposerPreviewAnnotationCards(props: {
               ) : null}
               <div
                 className={cn(
-                  "flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground",
+                  "flex min-w-0 items-center gap-2 text-2xs text-muted-foreground",
                   annotation.comment.trim() && "mt-1",
                 )}
               >

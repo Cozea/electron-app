@@ -297,13 +297,13 @@ function DevelopmentBadge({
   return (
     <span className="flex items-center gap-1.5">
       <span
-        className="rounded-search bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400"
+        className="rounded-search bg-warning/15 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-warning"
         title={badge?.detail ?? "Unpublished code running from this project."}
       >
         DEV
       </span>
       {hotReload ? null : (
-        <span className="text-[10px] text-muted-foreground" title="Changes will not reload on their own.">
+        <span className="text-2xs text-muted-foreground" title="Changes will not reload on their own.">
           no hot reload
         </span>
       )}
@@ -347,13 +347,13 @@ function PreviewDiagnostics({
               <div className="flex items-start justify-between gap-2">
                 <p className="text-xs font-medium text-foreground">{diagnostic.message}</p>
                 {diagnostic.field ? (
-                  <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/80">
+                  <span className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground/80">
                     {diagnostic.field}
                   </span>
                 ) : null}
               </div>
               {diagnostic.fix ? (
-                <p className="text-[11px] text-muted-foreground">{diagnostic.fix}</p>
+                <p className="text-caption text-muted-foreground">{diagnostic.fix}</p>
               ) : null}
             </div>
           ))}
@@ -380,12 +380,12 @@ function PreviewApproval({
       <div className="w-full max-w-sm space-y-4">
         <div className="flex items-center justify-start gap-1.5 text-sm whitespace-nowrap">
           <div className="flex size-5 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/40">
-            <HugeiconsIcon icon={Shield01Icon} className="size-3 text-amber-500" />
+            <HugeiconsIcon icon={Shield01Icon} className="size-3 text-warning" />
           </div>
           <h2 className="font-semibold tracking-tight text-foreground truncate max-w-[200px]">
             {status.name}
           </h2>
-          <span className="shrink-0 rounded-search bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+          <span className="shrink-0 rounded-search bg-warning/15 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-warning">
             DEV
           </span>
           <span className="shrink-0 text-muted-foreground">
@@ -425,14 +425,14 @@ function PreviewFooter({
       {blockers.length > 0 ? (
         // Preflight runs continuously, so a project that has drifted out of publishable
         // shape says so here rather than at publish time.
-        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+        <p className="text-caption text-warning">
           {blockers.length === 1
             ? blockers[0]!.message
             : `${blockers.length} problems would block publishing.`}
         </p>
       ) : null}
       {worker?.lastError ? (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           Worker: {worker.lastError}
           {worker.restarts > 0 ? ` (restarted ${worker.restarts}×)` : ""}
         </p>

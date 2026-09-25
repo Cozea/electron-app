@@ -61,7 +61,7 @@ export function BrowserFindOverlay({ runtimeTabId }: { readonly runtimeTabId: st
         className="h-7 w-48 border-0 bg-transparent px-1 text-xs shadow-none focus-visible:ring-0"
         aria-label="Find in page"
       />
-      <span className="min-w-12 text-center text-[11px] tabular-nums text-muted-foreground">
+      <span className="min-w-12 text-center text-caption tabular-nums text-muted-foreground">
         {matchLabel}
       </span>
       <Button

@@ -194,7 +194,7 @@ export function ProviderHub({
             {/* Same arrangement as a provider plate — name, then mark and
                 count — so the core reads as one of the family, just bigger. */}
             <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-[8%]">
-              <span className="text-[11px] tracking-[0.16em] text-muted-foreground uppercase transition-colors group-hover:text-foreground">
+              <span className="text-caption tracking-[0.16em] text-muted-foreground uppercase transition-colors group-hover:text-foreground">
                 Cozea
               </span>
               <span className="flex items-center gap-2.5">
@@ -421,7 +421,7 @@ function ProviderNode({
       </svg>
 
       <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-        <span className="text-[11px] tracking-[0.16em] text-muted-foreground uppercase transition-colors group-hover:text-foreground">
+        <span className="text-caption tracking-[0.16em] text-muted-foreground uppercase transition-colors group-hover:text-foreground">
           {node.label}
         </span>
         <span className="flex items-center gap-2.5">
@@ -438,7 +438,7 @@ function ProviderNode({
               the count rather than folded into it. */}
           {essential > 0 ? (
             <span
-              className="text-[12px] leading-none tabular-nums text-muted-foreground"
+              className="text-xs leading-none tabular-nums text-muted-foreground"
               title={`${essential} essential ${essential === 1 ? "skill" : "skills"} always on`}
             >
               +{essential}

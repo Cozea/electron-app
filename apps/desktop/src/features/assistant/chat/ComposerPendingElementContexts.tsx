@@ -52,7 +52,7 @@ export function ComposerPendingElementContextChip({
             <LuMousePointerClick className={cn(COMPOSER_INLINE_CHIP_ICON_CLASS_NAME, "size-3.5")} />
             <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{label}</span>
             {sourceLabel ? (
-              <span className="select-none text-[10px] font-normal leading-tight text-muted-foreground/85">
+              <span className="select-none text-2xs font-normal leading-tight text-muted-foreground/85">
                 {sourceLabel}
               </span>
             ) : null}

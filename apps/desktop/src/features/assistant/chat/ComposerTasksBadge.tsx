@@ -154,7 +154,7 @@ export const ComposerTasksContent = memo(function ComposerTasksContent({
               <ComposerBanner.Row key={key} render={<li />}>
                 <ComposerBanner.Icon
                   className={cn(
-                    "font-mono text-[10px]",
+                    "font-mono text-2xs",
                     step.status === "completed"
                       ? "text-success"
                       : step.status === "inProgress"
@@ -177,7 +177,7 @@ export const ComposerTasksContent = memo(function ComposerTasksContent({
                 </ComposerBanner.Content>
                 <ComposerBanner.Actions>
                   <span
-                    className="w-10 text-right text-[10px] text-muted-foreground/45 tabular-nums"
+                    className="w-10 text-right text-2xs text-muted-foreground/45 tabular-nums"
                     data-composer-task-duration="true"
                   >
                     {step.durationMs !== undefined

@@ -151,10 +151,10 @@ export function DevServerProcessesDialog({
         <ScrollArea scrollFade fadeSize="1.5rem" className="min-h-0 -mx-6 max-h-[50vh] flex-1 px-6">
           <div className="flex h-12 items-center justify-between border-b border-border/60">
             <div className="min-w-0">
-              <div className="text-[13px] font-medium text-foreground">
+              <div className="text-sm font-medium text-foreground">
                 {t("workbench.devserver.processes.frontend")}
               </div>
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-caption text-muted-foreground">
                 {t("workbench.devserver.processes.automatic")}
               </div>
             </div>
@@ -181,12 +181,12 @@ export function DevServerProcessesDialog({
                     aria-label={t("workbench.devserver.processes.toggleDetails")}
                   >
                     <div className="min-w-0">
-                      <div className="truncate text-[13px] font-medium text-foreground">
+                      <div className="truncate text-sm font-medium text-foreground">
                         {trimmedName || t("workbench.devserver.processes.untitled")}
                       </div>
                       <div
                         className={cn(
-                          "truncate text-[11px] text-muted-foreground",
+                          "truncate text-caption text-muted-foreground",
                           trimmedCommand && "font-mono",
                         )}
                       >

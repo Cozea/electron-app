@@ -44,7 +44,7 @@ export function ContextWindowMeter(props: {
     normalizedPercentage >= 90
       ? "text-rose-500"
       : normalizedPercentage >= 75
-        ? "text-amber-500"
+        ? "text-warning"
         : "text-foreground/80 dark:text-white/80";
   const contextValue =
     usage.maxTokens !== null && usedPercentage
@@ -205,7 +205,7 @@ export function ContextWindowMeter(props: {
 function usageToneClass(percentage: number | null): string {
   const value = percentage ?? 0;
   if (value >= 90) return "bg-rose-500";
-  if (value >= 75) return "bg-amber-500";
+  if (value >= 75) return "bg-warning";
   return "bg-foreground/80 dark:bg-white/80";
 }
 

@@ -248,8 +248,8 @@ function resolveAgentStatusPill(input: {
   if (hasPendingApprovals) {
     return {
       label: "Pending Approval",
-      colorClass: "text-amber-600 dark:text-amber-300/90",
-      dotClass: "bg-amber-500 dark:bg-amber-300/90",
+      colorClass: "text-warning dark:text-warning/90",
+      dotClass: "bg-warning dark:bg-warning/90",
       pulse: false,
     }
   }
@@ -293,8 +293,8 @@ function resolveAgentStatusPill(input: {
   if (thread.session?.status === "interrupted") {
     return {
       label: "Interrupted",
-      colorClass: "text-amber-600 dark:text-amber-300/90",
-      dotClass: "bg-amber-500 dark:bg-amber-300/90",
+      colorClass: "text-warning dark:text-warning/90",
+      dotClass: "bg-warning dark:bg-warning/90",
       pulse: false,
     }
   }
@@ -328,8 +328,8 @@ function resolveAgentStatusPill(input: {
   if (hasUnseenCompletion(thread)) {
     return {
       label: "Completed",
-      colorClass: "text-emerald-600 dark:text-emerald-300/90",
-      dotClass: "bg-emerald-500 dark:bg-emerald-300/90",
+      colorClass: "text-success dark:text-success/90",
+      dotClass: "bg-success dark:bg-success/90",
       pulse: false,
     }
   }
@@ -400,7 +400,7 @@ function AgentTimeLabel(props: { threadId?: string | null }) {
   return (
     <span
       className={cn(
-        "text-[12px] ml-auto shrink-0",
+        "text-xs ml-auto shrink-0",
         "text-muted-foreground/40 group-hover/tile:text-foreground/72 dark:group-hover/tile:text-foreground/82 transition-colors"
       )}
     >
@@ -423,7 +423,7 @@ function TileActivityIndicator(props: { activity: SidebarActivity; label: string
       {props.activity === "starting" ? (
         <div className="loader" />
       ) : (
-        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="size-2 rounded-full bg-success animate-pulse" />
       )}
     </div>
   )
@@ -631,7 +631,7 @@ export function SidebarLaneTiles(props: SidebarLaneTilesProps) {
               className="size-[18px] shrink-0 text-muted-foreground/75"
             />
             <TileRowLabel activity={headlessDevServerActivity} title="Dev Server" />
-            <span className="shrink-0 text-[10px] text-emerald-500/90 font-medium">Running</span>
+            <span className="shrink-0 text-2xs text-success/90 font-medium">Running</span>
           </div>
         </button>
       ) : null}

@@ -181,7 +181,7 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-7 px-2 text-xs font-medium text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/10"
+                className="h-7 px-2 text-xs font-medium text-warning border-warning/40 hover:bg-warning/10"
                 disabled={isApplying}
                 onClick={handleApply}
                 title="Apply private thread worktree changes into the collaborative Session Workspace"
@@ -296,7 +296,7 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
       >
         <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
           {props.tile.laneBinding === "threadWorktree" && surfaceProps.thread?.worktreePath && viewMode === "chat" ? (
-            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-400">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border/60 bg-warning/10 px-3 py-1.5 text-xs text-warning">
               <span className="truncate font-medium">
                 Private thread worktree active. Changes remain isolated until applied.
               </span>
@@ -304,7 +304,7 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
                 type="button"
                 size="sm"
                 variant="outline"
-                className="h-6 shrink-0 px-2 text-[11px] font-medium border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+                className="h-6 shrink-0 px-2 text-caption font-medium border-warning/40 text-warning hover:bg-warning/20"
                 disabled={isApplying}
                 onClick={handleApply}
               >

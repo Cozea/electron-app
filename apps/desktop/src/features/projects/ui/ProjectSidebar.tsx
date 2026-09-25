@@ -1061,7 +1061,7 @@ export function ProjectSidebar({
                   <span className="truncate">{t('nav.inbox')}</span>
                 </button>
                 {inboxCount > 0 ? (
-                  <SidebarMenuBadge className="right-1.5 top-1/2 -translate-y-1/2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground">
+                  <SidebarMenuBadge className="right-1.5 top-1/2 -translate-y-1/2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1.5 text-2xs font-medium leading-none text-primary-foreground">
                     {inboxCount > 9 ? "9+" : inboxCount}
                   </SidebarMenuBadge>
                 ) : null}

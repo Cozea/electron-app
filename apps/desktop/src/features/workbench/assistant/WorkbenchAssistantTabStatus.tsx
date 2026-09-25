@@ -71,7 +71,7 @@ export const WorkbenchAssistantTabStatus = memo(function WorkbenchAssistantTabSt
         <span
           title=""
           data-slot="assistant-tab-attention"
-          className="inline-flex shrink-0 items-center justify-center text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300 transition-colors cursor-help"
+          className="inline-flex shrink-0 items-center justify-center text-warning hover:text-warning transition-colors cursor-help"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           aria-label={tooltipMessage ?? "Connection issue"}

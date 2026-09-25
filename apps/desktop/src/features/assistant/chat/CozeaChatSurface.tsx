@@ -1788,10 +1788,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     if (activeMode === "plan") {
       return (
-        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-warning/15 text-warning dark:bg-warning/40 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
           <HugeiconsIcon
             icon={__ListTodoIconHugeIcon}
-            className="size-3.5 shrink-0 text-amber-700 dark:text-amber-400"
+            className="size-3.5 shrink-0 text-warning"
           />
           <span>Plan</span>
           <button
@@ -1801,7 +1801,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               e.stopPropagation();
               updateComposerMode(null);
             }}
-            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-amber-700/70 hover:bg-amber-500/25 hover:text-amber-800 dark:text-amber-400/80 dark:hover:bg-amber-500/25 dark:hover:text-amber-200 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-warning/70 hover:bg-warning/25 hover:text-warning dark:text-warning/80 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
             aria-label="Remove plan mode"
             title="Remove plan mode"
           >
@@ -1812,10 +1812,10 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
     }
     if (activeMode === "ask") {
       return (
-        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
+        <div className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-info/15 text-info dark:bg-info/40 px-2.5 py-0.5 text-xs font-medium select-none transition-all animate-in fade-in zoom-in-95 duration-150 ease-out">
           <HugeiconsIcon
             icon={__ChatIconHugeIcon}
-            className="size-3.5 shrink-0 text-sky-700 dark:text-sky-400"
+            className="size-3.5 shrink-0 text-info"
           />
           <span>Ask</span>
           <button
@@ -1825,7 +1825,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
               e.stopPropagation();
               updateComposerMode(null);
             }}
-            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-sky-700/70 hover:bg-sky-500/25 hover:text-sky-800 dark:text-sky-400/80 dark:hover:bg-sky-500/25 dark:hover:text-sky-200 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
+            className="ml-1 -mr-0.5 inline-flex size-4 items-center justify-center rounded-full text-info/70 hover:bg-info/25 hover:text-info dark:text-info/80 transition-[background-color,color,transform] duration-150 active:scale-90 hover:scale-110 cursor-pointer"
             aria-label="Remove ask mode"
             title="Remove ask mode"
           >
@@ -1909,7 +1909,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                 key: "plan",
                 name: "Plan Mode",
                 icon: (
-                  <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 text-amber-400" />
+                  <HugeiconsIcon icon={__ListTodoIconHugeIcon} className="size-4 text-warning" />
                 ),
                 status: activeMode === "plan" ? "On" : undefined,
                 statusTone: "positive" as const,
@@ -1920,7 +1920,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         {
           key: "ask",
           name: "Ask Mode",
-          icon: <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4 text-sky-400" />,
+          icon: <HugeiconsIcon icon={__ChatIconHugeIcon} className="size-4 text-info" />,
           status: activeMode === "ask" ? "On" : undefined,
           statusTone: "positive",
           onSelect: () => updateComposerMode(activeMode === "ask" ? null : "ask"),
@@ -1998,7 +1998,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         )}
       />
       {props.composerImages.length > 0 ? (
-        <span className="ml-0.5 text-[10px] font-bold text-primary animate-in fade-in zoom-in-50 duration-150">
+        <span className="ml-0.5 text-2xs font-bold text-primary animate-in fade-in zoom-in-50 duration-150">
           {props.composerImages.length}
         </span>
       ) : null}
@@ -2181,7 +2181,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
       {/* Autocomplete Menu (floating above) */}
       {composerMenuOpen ? (
         <div className="absolute bottom-[calc(100%+8px)] left-0 z-50 w-[min(34rem,100%)] max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-[var(--assistant-composer-surface)] shadow-2xl p-1.5 animate-in fade-in-0 slide-in-from-bottom-1 duration-150 dark:border-white/[0.08] motion-reduce:animate-none">
-          <div className="px-2 pb-1 text-[11px] font-medium text-muted-foreground">
+          <div className="px-2 pb-1 text-caption font-medium text-muted-foreground">
             {composerPathTrigger
               ? "Files & Folders"
               : composerModelTrigger
@@ -2249,14 +2249,14 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
                     <span className="block truncate text-xs font-medium text-foreground">
                       {item.type === "path" ? basenameOfPath(item.path) : item.label}
                     </span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="block truncate text-caption text-muted-foreground">
                       {item.type === "path" ? item.description || item.path : item.description}
                     </span>
                   </span>
                 </button>
               ))}
               {hiddenComposerMenuItemCount > 0 ? (
-                <div className="px-2 pt-1 text-[11px] text-muted-foreground/80">
+                <div className="px-2 pt-1 text-caption text-muted-foreground/80">
                   Show {hiddenComposerMenuItemCount} more
                 </div>
               ) : null}

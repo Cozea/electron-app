@@ -513,7 +513,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => setShowLogs((value) => !value)}
                 >
                   Logs
@@ -523,7 +523,7 @@ export function WorkbenchOrgDevAppTile({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-[11px]"
+                    className="h-7 px-2 text-caption"
                     onClick={() => setShowConfiguration(true)}
                   >
                     Configure
@@ -533,7 +533,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(true)
                     void window.electronAPI.orgDevApp
@@ -562,7 +562,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(false)
                     void window.electronAPI.orgDevApp
@@ -585,7 +585,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(true)
                     void window.electronAPI.orgDevApp
@@ -602,7 +602,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(false)
                     setPrepareAttempt((attempt) => attempt + 1)
@@ -617,7 +617,7 @@ export function WorkbenchOrgDevAppTile({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 px-2 text-caption"
                 onClick={() => {
                   void window.electronAPI.orgDevApp
                     .revokePublishedWorker({
@@ -644,7 +644,7 @@ export function WorkbenchOrgDevAppTile({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 px-2 text-caption"
                 onClick={() => {
                   void refreshFolderGrants()
                     .then(() => setShowFolderAccess(true))
@@ -751,16 +751,16 @@ export function WorkbenchOrgDevAppTile({
                 </span>
               </div>
               <div className="flex flex-wrap items-center justify-start gap-1.5">
-                <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                   {hostedRuntime ? "Hosted Container" : "Linux VM"}
                 </span>
                 {servicePermissions?.network ? (
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                     Network
                   </span>
                 ) : null}
                 {runtimeStateScope !== "none" ? (
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                     {runtimeStateScope === "organization" ? "Org state" : "Device state"}
                   </span>
                 ) : null}
@@ -869,7 +869,7 @@ export function WorkbenchOrgDevAppTile({
             Output from this DevApp's {hostedRuntime ? "hosted" : "device"} contained runtime.
           </p>
           <div className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-background p-3">
-            <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground">
+            <pre className="whitespace-pre-wrap text-caption text-muted-foreground">
               {(runtimeState?.logs ?? []).join("\n") || "No service output yet."}
             </pre>
           </div>
@@ -924,7 +924,7 @@ export function WorkbenchOrgDevAppTile({
                 <div key={grant.grantId} className="flex items-center gap-3 rounded-lg border border-border p-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-foreground">{grant.canonicalHostPath}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-caption text-muted-foreground">
                       {grant.access === "readWrite" ? "Read and write" : "Read only"} · {grant.guestPath}
                     </p>
                   </div>

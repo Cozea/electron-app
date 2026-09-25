@@ -311,7 +311,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
               <Button
                 variant="destructive"
                 size="sm"
-                className="h-7 gap-1.5 text-[11px]"
+                className="h-7 gap-1.5 text-caption"
                 onClick={() => setResetDialogOpen(true)}
               >
                 {t("settings.account.resetAction")}

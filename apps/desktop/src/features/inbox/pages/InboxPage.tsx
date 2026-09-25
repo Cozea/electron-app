@@ -89,9 +89,9 @@ export function AcceptedSetupCard({
   onRetry?: () => void
 }) {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+    <div className="flex items-center justify-between rounded-xl border border-success/30 bg-success/5 p-4">
       <div className="flex items-center gap-3">
-        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-success/15 text-success">
           <HugeiconsIcon icon={__CheckCircleHugeIcon} className="size-5" />
         </div>
         <div>

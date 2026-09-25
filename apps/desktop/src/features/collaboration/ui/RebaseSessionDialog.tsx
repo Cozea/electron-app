@@ -55,7 +55,7 @@ export function RebaseSessionBody({ targetBranch, result, error, rebasing }: Reb
   if (result.outcome === "conflicts") {
     const paths = result.conflictingPaths ?? []
     return (
-      <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      <div className="space-y-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
         <p>{result.message}</p>
         {paths.length > 0 ? <p className="font-mono">{listPaths(paths)}</p> : null}
         <p>Choose the retained variants below, then apply the resolved rebase when ready.</p>

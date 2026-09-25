@@ -28,7 +28,7 @@ export const AssistantResponseActions = memo(function AssistantResponseActions({
       data-response-actions={message.id}
       aria-hidden={!isReady}
       className={cn(
-        "mt-1 flex h-7 items-center gap-3 px-1 py-1 text-[11px] text-muted-foreground/60 transition-opacity duration-150 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none",
+        "mt-1 flex h-7 items-center gap-3 px-1 py-1 text-caption text-muted-foreground/60 transition-opacity duration-150 animate-in fade-in-0 slide-in-from-bottom-1 motion-reduce:animate-none",
         !isReady
           ? "invisible pointer-events-none select-none"
           : isLatest

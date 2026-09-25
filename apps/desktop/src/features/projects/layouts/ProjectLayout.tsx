@@ -700,7 +700,7 @@ export function ProjectLayout({
                     {outletElement}
                     {featureFlags.localWorkspaceCatalog && workspaceProjectId && !workspaceResolution ? (
                       <div
-                        className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
+                        className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-caption text-muted-foreground backdrop-blur-sm"
                         role="status"
                         aria-live="polite"
                         data-workspace-resolution="refreshing"

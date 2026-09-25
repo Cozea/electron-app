@@ -40,7 +40,7 @@ export const PersistedFilesList = memo(function PersistedFilesList(
     <div className="mt-1 space-y-1 pl-6">
       {savedFiles.length > 0 ? (
         <div className="space-y-0.5">
-          <p className="px-1 text-[10px] font-medium uppercase tracking-[0.08em] text-emerald-700/80 dark:text-emerald-300/80">
+          <p className="px-1 text-2xs font-medium uppercase tracking-[0.08em] text-success/80">
             {countLabel("Saved", savedFiles.length)}
           </p>
           <div className="space-y-0.5">
@@ -54,7 +54,7 @@ export const PersistedFilesList = memo(function PersistedFilesList(
               />
             ))}
             {savedFiles.length > MAX_VISIBLE_SAVED_FILES ? (
-              <p className="px-1 text-[10px] text-muted-foreground/55">
+              <p className="px-1 text-2xs text-muted-foreground/55">
                 +{savedFiles.length - MAX_VISIBLE_SAVED_FILES} more
               </p>
             ) : null}
@@ -64,7 +64,7 @@ export const PersistedFilesList = memo(function PersistedFilesList(
 
       {failedFiles.length > 0 ? (
         <div className="space-y-0.5">
-          <p className="px-1 text-[10px] font-medium uppercase tracking-[0.08em] text-destructive/80">
+          <p className="px-1 text-2xs font-medium uppercase tracking-[0.08em] text-destructive/80">
             {countLabel("Failed", failedFiles.length)}
           </p>
           <div className="space-y-0.5">
@@ -79,7 +79,7 @@ export const PersistedFilesList = memo(function PersistedFilesList(
               />
             ))}
             {failedFiles.length > MAX_VISIBLE_FAILED_FILES ? (
-              <p className="px-1 text-[10px] text-muted-foreground/55">
+              <p className="px-1 text-2xs text-muted-foreground/55">
                 +{failedFiles.length - MAX_VISIBLE_FAILED_FILES} more
               </p>
             ) : null}
@@ -116,7 +116,7 @@ const PersistedFileRow = memo(function PersistedFileRow(props: {
             theme={props.resolvedTheme}
             className="size-3.5"
           />
-          <span className="truncate font-mono text-[10px] leading-4">{displayPath}</span>
+          <span className="truncate font-mono text-2xs leading-4">{displayPath}</span>
         </div>
       </TooltipTrigger>
       {props.detail ? (

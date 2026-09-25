@@ -116,7 +116,7 @@ export function Onboarding() {
           >
             <span
               className={cn(
-                'flex size-5 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+                'flex size-5 items-center justify-center rounded-full text-caption font-semibold transition-colors',
                 step === 'name'
                   ? 'border-2 border-foreground text-foreground'
                   : 'border border-muted-foreground/50 text-muted-foreground'
@@ -150,7 +150,7 @@ export function Onboarding() {
           >
             <span
               className={cn(
-                'flex size-5 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+                'flex size-5 items-center justify-center rounded-full text-caption font-semibold transition-colors',
                 step === 'avatar'
                   ? 'border-2 border-foreground text-foreground'
                   : step === 'github'
@@ -173,7 +173,7 @@ export function Onboarding() {
           >
             <span
               className={cn(
-                'flex size-5 items-center justify-center rounded-full text-[11px] font-semibold transition-colors',
+                'flex size-5 items-center justify-center rounded-full text-caption font-semibold transition-colors',
                 step === 'github'
                   ? 'border-2 border-foreground text-foreground'
                   : 'border border-muted-foreground/40 text-muted-foreground/60'
@@ -384,7 +384,7 @@ export function Onboarding() {
                 <div className="my-auto flex flex-col items-center gap-3">
                   {githubLogin ? (
                     <div className="flex items-center gap-2 text-sm font-medium text-foreground" role="status">
-                      <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-5 text-emerald-500" />
+                      <HugeiconsIcon icon={CheckmarkCircle02Icon} className="size-5 text-success" />
                       {t('onboarding.github.connected').replace('{login}', githubLogin)}
                     </div>
                   ) : (

@@ -199,7 +199,7 @@ export function ProjectTeamPage() {
                             <span className="truncate font-medium">{member.displayName}</span>
                             {self ? <Badge variant="secondary">This device</Badge> : null}
                           </div>
-                          <div className="truncate font-mono text-[11px] text-muted-foreground">{member.identityKey}</div>
+                          <div className="truncate font-mono text-caption text-muted-foreground">{member.identityKey}</div>
                         </div>
                       </div>
                     </TableCell>
@@ -249,12 +249,12 @@ export function ProjectTeamPage() {
                 <div key={enrollment._id} className="flex items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-mono text-xs">{enrollment.targetIdentityKey}</div>
-                    <div className="text-[11px] text-muted-foreground">{enrollment.role.replace(/_/g, ' ')} · expires {formatDate(enrollment.expiresAt)}</div>
+                    <div className="text-caption text-muted-foreground">{enrollment.role.replace(/_/g, ' ')} · expires {formatDate(enrollment.expiresAt)}</div>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-caption"
                     disabled={busy !== null}
                     onClick={() => void run(`cancel:${enrollment._id}`, async () => {
                       await cancelEnrollment({ enrollmentId: enrollment._id })

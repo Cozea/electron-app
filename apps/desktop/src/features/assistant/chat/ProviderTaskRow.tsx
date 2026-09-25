@@ -10,7 +10,7 @@ function NativeDetails({ value }: { value: unknown }) {
     <details onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary className="h-6 cursor-pointer text-muted-foreground">Native details</summary>
       {open ? (
-        <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all text-[10px]">
+        <pre className="mt-1 max-h-60 overflow-auto whitespace-pre-wrap break-all text-2xs">
           {JSON.stringify(value, null, 2)}
         </pre>
       ) : null}
@@ -75,7 +75,7 @@ const OwnedActivityRow = memo(function OwnedActivityRow({
             latest.summary
           )}
         </span>
-        <span className="shrink-0 text-[10px]">{ownedStatus(group)}</span>
+        <span className="shrink-0 text-2xs">{ownedStatus(group)}</span>
       </summary>
       {open ? (
         <div className="pb-2 pl-2">
@@ -135,14 +135,14 @@ export const ProviderTaskRow = memo(function ProviderTaskRow({
         ) : (
           <span className="truncate">{title}</span>
         )}
-        <span className="ml-auto shrink-0 text-[10px]">
+        <span className="ml-auto shrink-0 text-2xs">
           {running && expanded && !hasRunningOwned ? (
             <LiveShimmerText>{task.status}</LiveShimmerText>
           ) : (
             task.status
           )}
         </span>
-        {task.isBackgrounded ? <span className="shrink-0 text-[10px]">Background</span> : null}
+        {task.isBackgrounded ? <span className="shrink-0 text-2xs">Background</span> : null}
       </CollapsibleTrigger>
       <CollapsiblePanel className="motion-reduce:transition-none">
         <div className="space-y-2 pb-2 pl-5">

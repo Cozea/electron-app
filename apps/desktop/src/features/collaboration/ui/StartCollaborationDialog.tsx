@@ -419,7 +419,7 @@ export function StartCollaborationDialog({
           </div>
 
           {repositoryUrl && remoteCarriesCredentials(originUrl) ? (
-            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
               <input
                 type="checkbox"
                 className="mt-0.5"
@@ -434,7 +434,7 @@ export function StartCollaborationDialog({
           ) : null}
 
           {plan.status === "blocked" ? (
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
               {plan.reason}
             </p>
           ) : null}

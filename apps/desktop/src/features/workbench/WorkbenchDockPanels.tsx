@@ -310,11 +310,11 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
       ) : null}
       <div className="min-w-0 flex-1" />
       {tile?.type === "assistantChat" && tile.model ? (
-        <span className="hidden max-w-20 shrink-0 truncate rounded-sm bg-secondary px-1 text-[10px] text-muted-foreground group-hover:inline-flex">
+        <span className="hidden max-w-20 shrink-0 truncate rounded-sm bg-secondary px-1 text-2xs text-muted-foreground group-hover:inline-flex">
           {tile.model}
         </span>
       ) : tile?.type ? (
-        <span className="hidden shrink-0 rounded-sm bg-secondary px-1 text-[10px] text-muted-foreground group-hover:inline-flex">
+        <span className="hidden shrink-0 rounded-sm bg-secondary px-1 text-2xs text-muted-foreground group-hover:inline-flex">
           {resolveTabTileTypeLabel(tile)}
         </span>
       ) : null}
@@ -490,7 +490,7 @@ const DevServerPanelHeaderControls = memo(function DevServerPanelHeaderControls(
               }
             }}
             className={cn(
-              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:border-none dark:bg-transparent",
+              "h-7 min-w-0 flex-1 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none dark:bg-transparent",
             )}
           />
           {isExternallyOpenableBrowserUrl(committedUrl) && !inputFocused ? (

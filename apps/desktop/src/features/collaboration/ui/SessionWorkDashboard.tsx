@@ -119,7 +119,7 @@ export function SessionWorkDashboard({
                     ? "text-violet-500"
                     : pullRequest.isDraft
                       ? "text-zinc-400"
-                      : "text-emerald-500",
+                      : "text-success",
                 )}
               />
               <span>PR #{pullRequest.number}</span>
@@ -152,7 +152,7 @@ export function SessionWorkDashboard({
       {/* 2. Git Committer / AutoGit Leader Card */}
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-muted/10 px-3 py-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="flex size-7 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-500 shrink-0">
+          <div className="flex size-7 items-center justify-center rounded-md bg-success/10 text-success shrink-0">
             <HugeiconsIcon icon={GitBranchIcon} className="size-4" />
           </div>
           <div className="min-w-0">
@@ -161,7 +161,7 @@ export function SessionWorkDashboard({
                 Git Committer: {gitLeader?.displayName ?? "AutoGit Lease"}
               </span>
               {gitLeader?.isSelf ? (
-                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <Badge variant="secondary" className="text-2xs h-4 px-1.5 font-normal bg-success/15 text-success">
                   Your Mac
                 </Badge>
               ) : null}
@@ -211,12 +211,12 @@ export function SessionWorkDashboard({
                     avatarUrl={m.avatarUrl}
                     principalId={m.principalId}
                     className="size-7"
-                    fallbackClassName="text-[11px] font-semibold"
+                    fallbackClassName="text-caption font-semibold"
                     ringClassName="border-2 border-background"
                     statusIndicator={
                       isSpeaking ? (
                         <span
-                          className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-emerald-500 animate-pulse"
+                          className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-background bg-success animate-pulse"
                           title="Speaking"
                         />
                       ) : isMuted ? (
@@ -236,7 +236,7 @@ export function SessionWorkDashboard({
                         <span className="text-2xs text-muted-foreground">(you)</span>
                       ) : null}
                       {m.isCurrentGitCommitter ? (
-                        <Badge variant="outline" className="text-[9px] h-3.5 px-1 font-normal text-emerald-500 border-emerald-500/30">
+                        <Badge variant="outline" className="text-[9px] h-3.5 px-1 font-normal text-success border-success/30">
                           Committer
                         </Badge>
                       ) : null}
@@ -249,7 +249,7 @@ export function SessionWorkDashboard({
                       {typeof m.linesAdded === "number" || typeof m.linesDeleted === "number" ? (
                         <>
                           <span>·</span>
-                          <span className="text-emerald-500 font-mono">+{m.linesAdded ?? 0}</span>
+                          <span className="text-success font-mono">+{m.linesAdded ?? 0}</span>
                           <span className="text-destructive font-mono">-{m.linesDeleted ?? 0}</span>
                         </>
                       ) : null}
@@ -321,7 +321,7 @@ export function SessionWorkDashboard({
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-foreground">Voice & Call Controls</span>
             {media.isSpeaking ? (
-              <span className="text-2xs font-medium text-emerald-500 animate-pulse">
+              <span className="text-2xs font-medium text-success animate-pulse">
                 You are speaking
               </span>
             ) : media.isMuted ? (

@@ -175,7 +175,7 @@ export function SettingsGroupError({ children }: { children: ReactNode }) {
 /** Success line inside group */
 export function SettingsGroupSuccess({ children }: { children: ReactNode }) {
   return (
-    <div className="border-t border-border/40 px-5 py-3 text-xs text-emerald-600 dark:text-emerald-500">
+    <div className="border-t border-border/40 px-5 py-3 text-xs text-success">
       {children}
     </div>
   );
@@ -188,7 +188,7 @@ export function SettingsFooterActions({ children, className }: { children: React
 
 /** Inputs aligned like settings (right, compact, flat borderless) */
 export const settingsInlineInputClass =
-  "h-7 max-w-full border-0 border-none bg-transparent px-0 text-sm font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent";
+  "h-7 max-w-full border-0 border-none bg-transparent px-0 text-sm font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:bg-transparent";
 
 export const settingsInlineInputWidth = "w-[280px] max-w-full";
 
