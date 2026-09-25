@@ -525,7 +525,6 @@ const es: Record<TranslationKey, string> = {
   "settings.error.archiveFailed": "Error al archivar el proyecto",
   "settings.error.projectNotFound": "Proyecto no encontrado",
   "settings.loading": "Cargando la configuración del proyecto…",
-  "settings.action.close": "Cerrar configuración",
   "settings.action.save": "Guardar cambios",
   "settings.action.saving": "Guardando...",
   "settings.action.archive": "Archivar",

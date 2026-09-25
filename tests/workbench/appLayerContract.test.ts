@@ -158,8 +158,9 @@ describe("application layer contract", () => {
     expect(orgDevApp).not.toContain("absolute inset-x-4 bottom-4 z-20");
     expect(chat).toContain("<AppOverlayPortal>");
     expect(chat).not.toContain("fixed inset-0 z-50");
-    expect(tasks).toContain("<AppOverlayPortal>");
-    expect(tasks).not.toContain("fixed inset-0 z-50");
+    // Tasks is a page now, not an overlay over the workbench.
+    expect(tasks).toContain("<PageHeader");
+    expect(tasks).not.toContain("fixed inset-0");
   });
 
   it("uses the shared panel activity subscription for every browser-backed tile", () => {

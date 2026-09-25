@@ -38,7 +38,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Alert01Icon as __AlertTriangleHugeIcon,
   Bookmark01Icon as __SaveHugeIcon,
-  Cancel01Icon as __XHugeIcon,
   Delete02Icon as __Trash2HugeIcon,
   Edit01Icon as __EditHugeIcon,
 } from '@hugeicons/core-free-icons'
@@ -216,15 +215,11 @@ export function ProjectSettingsPage() {
   const dangerSectionRef = useRef<HTMLElement | null>(null)
   const projectLoaded = Boolean(project)
   useEffect(() => {
-    if (!projectLoaded) return
-    const target = requestedSection === 'danger' ? dangerSectionRef.current : generalSectionRef.current
-    target?.scrollIntoView({ block: 'start' })
+    // Only a requested section scrolls. General is the top of the page, and
+    // scrolling to it pushed the page title out of view on every open.
+    if (!projectLoaded || requestedSection !== 'danger') return
+    dangerSectionRef.current?.scrollIntoView({ block: 'start' })
   }, [projectLoaded, requestedSection])
-
-  function closeSettings(): void {
-    if (project) navigateTo({ to: 'workbench', projectId: String(project._id) })
-    else navigateTo({ to: 'projects' })
-  }
 
   if (project === undefined) {
     return (
@@ -248,15 +243,6 @@ export function ProjectSettingsPage() {
       <div
         className="relative flex h-full w-full flex-col overflow-hidden bg-background"
       >
-        <button
-          type="button"
-          onClick={closeSettings}
-          className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
-          aria-label={t('settings.action.close')}
-        >
-          <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-        </button>
-
         <div className="flex-1 min-h-0">
           <ScrollArea className="scroll-fade-y h-full">
             <div className="w-full min-h-full px-8 sm:px-10 pt-6 pb-12 mx-auto max-w-4xl">

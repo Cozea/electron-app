@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { FilterChip } from "@/components/ui/filter-chip"
+import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button";
 import { HeaderBackButton } from "@/components/ui/header-back-button";
 import { Input } from "@/components/ui/input";
@@ -1241,11 +1242,7 @@ export function AgentSkillsPage() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mx-auto w-full max-w-[960px] shrink-0 space-y-6 px-6 pt-4 pb-2">
-        <header>
-          <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
-            Agent Skills
-          </h1>
-        </header>
+        <PageHeader title="Agent Skills" />
 
         <div className="sticky top-[-1rem] z-20 -mx-6 bg-background/95 px-6 pt-3 pb-2 backdrop-blur-md">
           <SearchInput

@@ -4,6 +4,7 @@ import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../../convex/_generated/api"
 import { FilterChip } from "@/components/ui/filter-chip"
+import { PageHeader } from "@/components/PageHeader"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { DevAppStoreRow } from "@/features/devapps/components/DevAppStoreRow"
 import { STORE_ORGANIZATION_ACCENT_CLASS } from "@/features/devapps/components/devAppStoreAccent"
@@ -488,12 +489,7 @@ export function AppStorePage() {
           </div>
         ) : null}
 
-        <header className="space-y-1">
-          <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
-            {t("appStore.page.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t("appStore.page.subtitle")}</p>
-        </header>
+        <PageHeader title={t("appStore.page.title")} description={t("appStore.page.subtitle")} />
 
         <SearchInput
           value={query}

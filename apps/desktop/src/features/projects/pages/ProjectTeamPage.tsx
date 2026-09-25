@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PageHeader } from "@/components/PageHeader"
 import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { api } from '../../../../../../convex/_generated/api'
@@ -130,12 +131,10 @@ export function ProjectTeamPage() {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <div>
-          <h1 className="text-lg font-semibold">Project devices</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every member is one physical Cozea device with its own cryptographic identity.
-          </p>
-        </div>
+        <PageHeader
+          title="Project devices"
+          description="Every member is one physical Cozea device with its own cryptographic identity."
+        />
 
         {error ? <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div> : null}
         {notice ? <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{notice}</div> : null}

@@ -75,9 +75,6 @@ import {
   useTranslation,
 } from '@/lib/i18n';
 import {
-  useNavigateTo,
-} from '@/lib/navigation';
-import {
   cn,
 } from '@/lib/utils';
 import {
@@ -118,9 +115,8 @@ import {
 import {
   Textarea,
 } from '@/components/ui/textarea';
-import {
-  AppOverlayPortal,
-} from '@/components/ui/app-overlay-portal';
+import { PageHeader } from '@/components/PageHeader';
+import { useProjectHeader } from '@/lib/useProjectHeader';
 import {
   resolveAvailableTaskContextKind,
   selectDefaultTaskContext,
@@ -147,8 +143,7 @@ const ListTodo = asHugeIcon(__ListTodoHugeIcon)
 
 
 interface TasksPageProps {
-  presentation?: 'modal' | 'embedded'
-  onRequestClose?: (() => void) | null
+  presentation?: 'page' | 'embedded'
 }
 
 const HEADER_STATUS_ORDER: BoardStatus[] = ['planned', 'active', 'done']
@@ -192,12 +187,10 @@ const STATUS_META: Record<
 
 
 export function TasksPage({
-  presentation = 'modal',
-  onRequestClose = null,
+  presentation = 'page',
 }: TasksPageProps = {}) {
   const { t } = useTranslation()
   const isEmbedded = presentation === 'embedded'
-  const navigateTo = useNavigateTo()
   const { project } = useAccessibleProject()
   const { principalId } = useAuth()
   // Plan pages live in the artifacts table (split off the project doc);
@@ -643,28 +636,25 @@ export function TasksPage({
     return { groupCounts, flatItems }
   }, [statusSections, collapsedGroups])
 
-  function closeTasksModal(): void {
-    if (isEmbedded) {
-      onRequestClose?.()
-      return
-    }
-    navigateTo(projectId ? { to: 'workbench', projectId } : { to: 'projects' }, { replace: true })
-  }
-
-  useEffect(() => {
-    if (isEmbedded) return
-    if (isCreateDialogOpen) return
-
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      closeTasksModal()
-    }
-
-    window.addEventListener('keydown', handleEscape)
-    return () => {
-      window.removeEventListener('keydown', handleEscape)
-    }
-  }, [isCreateDialogOpen, isEmbedded, projectPagesPath])
+  // Page actions live in the top bar, as on every other page. The embedded
+  // board sits inside the workbench and must not take the top bar over.
+  useProjectHeader(null, null, {
+    disabled: isEmbedded,
+    rightAddon: (
+      <Button
+        size="sm"
+        className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+        disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
+        onClick={() => {
+          resetDraft()
+          setIsCreateDialogOpen(true)
+        }}
+      >
+        <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
+        {isCreatingTask ? t('tasks.empty.btnAdding') : t('tasks.empty.btn')}
+      </Button>
+    ),
+  })
 
   function resetDraft(): void {
     setDraftTitle('')
@@ -808,44 +798,11 @@ export function TasksPage({
   }
 
   const shell = (
-    <div
-      role={isEmbedded ? undefined : 'dialog'}
-      aria-modal={isEmbedded ? undefined : true}
-      aria-label={isEmbedded ? undefined : t('tasks.header.title')}
-      className={cn(
-        'flex h-full w-full flex-col overflow-hidden bg-background',
-        !isEmbedded &&
-          'max-w-2xl rounded-[32px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
-      )}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <div className={cn("relative", isEmbedded ? "px-4 py-3" : "px-6 pt-5 pb-3")}>
+    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
+      <div className={cn("relative", isEmbedded ? "px-4 py-3" : "mx-auto w-full max-w-5xl px-5 pt-4 pb-3")}>
         {!isEmbedded ? (
           <>
-            <div className="flex items-center justify-end gap-4">
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  size="sm"
-                  className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-                  disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
-                  onClick={() => {
-                    resetDraft()
-                    setIsCreateDialogOpen(true)
-                  }}
-                >
-                  <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
-                  {isCreatingTask ? t('tasks.empty.btnAdding') : t('tasks.empty.btn')}
-                </Button>
-                <button
-                  type="button"
-                  onClick={closeTasksModal}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  aria-label={t('tasks.action.close')}
-                >
-                  <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
+            <PageHeader title={t('tasks.header.title')} />
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {statusStats.map(({ status, count }) => {
@@ -1032,20 +989,7 @@ export function TasksPage({
 
   return (
     <>
-      {!isEmbedded ? (
-        <AppOverlayPortal>
-          <div
-            className="fixed inset-0 z-[var(--cozea-layer-dialog)] bg-black/45 backdrop-blur-[2px]"
-            onClick={closeTasksModal}
-            aria-hidden="true"
-          />
-          <div className="fixed inset-0 z-[var(--cozea-layer-dialog)] flex items-start justify-center p-4 pt-14 sm:p-6 sm:pt-16">
-            {shell}
-          </div>
-        </AppOverlayPortal>
-      ) : (
-        shell
-      )}
+      {shell}
 
       <UnifiedModal
         open={isCreateDialogOpen}
