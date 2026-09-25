@@ -1,6 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
+import { appToast } from "@/lib/appToast";
 import { AlignHorizontalCenterIcon as __EllipsisIconHugeIcon } from '@hugeicons/core-free-icons'
 
 import { memo, useState, useId, useMemo } from "react";
@@ -23,7 +24,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { toastManager } from "@/components/ui/toast";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
@@ -63,8 +63,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
 
   const openSaveDialog = () => {
     if (!workspaceRoot) {
-      toastManager.add({
-        type: "error",
+      appToast.error({
         title: "Workspace path is unavailable",
         description: "This thread does not have a workspace path to save into.",
       });
@@ -80,8 +79,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       return;
     }
     if (!relativePath) {
-      toastManager.add({
-        type: "warning",
+      appToast.warning({
         title: "Enter a workspace path",
       });
       return;
@@ -99,15 +97,13 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           throw new Error(result.error ?? "An error occurred while saving.");
         }
         setIsSaveDialogOpen(false);
-        toastManager.add({
-          type: "success",
+        appToast.success({
           title: "Plan saved to workspace",
           description: relativePath,
         });
       })
       .catch((error) => {
-        toastManager.add({
-          type: "error",
+        appToast.error({
           title: "Could not save plan",
           description: error instanceof Error ? error.message : "An error occurred while saving.",
         });

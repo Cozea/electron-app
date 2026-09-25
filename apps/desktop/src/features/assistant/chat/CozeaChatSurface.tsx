@@ -1,4 +1,5 @@
 import { type ComposerPathMenuItem, buildComposerPathMenuItems, filterSlashItems, planTitleFromMarkdown, toPendingUserInputDraftAnswers } from "./composerMenuModel";
+import { Spinner } from "@/components/ui/spinner"
 import {
   ApprovalRequestId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
@@ -2137,7 +2138,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
             <span className="size-2.5 rounded-[1.5px] bg-current" />
           </span>
           <span className="t-icon flex items-center justify-center" data-icon="loading">
-            <div className="loader shrink-0 text-current" />
+            <Spinner size="xs" className="shrink-0 text-current" />
           </span>
         </span>
       </button>

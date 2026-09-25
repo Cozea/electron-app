@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { Spinner } from "@/components/ui/spinner"
 import { Button } from "@/components/ui/button"
 import { FieldDescription, FieldGroup } from "@/components/ui/field"
 import { Logo } from "@/components/Logo"
@@ -36,7 +37,7 @@ export function DeviceSessionRecoveryForm({
         >
           {isLoading ? (
             <>
-              <div className="loader" />
+              <Spinner size="xs" />
               {t("deviceSession.preparingDevice")}
             </>
           ) : (

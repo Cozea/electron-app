@@ -305,7 +305,7 @@ function SessionStatusPill({
           {displayedSaveAge}
         </span>
         <span className="t-icon flex items-center justify-center" data-icon="loading">
-          <div className="loader shrink-0 text-muted-foreground" aria-label="Loading save status…" />
+          <Spinner size="xs" className="shrink-0 text-muted-foreground" label="Loading save status…" />
         </span>
       </span>
     </Button>

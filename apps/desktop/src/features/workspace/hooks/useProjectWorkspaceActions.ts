@@ -1,4 +1,5 @@
 import { useCallback } from "react"
+import { appToast } from "@/lib/appToast"
 import { useMutation } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -63,14 +64,9 @@ export function useProjectWorkspaceActions() {
       if (!bindResult.success || !bindResult.workspace) {
         // Conflicts used to die in a console.warn: the user picked a folder
         // and nothing visibly happened.
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          buttons: ["OK"],
-          defaultId: 0,
-          title: "Relink Failed",
-          message: `Could not relink ${project.name}`,
-          detail: formatWorkspaceBindFailure(bindResult),
-          noLink: true,
+        appToast.error({
+          title: `Could not relink ${project.name}`,
+          description: formatWorkspaceBindFailure(bindResult),
         })
         return null
       }
@@ -102,14 +98,9 @@ export function useProjectWorkspaceActions() {
         })
       } catch (error) {
         console.error("[ProjectWorkspaceActions] Failed to restore layouts before relink navigation:", error)
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          buttons: ["OK"],
-          defaultId: 0,
-          title: "Workbench Restore Failed",
-          message: `${project.name} was relinked, but its workbench layout could not be restored.`,
-          detail: "Reopen the project after desktop storage is available. Navigation was stopped to protect the saved layout.",
-          noLink: true,
+        appToast.error({
+          title: `${project.name} was relinked, but its workbench layout could not be restored.`,
+          description: "Reopen the project after desktop storage is available. Navigation was stopped to protect the saved layout.",
         })
         return null
       }

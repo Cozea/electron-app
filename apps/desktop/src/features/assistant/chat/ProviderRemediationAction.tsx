@@ -1,4 +1,5 @@
 import { useNavigateTo } from "@/lib/navigation"
+import { Spinner } from "@/components/ui/spinner"
 import { CheckmarkCircle02Icon, Copy01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useRef, useState } from "react"
@@ -339,7 +340,7 @@ export function ProviderRemediationAction(props: {
           >
             {runState.phase === "running" ? (
               <span className="flex items-center gap-1.5">
-                <span className="loader" />
+                <Spinner size="xs" />
                 Waiting for browser login…
               </span>
             ) : runState.phase === "failed" ? (
@@ -372,7 +373,7 @@ export function ProviderRemediationAction(props: {
       >
         {runState.phase === "running" ? (
           <span className="flex items-center gap-1.5">
-            <span className="loader" />
+            <Spinner size="xs" />
             Installing…
           </span>
         ) : runState.phase === "failed" ? (

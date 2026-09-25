@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useConvex, useQuery } from "convex/react"
 import type { FunctionReturnType } from "convex/server"
 
@@ -391,7 +392,7 @@ export function AppStorePage() {
                   <HugeiconsIcon icon={__RefreshHugeIcon} className="size-4" aria-hidden />
                 </span>
                 <span className="t-icon flex items-center justify-center" data-icon="loading">
-                  <div className="loader shrink-0 text-muted-foreground" />
+                  <Spinner size="xs" className="shrink-0 text-muted-foreground" />
                 </span>
               </span>
             </Button>

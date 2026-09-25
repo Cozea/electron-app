@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner"
 import {
   Suspense,
   lazy,
@@ -57,7 +58,7 @@ function WorkbenchOverlayLoading() {
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
       <div className="flex items-center gap-2">
-        <div className="loader" />
+        <Spinner size="xs" />
         <span>{t('workbench.surface.loading')}</span>
       </div>
     </div>

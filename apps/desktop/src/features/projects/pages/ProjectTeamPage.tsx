@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Spinner } from "@/components/ui/spinner"
 import { PageHeader } from "@/components/PageHeader"
 import { useMutation, useQuery } from 'convex/react'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
@@ -122,7 +123,7 @@ export function ProjectTeamPage() {
   }
 
   if (project === undefined) {
-    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><div className="loader mr-2" />Loading team…</div>
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Spinner size="xs" className="mr-2" />Loading team…</div>
   }
   if (project === null) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Project not found.</div>

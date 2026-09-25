@@ -1,4 +1,5 @@
 import type { ProviderKind } from "@cozea/assistant-contracts"
+import { Spinner } from "@/components/ui/spinner"
 import { useCallback, useMemo, useEffect, useState } from "react"
 import { SiOllama } from "react-icons/si"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
@@ -359,7 +360,7 @@ function AgentStatusPill(props: { threadId?: string | null }) {
   return (
     <span className={cn("inline-flex items-center gap-1 text-2xs font-medium", statusPill.colorClass)} title={statusPill.label}>
       {statusPill.label === "Working" || statusPill.label === "Connecting" ? (
-        <div className="loader" />
+        <Spinner size="xs" />
       ) : (
         <span
           className={cn(
@@ -421,7 +422,7 @@ function TileActivityIndicator(props: { activity: SidebarActivity; label: string
       title={props.label}
     >
       {props.activity === "starting" ? (
-        <div className="loader" />
+        <Spinner size="xs" />
       ) : (
         <span className="size-2 rounded-full bg-success animate-pulse" />
       )}

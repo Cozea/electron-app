@@ -1,6 +1,7 @@
 
 
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { UnifiedModal } from "@/components/ui/unified-modal"
 
 import type { DiffDialogState } from "./workbenchAssistantShared"
@@ -34,7 +35,7 @@ export function WorkbenchAssistantDiffDialog({
         <div className="h-[min(65vh,46rem)] overflow-auto">
           {state?.isLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-              <div className="loader" />
+              <Spinner size="xs" />
               Loading diff…
             </div>
           ) : state?.error ? (

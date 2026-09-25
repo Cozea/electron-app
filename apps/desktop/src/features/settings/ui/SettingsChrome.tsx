@@ -1,6 +1,7 @@
-import { type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
 import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /** Header for top of settings pages (large clean title) */
@@ -82,6 +83,30 @@ export function SettingsGroup({ children, className }: { children: ReactNode; cl
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * The one button a danger-zone row uses. `reversible` actions (archive) are
+ * outlined in the destructive colour; `irreversible` ones (delete, reset) are
+ * filled. Each danger row previously styled its own button.
+ */
+export function SettingsDangerButton({
+  tone,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Button>, "variant" | "size"> & { tone: "reversible" | "irreversible" }) {
+  return (
+    <Button
+      size="sm"
+      variant={tone === "irreversible" ? "destructive" : "outline"}
+      className={cn(
+        "h-7 text-xs",
+        tone === "reversible" && "border-destructive/30 bg-background/50 text-destructive hover:text-destructive",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Spinner } from "@/components/ui/spinner"
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
@@ -194,7 +195,7 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
                   <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3.5" />
                 </span>
                 <span className="t-icon flex items-center justify-center" data-icon="loading">
-                  <div className="loader shrink-0 text-muted-foreground" />
+                  <Spinner size="xs" className="shrink-0 text-muted-foreground" />
                 </span>
               </span>
             </Button>

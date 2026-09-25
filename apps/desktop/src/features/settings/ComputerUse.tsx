@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Spinner } from '@/components/ui/spinner'
 import {
   SettingsGroup,
   SettingsPageBody,
@@ -235,7 +236,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
                 <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3" />
               </span>
               <span className="t-icon flex items-center justify-center" data-icon="loading">
-                <div className="loader shrink-0 text-muted-foreground" />
+                <Spinner size="xs" className="shrink-0 text-muted-foreground" />
               </span>
             </span>
             {t('settings.computerUse.refresh')}

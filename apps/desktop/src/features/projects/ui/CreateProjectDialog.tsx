@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Spinner } from "@/components/ui/spinner"
 import { useMutation } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -469,7 +470,7 @@ export function CreateProjectDialog({
             disabled={isCreateProjectDisabled}
           >
             {isSubmitting ? (
-              <div className="loader" />
+              <Spinner size="xs" />
             ) : null}
             {copy.submitLabel}
           </Button>
@@ -648,7 +649,7 @@ export function CreateProjectDialog({
 
           {isLocalMode && localGitState?.isLoading ? (
             <Alert className="rounded-2xl bg-secondary/35">
-              <div className="loader" />
+              <Spinner size="xs" />
               <AlertTitle>{t('createProject.checkingFolder')}</AlertTitle>
               <AlertDescription>
                 {t('createProject.checkingFolderDesc')}
