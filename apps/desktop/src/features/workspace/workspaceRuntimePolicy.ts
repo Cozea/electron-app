@@ -16,8 +16,7 @@ export function hasCriticalWorkspaceRuntimeWork(record: WorkspaceRuntimeRecord):
   return (
     record.signals.hasSyncActivity ||
     record.signals.hasRunningTerminals ||
-    record.signals.hasRunningDevServer ||
-    record.signals.hasNativePreview
+    record.signals.hasRunningDevServer
   )
 }
 

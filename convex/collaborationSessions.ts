@@ -17,6 +17,7 @@ import { authenticatedMutation as mutation, authenticatedQuery as query } from "
 import { requireAuthenticatedDevice, type DevicePrincipal } from "./lib/deviceAuth"
 import { isOrgMember } from "./lib/orgAccess"
 import { canAccessProject, canEditProject, canManageProject } from "./lib/projectAccess"
+import { requireProjectSeats } from "./lib/seatLimits"
 import { isDeviceIdentityKey, normalizeDeviceIdentityKey } from "../shared/deviceIdentity"
 import { canTransitionSessionLifecycle } from "../shared/collaboration/stateMachines"
 import { normalizeSessionRepositoryUrl } from "../shared/collaboration/repositoryUrl"
@@ -140,6 +141,7 @@ async function ensureProjectAccess(
     throw new ConvexError("Project not found")
   }
   if (await canAccessProject(ctx, projectId, principalId)) return
+  await requireProjectSeats(ctx, projectId)
   await ctx.db.insert("projectMembers", {
     projectId,
     principalId,

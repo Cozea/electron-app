@@ -18,7 +18,7 @@ import type { DevAppManifest } from "@/features/devapps/registry/types"
 import { formatDevAppRef } from "@shared/devAppRef"
 import { featureFlags } from "@/lib/featureFlags"
 import { useTranslation } from "@/lib/i18n"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo } from "@/lib/navigation"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
 import { useProjectHeader } from "@/lib/useProjectHeader"
@@ -83,7 +83,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
   const { t } = useTranslation()
   const { principalId } = useAuth()
   const convex = useConvex()
-  const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
 
   const [activeTab, setActiveTab] = useState<FilterTab>("all")
@@ -225,7 +225,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
   const totalFilteredCount = filteredBuiltins.length + filteredOrgApps.length
 
   const handleBrowseStore = () => {
-    navigate("/projects/store")
+    navigateTo({ to: "store" })
   }
 
   const headerActions = useMemo(() => {

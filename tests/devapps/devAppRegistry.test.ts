@@ -27,7 +27,6 @@ describe("DevApps registry", () => {
       "browser",
       "dev-server",
       "terminal",
-      "mobile-simulator",
       "security-scan",
       "memory",
       "llama",
@@ -45,7 +44,6 @@ describe("DevApps registry", () => {
       "browser",
       "dev-server",
       "terminal",
-      "mobile-simulator",
       "security-scan",
       "memory",
       "llama",
@@ -57,22 +55,13 @@ describe("DevApps registry", () => {
       listLauncherApps({
         enabledAssistantProviders: [],
       }).map((app) => app.id),
-    ).toEqual([
-      "browser",
-      "dev-server",
-      "terminal",
-      "mobile-simulator",
-      "security-scan",
-      "memory",
-      "llama",
-    ])
+    ).toEqual(["browser", "dev-server", "terminal", "security-scan", "memory", "llama"])
   })
 
   it("filters store apps by category and query", () => {
     expect(listStoreApps({ category: "preview-tools" }).map((app) => app.id)).toEqual([
       "browser",
       "dev-server",
-      "mobile-simulator",
       "security-scan",
     ])
 

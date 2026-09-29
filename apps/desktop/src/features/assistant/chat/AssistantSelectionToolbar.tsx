@@ -10,12 +10,12 @@ import { createPortal } from "react-dom";
 import {
   captureAssistantTextSelection,
   type AssistantCitationSourceAnchor,
-} from "@/lib/assistantTextSelection";
+} from "@/features/assistant/lib/assistantTextSelection";
 import {
   observeSelectionActions,
   resolveSelectionActionPosition,
   type SelectionActionPoint,
-} from "@/lib/selectionActions";
+} from "@/features/assistant/lib/selectionActions";
 import { Button } from "@/components/ui/button";
 
 export function AssistantSelectionToolbar({

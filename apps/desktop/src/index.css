@@ -127,6 +127,9 @@
   --app-scrollbar-thumb-hover: color-mix(in oklch, var(--foreground) 31%, transparent);
   --app-scrollbar-thumb-active: color-mix(in oklch, var(--foreground) 40%, transparent);
   --assistant-composer-surface: var(--content-surface);
+  --glass-blur: 12px;
+  --glass-opacity: 80%;
+  --glass-saturation: 1.14;
   --assistant-user-message-surface: var(--primary);
   --assistant-user-message-foreground: var(--primary-foreground);
   --assistant-change-card-surface: oklch(0.92 0 0);

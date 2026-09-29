@@ -20,10 +20,10 @@ afterEach(() => {
 });
 
 describe("DevAppAuthoringService", () => {
-  it("creates a valid view/worker project with generated authoring assets", () => {
+  it("creates a valid view/worker project with generated authoring assets", async () => {
     const root = temporaryWorkspace();
-    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
-    const result = service.scaffold({
+    const service = new DevAppAuthoringService(async () => ({ status: 0, stdout: "", output: "" }));
+    const result = await service.scaffold({
       projectId: "project_a",
       workspaceId: "workspace_a",
       workspaceRoot: root,
@@ -51,13 +51,13 @@ describe("DevAppAuthoringService", () => {
     expect(inspection.status).toBe("valid");
   });
 
-  it("never overwrites an existing package and reports invalid imports", () => {
+  it("never overwrites an existing package and reports invalid imports", async () => {
     const root = temporaryWorkspace();
     writeFileSync(path.join(root, "cozea-devapp.json"), "not-json", "utf8");
-    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
+    const service = new DevAppAuthoringService(async () => ({ status: 0, stdout: "", output: "" }));
 
     expect(service.inspectFolder(root).status).toBe("invalid");
-    expect(() =>
+    await expect(
       service.scaffold({
         projectId: "project_a",
         workspaceId: "workspace_a",
@@ -65,12 +65,12 @@ describe("DevAppAuthoringService", () => {
         name: "Existing",
         starter: "view",
       }),
-    ).toThrow(/replace existing files/);
+    ).rejects.toThrow(/replace existing files/);
   });
 
   it("keeps package paths inside the authorized workspace", () => {
     const root = temporaryWorkspace();
-    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
+    const service = new DevAppAuthoringService(async () => ({ status: 0, stdout: "", output: "" }));
     expect(() =>
       service.inspect({
         projectId: "project_a",
@@ -86,7 +86,7 @@ describe("DevAppAuthoringService", () => {
     const outside = temporaryWorkspace();
     mkdirSync(path.join(root, "packages"));
     symlinkSync(outside, path.join(root, "packages", "linked"), "dir");
-    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
+    const service = new DevAppAuthoringService(async () => ({ status: 0, stdout: "", output: "" }));
 
     expect(() =>
       service.inspect({
@@ -98,10 +98,10 @@ describe("DevAppAuthoringService", () => {
     ).toThrow(/inside its workspace/);
   });
 
-  it("creates a buildable worker-only starter", () => {
+  it("creates a buildable worker-only starter", async () => {
     const root = temporaryWorkspace();
-    const service = new DevAppAuthoringService(() => ({ status: 0, output: "" }));
-    const result = service.scaffold({
+    const service = new DevAppAuthoringService(async () => ({ status: 0, stdout: "", output: "" }));
+    const result = await service.scaffold({
       projectId: "project_a",
       workspaceId: "workspace_a",
       workspaceRoot: root,

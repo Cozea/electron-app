@@ -2,10 +2,8 @@ import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import * as Effect from 'effect/Effect'
 
 import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
-import type { NativePreviewSessionLocator } from '../../../../shared/nativePreviewTypes'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
 import { WorkbenchPresentationCoordinator } from '../services/WorkbenchPresentationCoordinator'
-import { NativePreviewManager } from '../services/nativePreview/NativePreviewManager'
 import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
 import { waitForWorkspaceCatalogRuntime } from '../workspaces/WorkspaceCatalogRuntime'
 
@@ -25,7 +23,6 @@ export function registerWorkbenchSessionHandlers(
   deps: RegisterWorkbenchSessionHandlersDeps,
 ): void {
   const service = WorkbenchSessionManager.getInstance({
-    nativePreviewManager: NativePreviewManager.getInstance(),
     browserSurfaces: deps.browserSurfaces,
   })
   const coordinator = WorkbenchPresentationCoordinator.getInstance(service, async (target) => {
@@ -152,25 +149,6 @@ export function registerWorkbenchSessionHandlers(
     ) => {
       trusted(event)
       return service.releaseTerminal(options)
-    },
-  )
-
-  ipcMain.handle(
-    'workbenchSession:setNativePreviewSession',
-    (
-      event,
-      options: {
-        sessionKey?: string | null
-        projectId: string
-        laneId: string
-        workspaceId?: string | null
-        workspaceRevision?: number
-        locator: NativePreviewSessionLocator | null
-        stopPrevious?: boolean
-      },
-    ) => {
-      trusted(event)
-      return service.setNativePreviewSession(options)
     },
   )
 }

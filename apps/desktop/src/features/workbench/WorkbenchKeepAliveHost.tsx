@@ -124,6 +124,18 @@ export function WorkbenchKeepAliveHost({
   }, [onSessionsChange, sessions])
 
   const visibleInstanceKey = current?.instanceKey ?? null
+  // While an ordinary page covers the surface, `current` is null but the
+  // workbench the user left is still the one they will return to. Remember it
+  // so its tiles can stay attached instead of parking and rebuilding.
+  const foregroundInstanceKeyRef = useRef<string | null>(null)
+  if (visibleInstanceKey) {
+    foregroundInstanceKeyRef.current = visibleInstanceKey
+  }
+  const foregroundInstanceKey =
+    visibleInstanceKey ??
+    (sessions.some((session) => session.instanceKey === foregroundInstanceKeyRef.current)
+      ? foregroundInstanceKeyRef.current
+      : null)
 
   if (sessions.length === 0) {
     return <>{fallback}</>
@@ -146,6 +158,7 @@ export function WorkbenchKeepAliveHost({
               <WorkbenchDockviewSession
                 session={session}
                 isActive={session.instanceKey === visibleInstanceKey}
+                isForeground={session.instanceKey === foregroundInstanceKey}
                 getWorkbenchSession={
                   current?.instanceKey === session.instanceKey
                     ? getWorkbenchSession

@@ -11,8 +11,8 @@ const sharedInput = source("apps/desktop/src/components/ui/input.tsx");
 const sharedToggle = source("apps/desktop/src/components/ui/toggle.tsx");
 const sharedSwitch = source("apps/desktop/src/components/ui/switch.tsx");
 const compactWindowHook = source("apps/desktop/src/hooks/use-mobile.ts");
-const unifiedHeader = source("apps/desktop/src/components/layouts/UnifiedHeader.tsx");
-const responsiveHeader = source("apps/desktop/src/components/layouts/unified-header/ResponsiveHeaderRow.tsx");
+const unifiedHeader = source("apps/desktop/src/features/projects/layouts/UnifiedHeader.tsx");
+const responsiveHeader = source("apps/desktop/src/features/projects/layouts/unified-header/ResponsiveHeaderRow.tsx");
 const dockviewCanvas = source("apps/desktop/src/features/workbench/WorkbenchDockviewCanvas.tsx");
 const tileChrome = source("apps/desktop/src/features/workbench/WorkbenchTileChrome.tsx");
 const geometryCss = source("apps/desktop/src/features/workbench/adaptiveDesktopGeometry.css");
@@ -47,7 +47,10 @@ describe("adaptive desktop geometry", () => {
     // keeps the title bar one row high and avoids collisions with OS controls.
     expect(responsiveHeader).toContain('data-unified-header-center="true"');
     expect(unifiedHeader).toContain("<ResponsiveHeaderRow");
-    expect(responsiveHeader).toContain("resolveHeaderOverflow");
+    // Below the window threshold every trailing group moves behind one
+    // "More header actions" trigger; leading groups always stay inline.
+    expect(responsiveHeader).toContain("isCollapsed && hasTrailing ?");
+    expect(responsiveHeader).toContain('aria-label="More header actions"');
     expect(unifiedHeader).not.toContain("max-md:hidden");
     expect(responsiveHeader).toContain('data-unified-header-actions="true"');
     expect(unifiedHeader).toContain("h-10");

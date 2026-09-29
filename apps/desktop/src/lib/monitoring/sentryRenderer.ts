@@ -34,6 +34,9 @@ export function initRendererSentry(): void {
   if (!isSentryDsnLike(dsn)) return
 
   const isDev = env.DEV === true
+  // Dev defaults are off: tracing, the continuous profiler and the replay
+  // buffer cost 20-35ms on every navigation in a development build, which made
+  // `bun run dev` feel slower than the release. Opt in per variable below.
   const sample = (raw: unknown, devDefault: number, prodDefault: number): number =>
     resolveSampleRate(typeof raw === 'string' ? raw : undefined, isDev, devDefault, prodDefault)
 
@@ -59,10 +62,10 @@ export function initRendererSentry(): void {
       }),
     ],
     tracePropagationTargets: ['localhost'],
-    tracesSampleRate: sample(env.VITE_SENTRY_TRACES_SAMPLE_RATE, 1, 0.1),
-    profileSessionSampleRate: sample(env.VITE_SENTRY_PROFILE_SESSION_SAMPLE_RATE, 1, 0.05),
+    tracesSampleRate: sample(env.VITE_SENTRY_TRACES_SAMPLE_RATE, 0, 0.1),
+    profileSessionSampleRate: sample(env.VITE_SENTRY_PROFILE_SESSION_SAMPLE_RATE, 0, 0.05),
     replaysSessionSampleRate: sample(env.VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE, 0, 0),
-    replaysOnErrorSampleRate: sample(env.VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE, 0.2, 0.1),
+    replaysOnErrorSampleRate: sample(env.VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE, 0, 0.1),
     sendDefaultPii: false,
     beforeSend: (event) => scrubSentryEvent(event),
   })

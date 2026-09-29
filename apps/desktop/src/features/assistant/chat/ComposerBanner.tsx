@@ -16,11 +16,8 @@ const surfaceColors = cn(
 );
 
 const neutralOutline = cn(
-  "[--chat-composer-attached-outline:var(--chat-composer-outline,color-mix(in_srgb,var(--contrast-foreground)_8%,transparent))]",
-  "dark:[--chat-composer-attached-outline:var(--chat-composer-outline,color-mix(in_srgb,var(--color-white)_5%,transparent))]",
-  "[html[data-theme-id]_&]:[--chat-composer-attached-outline:var(--chat-composer-outline,var(--app-theme-toolbar-border))]",
-  "dark:[html[data-theme-id]:not([data-theme-id=t3-chat])_&]:[--chat-composer-attached-outline:var(--chat-composer-outline,color-mix(in_srgb,var(--app-theme-input)_30%,var(--background)))]",
-  "dark:[html[data-theme-id=t3-chat]_&]:[--chat-composer-attached-outline:#241e28]",
+  "[--chat-composer-attached-outline:var(--chat-composer-outline,rgba(0,0,0,0.11))]",
+  "dark:[--chat-composer-attached-outline:var(--chat-composer-outline,rgba(255,255,255,0.08))]",
 );
 
 const variantColors: Record<ComposerBannerVariant, string> = {
@@ -54,11 +51,9 @@ function Surface({
         placement === "attached"
           ? "[--chat-composer-attachment-overlap:calc(1rem+1px)] before:rounded-t-[16px]"
           : "[--chat-composer-attachment-overlap:0px] before:rounded-[1rem]",
-        "before:pointer-events-none before:absolute before:inset-0 before:-z-1 before:border before:border-(--chat-composer-attached-outline)",
-        "before:bg-[color-mix(in_srgb,var(--chat-composer-attached-surface)_var(--glass-opacity),transparent)] before:bg-[linear-gradient(var(--chat-composer-attached-tint),var(--chat-composer-attached-tint))] before:backdrop-blur-(--glass-blur) before:backdrop-saturate-(--glass-saturation)",
-        "before:mask-[linear-gradient(to_top,transparent_0_var(--chat-composer-attachment-overlap),black_var(--chat-composer-attachment-overlap))] before:shadow-[0_12px_28px_-18px_rgb(0_0_0/40%)] dark:before:shadow-[0_14px_32px_-18px_rgb(0_0_0/75%)]",
-        "dark:supports-[(backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px))]:before:bg-[linear-gradient(var(--chat-composer-attached-tint),var(--chat-composer-attached-tint)),linear-gradient(to_top,transparent_0_var(--chat-composer-attachment-overlap),rgb(0_0_0/18%)_var(--chat-composer-attachment-overlap),transparent_calc(var(--chat-composer-attachment-overlap)+10px))]",
-        "not-supports-[((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:before:bg-(--chat-composer-attached-surface)",
+        "before:pointer-events-none before:absolute before:inset-0 before:-z-1 before:border before:border-b-0 before:border-black/[0.11] dark:before:border-white/[0.08]",
+        "before:bg-[color-mix(in_srgb,var(--chat-composer-attached-surface,var(--card))_var(--glass-opacity,92%),transparent)] before:backdrop-blur-(--glass-blur,12px) before:backdrop-saturate-(--glass-saturation,1.14)",
+        "before:shadow-[0_12px_28px_-18px_rgb(0_0_0/40%)] dark:before:shadow-[0_14px_32px_-18px_rgb(0_0_0/75%)]",
         className,
       )}
       {...props}
@@ -68,10 +63,10 @@ function Surface({
 
 // A peeking notice uses the first hidden notice's severity, never the attached row's.
 const peekBorder: Record<ComposerBannerVariant, string> = {
-  default: "border-(--chat-composer-attached-outline)",
+  default: "border-black/[0.11] dark:border-white/[0.08]",
   error: "border-destructive/24",
-  info: "border-(--chat-composer-attached-outline)",
-  success: "border-(--chat-composer-attached-outline)",
+  info: "border-black/[0.11] dark:border-white/[0.08]",
+  success: "border-black/[0.11] dark:border-white/[0.08]",
   warning: "border-warning/24",
 };
 
@@ -104,7 +99,7 @@ function Attachment({ className, ...props }: ComponentProps<"div">) {
     <div
       data-slot="composer-banner-attachment"
       className={cn(
-        "mx-auto -mb-[calc(1rem+1px)] w-[calc(100%-2*var(--chat-composer-drawer-inset))]",
+        "mx-auto -mb-[calc(1rem+1px)] w-[calc(100%-2*var(--chat-composer-drawer-inset,1.375rem))]",
         // Adjacent attachments share their outline, including notices outside the form.
         "[&+[data-slot=composer-banner-attachment]_[data-composer-banner-surface=attached]]:before:rounded-none [&+[data-slot=composer-banner-attachment]_[data-composer-banner-surface=attached]]:before:border-t-0",
         "[&+:has([data-chat-composer-form])_[data-chat-composer-form]>[data-slot=composer-banner-attachment]:first-child_[data-composer-banner-surface=attached]]:before:rounded-none [&+:has([data-chat-composer-form])_[data-chat-composer-form]>[data-slot=composer-banner-attachment]:first-child_[data-composer-banner-surface=attached]]:before:border-t-0",
@@ -157,9 +152,9 @@ function Root({
   return (
     <Surface
       className={cn(
-        "min-w-0 px-1 pt-(--composer-banner-padding-block) pb-[calc(var(--chat-composer-attachment-overlap)+var(--composer-banner-padding-block))] text-xs/4 [--composer-banner-icon-column:--spacing(7)] [--composer-banner-padding-block:--spacing(1)] sm:[--composer-banner-icon-column:--spacing(6)]",
-        density === "comfortable" && "[--composer-banner-padding-block:--spacing(1.25)]",
-        width === "content" ? "w-fit max-w-full flex-none" : "@container",
+        "min-w-0 px-2 pt-(--composer-banner-padding-block) pb-[calc(var(--chat-composer-attachment-overlap)+var(--composer-banner-padding-block))] text-xs/4 [--composer-banner-icon-column:1.75rem] [--composer-banner-padding-block:0.25rem] sm:[--composer-banner-icon-column:1.5rem]",
+        density === "comfortable" && "[--composer-banner-padding-block:0.3125rem]",
+        width === "content" ? "w-fit max-w-full flex-none" : "w-full @container",
         className,
       )}
       data-slot="composer-banner"
@@ -299,7 +294,7 @@ function Body({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "min-w-0 ps-[calc(var(--composer-banner-icon-column)+(--spacing(1)))]",
+        "min-w-0 ps-[calc(var(--composer-banner-icon-column)+0.25rem)]",
         className,
       )}
       {...props}

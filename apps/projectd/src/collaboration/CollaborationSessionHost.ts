@@ -790,6 +790,12 @@ export class CollaborationSessionHost {
     return status
   }
 
+  /** Checks now whether this Mac can save the session to Git, e.g. once its repository was linked. */
+  async recheckGitAccess(): Promise<void> {
+    await this.autoGit?.recheckEligibility()
+    this.emitStatusSoon()
+  }
+
   /** Hides the rebase recommendation for a while. */
   dismissTargetRecommendation(): ProjectdTargetStatus | null {
     const status = this.target?.dismiss() ?? null

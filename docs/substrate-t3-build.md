@@ -82,7 +82,7 @@ dot-directories from application resources.
 
 ## CI and releases
 
-CircleCI and GitHub release jobs check out the direct submodule. The root
+GitHub release jobs check out the direct submodule. The root
 `predist` hook builds the portable runtime, and Electron Builder copies it to
 the application's `t3-runtime` resources directory. Packaging fails if the
 submodule, bundle, or production deployment is invalid, preventing an

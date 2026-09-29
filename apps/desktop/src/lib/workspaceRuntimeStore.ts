@@ -68,7 +68,6 @@ export interface WorkspaceRuntimeSignals {
   hasRunningTerminals: boolean
   hasRunningDevServer: boolean
   hasVisibleBrowserSurface: boolean
-  hasNativePreview: boolean
   pendingSyncStatus: string | null
   lastActivityAt: number | null
   lifecycleReason: string
@@ -123,7 +122,6 @@ function readSignalState(
   const hasRunningTerminals = terminalBindingCount > 0
   const hasRunningDevServer = Boolean(record.sessionSnapshot?.devServer.running)
   const hasVisibleBrowserSurface = Boolean(record.sessionSnapshot?.hasBrowserSurface)
-  const hasNativePreview = Boolean(record.sessionSnapshot?.hasNativePreviewSession)
   const lastActivityAt = Math.max(
     record.lastAttachedAt ?? 0,
     record.lastDetachedAt ?? 0,
@@ -140,7 +138,6 @@ function readSignalState(
     hasRunningTerminals,
     hasRunningDevServer,
     hasVisibleBrowserSurface,
-    hasNativePreview,
     pendingSyncStatus,
     lastActivityAt,
   }
@@ -166,8 +163,7 @@ function resolveLifecycle(
     signals.hasSyncActivity ||
     signals.hasConnectedCollab ||
     signals.hasRunningTerminals ||
-    signals.hasRunningDevServer ||
-    signals.hasNativePreview
+    signals.hasRunningDevServer
   ) {
     lifecycle = "background-hot"
     lifecycleReason = signals.hasSyncActivity
@@ -176,9 +172,7 @@ function resolveLifecycle(
         ? "collaboration-connected"
         : signals.hasRunningDevServer
           ? "dev-server-running"
-          : signals.hasNativePreview
-            ? "native-preview-running"
-            : "terminals-retained"
+          : "terminals-retained"
   } else if (
     signals.hasVisibleBrowserSurface ||
     backgroundAge <= BACKGROUND_WARM_IDLE_MS ||
@@ -222,7 +216,6 @@ function createRecord(runtimeId: string, config: WorkspaceRuntimeConfig): Worksp
       hasRunningTerminals: false,
       hasRunningDevServer: false,
       hasVisibleBrowserSurface: false,
-      hasNativePreview: false,
       pendingSyncStatus: null,
       lastActivityAt: now,
       lifecycleReason: "created",
@@ -246,7 +239,6 @@ function signalsEqual(a: WorkspaceRuntimeSignals, b: WorkspaceRuntimeSignals): b
     a.hasRunningTerminals === b.hasRunningTerminals &&
     a.hasRunningDevServer === b.hasRunningDevServer &&
     a.hasVisibleBrowserSurface === b.hasVisibleBrowserSurface &&
-    a.hasNativePreview === b.hasNativePreview &&
     a.pendingSyncStatus === b.pendingSyncStatus &&
     a.lastActivityAt === b.lastActivityAt &&
     a.lifecycleReason === b.lifecycleReason

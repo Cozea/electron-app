@@ -13,7 +13,7 @@
  * member, and offers the membership and lifecycle actions the bar shows.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useMutation } from "convex/react"
 import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/projectd-protocol"
 
@@ -37,6 +37,7 @@ import {
   type LiveSessionAction,
   type LiveSessionAutoGitView,
   type LiveSessionMember,
+  type LiveSessionRepositoryStatus,
   type LiveSessionSyncView,
   type LiveSessionTargetView,
   type SessionMembership,
@@ -59,8 +60,14 @@ export interface LiveSessionRecord {
 }
 
 export interface LiveSessionController {
+  /** The project the session belongs to. */
+  projectId: string | null
   /** The session for the active Workbench, if it is a Session Workbench. */
   session: LiveSessionRecord | null
+  /** Whether the project's repository is linked through the GitHub App; null until known. */
+  repository: LiveSessionRepositoryStatus | null
+  /** Asks this Mac to check again whether it can save the session to Git. */
+  recheckGitAccess: () => void
   /** This device's other live sessions, excluding the active one. */
   otherSessions: LiveSessionRecord[]
   members: LiveSessionMember[]
@@ -93,6 +100,44 @@ export interface LiveSessionController {
 }
 
 const NO_MEMBERS: LiveSessionMember[] = []
+const NO_SESSIONS: LiveSessionRecord[] = []
+
+type LiveSessionActions = Pick<
+  LiveSessionController,
+  | "saveNow"
+  | "ignoreEnvironmentFiles"
+  | "checkTarget"
+  | "dismissTarget"
+  | "join"
+  | "leave"
+  | "pause"
+  | "resume"
+  | "cancelClose"
+  | "confirmClose"
+  | "end"
+  | "openSessionWorkbench"
+>
+
+/**
+ * Stable functions that always call the latest version of each action, so a
+ * memoized consumer is not invalidated by closures recreated every render.
+ */
+function useStableActions<T extends Record<string, (...args: never[]) => void>>(actions: T): T {
+  const latest = useRef(actions)
+  useLayoutEffect(() => {
+    latest.current = actions
+  })
+  const [stable] = useState(
+    () =>
+      Object.fromEntries(
+        Object.keys(actions).map((name) => [
+          name,
+          (...args: never[]) => latest.current[name](...args),
+        ]),
+      ) as T,
+  )
+  return stable
+}
 
 /** Saves the session to its branch now, or asks the Mac that saves it to. */
 async function saveSessionNow(publicSessionId: string, branchName: string): Promise<void> {
@@ -161,13 +206,20 @@ export function useLiveSession(input: {
     : null
   const session = workspaceSession ?? branchSession ?? null
   const sessionId = session?._id ?? null
+  // Sessions and membership can come from the local cache before the device
+  // session is re-established; Convex calls wait until the device is signed in.
+  const signedIn = Boolean(input.principalId)
 
   const membersQuery = useSafeConvexQuery(
     api.collaborationSessions.listMembers,
-    sessionId ? { sessionId } : "skip",
+    sessionId && signedIn ? { sessionId } : "skip",
   )
-  const members: LiveSessionMember[] =
-    membersQuery.data?.map((member) => ({ ...member, principalId: String(member.principalId) })) ?? NO_MEMBERS
+  // Memoized: a fresh array per render made every consumer of the session
+  // (the project context among them) see a change on each layout render.
+  const members = useMemo<LiveSessionMember[]>(
+    () => membersQuery.data?.map((member) => ({ ...member, principalId: String(member.principalId) })) ?? NO_MEMBERS,
+    [membersQuery.data],
+  )
   const membership = resolveMembership(session?.viewerMembership, members)
   const canManage = membership === "active" && members.some((member) => member.isSelf && member.role === "project_manager")
   const canEdit = membership === "active" && members.some((member) => member.isSelf && member.role !== "viewer")
@@ -175,7 +227,7 @@ export function useLiveSession(input: {
   const sessionWorkspaceId = session ? `ws_collab_${session.publicSessionId}` : null
   const isSessionWorkspace = Boolean(sessionWorkspaceId && workspaceId === sessionWorkspaceId)
   const daemon = useDaemonCollaborationSession({
-    enabled: membership === "active" && isSessionWorkspace,
+    enabled: signedIn && membership === "active" && isSessionWorkspace,
     session,
     projectId: input.projectId,
     workspaceId,
@@ -185,7 +237,7 @@ export function useLiveSession(input: {
 
   const media = useSessionMedia({
     sessionId,
-    enabled: membership === "active" && isSessionWorkspace,
+    enabled: signedIn && membership === "active" && isSessionWorkspace,
     members,
     myPrincipalId: input.principalId,
     isWorkbenchActive: isSessionWorkspace,
@@ -277,38 +329,65 @@ export function useLiveSession(input: {
     })
   }
 
-  const otherSessions = enabled
-    ? (sessions ?? []).filter(
-        (candidate) =>
-          candidate.publicSessionId !== session?.publicSessionId &&
-          candidate.lifecycle !== "CLOSED" &&
-          candidate.viewerMembership === "active",
-      )
-    : []
+  const activePublicSessionId = session?.publicSessionId ?? null
+  const otherSessions = useMemo(
+    () =>
+      enabled
+        ? (sessions ?? []).filter(
+            (candidate) =>
+              candidate.publicSessionId !== activePublicSessionId &&
+              candidate.lifecycle !== "CLOSED" &&
+              candidate.viewerMembership === "active",
+          )
+        : NO_SESSIONS,
+    [activePublicSessionId, enabled, sessions],
+  )
 
   const daemonStatus = daemon.phase === "attached" ? daemon.status : null
+
+  const repositoryQuery = useSafeConvexQuery(
+    api.githubLinks.projectRepositoryStatus,
+    signedIn && session && projectId ? { projectId: projectId as Id<"projects"> } : "skip",
+  )
+  const repository = repositoryQuery.data ?? null
+  const publicSessionId = session?.publicSessionId ?? null
+  const recheckGitAccess = useCallback(() => {
+    if (publicSessionId) void window.electronAPI.projectd.sessions.recheckGitAccess(publicSessionId)
+  }, [publicSessionId])
+  // Linked from anywhere (this Mac, the browser, another member): check now, not in 15 minutes.
+  const waitingForGitHub = daemonStatus?.autoGit?.detailCode === "NOT_AUTHORIZED"
+  const repositoryLinked = repository?.linked === true
+  useEffect(() => {
+    if (waitingForGitHub && repositoryLinked) recheckGitAccess()
+  }, [waitingForGitHub, repositoryLinked, recheckGitAccess])
+
+  const sessionLifecycle = session?.lifecycle ?? null
+  const inSessionWorkbench = workspaceId ? isSessionWorkspace : undefined
+  // The project context depends on this; rebuilding it every render re-rendered
+  // every page and panel that reads the project on each navigation.
+  const sync = useMemo(
+    () =>
+      sessionLifecycle
+        ? describeLiveSessionSync({
+            lifecycle: sessionLifecycle,
+            membership,
+            phase: daemon.phase,
+            status: daemon.status,
+            error: daemon.error,
+            // The workspace isn't known while the project loads; "off" covers that wait.
+            inSessionWorkbench,
+          })
+        : null,
+    [sessionLifecycle, membership, daemon.phase, daemon.status, daemon.error, inSessionWorkbench],
+  )
+
   const leaderName =
     members.find((member) => member.principalId === daemonStatus?.autoGit?.leaderPrincipalId)?.displayName ?? null
 
-  return {
-    session,
-    otherSessions,
-    members,
-    membership,
-    canManage,
-    sync: session
-      ? describeLiveSessionSync({
-          lifecycle: session.lifecycle,
-          membership,
-          phase: daemon.phase,
-          status: daemon.status,
-          error: daemon.error,
-        })
-      : null,
-    autoGit: session ? describeAutoGit(daemonStatus, leaderName) : null,
-    target: session ? describeTarget(daemonStatus?.target ?? null) : null,
-    canEdit,
-    busyAction,
+  // The latest actions, called through stable wrappers: the controller then
+  // changes only when session data does, instead of on every render. The
+  // project header and route context are memoized on it.
+  const actions: LiveSessionActions = {
     saveNow: () => {
       if (session) run("save", "Could not save to Git", () => saveSessionNow(session.publicSessionId, session.branchName))
     },
@@ -356,7 +435,6 @@ export function useLiveSession(input: {
       })
     },
     resume: onSession("resume", "Could not resume the session", resumeSession),
-    closeReview: closeReview?.publicSessionId === session?.publicSessionId ? closeReview : null,
     cancelClose: () => setCloseReview(null),
     confirmClose: (choice) => {
       if (session) run("end", "Could not close the session", async () => {
@@ -434,8 +512,57 @@ export function useLiveSession(input: {
           return describeWorkbenchError(target?.repositoryUrl)(error)
         },
       ),
-    media,
   }
+  const stableActions = useStableActions(actions)
+
+  const autoGit = useMemo(
+    () => (session ? describeAutoGit(daemonStatus, leaderName) : null),
+    [session, daemonStatus, leaderName],
+  )
+  const target = useMemo(
+    () => (session ? describeTarget(daemonStatus?.target ?? null) : null),
+    [session, daemonStatus],
+  )
+  const visibleCloseReview = closeReview?.publicSessionId === session?.publicSessionId ? closeReview : null
+
+  return useMemo(
+    () => ({
+      projectId,
+      session,
+      repository,
+      recheckGitAccess,
+      otherSessions,
+      members,
+      membership,
+      canManage,
+      sync,
+      autoGit,
+      target,
+      canEdit,
+      busyAction,
+      closeReview: visibleCloseReview,
+      media,
+      ...stableActions,
+    }),
+    [
+      projectId,
+      session,
+      repository,
+      recheckGitAccess,
+      otherSessions,
+      members,
+      membership,
+      canManage,
+      sync,
+      autoGit,
+      target,
+      canEdit,
+      busyAction,
+      visibleCloseReview,
+      media,
+      stableActions,
+    ],
+  )
 }
 
 export type LiveSessionContext = ReturnType<typeof useLiveSession>

@@ -20,6 +20,17 @@ interface SharedSubscription {
  */
 const sharedSubscriptions = new Map<string, SharedSubscription>()
 
+function sameDirtyState(a: GitDirtyStateSnapshot, b: GitDirtyStateSnapshot): boolean {
+  return (
+    a.workspaceId === b.workspaceId &&
+    a.additions === b.additions &&
+    a.deletions === b.deletions &&
+    a.changedFiles === b.changedFiles &&
+    a.headCommit === b.headCommit &&
+    a.error === b.error
+  )
+}
+
 function subscribeToDirtyState(
   workspaceId: string,
   authorName: string | undefined,
@@ -47,6 +58,9 @@ function subscribeToDirtyState(
     const broadcast = (snapshot: GitDirtyStateSnapshot | null): void => {
       // Replaced already: this subscription lost its claim on the workspace.
       if (sharedSubscriptions.get(workspaceId) !== created) return
+      // A recompute that found nothing new still arrives with a fresh
+      // `computedAt`; passing it on would re-render every subscriber.
+      if (created.latest && snapshot && sameDirtyState(created.latest, snapshot)) return
       created.latest = snapshot
       for (const each of Array.from(created.listeners)) each(snapshot)
     }

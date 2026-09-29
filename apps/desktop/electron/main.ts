@@ -27,7 +27,6 @@ import { registerContextMenuHandlers } from './ipc/registerContextMenuHandlers'
 import { registerProjectMemoryHandlers } from './ipc/registerProjectMemoryHandlers'
 import { registerCoreHandlers } from './ipc/registerCoreHandlers'
 import { registerDevServerHandlers } from './ipc/registerDevServerHandlers'
-import { registerNativePreviewHandlers } from './ipc/registerNativePreviewHandlers'
 import { registerPreviewHandlers } from './ipc/registerPreviewHandlers'
 import { registerProjectHandlers } from './ipc/registerProjectHandlers'
 import { registerRuntimeHandlers } from './ipc/registerRuntimeHandlers'
@@ -231,6 +230,15 @@ if (ELECTRON_REMOTE_DEBUGGING_PORT) {
   app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1')
 }
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+// Opt-in: prefer the discrete GPU on dual-GPU Macs (e.g. AMD Radeon Pro). Off by
+// default because ignore-gpu-blocklist re-enables acceleration Chromium disabled
+// for known-bad drivers, and the discrete GPU costs battery on laptops.
+if (process.env.COZEA_FORCE_HIGH_PERFORMANCE_GPU === '1') {
+  app.commandLine.appendSwitch('force_high_performance_gpu')
+  app.commandLine.appendSwitch('enable-gpu-rasterization')
+  app.commandLine.appendSwitch('enable-zero-copy')
+  app.commandLine.appendSwitch('ignore-gpu-blocklist')
+}
 
 function matchesProtocolUrl(url: string, routePrefix: string): boolean {
   return SUPPORTED_PROTOCOLS.some((scheme) => url.startsWith(`${scheme}://${routePrefix}`))
@@ -1600,10 +1608,26 @@ function createWindow() {
   })
 
   // Set application menu
+  const sendHistoryNavigation = (direction: 'back' | 'forward') => {
+    if (!win || win.isDestroyed()) return
+    win.webContents.send('navigation:history', direction)
+  }
   createApplicationMenu({
     onOpenSettings: () => {
       void openSettingsWindow()
     },
+    onHistoryNavigate: sendHistoryNavigation,
+  })
+  // Trackpad swipes (macOS, "Swipe between pages") and mouse back/forward
+  // buttons (Windows/Linux app commands) step through app history like a
+  // browser. Content follows the fingers, so swiping right goes back.
+  win.on('swipe', (_event, direction) => {
+    if (direction === 'right') sendHistoryNavigation('back')
+    else if (direction === 'left') sendHistoryNavigation('forward')
+  })
+  win.on('app-command', (_event, command) => {
+    if (command === 'browser-backward') sendHistoryNavigation('back')
+    else if (command === 'browser-forward') sendHistoryNavigation('forward')
   })
 
   // Register window state listeners
@@ -1797,10 +1821,6 @@ registerCoreHandlers(ipcMain, {
 registerPreviewHandlers(ipcMain, {
   getMainWindow: () => win,
   getLatestPreviewHeaderDiagnostic,
-})
-
-registerNativePreviewHandlers(ipcMain, {
-  getMainWindow: () => win,
 })
 
 registerSettingsStorageHandlers(ipcMain, {

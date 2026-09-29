@@ -363,7 +363,7 @@ Deployed on 2026-09-11 from `e34c2252`:
 
 - **The app starts the daemon (P03).** `apps/desktop/electron/projectd/ProjectdLauncher.ts` runs from `initProjectdService`. The packaged app writes `~/Library/LaunchAgents/app.cozea.projectd.plist`, which runs the bundled `projectd.mjs` on the app's own Electron binary in Node mode, and loads it with `launchctl`. An app update changes the agent, which restarts the daemon on the new bundle. A development build starts `bun apps/projectd/src/main.ts` detached. `COZEA_PROJECTD_AUTOSTART=0` turns this off. `electron-builder.config.cjs` ships `apps/projectd/dist/projectd.mjs`.
 - **Session branches belong to the daemon (P23).** `VITE_FF_DAEMON_COLLABORATION` now defaults on. The gate hands any branch with a session record to the daemon, and the in-app engine no longer takes over when the daemon is unreachable, because the two engines use different rooms. The daemon hook retries while the daemon is down and attaches again after it restarts.
-- **Session bar (P23).** `LiveSessionBar` under the project header shows the branch, sync state, members, and join, leave, pause, resume and end. It points members at their session when the folder has another branch checked out.
+- **Session bar (P23), retired 2026-09-17.** The unified header's `HeaderLiveSessionControl` is the only live-session surface: its menu has save, rebase, merge, conflicts, check target, the .gitignore fix, leave, pause, resume and end. `useLiveSessionNotices` raises toasts for what the pill can't say: another branch's session (with Switch branch), why saving to Git stopped, sync problems and target-branch changes.
 - **Share starts sessions (P14).** The Share dialog's live session section starts a session on the checked-out branch (`StartCollaborationDialog`), invites project members or a device ID, and switches to sessions on other branches.
 - **Inbox shows session invitations (P15).** Accepting joins the session and grants project access.
 - **Joining from a clean checkout (P15).** The daemon writes the session's version over files Git holds unchanged at HEAD, so a fresh clone can join a session that has uncommitted work. A folder with changes Git does not have is still refused.
@@ -452,7 +452,7 @@ Still open:
 
 First step of the finishing order agreed after step 4: package the helper, run what is built for real, then P20, then P26 and the remaining gaps.
 
-- **The app ships the macOS helper (P03).** `scripts/prepare-projectd-helper.mjs`, run by `predist` as `prepare:projectd-helper`, builds `cozea-projectd-mac-helper` for arm64 and x86_64 and stages it in `build/projectd-helper/`.
+- **The app ships the macOS helper (P03).** `scripts/prepare-projectd-helper.mjs`, run by `predist` and `dev` as `prepare:projectd-helper`, builds `cozea-projectd-mac-helper` for arm64 and x86_64 and stages it in `build/projectd-helper/`.
   - It asks SwiftPM where the build landed, because Xcode releases put multi-architecture builds in different folders, and it fails if either slice is missing.
   - It skips outside macOS, so the Windows build no longer calls `xcrun`.
 - **Where it lands.** `apps/desktop/electron-builder.config.cjs` copies it to `Contents/Resources/projectd/`, next to `projectd.mjs`, where `ProjectdLauncher` already looked for it. Both per-architecture builds carry the same universal file, so the universal merge keeps it unchanged, and release signing signs it with the rest of the bundle.
@@ -655,12 +655,12 @@ Files created:
 - [tests/architecture/workbenchTileContract.test.ts](tests/architecture/workbenchTileContract.test.ts) (architecture test asserting Workbench tile contract has no collaboration-required source editor)
 
 Files modified:
-- [docs/collab-branch-and-personal-lane-plan.md](docs/collab-branch-and-personal-lane-plan.md) (added superseded notice)
+- [docs/archive/collab-branch-and-personal-lane-plan.md](docs/archive/collab-branch-and-personal-lane-plan.md) (added superseded notice)
 - [docs/collaboration-encryption-architecture.md](docs/collaboration-encryption-architecture.md) (added superseded notice)
-- [docs/git-backed-sync-migration-plan.md](docs/git-backed-sync-migration-plan.md) (added superseded notice)
-- [docs/git-collaboration-decoupling-refactor-map.md](docs/git-collaboration-decoupling-refactor-map.md) (added superseded notice)
-- [docs/git-truth-yjs-attribution-and-terminal-provenance-plan.md](docs/git-truth-yjs-attribution-and-terminal-provenance-plan.md) (added superseded notice)
-- [docs/saas-removal-collab-hosted-refactor-map.md](docs/saas-removal-collab-hosted-refactor-map.md) (added superseded notice)
+- [docs/archive/git-backed-sync-migration-plan.md](docs/archive/git-backed-sync-migration-plan.md) (added superseded notice)
+- [docs/archive/git-collaboration-decoupling-refactor-map.md](docs/archive/git-collaboration-decoupling-refactor-map.md) (added superseded notice)
+- [docs/archive/git-truth-yjs-attribution-and-terminal-provenance-plan.md](docs/archive/git-truth-yjs-attribution-and-terminal-provenance-plan.md) (added superseded notice)
+- [docs/archive/saas-removal-collab-hosted-refactor-map.md](docs/archive/saas-removal-collab-hosted-refactor-map.md) (added superseded notice)
 
 Files deleted:
 - None
@@ -2322,7 +2322,7 @@ Exit-gate evidence:
 
 Status: partial — P23 first made the in-app Yjs engine wait for an ACTIVE session row that nothing could create, which switched live collaboration off; the audit fix restored it. Since the step 3 work on 2026-09-11:
 - A branch with a session record belongs to the projectd daemon. The in-app engine leaves it alone, and [useLiveSession.ts](apps/desktop/src/features/collaboration/live/useLiveSession.ts) attaches the folder while this device is an active member. `VITE_FF_DAEMON_COLLABORATION=0` hands session branches back to the in-app engine.
-- The session bar ([LiveSessionBar.tsx](apps/desktop/src/features/collaboration/live/LiveSessionBar.tsx)) shows the branch, how the folder syncs, who is in the session, and join, leave, pause, resume and end. A member whose folder has another branch checked out gets a Switch branch notice.
+- The session bar was removed on 2026-09-17. [HeaderLiveSessionControl.tsx](apps/desktop/src/features/collaboration/live/HeaderLiveSessionControl.tsx) in the unified header carries its actions, and [useLiveSessionNotices.tsx](apps/desktop/src/features/collaboration/live/useLiveSessionNotices.tsx) turns its messages into toasts, including the Switch branch notice.
 - The daemon hook retries while the daemon is unreachable and attaches again after a daemon restart.
 - Without a session record, the shared branch still collaborates through the in-app engine until P26.
 - Not in the bar yet: rebase and merge controls (P20–P22), the microphone (P25) and a Workbench switcher. AutoGit status and Save now joined the bar in step 4.

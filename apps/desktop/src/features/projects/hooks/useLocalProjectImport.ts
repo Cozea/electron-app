@@ -4,8 +4,7 @@ import { useConvex, useMutation } from "convex/react"
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildWorkbenchHref } from "@/features/workbench/model/lastWorkbenchRoute"
+import { useNavigateTo } from "@/lib/navigation"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent"
 import {
@@ -29,7 +28,7 @@ interface ImportWorkspacePathResult {
 }
 
 export function useLocalProjectImport() {
-  const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const convex = useConvex()
   const { principalId } = useAuth()
   const createProject = useMutation(api.projects.create)
@@ -74,8 +73,8 @@ export function useLocalProjectImport() {
         .getState()
         .actions.ensureWorkbench(projectId, DEFAULT_WORKBENCH_LANE_ID, workspaceId)
 
-      navigate(
-        buildWorkbenchHref(projectId, DEFAULT_WORKBENCH_LANE_ID),
+      navigateTo(
+        { to: "workbench", projectId, laneId: DEFAULT_WORKBENCH_LANE_ID },
         {
           state: buildProjectRouteNavigationState(
             {
@@ -100,7 +99,7 @@ export function useLocalProjectImport() {
         },
       )
     },
-    [navigate],
+    [navigateTo],
   )
 
   const showImportError = useCallback(async (detail: string) => {

@@ -29,8 +29,8 @@ run('node', [
   ...(configuration === 'debug' ? ['--debug'] : []),
 ])
 
-if (process.platform !== 'darwin' || process.arch !== 'arm64') {
-  console.log('Skipping Core ML local automation helper outside Apple silicon macOS.')
+if (process.platform !== 'darwin') {
+  console.log('Skipping Core ML local automation helper outside macOS.')
   process.exit(0)
 }
 

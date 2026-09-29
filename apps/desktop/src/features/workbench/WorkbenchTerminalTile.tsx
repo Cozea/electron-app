@@ -82,7 +82,10 @@ export function WorkbenchTerminalTile({
         </Button>
       </div>
     )
-  } else if (!terminalId || !panelActivity.visible) {
+  } else if (!terminalId || !panelActivity.retained) {
+    // Stay attached while an ordinary page merely covers this workbench:
+    // detaching parks the xterm and swaps its GPU renderer for the DOM one,
+    // and the return trip swaps it back, ~20ms per terminal each way.
     body = terminalShell
   } else {
     body = (

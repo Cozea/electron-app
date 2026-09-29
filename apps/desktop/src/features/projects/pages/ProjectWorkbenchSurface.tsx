@@ -43,15 +43,9 @@ import {
 import { useActiveWorkspaceOrNull } from "@/contexts/workspace/ActiveWorkspaceContext";
 import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity";
 import { useTranslation } from "@/lib/i18n";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { buildPresentationInstanceKey } from "@shared/navigationRuntimeTypes";
 import type { ResolvedWorkbenchIdentity } from "@shared/navigationRuntimeTypes";
 
-const LazyProjectSettingsPage = lazy(() =>
-  import("@/features/settings/pages/ProjectSettingsPage").then((module) => ({
-    default: module.ProjectSettingsPage,
-  })),
-);
 const LazyTaskFocusOverlay = lazy(() =>
   import("@/features/tasks/ui/TaskFocusOverlay").then((module) => ({
     default: module.TaskFocusOverlay,
@@ -108,7 +102,6 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
     taskOverlayState ? [taskOverlayState] : [],
   );
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const collabBranch = projectRouteContext?.collabBranch ?? "main";
   const refreshLaneState = projectRouteContext?.refreshLaneState;
   const projectRootPath = identityProjectRootPath;
@@ -318,12 +311,6 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     workbenchActions,
   ]);
 
-  const closeSettingsOverlay = () => {
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.delete("settings");
-    replaceSearchParams(nextParams);
-  };
-
   useLayoutEffect(() => {
     if (!projectId || laneResolutionPending) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
@@ -348,10 +335,6 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
   }, [activeLaneId, laneResolutionPending, projectId, projectWorkbench?.activeTileId, workspaceSelectionId]);
 
   useEffect(() => {
-    setIsSettingsOpen(searchParams.get("settings") === "1");
-  }, [searchParams]);
-
-  useEffect(() => {
     const nextTask = taskOverlayState;
     if (!nextTask) return;
 
@@ -369,20 +352,6 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     }
     setTaskCards((current) => current.filter((task) => task.projectId === projectId));
   }, [projectId]);
-
-  useEffect(() => {
-    if (!isSettingsOpen) return;
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      if (isSettingsOpen) setIsSettingsOpen(false);
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [isSettingsOpen]);
 
   const resolvedDockviewThemeScheme =
     theme === "dark" || (theme === "system" && document.documentElement.classList.contains("dark"))
@@ -467,27 +436,6 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
               onSessionsChange={handleRetainedSessionsChange}
             />
           </div>
-
-          <Dialog
-            open={isSettingsOpen}
-            onOpenChange={(open) => {
-              if (!open) closeSettingsOverlay();
-            }}
-          >
-            <DialogContent
-              showCloseButton={false}
-              className="inset-0 left-0 top-0 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 gap-0 rounded-none border-0 bg-background p-0 sm:max-w-none"
-              aria-label={t('workbench.surface.closeSettings')}
-            >
-              <aside className="flex min-h-0 w-full flex-1 flex-col bg-background">
-                <div className="min-h-0 flex-1 overflow-hidden">
-                  <Suspense fallback={<WorkbenchOverlayLoading />}>
-                    <LazyProjectSettingsPage presentation="embedded" onRequestClose={closeSettingsOverlay} />
-                  </Suspense>
-                </div>
-              </aside>
-            </DialogContent>
-          </Dialog>
 
           {taskCards.length > 0 ? (
             <aside className="flex w-[320px] shrink-0 flex-col border-l border-border/60">

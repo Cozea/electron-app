@@ -44,14 +44,14 @@ export function LiveSessionShareSection({
   projectId,
   projectMembers,
   canManageProject,
-  onStartSession,
   onLeaveSession,
+  className,
 }: {
   projectId: Id<"projects">
   projectMembers: readonly ShareableProjectMember[] | undefined
   canManageProject: boolean
-  onStartSession: () => void
   onLeaveSession?: () => void
+  className?: string
 }) {
   const { principalId } = useAuth()
   const sync = useOptionalProjectSyncContext()
@@ -240,16 +240,7 @@ export function LiveSessionShareSection({
       </p>
     )
   } else if (!activeSession) {
-    body = (
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-3 py-2.5">
-        <p className="min-w-0 text-sm text-muted-foreground">
-          Nobody is editing <span className="font-mono text-foreground">{activeBranch}</span> live yet.
-        </p>
-        <Button size="sm" className="h-8 text-sm shrink-0" disabled={busy !== null} onClick={onStartSession}>
-          Start live session
-        </Button>
-      </div>
-    )
+    body = null
   } else {
     body = (
       <div className="space-y-3">
@@ -366,14 +357,12 @@ export function LiveSessionShareSection({
     )
   }
 
+  // With no session, no notice and no other branches to switch to, the section
+  // has nothing to say: render nothing rather than an empty separator.
+  if (!body && !message && otherSessions.length === 0) return null
+
   return (
-    <section className="space-y-2" aria-label="Live session">
-      <div>
-        <p className="text-sm font-medium text-foreground">Live session</p>
-        <p className="text-xs text-muted-foreground">
-          Everyone in a live session edits the same branch in real time, each from their own Mac.
-        </p>
-      </div>
+    <section className={cn("space-y-2", className)} aria-label="Live session">
       {message ? (
         <p
           className={cn(

@@ -194,6 +194,7 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
             visibleIndex,
             visibleToastLayout.items.length,
           );
+          const stackAction = Boolean(toast.actionProps && toast.description);
 
           return (
             <Toast.Root
@@ -253,7 +254,9 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
               />
               <Toast.Content
                 className={cn(
-                  "pointer-events-auto flex items-center justify-between gap-1.5 overflow-hidden px-3.5 py-3 text-sm transition-opacity duration-250 data-expanded:opacity-100",
+                  "pointer-events-auto flex overflow-hidden px-3.5 py-3 text-sm transition-opacity duration-250 data-expanded:opacity-100",
+                  // A button beside a paragraph squeezes both; under it, the text keeps the width.
+                  stackAction ? "flex-col gap-2.5" : "items-center justify-between gap-1.5",
                   hideCollapsedContent &&
                     "not-data-expanded:pointer-events-none not-data-expanded:opacity-0",
                 )}
@@ -286,7 +289,7 @@ function Toasts({ position = "top-right" }: { position: ToastPosition }) {
                 </div>
                 {toast.actionProps && (
                   <Toast.Action
-                    className={cn(buttonVariants({ size: "xs" }), "shrink-0")}
+                    className={cn(buttonVariants({ size: "xs" }), "shrink-0", stackAction && cn("self-start", Icon && "ml-6"))}
                     data-slot="toast-action"
                   >
                     {toast.actionProps.children}

@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { destinationHref } from "@/lib/destinations";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -216,7 +217,7 @@ describe("product tour steps", () => {
 
       if (step.exitsSettings) location = "/projects";
       else if (step.routeToProject) location = "/p/project/workbench";
-      else if (step.route) location = step.route;
+      else if (step.route) location = destinationHref(step.route);
     }
   });
 

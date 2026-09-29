@@ -6,7 +6,6 @@ import {
   mapGitRemoteStatus,
   resolveConnectionStatusPresentation,
 } from "@/features/collaboration/model/connectionStatusModel"
-import { isBackgroundRefreshAllowed, readDocumentVisibility } from "@/lib/backgroundPolicy"
 
 describe("connectionStatusModel", () => {
   it("maps assistant transport independently of data sync", () => {
@@ -260,38 +259,5 @@ describe("connectionStatusModel", () => {
     expect(presentation.primaryLabel).toBe("Awaiting device approval")
     expect(presentation.dataSync).toBe("idle")
     expect(presentation.motion).toBe("pulse")
-  })
-})
-
-describe("backgroundPolicy", () => {
-  it("allows refresh when visible and surface-active", () => {
-    expect(
-      isBackgroundRefreshAllowed(
-        { surfaceActive: true, pauseWhenDocumentHidden: true },
-        "visible",
-      ),
-    ).toBe(true)
-  })
-
-  it("pauses refresh when the document is hidden", () => {
-    expect(
-      isBackgroundRefreshAllowed(
-        { surfaceActive: true, pauseWhenDocumentHidden: true },
-        "hidden",
-      ),
-    ).toBe(false)
-  })
-
-  it("pauses refresh when the surface is inactive", () => {
-    expect(
-      isBackgroundRefreshAllowed(
-        { surfaceActive: false, pauseWhenDocumentHidden: true },
-        "visible",
-      ),
-    ).toBe(false)
-  })
-
-  it("reads a document visibility value", () => {
-    expect(["visible", "hidden", "prerender"]).toContain(readDocumentVisibility())
   })
 })

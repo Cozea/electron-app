@@ -19,7 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Kbd } from "@/components/ui/kbd"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
-import { shortcutLabelForCommand } from "@/lib/keybindings/matchShortcut"
+import { shortcutLabelForCommand } from "@/features/workbench/keybindings/matchShortcut"
 import {
   filterCommandPaletteCommands,
   formatKeybindingIssueMessage,

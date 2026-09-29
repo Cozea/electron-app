@@ -1,6 +1,7 @@
 import { ConvexHttpClient } from "convex/browser"
 import { makeFunctionReference } from "convex/server"
 import { isSameGitHubRepository, parseGitHubRepository } from "@shared/git/githubRepository"
+import { RepositoryNotAuthorizedError } from "../git/ScopedNetworkGit"
 import type { BackgroundDeviceIdentityManager } from "../identity/BackgroundDeviceIdentity"
 import type { BackgroundSessionIntent } from "./BackgroundSessionStore"
 
@@ -41,6 +42,18 @@ async function authenticatedClient(descriptor: BackgroundSessionIntent, manager:
   return client
 }
 
+async function discoverRepositoryCapabilities(
+  descriptor: BackgroundSessionIntent,
+  expected: { owner: string; repository: string },
+  manager: BackgroundDeviceIdentityManager,
+): Promise<{ pullRequest: boolean; gitWrite: boolean }> {
+  const client = await authenticatedClient(descriptor, manager)
+  const result = await client.action(discoverCapabilities, { publicSessionId: descriptor.publicSessionId })
+  assertRepositoryScope(result.repositoryUrl, result.projectId, descriptor, expected)
+  if (typeof result.pullRequest !== "boolean" || typeof result.gitWrite !== "boolean") throw new Error("Invalid capabilities")
+  return { pullRequest: result.pullRequest, gitWrite: result.gitWrite }
+}
+
 /** Capability discovery validates the same binding as issuance but never mints a GitHub token. */
 export async function getBackgroundRepositoryCapabilities(
   descriptor: BackgroundSessionIntent,
@@ -48,11 +61,7 @@ export async function getBackgroundRepositoryCapabilities(
   manager: BackgroundDeviceIdentityManager,
 ): Promise<{ pullRequest: boolean; gitWrite: boolean }> {
   try {
-    const client = await authenticatedClient(descriptor, manager)
-    const result = await client.action(discoverCapabilities, { publicSessionId: descriptor.publicSessionId })
-    assertRepositoryScope(result.repositoryUrl, result.projectId, descriptor, expected)
-    if (typeof result.pullRequest !== "boolean" || typeof result.gitWrite !== "boolean") throw new Error("Invalid capabilities")
-    return { pullRequest: result.pullRequest, gitWrite: result.gitWrite }
+    return await discoverRepositoryCapabilities(descriptor, expected, manager)
   } catch {
     return { pullRequest: false, gitWrite: false }
   }
@@ -74,5 +83,13 @@ export async function getBackgroundRepositoryToken(
       throw new Error("Repository credential scope or expiry changed")
     }
     return issued.token
-  } catch { throw new Error("Background repository authorization is unavailable. Verify the project's GitHub App binding and retry.") }
+  } catch {
+    // Only a confirmed answer that this repository isn't set up is worth telling apart;
+    // anything else, including failing to ask, may pass on its own.
+    if (purpose === "git_write" &&
+      (await discoverRepositoryCapabilities(descriptor, expected, manager).catch(() => null))?.gitWrite === false) {
+      throw new RepositoryNotAuthorizedError(expected)
+    }
+    throw new Error("Background repository authorization is unavailable. Verify the project's GitHub App binding and retry.")
+  }
 }

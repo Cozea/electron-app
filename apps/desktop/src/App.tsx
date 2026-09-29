@@ -1,6 +1,5 @@
 import { warmCommonNavigation } from '@/lib/navigationWarmup'
-import { Activity, lazy, Suspense, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
-import { SettingsDrawer } from '@/features/settings/ui/SettingsDrawer'
+import { lazy, Suspense, useEffect, useEffectEvent, useState, type ReactNode } from 'react'
 import { Outlet, useLocation } from '@/lib/router'
 
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -8,9 +7,9 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import { LanguageProvider } from './lib/i18n'
 import { CreateProjectDialogHost } from '@/features/projects/ui/CreateProjectDialogHost'
 import { TooltipProvider } from './components/ui/tooltip'
-import { useViewTransitionNavigate } from './lib/navigation'
-import { getSettingsRouteFromLocation, writeSettingsRouteToUrl } from './lib/settingsDrawerUrl'
-import { useSettingsDrawerStore } from '@/features/settings/model/settingsDrawerStore'
+import { useNavigateTo, useViewTransitionNavigate } from './lib/navigation'
+import { settingsDestinationForRoute } from './lib/destinations'
+import { useDesktopHistoryNavigation } from './app/navigation/useDesktopHistoryNavigation'
 import { WorkspaceRuntimeHostsGate } from '@/features/workspace/WorkspaceRuntimeHostsGate'
 import { TerminalViewHostGate } from '@/features/terminal/TerminalViewHostGate'
 import { AppAgentRuntimeHost } from '@/substrate/AppAgentRuntimeHost'
@@ -65,22 +64,6 @@ function DeferredUpdateMenu({ enabled }: { enabled: boolean }) {
   )
 }
 
-function SettingsDrawerHost({ enabled }: { enabled: boolean }) {
-  const isOpen = useSettingsDrawerStore((state) => state.isOpen)
-  const [hasOpened, setHasOpened] = useState(isOpen)
-  if (isOpen && !hasOpened) setHasOpened(true)
-
-  if (!enabled || !hasOpened) {
-    return null
-  }
-
-  return (
-    <Activity mode={isOpen ? 'visible' : 'hidden'}>
-      <SettingsDrawer />
-    </Activity>
-  )
-}
-
 function scheduleIdleWarmup(
   callback: () => void,
   options: { delayMs: number; timeoutMs: number },
@@ -127,6 +110,7 @@ function FullscreenLoading() {
 }
 
 function ElectronNavigationBridge() {
+  useDesktopHistoryNavigation()
   const navigate = useViewTransitionNavigate()
   const handleElectronNavigation = useEffectEvent((path: string) => {
     if (typeof path === 'string' && path.startsWith('/')) {
@@ -148,9 +132,10 @@ function ElectronNavigationBridge() {
 }
 
 function ElectronSettingsBridge() {
-  const openSettingsDrawer = useSettingsDrawerStore((state) => state.openFromRoute)
+  // Settings is a page: the macOS Settings… menu and window:openSettings open it.
+  const navigateTo = useNavigateTo()
   const handleElectronSettingsOpen = useEffectEvent((route: string) => {
-    openSettingsDrawer(route)
+    navigateTo(settingsDestinationForRoute(route))
   })
 
   useEffect(() => {
@@ -162,49 +147,6 @@ function ElectronSettingsBridge() {
       unsubscribe?.()
     }
   }, [])
-
-  return null
-}
-
-function SettingsDrawerUrlBridge() {
-  const isOpen = useSettingsDrawerStore((state) => state.isOpen)
-  const route = useSettingsDrawerStore((state) => state.route)
-  const openFromRoute = useSettingsDrawerStore((state) => state.openFromRoute)
-  const close = useSettingsDrawerStore((state) => state.close)
-
-  const syncFromLocation = useEffectEvent(() => {
-    const routeFromLocation = getSettingsRouteFromLocation(window.location)
-    if (routeFromLocation) {
-      if (!isOpen || route !== routeFromLocation) {
-        openFromRoute(routeFromLocation)
-      }
-      return
-    }
-
-    if (isOpen) {
-      close()
-    }
-  })
-
-  useEffect(() => {
-    syncFromLocation()
-
-    const handleLocationChange = () => {
-      syncFromLocation()
-    }
-
-    window.addEventListener('hashchange', handleLocationChange)
-    window.addEventListener('popstate', handleLocationChange)
-
-    return () => {
-      window.removeEventListener('hashchange', handleLocationChange)
-      window.removeEventListener('popstate', handleLocationChange)
-    }
-  }, [])
-
-  useEffect(() => {
-    writeSettingsRouteToUrl(isOpen ? route : null)
-  }, [isOpen, route])
 
   return null
 }
@@ -298,8 +240,6 @@ function AppContent() {
       <WorkspaceRuntimeHostsGate />
       <TerminalViewHostGate />
       <CreateProjectDialogHost />
-      {!isSettingsWindow && <SettingsDrawerUrlBridge />}
-      <SettingsDrawerHost enabled={!isSettingsWindow} />
       {/* First run tutorial. Silent unless this device has never finished it. */}
       {!isSettingsWindow && (
         <Suspense fallback={null}>

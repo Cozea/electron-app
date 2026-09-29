@@ -127,7 +127,7 @@ export function jsonResponse(body: unknown, init?: ResponseInit, origin?: string
     headers: {
       'content-type': 'application/json; charset=utf-8',
       ...corsHeaders(init?.headers, origin),
-      ...(init?.headers ?? {}),
+      ...init?.headers,
     },
   })
 }

@@ -1,14 +1,13 @@
 import { useCallback, useState } from "react"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation } from "convex/react"
+import { useIncomingInvites } from "@/hooks/useIncomingInvites"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { cleanConvexError } from "@/lib/convexError"
-import { useAuth } from "@/contexts/AuthContext"
 import { useProjectHeader } from "@/lib/useProjectHeader"
 import { useTranslation } from "@/lib/i18n"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import { appToast } from "@/lib/appToast"
 import { SessionInvitationCard, type SessionInvitationItem } from "@/features/inbox/components/SessionInvitationCard"
@@ -16,7 +15,7 @@ import { describeInviteeCopy, ensureInviteeCopy, type InviteeCopyOutcome } from 
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { formatCloneErrorMessage } from "@/lib/git/gitErrorFormatting"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -30,12 +29,6 @@ import {
   ArrowRight01Icon as __ArrowRightHugeIcon,
   Clock01Icon as __ClockHugeIcon,
 } from "@hugeicons/core-free-icons"
-
-function initial(value: string): string {
-  return value.trim().charAt(0).toUpperCase() || "?"
-}
-
-
 
 function formatExpiryDays(expiresAt: number): string {
   const ms = expiresAt - Date.now()
@@ -154,9 +147,7 @@ function InvitationRow({
   return (
     <div className="group flex flex-col gap-3 rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border/90 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3 sm:items-center">
-        <Avatar className="size-10 shrink-0 rounded-lg">
-          <AvatarFallback className="rounded-lg text-xs font-medium">{initial(name)}</AvatarFallback>
-        </Avatar>
+        <DeviceAvatar displayName={name} useColor={false} className="size-10 shrink-0" fallbackClassName="text-xs font-medium" />
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="truncate text-sm font-medium text-foreground">{name}</h3>
@@ -214,20 +205,16 @@ function announceInviteeCopy(copy: InviteeCopyOutcome, projectName: string): voi
 
 export function InboxPage() {
   const { t } = useTranslation()
-  const { principalId } = useAuth()
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
 
-  const incoming = useQuery(
-    api.projectDeviceEnrollments.listIncoming,
-    principalId ? {} : "skip",
-  )
+  const {
+    projectEnrollments: incoming,
+    sessionInvitations: rawSessionInvitations,
+    organizationEnrollments: incomingOrganizations,
+  } = useIncomingInvites()
   const sessionInvitations: SessionInvitationItem[] =
-    useQuery(api.collaborationSessions.listIncomingInvitations, principalId ? {} : "skip") ??
-    NO_SESSION_INVITATIONS
-  const incomingOrganizations = useQuery(
-    api.organizations.listIncomingEnrollments,
-    principalId ? {} : "skip",
-  )
+    (rawSessionInvitations as SessionInvitationItem[] | undefined) ?? NO_SESSION_INVITATIONS
   const resolveEnrollment = useMutation(api.projectDeviceEnrollments.resolve)
   const resolveOrganizationEnrollment = useMutation(api.organizations.resolveDeviceEnrollment)
 
@@ -368,7 +355,7 @@ export function InboxPage() {
 
   const handleOpenProject = useCallback(
     (projectId: string, workspaceId?: string | null) => {
-      navigate(buildProjectPath(projectId, "workbench"), {
+      navigateTo({ to: "workbench", projectId: projectId }, {
         state: buildProjectRouteNavigationState({ projectId, preferredWorkspaceId: workspaceId ?? null }),
       })
     },

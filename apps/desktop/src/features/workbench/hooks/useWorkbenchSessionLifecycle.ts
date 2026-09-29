@@ -38,7 +38,6 @@ function isMeaningfullyEqual(
     a.lifecycle === b.lifecycle &&
     a.pinned === b.pinned &&
     a.hasBrowserSurface === b.hasBrowserSurface &&
-    a.hasNativePreviewSession === b.hasNativePreviewSession &&
     JSON.stringify(a.terminalBindings) === JSON.stringify(b.terminalBindings) &&
     JSON.stringify(a.devServer) === JSON.stringify(b.devServer)
   )

@@ -18,20 +18,21 @@ describe("DevApps Store shell unification", () => {
     expect(layout).not.toContain("/projects/store")
   })
 
-  it("keeps one persistent shell with a single lazy settings branch", () => {
+  it("keeps one persistent shell with a single settings branch", () => {
     const layout = read(LAYOUT)
     const block = layout.slice(
       layout.indexOf("<AppSidebarShell"),
-      layout.indexOf("<SidebarInset"),
+      layout.indexOf("</AppSidebarShell>"),
     )
     expect(block).toContain("isSettingsModeRoute ?")
-    expect(block).toContain("<LazySettingsSidebar")
-    expect(block).toContain("<SidebarModeFallback />")
+    expect(block).toContain("<SettingsSidebar")
     expect(block).toContain("<ProjectSidebar")
     // Settings is the only route mode that swaps the sidebar's contents; the
     // store and Agent Skills both reuse the project sidebar.
     expect(block).not.toContain("<LazyAgentSkillsSidebar")
-    expect(block.match(/<Suspense/g)).toHaveLength(1)
+    // Loaded eagerly since bf847c30f: a lazy branch flashed a skeleton every
+    // time settings opened.
+    expect(block).not.toContain("<Suspense")
     expect(block).not.toContain("surface=")
   })
 
@@ -54,10 +55,10 @@ describe("DevApps Store shell unification", () => {
 
   it("keeps the store nav row and its active state in project UI", () => {
     const sidebar = read(SIDEBAR)
-    expect(sidebar).toContain('navigate("/projects/store")')
+    expect(sidebar).toContain('navigateTo({ to: "store" })')
     expect(sidebar).toContain('const isOnAppStore = pathname === "/projects/store"')
 
-    const activeIndex = sidebar.indexOf("isOnAppStore && SIDEBAR_PILL_ACTIVE_CLASS")
+    const activeIndex = sidebar.search(/isOnAppStore && (?:cn\()?SIDEBAR_PILL_ACTIVE_CLASS/)
     const labelIndex = sidebar.indexOf("t('nav.devAppsStore')")
     expect(activeIndex).toBeGreaterThan(-1)
     expect(labelIndex).toBeGreaterThan(activeIndex)
@@ -95,7 +96,7 @@ describe("DevApps Store shell unification", () => {
     expect(chrome).toContain("hideShare: hideShare || isSettingsModeRoute")
     expect(chrome).toContain("projectInviteContext: isSettingsModeRoute ? undefined")
 
-    const header = read("apps/desktop/src/components/layouts/UnifiedHeader.tsx")
+    const header = read("apps/desktop/src/features/projects/layouts/UnifiedHeader.tsx")
     expect(header).toContain("hideShare = false")
     expect(header).toContain("if (!hideShare) {")
   })

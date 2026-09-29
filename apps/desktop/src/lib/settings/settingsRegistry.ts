@@ -12,6 +12,7 @@ import { asHugeIcon } from "@/lib/icons/asHugeIcon"
 import {
   CommandLineIcon as __CommandLineIconHugeIcon,
   ComputerIcon as __ComputerIconHugeIcon,
+  GithubIcon as __GithubIconHugeIcon,
   PackageIcon as __PackageIconHugeIcon,
   PaintBoardIcon as __PaintBoardIconHugeIcon,
   UserCircleIcon as __UserCircleIconHugeIcon,
@@ -20,6 +21,7 @@ import {
 
 const CommandLineIcon = asHugeIcon(__CommandLineIconHugeIcon)
 const ComputerIcon = asHugeIcon(__ComputerIconHugeIcon)
+const GithubIcon = asHugeIcon(__GithubIconHugeIcon)
 const PackageIcon = asHugeIcon(__PackageIconHugeIcon)
 const PaintBoardIcon = asHugeIcon(__PaintBoardIconHugeIcon)
 const UserCircleIcon = asHugeIcon(__UserCircleIconHugeIcon)
@@ -30,8 +32,9 @@ const PERSONAL_DEVICE_SIDEBAR_ORDER: Record<SettingsSurfaceId, number> = {
   appearance: 1,
   devapps: 2,
   organizations: 3,
-  tooling: 4,
-  computerUse: 5,
+  github: 4,
+  tooling: 5,
+  computerUse: 6,
 }
 
 const preloadAccountPage = () => import("@/features/settings/Account")
@@ -39,6 +42,7 @@ const preloadAppearancePage = () => import("@/features/settings/Appearance")
 const preloadDevAppsPage = () => import("@/features/settings/DevAppSettings")
 const preloadOrganizationsPage = () => import("@/features/settings/Organizations")
 const preloadComputerUsePage = () => import("@/features/settings/ComputerUse")
+const preloadGitHubPage = () => import("@/features/settings/GitHub")
 
 const preloadToolingPage = async () => {
   const module = await import("@/features/settings/Tooling")
@@ -53,6 +57,7 @@ const SURFACE_LABEL_KEYS: Record<SettingsSurfaceId, TranslationKey> = {
   organizations: "settings.nav.organizations",
   tooling: "settings.nav.localEnvironment",
   computerUse: "settings.nav.computerUse",
+  github: "settings.nav.github",
 }
 
 /** Resolve a surface label for the current language. */
@@ -127,6 +132,17 @@ export const SETTINGS_SURFACES: readonly SettingsSurfaceDefinition[] = [
     sidebarGroups: { personal: "personalDevice" },
     preload: preloadComputerUsePage,
     commandKeywords: ["computer", "computer use", "automation", "screen", "accessibility", "permissions"],
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    icon: GithubIcon,
+    routes: { personal: "/settings/github" },
+    storageMode: { personal: "cloud" },
+    placements: ["drawer", "sidebar", "command", "settingsWindow"],
+    sidebarGroups: { personal: "personalDevice" },
+    preload: preloadGitHubPage,
+    commandKeywords: ["github", "git", "repository", "install", "app", "source control", "pull request"],
   },
 ] as const
 

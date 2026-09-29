@@ -1,4 +1,5 @@
 import type { TranslationKey } from '@/lib/i18n'
+import { getDeviceInitials } from '@/lib/devicePresentation'
 
 export type TaskTranslator = (key: TranslationKey) => string
 
@@ -143,14 +144,7 @@ export function createTaskId(): string {
 }
 
 export function getInitials(name: string): string {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
-
-  return initials || '?'
+  return getDeviceInitials(name, '?')
 }
 
 export function normalizeManualTaskMarkers(value: unknown): ManualTaskMarkerRecord[] {

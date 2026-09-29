@@ -100,6 +100,6 @@ upstream T3 is the deepest Phase 3 follow-on. Current gaps:
 
 ## Related
 
-- Phase 1 shadow server: `docs/substrate-shadow-server.md`
+- Phase 1 shadow server: `docs/archive/substrate-shadow-server.md`
 - T3 pin: `docs/substrate-t3-pin.md`
 - Older instance-port checklist: `docs/t3-provider-instance-port-todo.md`

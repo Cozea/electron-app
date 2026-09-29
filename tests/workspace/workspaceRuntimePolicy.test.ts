@@ -17,7 +17,6 @@ const baseSignals: WorkspaceRuntimeSignals = {
   hasRunningTerminals: false,
   hasRunningDevServer: false,
   hasVisibleBrowserSurface: false,
-  hasNativePreview: false,
   pendingSyncStatus: null,
   lastActivityAt: null,
   lifecycleReason: "test",
@@ -88,11 +87,6 @@ describe("workspaceRuntimePolicy", () => {
         createdAt: 7,
         signals: { hasRunningDevServer: true },
       }),
-      createRuntime("native-preview", {
-        lifecycle: "background-hot",
-        createdAt: 6,
-        signals: { hasNativePreview: true },
-      }),
     ])
 
     expect(selected.map((record) => record.workspaceId)).toEqual([
@@ -100,7 +94,6 @@ describe("workspaceRuntimePolicy", () => {
       "syncing",
       "terminal",
       "devserver",
-      "native-preview",
     ])
   })
 

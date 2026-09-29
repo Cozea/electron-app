@@ -137,11 +137,11 @@ export class DevAppAuthoringService {
     return this.inspect({ projectId: "pending", workspaceId: sourceId, workspaceRoot: root });
   }
 
-  scaffold(options: ScaffoldOptions): {
+  async scaffold(options: ScaffoldOptions): Promise<{
     source: DevAppDevelopmentSource;
     createdFiles: string[];
     preparation: DevAppScaffoldPreparation;
-  } {
+  }> {
     const trimmedName = options.name.trim();
     if (!trimmedName || trimmedName.length > 120) throw new Error("Choose a DevApp name.");
     const relativePath = normalizedPackagePath(options.relativePath);
@@ -180,7 +180,11 @@ export class DevAppAuthoringService {
       throw new Error("The generated DevApp manifest failed validation.");
     // Publication requires a lockfile and a recorded tree. Producing them here keeps a new
     // package publishable, instead of failing from the publish dialog much later.
-    const preparation = prepareScaffoldedDevAppProject(packageRoot, this.runScaffoldCommand);
+    const preparation = await prepareScaffoldedDevAppProject(
+      packageRoot,
+      createdFiles,
+      this.runScaffoldCommand,
+    );
     return { source: inspection.source, createdFiles, preparation };
   }
 }

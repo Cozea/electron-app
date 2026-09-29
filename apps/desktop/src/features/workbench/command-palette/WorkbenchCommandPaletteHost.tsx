@@ -4,7 +4,7 @@ import { featureFlags } from "@/lib/featureFlags"
 import {
   isTerminalElementFocused,
   resolveShortcutCommand,
-} from "@/lib/keybindings/matchShortcut"
+} from "@/features/workbench/keybindings/matchShortcut"
 import { CommandPalette } from "./CommandPalette"
 import {
   onOpenCommandPalette,

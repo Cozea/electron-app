@@ -71,7 +71,7 @@ import { toolRowId } from "./toolPhase";
 import { asHugeIcon } from "@/lib/icons/asHugeIcon";
 import { LiveShimmerText } from "@/components/ui/live-shimmer-text";
 type LucideIcon = ComponentType<SVGProps<SVGSVGElement>>;
-import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
+import { formatWorkspaceRelativePath } from "@/features/assistant/lib/filePathDisplay";
 import {
   COMPOSER_DOCK_EASING_CSS,
   COMPOSER_DOCK_TRANSITION_MS,
@@ -99,7 +99,7 @@ import {
 } from "./MessagesTimeline.logic";
 import { PersistedFilesList } from "./PersistedFilesList";
 import type { AssistantCitation, ScopedThreadRef } from "@cozea/contracts/t3";
-import type { AssistantCitationSourceAnchor } from "@/lib/assistantTextSelection";
+import type { AssistantCitationSourceAnchor } from "@/features/assistant/lib/assistantTextSelection";
 import { AssistantCitationSource, type AssistantCitationRequest } from "./AssistantCitationSource";
 import { AssistantSelectionToolbar } from "./AssistantSelectionToolbar";
 import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssistantCitationTarget";

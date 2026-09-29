@@ -40,7 +40,6 @@ import {
 } from "@/features/dev-server/devServerRunStore"
 import {
   buildLocalDevServerUrl,
-  dispatchDevServerTileCommand,
   isSameDevServerPreviewUrl,
 } from "@/features/dev-server/devServerTileCommands"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
@@ -70,6 +69,7 @@ import {
 } from "@/lib/workbenchStore"
 import {
   type WorkbenchDockPanelParams,
+  useOptionalWorkbenchSurfaceVisibility,
   useWorkbenchDockRuntime,
 } from "@/features/workbench/WorkbenchDockRuntimeContext"
 import { resolveProjectDevAppRuntimeTarget } from "@/features/devapps/model/projectDevAppRuntime"
@@ -606,18 +606,14 @@ const DevServerPanelHeaderActions = memo(function DevServerPanelHeaderActions({
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          disabled={surface === "devServer" && !runtimeTabId}
+          disabled={!runtimeTabId}
           onClick={() => {
-            if (surface === "mobileSimulator") {
-              dispatchDevServerTileCommand({ tileId, type: "refresh-simulators" })
-              return
-            }
             const preview = window.desktopBridge?.preview
             if (preview && runtimeTabId) {
               void preview.refresh(runtimeTabId).catch(() => undefined)
             }
           }}
-          aria-label={surface === "mobileSimulator" ? "Refresh simulator" : "Reload preview"}
+          aria-label="Reload preview"
         >
           <HugeiconsIcon icon={__RefreshCcwHugeIcon} className="h-3.5 w-3.5" />
         </Button>
@@ -977,6 +973,7 @@ const BrowserPanel = memo(function BrowserPanel(
   props: IDockviewPanelProps<WorkbenchDockPanelParams>,
 ) {
   const runtime = useWorkbenchDockRuntime()
+  const surface = useOptionalWorkbenchSurfaceVisibility()
   const tile = useWorkbenchTile(
     props.params.projectId,
     props.params.laneId,
@@ -1002,7 +999,7 @@ const BrowserPanel = memo(function BrowserPanel(
         tile={tile as WorkbenchBrowserTileRecord}
         workspaceId={runtime.workspaceId}
         workbenchSessionKey={runtime.workbenchSessionKey}
-        surfaceVisible={runtime.surfaceVisible}
+        surfaceVisible={surface?.surfaceVisible ?? true}
         panelApi={props.api}
         containerApi={props.containerApi}
       />

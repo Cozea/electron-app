@@ -1,8 +1,9 @@
 "use client";
 
 import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { Outlet, useLocation, useParams } from "@/lib/router";
-import { useViewTransitionNavigate } from "@/lib/navigation";
+import { useLocation, useParams } from "@/lib/router";
+import { RetainedPageOutlet } from "@/app/navigation/RetainedPageOutlet";
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation";
 import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
@@ -10,7 +11,7 @@ import { useCachedQuery } from "@/app/model/queryCache";
 import { ProjectSidebar } from "@/features/projects/ui/ProjectSidebar";
 import { AppSidebarShell } from "@/app/shell/sidebar/AppSidebarShell";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { UnifiedHeader } from "@/components/layouts/UnifiedHeader";
+import { UnifiedHeader } from "@/features/projects/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/terminal/TerminalEventBridge";
 import { usePageContextStore } from "@/features/browser/model/pageContextStore";
 import { useAuth } from "@/contexts/AuthContext";
@@ -20,7 +21,7 @@ import { useProjectPresence } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery";
 import { resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
-import { LiveSessionBar } from "@/features/collaboration/live/LiveSessionBar";
+import { useLiveSessionNotices } from "@/features/collaboration/live/useLiveSessionNotices";
 import { HeaderLiveSessionControl } from "@/features/collaboration/live/HeaderLiveSessionControl";
 import { CloseSessionDialog } from "@/features/collaboration/ui/CloseSessionDialog";
 import { useLiveSession } from "@/features/collaboration/live/useLiveSession";
@@ -91,14 +92,12 @@ function ProjectPresenceHeaderAddon({
   projectId,
   principalId,
   isWorkbenchView,
-  projectBasePath,
 }: {
   projectId: Id<"projects"> | null;
   principalId: Id<"devicePrincipals"> | null;
   isWorkbenchView: boolean;
-  projectBasePath: string | null;
 }) {
-  const navigate = useViewTransitionNavigate();
+  const navigateTo = useNavigateTo();
   const presenceActiveFile = usePageContextStore((state) =>
     isWorkbenchView ? (state.currentPage?.filePath ?? null) : null,
   );
@@ -114,13 +113,11 @@ function ProjectPresenceHeaderAddon({
   });
 
   const handlePresenceUserClick = useCallback(
-    (presenceUser: PresenceUser) => {
-      if (!projectBasePath) return;
-      navigate(
-        `${projectBasePath}/workbench?changes=1&principalId=${encodeURIComponent(presenceUser.principalId)}`,
-      );
+    (_presenceUser: PresenceUser) => {
+      if (!projectId) return;
+      navigateTo({ to: "workbench", projectId: String(projectId), changes: true });
     },
-    [navigate, projectBasePath],
+    [navigateTo, projectId],
   );
 
   if (presenceUsers.length === 0) {
@@ -148,7 +145,6 @@ export function ProjectLayout({
   // including no-op clicks to the current URL.
   const pathname = useLocation({ select: (location) => location.pathname });
   const currentHref = useLocation({ select: (location) => location.href });
-  const search = useLocation({ select: (location) => location.search });
   const stateProjectId = useLocation({
     select: (location) => (location.state as ProjectLayoutLocationState | null)?.projectId ?? null,
   });
@@ -163,6 +159,7 @@ export function ProjectLayout({
       (location.state as ProjectLayoutLocationState | null)?.preferredWorkspaceId ?? null,
   });
   const navigate = useViewTransitionNavigate();
+  const navigateTo = useNavigateTo();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
 
   // Get project data (with caching)
@@ -263,7 +260,7 @@ export function ProjectLayout({
       setHasVisitedWorkbench(true);
     }
   }, [isWorkbenchView]);
-  const isChangesView = pathname.endsWith("/changes");
+  const isProjectSettingsView = /^\/projects\/p\/[^/]+\/settings\/?$/.test(pathname);
   const isSettingsModeRoute =
     pathname.startsWith("/projects/settings/") ||
     pathname.startsWith("/projects/workspace/") ||
@@ -273,29 +270,25 @@ export function ProjectLayout({
     saveLastAppRoute(currentHref);
   }, [currentHref, isSettingsModeRoute]);
 
+  // Settings are pages: inside a project the project's settings, elsewhere the
+  // device's. Closing returns to where the settings belong.
   const openSettings = useCallback(() => {
-    if (isWorkbenchView) {
-      const nextParams = new URLSearchParams(window.location.search);
-      nextParams.set("settings", "1");
-      navigate(`?${nextParams.toString()}`);
+    if (isWorkbenchView && routeProjectId) {
+      navigateTo({ to: "projectSettings", projectId: routeProjectId });
     } else {
-      navigate("/projects/settings/account");
+      navigateTo({ to: "settings", section: "account" });
     }
-  }, [isWorkbenchView, navigate]);
+  }, [isWorkbenchView, navigateTo, routeProjectId]);
 
   const closeSettings = useCallback(() => {
-    if (isWorkbenchView) {
-      const nextParams = new URLSearchParams(window.location.search);
-      nextParams.delete("settings");
-      navigate(`?${nextParams.toString()}`);
+    if (isProjectSettingsView && routeProjectId) {
+      navigateTo({ to: "workbench", projectId: routeProjectId });
     } else if (isSettingsModeRoute) {
-      navigate("/projects");
+      navigateTo({ to: "projects" });
     }
-  }, [isSettingsModeRoute, isWorkbenchView, navigate]);
+  }, [isProjectSettingsView, isSettingsModeRoute, navigateTo, routeProjectId]);
 
-  const isSettingsOpen =
-    isSettingsModeRoute ||
-    (isWorkbenchView && new URLSearchParams(search).get("settings") === "1");
+  const isSettingsOpen = isSettingsModeRoute || isProjectSettingsView;
 
   const isStickySearchPage =
     pathname.endsWith("/store") ||
@@ -387,7 +380,7 @@ export function ProjectLayout({
   const isInboxView = pathname.endsWith("/inbox");
   // Check if we are on views that need full-bleed content (no padding)
   const shouldRemovePadding =
-    isWorkbenchView || isChangesView || isBuildsView || isStoreView || isSkillsRoute || isInboxView;
+    isWorkbenchView || isProjectSettingsView || isBuildsView || isStoreView || isSkillsRoute || isInboxView;
 
   // Runtime readiness alone is not enough: it only means a workspace is mounted,
   // which happens well before the device token is re-established on the
@@ -397,9 +390,16 @@ export function ProjectLayout({
     projectId: presenceGateOpen ? project?._id ?? null : null,
     principalId: presenceGateOpen ? principalId ?? null : null,
   });
-  const onlinePrincipalIds = useMemo(() => {
-    return new Set((presenceUsers ?? []).map((u) => String(u.principalId)));
-  }, [presenceUsers]);
+  // Keyed on who is online, not on the presence rows: every navigation sends a
+  // heartbeat with the new route, which returns fresh rows for the same people.
+  const onlinePrincipalKey = (presenceUsers ?? [])
+    .map((u) => String(u.principalId))
+    .sort()
+    .join(",");
+  const onlinePrincipalIds = useMemo(
+    () => new Set(onlinePrincipalKey ? onlinePrincipalKey.split(",") : []),
+    [onlinePrincipalKey],
+  );
 
   const presenceHeaderAddon = useMemo(
     () => (
@@ -407,7 +407,6 @@ export function ProjectLayout({
         projectId={presenceGateOpen ? project?._id ?? null : null}
         principalId={presenceGateOpen ? principalId ?? null : null}
         isWorkbenchView={isWorkbenchView}
-        projectBasePath={projectBasePath}
       />
     ),
     [
@@ -424,6 +423,8 @@ export function ProjectLayout({
   const collaborationProjectId = useMemo((): Id<"projects"> | null => {
     return project?._id ?? null;
   }, [project?._id]);
+
+  useLiveSessionNotices(isSettingsModeRoute ? null : liveSession);
 
   const liveSessionHeaderControl = useMemo(() => {
     if (!liveSession.session || !liveSession.sync) {
@@ -589,6 +590,63 @@ export function ProjectLayout({
     [project, refreshWorkspace, routeSlug, t, workspaceProjectId],
   );
 
+  // The layout re-renders on every navigation because it reads the pathname.
+  // The sidebar, the kept-alive workbench, the page outlet and the command
+  // palette each track the route they need themselves, so they are held as
+  // stable elements and re-render only when their own inputs change; otherwise
+  // every page switch re-rendered the whole shell, hidden workbench included.
+  const projectIdForSidebar = project?._id ?? null;
+  const sidebarElement = useMemo(
+    () => (
+      <AppSidebarShell>
+        {isSettingsModeRoute ? (
+          <SettingsSidebar user={user} />
+        ) : (
+          <ProjectSidebar user={user} projectId={projectIdForSidebar} />
+        )}
+      </AppSidebarShell>
+    ),
+    [isSettingsModeRoute, projectIdForSidebar, user],
+  );
+  const workbenchVisible =
+    isWorkbenchView && (!featureFlags.localWorkspaceCatalog || workspaceResolution?.status === "ready");
+  const workbenchElement = useMemo(
+    () =>
+      hasVisitedWorkbench ? (
+        <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
+          <LazyProjectWorkbenchSurface visible={workbenchVisible} />
+        </Suspense>
+      ) : null,
+    [hasVisitedWorkbench, isWorkbenchView, workbenchVisible],
+  );
+  const outletElement = useMemo(() => children || <RetainedPageOutlet />, [children]);
+  const commandPaletteProjectId = isWorkbenchView ? workspaceProjectId : null;
+  const commandPaletteLaneId = isWorkbenchView && activeLane?.id ? activeLane.id : "default";
+  const commandPaletteWorkspaceId = isWorkbenchView ? activeWorkspaceId : null;
+  const commandPaletteRootPath = isWorkbenchView ? activeProjectRootPath : null;
+  const commandPaletteElement = useMemo(
+    () => (
+      <WorkbenchCommandPaletteHost
+        projectId={commandPaletteProjectId}
+        laneId={commandPaletteLaneId}
+        workspaceId={commandPaletteWorkspaceId}
+        projectRootPath={commandPaletteRootPath}
+        openSettings={openSettings}
+        closeSettings={closeSettings}
+        isSettingsOpen={isSettingsOpen}
+      />
+    ),
+    [
+      closeSettings,
+      commandPaletteLaneId,
+      commandPaletteProjectId,
+      commandPaletteRootPath,
+      commandPaletteWorkspaceId,
+      isSettingsOpen,
+      openSettings,
+    ],
+  );
+
   const layoutContent = (
     <SidebarProvider>
       <div
@@ -598,16 +656,7 @@ export function ProjectLayout({
         {/* Main content */}
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden relative">
           {/* Persistent shell: route-mode switches swap only the content. */}
-          <AppSidebarShell>
-            {isSettingsModeRoute ? (
-              <SettingsSidebar user={user} />
-            ) : (
-              <ProjectSidebar
-                user={user}
-                projectId={project?._id ?? null}
-              />
-            )}
-          </AppSidebarShell>
+          {sidebarElement}
           <SidebarInset
             color="currentColor"
             // bg-background: keep window vibrancy/transparency confined to the
@@ -615,7 +664,6 @@ export function ProjectLayout({
             className="flex flex-col flex-1 min-w-0 overflow-hidden bg-background md:peer-data-[variant=inset]:m-0 md:peer-data-[variant=inset]:rounded-none md:peer-data-[variant=inset]:shadow-none md:peer-data-[variant=inset]:bg-transparent"
           >
             {headerElement}
-            {isSettingsModeRoute ? null : <LiveSessionBar live={liveSession} />}
             <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
               <div
                 className={cn(
@@ -628,16 +676,7 @@ export function ProjectLayout({
                     : cn("overflow-y-auto overflow-x-hidden", !isStickySearchPage && "scroll-fade-y"),
                 )}
               >
-                {hasVisitedWorkbench ? (
-                  <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
-                    <LazyProjectWorkbenchSurface
-                      visible={
-                        isWorkbenchView &&
-                        (!featureFlags.localWorkspaceCatalog || workspaceResolution?.status === "ready")
-                      }
-                    />
-                  </Suspense>
-                ) : null}
+                {workbenchElement}
                 {featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
                   <WorkspaceRepairScreen
                     result={workspaceResolution}
@@ -651,7 +690,7 @@ export function ProjectLayout({
                   />
                 ) : (
                   <>
-                    {children || <Outlet />}
+                    {outletElement}
                     {featureFlags.localWorkspaceCatalog && workspaceProjectId && !workspaceResolution ? (
                       <div
                         className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
@@ -669,15 +708,7 @@ export function ProjectLayout({
             </div>
           </SidebarInset>
         </div>
-        <WorkbenchCommandPaletteHost
-          projectId={isWorkbenchView ? workspaceProjectId : null}
-          laneId={isWorkbenchView && activeLane?.id ? activeLane.id : "default"}
-          workspaceId={isWorkbenchView ? activeWorkspaceId : null}
-          projectRootPath={isWorkbenchView ? activeProjectRootPath : null}
-          openSettings={openSettings}
-          closeSettings={closeSettings}
-          isSettingsOpen={isSettingsOpen}
-        />
+        {commandPaletteElement}
         {liveSession.closeReview && (
           <CloseSessionDialog
             key={liveSession.closeReview.reviewId}
@@ -768,7 +799,7 @@ export function ProjectLayout({
   // thread until the renderer OOMs. Redirect from an effect instead.
   useEffect(() => {
     if (projectDefinitelyMissing) {
-      navigate("/projects", { replace: true });
+      navigateTo({ to: "projects" }, { replace: true });
     }
   }, [navigate, projectDefinitelyMissing]);
 

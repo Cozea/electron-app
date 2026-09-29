@@ -14,6 +14,7 @@ import type { Id } from "../../../../../convex/_generated/dataModel"
 import { cleanConvexError } from "@/lib/convexError"
 import { useAuth } from "@/contexts/AuthContext"
 import { useMyOrganizations } from "@/hooks/useMyOrganizations"
+import { useIncomingInvites } from "@/hooks/useIncomingInvites"
 import {
   SettingsGroup,
   SettingsPageBody,
@@ -290,10 +291,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
       ? { organizationId: activeOrgId }
       : "skip",
   )
-  const incomingEnrollments = useQuery(
-    api.organizations.listIncomingEnrollments,
-    principalId ? {} : "skip",
-  )
+  const { organizationEnrollments: incomingEnrollments } = useIncomingInvites()
   const pendingEnrollments = useQuery(
     api.organizations.listEnrollments,
     principalId && activeOrgId && orgs?.find((org) => org.organizationId === activeOrgId)?.role === "admin"

@@ -5,8 +5,7 @@ import { useMutation, useQuery } from "convex/react"
 
 import { api } from "../../../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -26,6 +25,7 @@ import {
 
 export function ProjectJoinPage() {
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const { token } = useParams()
   const { principalId, isLoading } = useAuth()
   const joinByToken = useMutation(api.projectJoinLinks.joinByToken)
@@ -53,7 +53,7 @@ export function ProjectJoinPage() {
       // device authority. The renderer deliberately sends no user/device ID,
       // hostname, platform, or fingerprint as identity claims.
       const result = await joinByToken({ token })
-      navigate(buildProjectPath(String(result.projectId), "workbench"), { replace: true })
+      navigateTo({ to: "workbench", projectId: String(result.projectId) }, { replace: true })
     } catch (error) {
       setJoinError(cleanConvexError(error, "Unable to join this project."))
     } finally {
@@ -73,7 +73,7 @@ export function ProjectJoinPage() {
             <CardDescription>The project join token is missing.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" onClick={() => navigate("/projects", { replace: true })}>
+            <Button className="w-full" onClick={() => navigateTo({ to: "projects" }, { replace: true })}>
               Go to Projects
             </Button>
           </CardContent>
@@ -115,7 +115,7 @@ export function ProjectJoinPage() {
                 Link token: {shortToken}
               </div>
             ) : null}
-            <Button className="w-full" onClick={() => navigate("/projects", { replace: true })}>
+            <Button className="w-full" onClick={() => navigateTo({ to: "projects" }, { replace: true })}>
               Go to Projects
             </Button>
           </CardContent>
@@ -154,7 +154,7 @@ export function ProjectJoinPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" onClick={() => navigate("/projects", { replace: true })}>
+            <Button className="w-full" onClick={() => navigateTo({ to: "projects" }, { replace: true })}>
               Go to Projects
             </Button>
           </CardContent>
@@ -192,14 +192,14 @@ export function ProjectJoinPage() {
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => navigate("/projects", { replace: true })}
+              onClick={() => navigateTo({ to: "projects" }, { replace: true })}
             >
               Back to Projects
             </Button>
             {preview.alreadyMember ? (
               <Button
                 className="flex-1"
-                onClick={() => navigate(buildProjectPath(String(preview.project.id)), { replace: true })}
+                onClick={() => navigateTo({ to: "workbench", projectId: String(preview.project.id) }, { replace: true })}
               >
                 Open project
               </Button>

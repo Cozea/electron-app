@@ -1,6 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { cleanConvexError } from "@/lib/convexError"
-import { useViewTransitionNavigate } from '@/lib/navigation'
+import { useNavigateTo, useViewTransitionNavigate } from '@/lib/navigation'
+import { useSearchParams } from '@/lib/router'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
@@ -48,17 +49,13 @@ const LazyProjectDevAppLogoDialog = lazy(() =>
   })),
 )
 
-export interface ProjectSettingsPageProps {
-  presentation?: 'modal' | 'embedded'
-  onRequestClose?: (() => void) | null
-}
+/** The project's settings page, at /projects/p/:projectId/settings. */
 
-export function ProjectSettingsPage({
-  presentation = 'modal',
-  onRequestClose = null,
-}: ProjectSettingsPageProps = {}) {
-  const isEmbedded = presentation === 'embedded'
+export function ProjectSettingsPage() {
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
+  const [searchParams] = useSearchParams()
+  const requestedSection = searchParams.get('section') === 'danger' ? 'danger' : 'general'
   const { principalId } = useAuth()
   const { project } = useAccessibleProject()
   const orgDevApp = useQuery(
@@ -161,7 +158,7 @@ export function ProjectSettingsPage({
         projectId: project._id,
         principalId: principalId,
       })
-      navigate('/projects')
+      navigateTo({ to: "projects" })
     } catch (error) {
       const message = cleanConvexError(error, t('settings.error.archiveFailed'))
       await window.electronAPI.dialog.showMessageBox({
@@ -192,7 +189,7 @@ export function ProjectSettingsPage({
       )
 
       detachDeletedProjectFromUi(deletedProjectId)
-      navigate('/projects', { replace: true })
+      navigateTo({ to: "projects" }, { replace: true })
 
       await cleanupDeletedProjectLocally(deletedProjectId, {
         keepLocalFiles,
@@ -214,12 +211,19 @@ export function ProjectSettingsPage({
     }
   }, [principalId, navigate, project, removeProject])
 
-  function closeSettingsModal(): void {
-    if (isEmbedded) {
-      onRequestClose?.()
-      return
-    }
-    navigate('/projects')
+  // The sidebar's General / Danger entries select a section; bring it into view.
+  const generalSectionRef = useRef<HTMLElement | null>(null)
+  const dangerSectionRef = useRef<HTMLElement | null>(null)
+  const projectLoaded = Boolean(project)
+  useEffect(() => {
+    if (!projectLoaded) return
+    const target = requestedSection === 'danger' ? dangerSectionRef.current : generalSectionRef.current
+    target?.scrollIntoView({ block: 'start' })
+  }, [projectLoaded, requestedSection])
+
+  function closeSettings(): void {
+    if (project) navigateTo({ to: 'workbench', projectId: String(project._id) })
+    else navigateTo({ to: 'projects' })
   }
 
   if (project === undefined) {
@@ -242,18 +246,11 @@ export function ProjectSettingsPage({
   return (
     <>
       <div
-        role={isEmbedded ? undefined : 'dialog'}
-        aria-modal={isEmbedded ? undefined : true}
-        className={cn(
-          'relative flex h-full w-full flex-col overflow-hidden bg-background supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur',
-          !isEmbedded &&
-            'max-w-5xl mx-auto my-8 rounded-[24px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
-        )}
-        onClick={!isEmbedded ? (e) => e.stopPropagation() : undefined}
+        className="relative flex h-full w-full flex-col overflow-hidden bg-background"
       >
         <button
           type="button"
-          onClick={closeSettingsModal}
+          onClick={closeSettings}
           className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
           aria-label={t('settings.action.close')}
         >
@@ -286,7 +283,7 @@ export function ProjectSettingsPage({
                 </Button>
               </div>
               <div className="w-full space-y-6">
-                <section>
+                <section id="project-settings-general" ref={generalSectionRef}>
                   <SettingsSectionTitle>{t('settings.section.general')}</SettingsSectionTitle>
                   <SettingsGroup>
                     <SettingsRow isFirst>
@@ -426,7 +423,7 @@ export function ProjectSettingsPage({
 
                 <SessionRecoveryPanel key={String(project._id)} projectId={String(project._id)} />
 
-                <section>
+                <section id="project-settings-danger" ref={dangerSectionRef}>
                   <SettingsSectionTitle variant="danger">
                     <HugeiconsIcon icon={__AlertTriangleHugeIcon} className="h-3.5 w-3.5" />
                     {t('settings.section.dangerZone')}

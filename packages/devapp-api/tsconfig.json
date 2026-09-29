@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.electron.json",
+  "extends": "../../apps/desktop/tsconfig.electron.json",
   "compilerOptions": {
     "rootDir": "../..",
     "noEmit": true,

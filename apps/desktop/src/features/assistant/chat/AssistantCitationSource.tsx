@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import {
   resolveAssistantCitationRange,
   type AssistantCitationSourceAnchor,
-} from "@/lib/assistantTextSelection";
+} from "@/features/assistant/lib/assistantTextSelection";
 import { toastManager } from "@/components/ui/toast";
 
 const CITATION_PULSE_DURATION_MS = 650;

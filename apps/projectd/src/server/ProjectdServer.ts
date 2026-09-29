@@ -1235,6 +1235,12 @@ export class ProjectdServer {
       case "sessions.checkTarget":
         this.reply(state, req.id, () => this.requireSessionHost(req.params).checkTarget())
         break
+      case "sessions.recheckGitAccess":
+        this.reply(state, req.id, async () => {
+          await this.requireSessionHost(req.params).recheckGitAccess()
+          return null
+        })
+        break
       case "sessions.dismissTarget":
         this.reply(state, req.id, () => this.requireSessionHost(req.params).dismissTargetRecommendation())
         break

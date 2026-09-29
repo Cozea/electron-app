@@ -87,5 +87,5 @@ replaces the conversation or downgrades the user's CLI.
 Existing history can contain file attachment variants that Cozea cannot compose.
 These remain decodable and display their names; they are not rendered as broken
 images or opened as arbitrary local paths. Normal image and artifact views remain
-available. See `docs/upstream-provider-integration-plan.md` for qualification
+available. See `docs/archive/upstream-provider-integration-plan.md` for qualification
 coverage, rollback constraints and unverified live-platform cases.

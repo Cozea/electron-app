@@ -7,7 +7,7 @@ This is an architecture and migration brief. Cozea forked an **older** T3-shaped
 
 **Execution plan (phases, parallel tracks, swarm map, flags, exit criteria):** `docs/t3code-implementation-plan.md`.
 
-Related prior notes in-repo: `docs/t3code-updates.md`, `docs/agent-pipeline-restoration-audit.md`.
+Related prior notes in-repo: `docs/t3code-updates.md`, `docs/archive/agent-pipeline-restoration-audit.md`.
 
 ---
 
@@ -82,7 +82,7 @@ T3 uses a clear `Drivers/*Driver.ts` + managed snapshot lifecycle (pending → e
 
 Cozea still has useful ports (Cursor/OpenCode relatively close) but:
 
-- Shared `ServerProvider` / snapshot contracts are thinner (see `docs/agent-pipeline-restoration-audit.md`)
+- Shared `ServerProvider` / snapshot contracts are thinner (see `docs/archive/agent-pipeline-restoration-audit.md`)
 - Codex session runtime is dramatically thinner than upstream
 - Selective backports keep leaving contract holes
 
@@ -202,7 +202,7 @@ These are product differentiators, not legacy:
 - Vendor or submodule a pinned `pingdotgg/t3code` revision (start from current main SHA).
 - Inventory Cozea IPC handlers → classify: `keep-ipc` / `move-to-server-rpc` / `delete`.
 - Inventory Zustand stores → classify: `product` / `assistant-runtime` / `bridge`.
-- Add a living gap table (contracts methods, provider capabilities, reactors) — extend `docs/agent-pipeline-restoration-audit.md` rather than rewriting history.
+- Add a living gap table (contracts methods, provider capabilities, reactors) — extend `docs/archive/agent-pipeline-restoration-audit.md` rather than rewriting history.
 
 **Exit:** written map of what must move vs stay; CI still green on Cozea as-is.
 

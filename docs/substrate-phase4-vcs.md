@@ -124,6 +124,11 @@ LaunchAgent with a lazily reconnecting client.
 `checkpointOps.executeGit` the same env discipline and output ceiling as
 `GitProcess`. That closes the worst failure mode without touching ownership.
 
+**Outcome (2026-09-17).** Taken in part: the desktop's porcelain v1 parser is
+gone in favour of the projectd parser, now in `shared/git/porcelainStatus.ts`
+(it also fixed backwards renames). The ceiling and env discipline landed
+earlier. Patches stay in the desktop. See `docs/git-subsystem-fragmentation.md` §12.
+
 ## What not to do
 
 - Do not enable the flag by default in production yet.

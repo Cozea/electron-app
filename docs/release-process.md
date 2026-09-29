@@ -1,16 +1,12 @@
 # Desktop Release Process
 
-This app supports two desktop release paths:
-
-- GitHub Actions tag releases that publish to GitHub Releases in `Cozea/cozea-prod`.
-- CircleCI main-branch releases that build on hosted macOS/Windows runners and upload update assets to Cloudflare R2.
+Desktop releases are built by GitHub Actions from tags and published to GitHub Releases in `Cozea/cozea-prod`.
 
 ## Release Model
 
 - `main` should stay releasable.
 - Git tags are the source of truth for release candidates.
 - A pushed tag matching `v*` publishes installers and runtime assets to `Cozea/cozea-prod` via GitHub Actions.
-- A push to `main` can publish the latest desktop update feed via CircleCI when the CircleCI project and `cozea-release` context are configured.
 - Manual dispatch is for rebuilding or validating an existing tag before publishing it.
 - We only use three product lanes: `canary`, `beta`, and `stable`.
 
@@ -26,7 +22,7 @@ For updater compatibility, Electron Builder's official channel ladder is `latest
 - `beta` -> updater channel `beta`
 - `canary` -> updater channel `alpha`
 
-`beta` and `canary` releases are published as GitHub prereleases in the GitHub Actions path. The CircleCI path currently publishes the `latest` updater channel to Cloudflare R2.
+`beta` and `canary` releases are published as GitHub prereleases.
 
 ## Workflow Shape
 
@@ -47,31 +43,11 @@ Publish-secret validation, certificate import, and notarization consume this ste
 output. The job starts with `COZEA_MAC_SIGNING=0`; resolution also exports the final
 value for build commands.
 
-### CircleCI + Cloudflare R2
+### Generic update host
 
-The CircleCI workflow lives at `.circleci/config.yml` and runs in four stages:
-
-1. `verify`
-   Installs dependencies, prepares runtime metadata, typechecks, and lints.
-2. `build_macos_universal`
-   Builds a signed universal macOS DMG/ZIP, notarizes/staples the DMG, verifies the app signature, and persists artifacts.
-3. `build_windows_x64`
-   Builds the Windows x64 NSIS installer and persists artifacts.
-4. `upload_cloudflare_r2`
-   Uploads generated updater metadata, installers, and blockmaps to Cloudflare R2.
-
-CircleCI builds use Electron Builder's `generic` provider by setting:
-
-- `COZEA_UPDATE_PROVIDER=generic`
-- `COZEA_UPDATE_BASE_URL=https://updates.cozea.app` or the active update host
-- `COZEA_UPDATER_CHANNEL=latest`
-
-The app then checks:
-
-```text
-https://updates.cozea.app/latest/latest-mac.yml
-https://updates.cozea.app/latest/latest.yml
-```
+`apps/desktop/electron-builder.config.cjs` can also target a self-hosted update feed
+by setting `COZEA_UPDATE_PROVIDER=generic` and `COZEA_UPDATE_BASE_URL`. No pipeline
+uses it today; releases default to the GitHub provider.
 
 ## Supported Triggers
 
@@ -105,44 +81,14 @@ Run `Desktop Release` from Actions with:
 
 Use this only when you need to republish the exact same tag contents.
 
-### Main release through CircleCI
-
-Push to `main` after updating `package.json` to a new version. CircleCI uploads artifacts to the `latest` Cloudflare R2 channel.
-
-Auto-update clients only install versions newer than their installed version, so main releases still require an intentional version bump before publishing.
-
 ### Local package smoke test
 
-Run `bun run dist:local` to assemble the production application and installers without publishing. This path deliberately disables macOS signing and notarization so contributors without Cozea's release certificate can validate packaged resources locally. It is not a releasable artifact; every GitHub Actions, CircleCI, and `bun run release` build still requires the normal signing identity.
-
-## CircleCI Configuration
-
-Create a CircleCI context named `cozea-release` with these environment variables:
-
-- `VITE_CONVEX_URL`
-- `VITE_AI_API_URL`
-- `COZEA_UPDATE_BASE_URL`
-- `COZEA_UPDATE_BUCKET`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `CLOUDFLARE_API_TOKEN`
-- `CSC_LINK`
-- `CSC_KEY_PASSWORD`
-- `APPLE_ID`
-- `APPLE_APP_SPECIFIC_PASSWORD`
-- `APPLE_TEAM_ID`
-- `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH` when runtime metadata signing is enabled
-- `COZEA_RUNTIME_SIGNING_PUBLIC_KEY` when runtime metadata verification material needs to be regenerated
-- Sentry (optional): `VITE_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — monitoring stays inert and source-map upload is skipped when these are unset
-
-`CSC_LINK` may be a URL, `file://` path, local path on the runner, or base64/base64-prefixed P12 payload. For CircleCI, prefer a masked base64 secret.
-
-The Cloudflare API token must be able to upload objects into the configured R2 bucket.
+Run `bun run dist:local` to assemble the production application and installers without publishing. This path deliberately disables macOS signing and notarization so contributors without Cozea's release certificate can validate packaged resources locally. It is not a releasable artifact; every GitHub Actions and `bun run release` build still requires the normal signing identity.
 
 ## Operating Rules
 
 - Do not publish GitHub Release artifacts from branches.
 - Do not rebuild a release from code that is not already tagged.
-- Do not publish a CircleCI main release without a version bump.
 - Do not introduce channels other than `canary`, `beta`, and `stable` without updating the release model intentionally.
 - Keep release secrets limited to signing and publishing steps.
 - Delete merged stale branches regularly so the release surface stays easy to reason about.

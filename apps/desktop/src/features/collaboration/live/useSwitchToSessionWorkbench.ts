@@ -4,10 +4,9 @@ import { useMutation } from "convex/react"
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 
 export interface SwitchToSessionTarget {
   sessionId: Id<"collaborationSessions">
@@ -32,6 +31,7 @@ export function useSwitchToSessionWorkbench(input: {
 } {
   const { projectId, projectName, sourceWorkspaceId } = input
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const route = useOptionalProjectRouteContext()
   const joinSession = useMutation(api.collaborationSessions.join)
   const [switching, setSwitching] = useState(false)
@@ -59,7 +59,7 @@ export function useSwitchToSessionWorkbench(input: {
         })
         if (!ensured.success) throw new Error(ensured.error)
         invalidateProjectWorkspaceResolution(projectId)
-        navigate(buildProjectPath(projectId, "workbench"), {
+        navigateTo({ to: "workbench", projectId: projectId }, {
           state: buildProjectRouteNavigationState({
             projectId,
             projectName: projectName ?? null,

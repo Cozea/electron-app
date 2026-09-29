@@ -47,7 +47,7 @@ export default defineConfig({
     // files for optional local runs, but do not fail verify on collect errors.
     //
     // `workbenchRuntimeTerminalHost` pulls in `@cozea/pty`, which has no Linux
-    // native binary in this repo — CircleCI's Linux executor cannot collect it.
+    // native binary in this repo — Linux CI runners cannot collect it.
     exclude: [
       "**/node_modules/**",
       "**/dist/**",

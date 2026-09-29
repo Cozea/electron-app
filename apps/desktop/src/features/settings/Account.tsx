@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
-import { Avatar } from "@/components/ui/avatar";
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar";
 import { AvatarUploader } from "@/components/ui/avatar-uploader";
 import {
   SettingsDangerGroup,
@@ -24,15 +24,7 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Switch } from "../../components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../../components/ui/dialog";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { useTranslation } from "@/lib/i18n";
 import { clearDeviceSession } from "@/lib/deviceSession";
 import { cn } from "@/lib/utils";
@@ -54,16 +46,9 @@ interface AccountProps {
   route?: string;
 }
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return "D"
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
-}
-
 export function Account({ surface = "page", route: _route }: AccountProps) {
-  const { user, principalId, refreshToken } = useAuth();
+  const { user, principalId, preferences, refreshToken } = useAuth();
   const { t } = useTranslation();
-  const profile = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip");
 
   const updatePreferencesMutation = useMutation(api.devicePrincipals.updatePreferences);
   const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation);
@@ -71,8 +56,8 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const removeAvatarMutation = useMutation(api.devicePrincipals.removeAvatar);
   const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
-  const initialDisplayName = profile?.displayName ?? user?.displayName ?? "";
-  const initialAvatarUrl = profile?.avatarUrl ?? user?.avatarUrl ?? null;
+  const initialDisplayName = user?.displayName ?? "";
+  const initialAvatarUrl = user?.avatarUrl ?? null;
 
   const [userPrefs, setUserPrefs] = useState<UserPrefs>({ pushNotifications: true });
   const [deviceName, setDeviceName] = useState(() => initialDisplayName);
@@ -85,23 +70,43 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const [presentationError, setPresentationError] = useState<string | null>(null);
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
 
   useEffect(() => {
-    if (!profile) return;
-    setUserPrefs({ pushNotifications: profile.preferences?.pushNotifications ?? true });
-    setDeviceName((current) => (current && current !== user?.displayName ? current : profile.displayName || current || ""));
-    setSavedDeviceName(profile.displayName || "");
-    setAvatarUrl((current) => (current && current !== user?.avatarUrl ? current : profile.avatarUrl || current || null));
+    if (preferences?.pushNotifications !== undefined) {
+      setUserPrefs({ pushNotifications: preferences.pushNotifications });
+    }
+  }, [preferences?.pushNotifications]);
+
+  useEffect(() => {
+    if (!user) return;
+    setDeviceName((current) => (current && current !== user.displayName ? current : user.displayName || ""));
+    setSavedDeviceName(user.displayName || "");
+    setAvatarUrl((current) => (current && current !== user.avatarUrl ? current : user.avatarUrl || null));
     setPendingAvatarDataUrl(null);
     setRemoveAvatar(false);
-  }, [profile, user?.avatarUrl, user?.displayName]);
+  }, [user?.avatarUrl, user?.displayName]);
 
-  const identityKey = profile?.identityKey ?? user?.identityKey ?? "";
+  const identityKey = user?.identityKey ?? "";
   const normalizedDeviceName = deviceName.trim()
   const presentationDirty =
     normalizedDeviceName !== savedDeviceName ||
     pendingAvatarDataUrl !== null ||
     removeAvatar
+
+  const handleResetDevice = async () => {
+    if (resetConfirmation !== "RESET" || resetting) return;
+    setResetting(true);
+    try {
+      await revokeCurrentDevice({ reason: "local_identity_reset" });
+      const result = await window.electronAPI.collab.deleteDeviceIdentity();
+      if (!result.success) throw new Error(result.error || "Could not delete the local device identity");
+      await clearDeviceSession();
+      window.location.reload();
+    } finally {
+      setResetting(false);
+    }
+  };
 
   const handlePrefChange = async (key: keyof UserPrefs, value: boolean) => {
     if (!principalId) return;
@@ -156,7 +161,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
     }
   }
 
-  const isProfileLoading = profile === undefined;
+  const isProfileLoading = !user;
 
   return (
     <SettingsPageBody surface={surface}>
@@ -178,20 +183,19 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                 <AvatarUploader onUpload={chooseAvatar}>
                   <button
                     type="button"
-                    className="relative size-12 rounded-2xl overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all active:scale-95 cursor-pointer shadow-xs"
+                    className="relative size-12 rounded-full overflow-hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-all active:scale-95 cursor-pointer shadow-xs"
                     disabled={isProfileLoading || savingPresentation || processingAvatar}
                     aria-label={avatarUrl ? "Change avatar" : "Add avatar"}
                     title={avatarUrl ? "Change photo" : "Add photo"}
                   >
-                    <Avatar className="size-full rounded-2xl">
-                      {avatarUrl ? (
-                        <Avatar.Image src={avatarUrl} alt={normalizedDeviceName || "This device"} />
-                      ) : null}
-                      <Avatar.Fallback className="text-base font-bold">
-                        {initials(normalizedDeviceName || "Device")}
-                      </Avatar.Fallback>
-                    </Avatar>
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white rounded-2xl">
+                    <DeviceAvatar
+                      displayName={normalizedDeviceName || "Device"}
+                      avatarUrl={avatarUrl}
+                      useColor={false}
+                      className="size-full"
+                      fallbackClassName="text-base font-bold"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white rounded-full">
                       <HugeiconsIcon icon={Camera01Icon} className="size-4" />
                     </div>
                   </button>
@@ -306,50 +310,37 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
               description={t("settings.account.resetDeviceDesc")}
             />
             <SettingsRowControl>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="destructive" size="sm" className="h-7 gap-1.5 text-[11px]">
-                    <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
-                    {t("common.delete")}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{t("settings.account.resetConfirmTitle")}</DialogTitle>
-                    <DialogDescription>{t("settings.account.resetConfirmDesc")}</DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-2">
-                    <Label>{t("settings.account.resetConfirmLabel")}</Label>
-                    <Input
-                      placeholder={t("settings.account.resetConfirmPlaceholder")}
-                      value={resetConfirmation}
-                      onChange={(event) => setResetConfirmation(event.target.value)}
-                      disabled={resetting}
-                    />
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline">{t("common.cancel")}</Button>
-                    <Button
-                      variant="destructive"
-                      disabled={resetConfirmation !== "RESET" || resetting}
-                      onClick={() => void (async () => {
-                        setResetting(true);
-                        try {
-                          await revokeCurrentDevice({ reason: "local_identity_reset" });
-                          const result = await window.electronAPI.collab.deleteDeviceIdentity();
-                          if (!result.success) throw new Error(result.error || "Could not delete the local device identity");
-                          await clearDeviceSession();
-                          window.location.reload();
-                        } finally {
-                          setResetting(false);
-                        }
-                      })()}
-                    >
-                      {t("settings.account.resetDeviceIdentity")}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="h-7 gap-1.5 text-[11px]"
+                onClick={() => setResetDialogOpen(true)}
+              >
+                <HugeiconsIcon icon={__Trash2HugeIcon} className="h-3.5 w-3.5" />
+                {t("common.delete")}
+              </Button>
+              <ConfirmModal
+                kind="destructive-confirm"
+                open={resetDialogOpen}
+                onOpenChange={setResetDialogOpen}
+                title={t("settings.account.resetConfirmTitle")}
+                message={t("settings.account.resetConfirmDesc")}
+                confirmLabel={t("settings.account.resetDeviceIdentity")}
+                cancelLabel={t("common.cancel")}
+                onConfirm={() => void handleResetDevice()}
+                isConfirming={resetting}
+                confirmDisabled={resetConfirmation !== "RESET"}
+              >
+                <div className="space-y-2">
+                  <Label>{t("settings.account.resetConfirmLabel")}</Label>
+                  <Input
+                    placeholder={t("settings.account.resetConfirmPlaceholder")}
+                    value={resetConfirmation}
+                    onChange={(event) => setResetConfirmation(event.target.value)}
+                    disabled={resetting}
+                  />
+                </div>
+              </ConfirmModal>
             </SettingsRowControl>
           </SettingsRow>
         </SettingsDangerGroup>

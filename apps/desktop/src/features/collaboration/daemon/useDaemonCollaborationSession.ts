@@ -12,7 +12,7 @@ import type { ProjectdSessionStatus, ProjectdSessionTicket } from "@cozea/projec
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
-import { generateRoomKeyBase64 } from "@/lib/collab/cipherEnvelope"
+import { generateRoomKeyBase64 } from "@/features/collaboration/daemon/cipherEnvelope"
 import { getDeviceGatewayBaseUrl, getDeviceSession } from "@/lib/deviceSession"
 import {
   SessionKeyNotSharedError,

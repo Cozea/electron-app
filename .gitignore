@@ -115,6 +115,10 @@ graphify-out/
 .graphifyignore
 .impeccable/
 **/.impeccable/
+# Installed agent skills. skills-lock.json records what to install; the copies are
+# third-party content (transitions.dev carries no license), and this repo is public.
+.agents/
+.claude/skills/
 
 # Presentation decks. Investor material is drafted in .agent/ but exports land
 # at the repo root, outside that rule — and this repository is public.

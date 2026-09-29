@@ -1,5 +1,5 @@
 /**
- * What the session bar and the Start dialog say about a live session.
+ * What the header, its toasts and the Start dialog say about a live session.
  *
  * Master Specification: Section 5.3, 6.1, 6.7, 23.2
  * Phase: P14, P23
@@ -42,6 +42,8 @@ export interface LiveSessionSyncView {
   tone: LiveSessionTone
   label: string
   detail: string | null
+  /** The session's own Workbench isn't open here, so opening it is what starts syncing. */
+  fix?: "open_workbench"
 }
 
 /**
@@ -108,6 +110,8 @@ export function describeLiveSessionSync(input: {
   phase: DaemonSessionPhase
   status: ProjectdSessionStatus | null
   error: string | null
+  /** False when the project is open on another folder whose branch has this session. */
+  inSessionWorkbench?: boolean
 }): LiveSessionSyncView {
   switch (input.lifecycle) {
     case "PAUSING":
@@ -132,6 +136,17 @@ export function describeLiveSessionSync(input: {
       return { tone: "idle", label: "Not syncing", detail: "You left this session. Rejoin to sync this folder with it." }
     case "none":
       return { tone: "idle", label: "Not joined", detail: "Join to sync this folder with the session." }
+  }
+
+  // Only the session's own Workbench syncs. A member whose setup failed, or who opened
+  // the project's usual folder on the same branch, would otherwise wait here for good.
+  if (input.inSessionWorkbench === false) {
+    return {
+      tone: "attention",
+      label: "Not syncing this folder",
+      detail: "This folder isn't the session's Workbench. Open the Workbench to sync with the session.",
+      fix: "open_workbench",
+    }
   }
 
   switch (input.phase) {
@@ -167,8 +182,10 @@ export interface LiveSessionAutoGitView {
   title: string | null
   /** Whether Save now can reach a Mac that pushes. */
   canSave: boolean
-  /** The fix the bar offers for why saving waits, when there is one. */
+  /** The fix offered for why saving waits, when there is one. */
   fix: "ignore_env" | null
+  /** Saving waits for the project's repository to be linked through the GitHub App. */
+  needsGitHubSetup?: boolean
   lastSavedAt?: number | null
   isSaving?: boolean
 }
@@ -217,6 +234,7 @@ export function describeAutoGit(
     title: title || null,
     canSave: status.role !== "viewer" && autoGit.leaderPrincipalId !== null,
     fix: null,
+    needsGitHubSetup: autoGit.detailCode === "NOT_AUTHORIZED",
     lastSavedAt: checkpoint?.publishedAt ?? null,
     isSaving: Boolean(autoGit.saving),
   }
@@ -231,7 +249,13 @@ export function describeAutoGit(
         fix: autoGit.detailCode === "ENV_NOT_IGNORED" && status.role !== "viewer" ? "ignore_env" : null,
       }
     case "ineligible":
-      return { ...view, tone: "attention", label: "Not saving to Git", detail: autoGit.detail, canSave: false }
+      return {
+        ...view,
+        tone: "attention",
+        label: autoGit.detailCode === "NOT_AUTHORIZED" ? "Saving to Git isn't set up" : "Not saving to Git",
+        detail: autoGit.detail,
+        canSave: false,
+      }
     case "no_leader":
       return { ...view, tone: "working", label: "Waiting to save to Git", detail: null, canSave: false }
     case "leader":
@@ -308,4 +332,128 @@ export function planLiveSessionStart(input: {
     return { status: "blocked", reason: `${branch} already has a live session. Join it from the session bar.` }
   }
   return { status: "ready", branch }
+}
+
+export type LiveSessionNoticeRun = "switch" | "open_workbench" | "ignore_env" | "check_target" | "github_link" | "github_copy_link"
+
+/** What the GitHub App knows about the project's repository (githubLinks.projectRepositoryStatus). */
+export interface LiveSessionRepositoryStatus {
+  repository: { owner: string; name: string } | null
+  linked: boolean
+  installation: { accountLogin: string } | null
+  account: { login: string } | null
+  canLink: boolean
+}
+
+/** How to get a repository set up for saving, from what's known about it, in a line the toast can hold. */
+function gitHubSetup(
+  status: LiveSessionRepositoryStatus | null | undefined,
+): { action: LiveSessionNotice["action"]; description: string } | null {
+  const repository = status?.repository
+  if (!status || !repository) return null
+  const { owner, name } = repository
+  if (!status.canLink) return { action: null, description: `The Cozea GitHub App isn't set up for ${owner}/${name}.` }
+  if (status.linked || status.installation) {
+    return { action: { label: "Link repository", run: "github_link" }, description: `Link ${owner}/${name} so this session can save to it.` }
+  }
+  // Someone else's account: only they can install, so hand them the link.
+  if (status.account && status.account.login.toLowerCase() !== owner.toLowerCase()) {
+    return {
+      action: { label: "Copy install link", run: "github_copy_link" },
+      description: `Only ${owner} can install the Cozea GitHub App. Send them the link.`,
+    }
+  }
+  return { action: { label: "Install on GitHub", run: "github_link" }, description: `Install the Cozea GitHub App on ${owner}.` }
+}
+
+/** A toast about the live session: something the header's pill is too small to say. */
+export interface LiveSessionNotice {
+  /** Stable while the situation lasts; a new key is a new toast. */
+  key: string
+  type: "info" | "warning"
+  title: string
+  description: string | null
+  action: { label: string; run: LiveSessionNoticeRun } | null
+  /** A recommended rebase the user closes is dismissed until the target moves again. */
+  dismissesTarget: boolean
+}
+
+export function describeLiveSessionNotices(live: {
+  session: { publicSessionId: string } | null
+  otherSessions: readonly { publicSessionId: string; branchName: string }[]
+  membership: SessionMembership
+  canEdit: boolean
+  sync: LiveSessionSyncView | null
+  autoGit: LiveSessionAutoGitView | null
+  target: LiveSessionTargetView | null
+  repository?: LiveSessionRepositoryStatus | null
+}): LiveSessionNotice[] {
+  if (!live.session || !live.sync) {
+    const other = live.otherSessions[0]
+    return other
+      ? [{
+          key: `other:${other.publicSessionId}`,
+          type: "info",
+          title: `You're in the live session on ${other.branchName}`,
+          description: "Switch to that branch to sync with it.",
+          action: { label: "Switch branch", run: "switch" },
+          dismissesTarget: false,
+        }]
+      : []
+  }
+
+  const notices: LiveSessionNotice[] = []
+  const id = live.session.publicSessionId
+  // Someone outside the session has the header's Join button; that says it already.
+  // Passing states (reconnecting, uploads on their way) would flash a toast each time.
+  if (live.sync.detail && live.sync.tone !== "working" && live.membership !== "none" && live.membership !== "left") {
+    notices.push({
+      key: `sync:${id}:${live.sync.label}:${live.sync.detail}`,
+      type: live.sync.tone === "attention" ? "warning" : "info",
+      title: live.sync.label,
+      description: live.sync.detail,
+      action: live.sync.fix === "open_workbench" ? { label: "Open Workbench", run: "open_workbench" } : null,
+      dismissesTarget: false,
+    })
+  }
+  if (live.membership !== "active") return notices
+
+  const autoGit = live.autoGit
+  if (autoGit?.tone === "attention" && autoGit.detail) {
+    const setup = autoGit.needsGitHubSetup ? gitHubSetup(live.repository) : null
+    const action: LiveSessionNotice["action"] =
+      autoGit.fix === "ignore_env" && live.canEdit
+        ? { label: "Add to .gitignore", run: "ignore_env" }
+        : (setup?.action ?? null)
+    notices.push({
+      // A new way forward (the app got installed, say) is a new toast.
+      key: `autogit:${id}:${autoGit.label}:${autoGit.detail}:${action?.run ?? ""}`,
+      type: "warning",
+      title: autoGit.label,
+      description: setup?.description ?? autoGit.detail,
+      action,
+      dismissesTarget: false,
+    })
+  }
+  const target = live.target
+  if (target?.tone === "attention") {
+    notices.push({
+      key: `target:${id}:${target.label}:${target.detail ?? ""}`,
+      type: "warning",
+      title: target.label,
+      description: target.detail,
+      action: { label: "Check again", run: "check_target" },
+      dismissesTarget: false,
+    })
+  } else if (target?.recommended) {
+    notices.push({
+      key: `target:${id}:${target.label}:${target.detail ?? ""}`,
+      type: "info",
+      title: target.label,
+      description: target.detail,
+      action: null,
+      dismissesTarget: true,
+    })
+  }
+  return notices
 }

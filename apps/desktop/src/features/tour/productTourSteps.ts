@@ -14,6 +14,7 @@
  */
 
 import type { TranslationKey } from "@/lib/i18n"
+import type { Destination } from "@/lib/destinations"
 
 /**
  * How a step is completed.
@@ -46,7 +47,7 @@ export interface ProductTourStep {
    * tour points the way instead: to reach settings the user opens the menu and
    * picks the section, and to come back out they press Back.
    */
-  route?: string
+  route?: Destination
   titleKey: TranslationKey
   descriptionKey: TranslationKey
   side?: "top" | "right" | "bottom" | "left"
@@ -93,7 +94,7 @@ export const PRODUCT_TOUR_SECTIONS: readonly ProductTourSection[] = [
       {
         id: "create-project",
         element: '[data-tour="new-project"]',
-        route: "/projects",
+        route: { to: "projects" },
         titleKey: "tour.project.title",
         descriptionKey: "tour.project.description",
         side: "right",

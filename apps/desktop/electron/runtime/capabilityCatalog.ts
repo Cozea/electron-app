@@ -3,11 +3,11 @@ import fs from 'node:fs'
 import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
+import { requestGitHubJson } from '../../../../shared/github/apiFetch'
 import { loadBundledCapabilityCatalog, loadBundledRuntimePublicKey } from './runtimeManifest'
 import type { CapabilityCatalog } from './runtimeTypes'
 import { verifyCatalogAsset } from './catalogVerify'
+import { downloadReleaseAsset } from './releaseAssetDownload'
 
 const DEFAULT_CAPABILITY_CATALOG: CapabilityCatalog = {
   version: '0',
@@ -97,16 +97,8 @@ function getCachedCatalogSignaturePath(): string {
   return path.join(getRuntimeMetaDir(), 'capability-catalog.sig')
 }
 
-function githubHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github+json,application/octet-stream',
-    'User-Agent': 'cozea-capability-catalog',
-  }
-  const token = process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim()
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-  return headers
+function githubToken(): string | undefined {
+  return process.env.GITHUB_TOKEN?.trim() || process.env.GH_TOKEN?.trim() || undefined
 }
 
 function getRuntimeReleaseRepository(): string {
@@ -181,9 +173,20 @@ async function fetchReleaseAssets(): Promise<Map<string, string>> {
     : [`https://api.github.com/repos/${owner}/${repo}/releases/latest`]
 
   for (const endpoint of endpoints) {
-    const response = await fetch(endpoint, { headers: githubHeaders() })
-    if (!response.ok) continue
-    const payload = await response.json() as { assets?: Array<{ name?: string; browser_download_url?: string }> }
+    // Went through a bare `fetch` that followed redirects, had no deadline and
+    // parsed an unbounded body in the main process -- while sending a bearer
+    // token whenever GITHUB_TOKEN or GH_TOKEN is set.
+    let payload: { assets?: Array<{ name?: string; browser_download_url?: string }> }
+    try {
+      payload = (await requestGitHubJson(endpoint, {
+        token: githubToken(),
+        userAgent: 'cozea-capability-catalog',
+        timeoutMs: 15_000,
+      })) as { assets?: Array<{ name?: string; browser_download_url?: string }> }
+    } catch {
+      // A tagged release may simply not exist; the next endpoint is the fallback.
+      continue
+    }
     const map = new Map<string, string>()
     for (const asset of payload.assets ?? []) {
       const name = asset.name?.trim()
@@ -197,14 +200,10 @@ async function fetchReleaseAssets(): Promise<Map<string, string>> {
 }
 
 async function downloadToFile(url: string, destinationPath: string): Promise<void> {
-  const response = await fetch(url, { headers: githubHeaders() })
-  if (!response.ok || !response.body) {
-    throw new Error(`Catalog download failed (${response.status}) for ${url}`)
-  }
-  await mkdir(path.dirname(destinationPath), { recursive: true })
-  // response.body is a DOM ReadableStream (lib.dom); Readable.fromWeb wants node's web stream type.
-  const body = Readable.fromWeb(response.body as unknown as import('node:stream/web').ReadableStream)
-  await pipeline(body, fs.createWriteStream(destinationPath))
+  await downloadReleaseAsset(url, destinationPath, {
+    token: githubToken(),
+    userAgent: 'cozea-capability-catalog',
+  })
 }
 
 function firstAsset(assetMap: Map<string, string>, names: string[]): string | null {

@@ -109,7 +109,7 @@ These are the rebase backbone. Parallel product tracks (§5) may ship **before**
 2. Pin upstream T3 SHA (submodule or `vendor/t3code` + script); document in this file.
 3. Classify every `ipcMain.handle` → `keep-ipc` | `move-to-server-rpc` | `delete`.
 4. Classify Zustand stores → `product` | `assistant-runtime` | `bridge`.
-5. Living gap table: contracts methods, provider capabilities, reactors (extend `docs/agent-pipeline-restoration-audit.md`).
+5. Living gap table: contracts methods, provider capabilities, reactors (extend `docs/archive/agent-pipeline-restoration-audit.md`).
 6. Freeze ad-hoc Claude/Codex cherry-picks unless production-blocking.
 
 **Exit:** inventories merged; CI green; pin recorded.
@@ -127,7 +127,7 @@ These are the rebase backbone. Parallel product tracks (§5) may ship **before**
 
 ### Phase 2 — Contracts + flagged chat
 
-> Status: in progress on `cursor/substrate-phase2-rpc-chat-a002`. See `docs/substrate-phase2-rpc-chat.md`.
+> Status: in progress on `cursor/substrate-phase2-rpc-chat-a002`. See `docs/archive/substrate-phase2-rpc-chat.md`.
 
 **Do:**
 
@@ -322,8 +322,8 @@ These are high-impact ports that **do not require** full rebase first. They must
 **Deliverables (markdown under `docs/`):**
 
 1. `docs/substrate-ipc-inventory.md` — every handler classified.
-2. `docs/substrate-store-inventory.md` — Zustand classification.
-3. Gap table update in `docs/agent-pipeline-restoration-audit.md` (or new `docs/substrate-gap-table.md`).
+2. `docs/archive/substrate-store-inventory.md` — Zustand classification.
+3. Gap table update in `docs/archive/agent-pipeline-restoration-audit.md` (or new `docs/archive/substrate-gap-table.md`).
 4. Record pinned T3 SHA in this plan’s header once chosen.
 
 ---

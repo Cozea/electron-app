@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, type ComponentProps } from "react"
+import { memo, useCallback, useMemo, useRef, type ComponentProps } from "react"
 import {
   DockviewReact,
   themeAbyssSpaced,
@@ -39,6 +39,15 @@ const WORKBENCH_TAB_GROUP_COLORS = [
   { id: "runtime", value: "oklch(0.70 0.16 145)", label: "Runtime" },
   { id: "utility", value: "oklch(0.72 0.14 70)", label: "Utility" },
 ] as const
+
+// DockviewReact re-applies its options, and re-lays out the whole dock, when
+// any option prop changes identity. Every option below must be stable across
+// renders, or each canvas render (including hiding the workbench for a page)
+// pays a full layout pass.
+const WORKBENCH_TAB_GROUP_COLOR_OPTIONS = [...WORKBENCH_TAB_GROUP_COLORS]
+const getWorkbenchTabGroupChipContextMenuItems: NonNullable<
+  ComponentProps<typeof DockviewReact>["getTabGroupChipContextMenuItems"]
+> = () => ["rename", "colorPicker"]
 
 function buildCozeaDockviewTheme(
   baseTheme: DockviewTheme,
@@ -107,6 +116,10 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
   onReady,
 }: WorkbenchDockviewCanvasProps) {
   const runtime = useWorkbenchDockRuntime()
+  // Read through a ref so the menu callback keeps one identity while the
+  // runtime value changes (it does on every hide/show of the workbench).
+  const runtimeRef = useRef(runtime)
+  runtimeRef.current = runtime
   const dockviewTheme = useMemo(
     () =>
       buildCozeaDockviewTheme(
@@ -120,6 +133,7 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
     (params: GetTabContextMenuItemsParams) => {
       params.event.preventDefault()
       params.event.stopPropagation()
+      const runtime = runtimeRef.current
 
       const panel = params.panel
       const preset = resolveTabGroupPreset(panel.api.component)
@@ -341,7 +355,7 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
 
       return []
     },
-    [runtime],
+    [],
   )
 
   return (
@@ -355,8 +369,8 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
         rightHeaderActionsComponent={WorkbenchDockHeaderActions}
         watermarkComponent={WorkbenchDockWatermark}
         getTabContextMenuItems={getTabContextMenuItems}
-        getTabGroupChipContextMenuItems={() => ["rename", "colorPicker"]}
-        tabGroupColors={[...WORKBENCH_TAB_GROUP_COLORS]}
+        getTabGroupChipContextMenuItems={getWorkbenchTabGroupChipContextMenuItems}
+        tabGroupColors={WORKBENCH_TAB_GROUP_COLOR_OPTIONS}
         tabGroupAccent="palette"
         theme={dockviewTheme}
         floatingGroupBounds="boundedWithinViewport"

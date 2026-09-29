@@ -24,12 +24,15 @@ const LazyWorkbenchDockviewCanvas = lazy(() =>
 interface WorkbenchDockviewSessionProps {
   session: WorkbenchKeepAliveSession
   isActive: boolean
+  /** Last-visible workbench, still foreground while an ordinary page covers it. */
+  isForeground?: boolean
   getWorkbenchSession: () => WorkbenchSessionSnapshot | null
 }
 
 export function WorkbenchDockviewSession({
   session,
   isActive,
+  isForeground = isActive,
   getWorkbenchSession,
 }: WorkbenchDockviewSessionProps) {
   const [isLayoutPersistenceReady, setIsLayoutPersistenceReady] = useState(false)
@@ -124,6 +127,7 @@ export function WorkbenchDockviewSession({
       storedDevPort={session.storedDevPort}
       workbenchSessionKey={session.workbenchSessionKey}
       surfaceVisible={isActive}
+      surfaceForeground={isForeground}
       getWorkbenchSession={getWorkbenchSession}
       getSelectionPreviewTile={getSelectionPreviewTile}
       onDuplicateAssistantTile={handleDuplicateAssistantTile}

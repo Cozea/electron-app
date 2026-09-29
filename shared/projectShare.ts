@@ -21,25 +21,10 @@ export function buildProjectJoinPath(token: string): string {
   return `/projects/join/${encodePathSegment(token)}`
 }
 
-export function buildProjectInvitePath(inviteId: string): string {
-  return `/projects/invite/${encodePathSegment(inviteId)}`
-}
-
 export function buildProjectJoinUrl(baseUrl: string | null | undefined, token: string): string {
   return `${normalizeProjectShareBaseUrl(baseUrl)}${buildProjectJoinPath(token)}`
 }
 
-export function buildProjectInviteUrl(
-  baseUrl: string | null | undefined,
-  inviteId: string
-): string {
-  return `${normalizeProjectShareBaseUrl(baseUrl)}${buildProjectInvitePath(inviteId)}`
-}
-
 export function buildProjectJoinDeepLink(token: string): string {
   return `cozea://${toProtocolPath(buildProjectJoinPath(token))}`
-}
-
-export function buildProjectInviteDeepLink(inviteId: string): string {
-  return `cozea://${toProtocolPath(buildProjectInvitePath(inviteId))}`
 }

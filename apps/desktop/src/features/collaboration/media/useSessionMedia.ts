@@ -88,6 +88,8 @@ export function useSessionMedia(input: {
   const vadAnimationRef = useRef<number | null>(null)
   const vadSpeakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previousWorkbenchActiveRef = useRef<boolean>(isWorkbenchActive)
+  // The session this device has sent presence for; leaving is only meaningful after joining.
+  const presenceSessionRef = useRef<string | null>(null)
 
   // Enumerate native audio input devices
   const refreshAudioDevices = useCallback(async () => {
@@ -425,6 +427,7 @@ export function useSessionMedia(input: {
   useEffect(() => {
     if (!enabled || !sessionId || !myPrincipalId) return
 
+    presenceSessionRef.current = sessionId
     updatePresence({
       sessionId,
       microphoneState: currentMicrophoneState,
@@ -630,7 +633,8 @@ export function useSessionMedia(input: {
       peersRef.current.clear()
 
       // Inform backend of leave
-      if (sessionId) {
+      if (sessionId && presenceSessionRef.current === sessionId) {
+        presenceSessionRef.current = null
         void leaveMediaSession({ sessionId }).catch((err) => {
           console.error("[SessionMedia] leaveMediaSession failed:", err)
         })
@@ -638,19 +642,38 @@ export function useSessionMedia(input: {
     }
   }, [sessionId, leaveMediaSession])
 
-  return {
-    microphoneState: currentMicrophoneState,
-    isMuted,
-    isSpeaking,
-    permissionStatus,
-    allowBackgroundAudio,
-    setAllowBackgroundAudio,
-    toggleMute,
-    requestMicrophonePermission,
-    analyserNode,
-    error,
-    audioDevices,
-    selectedDeviceId,
-    selectAudioDevice,
-  }
+  // One object per change, not per render: the live session controller and
+  // the project header are memoized on it.
+  return useMemo(
+    () => ({
+      microphoneState: currentMicrophoneState,
+      isMuted,
+      isSpeaking,
+      permissionStatus,
+      allowBackgroundAudio,
+      setAllowBackgroundAudio,
+      toggleMute,
+      requestMicrophonePermission,
+      analyserNode,
+      error,
+      audioDevices,
+      selectedDeviceId,
+      selectAudioDevice,
+    }),
+    [
+      currentMicrophoneState,
+      isMuted,
+      isSpeaking,
+      permissionStatus,
+      allowBackgroundAudio,
+      setAllowBackgroundAudio,
+      toggleMute,
+      requestMicrophonePermission,
+      analyserNode,
+      error,
+      audioDevices,
+      selectedDeviceId,
+      selectAudioDevice,
+    ],
+  )
 }

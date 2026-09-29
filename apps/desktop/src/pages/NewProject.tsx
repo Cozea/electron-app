@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react"
 
 import { useAuth } from "@/contexts/AuthContext"
-import { useViewTransitionNavigate } from "@/lib/navigation"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { useCreateProjectDialogStore, type CreateProjectDialogMode } from "@/lib/createProjectDialogStore"
 import { browseForDirectory } from "@/lib/browseForDirectory"
 import { useTranslation } from "@/lib/i18n"
@@ -20,6 +19,7 @@ function resolveMode(search: string): CreateProjectDialogMode {
 
 export default function NewProject() {
   const navigate = useViewTransitionNavigate()
+  const navigateTo = useNavigateTo()
   const { principalId } = useAuth()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const { t } = useTranslation()
@@ -35,7 +35,7 @@ export default function NewProject() {
 
     if (resumeProjectId) {
       hasStartedRef.current = true
-      navigate(buildProjectPath(resumeProjectId, "workbench"), { replace: true })
+      navigateTo({ to: "workbench", projectId: resumeProjectId }, { replace: true })
       return
     }
 
@@ -50,7 +50,7 @@ export default function NewProject() {
         nextMode === "devapp-local" ? "Select existing DevApp project" : "Select local project folder",
       ).then((selectedPath) => {
         if (!selectedPath?.trim()) {
-          navigate("/projects", { replace: true })
+          navigateTo({ to: "projects" }, { replace: true })
           return
         }
 
@@ -58,14 +58,14 @@ export default function NewProject() {
           mode: nextMode,
           localFolderPath: selectedPath,
         })
-        navigate("/projects", { replace: true })
+        navigateTo({ to: "projects" }, { replace: true })
       })
       return
     }
 
     hasStartedRef.current = true
     openCreateProjectDialog({ mode: nextMode })
-    navigate("/projects", { replace: true })
+    navigateTo({ to: "projects" }, { replace: true })
   }, [principalId, navigate, openCreateProjectDialog])
 
   return (

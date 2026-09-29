@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
@@ -253,7 +254,11 @@ describe("Session provisioning matrix and presentation lifecycle (S01-S06, S10, 
       sourceRepoUrl: "file:///nonexistent-cozea-test-remote",
       sourceRootPath: sourceDir,
     } as const
-    await expect(gitManager.ensureSessionWorkbench({ ...params })).rejects.toThrow()
+    // Both sources must be unusable: since 5ed361c67 a valid local root is
+    // cloned in preference to the URL, so a bad URL alone no longer fails.
+    await expect(
+      gitManager.ensureSessionWorkbench({ ...params, sourceRootPath: "/nonexistent-cozea-test-source" }),
+    ).rejects.toThrow()
     expect(await store.listByProject(projectId)).toHaveLength(0)
 
     const first = await gitManager.ensureSessionWorkbench({ ...params, sourceRepoUrl: sourceDir })
@@ -263,6 +268,21 @@ describe("Session provisioning matrix and presentation lifecycle (S01-S06, S10, 
     expect(second.workbench.workbenchId).toBe(first.workbench.workbenchId)
     expect(second.rootPath).toBe(first.rootPath)
     expect(await store.listByProject(projectId)).toHaveLength(1)
+  })
+
+  it("clones from the local root when the remote is unreachable and keeps the remote as origin", async () => {
+    const remoteUrl = "file:///nonexistent-cozea-test-remote"
+    const result = await gitManager.ensureSessionWorkbench({
+      projectId,
+      sessionId: asSessionId("sess_local_first"),
+      branchName: asBranchName("main"),
+      title: "Local first",
+      sourceRepoUrl: remoteUrl,
+      sourceRootPath: sourceDir,
+    })
+    expect(result.reused).toBe(false)
+    const origin = execFileSync("git", ["remote", "get-url", "origin"], { cwd: result.rootPath, encoding: "utf8" })
+    expect(origin.trim()).toBe(remoteUrl)
   })
 
   it("W03: switching presentation away leaves the session workbench intact", async () => {

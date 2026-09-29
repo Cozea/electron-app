@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
+import { formatWorkspaceRelativePath } from "@/features/assistant/lib/filePathDisplay";
 
 describe("formatWorkspaceRelativePath", () => {
   it("formats absolute workspace paths from the workspace root", () => {

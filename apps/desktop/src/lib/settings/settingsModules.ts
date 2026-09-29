@@ -5,4 +5,5 @@ export const settingsModules = {
   organizations: () => import('@/features/settings/Organizations'),
   tooling: () => import('@/features/settings/Tooling'),
   computerUse: () => import('@/features/settings/ComputerUse'),
+  github: () => import('@/features/settings/GitHub'),
 }

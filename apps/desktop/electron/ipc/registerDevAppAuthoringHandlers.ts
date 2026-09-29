@@ -116,13 +116,13 @@ export function registerDevAppAuthoringHandlers(
         });
         return {
           success: true as const,
-          ...deps.service.scaffold({
+          ...(await deps.service.scaffold({
             projectId: access.workspace.projectId,
             workspaceId: options.workspaceId,
             workspaceRoot: access.projectRootPath,
             name: options.name,
             starter: options.starter,
-          }),
+          })),
         };
       } catch (error) {
         return {

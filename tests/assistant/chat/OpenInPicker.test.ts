@@ -11,11 +11,11 @@ import {
 } from '@/features/settings/model/externalEditorIcons'
 import {
   CLIENT_FALLBACK_KEYBINDINGS,
-} from '@/lib/keybindings/defaults'
+} from '@/features/workbench/keybindings/defaults'
 import {
   resolveShortcutCommand,
   shortcutLabelForCommand,
-} from '@/lib/keybindings/matchShortcut'
+} from '@/features/workbench/keybindings/matchShortcut'
 
 describe('OpenInPicker editor ordering & preferences', () => {
   it('orders detected editors according to T3 Code order', () => {

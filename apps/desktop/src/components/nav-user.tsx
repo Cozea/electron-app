@@ -1,9 +1,6 @@
 import * as React from "react"
-import { useQuery } from "convex/react"
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
-
-import { api } from "../../../../convex/_generated/api"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
 import { useProductTourStore } from "@/features/tour/productTourStore"
 import {
   SidebarMenu,
@@ -14,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useTheme } from "@/contexts/ThemeContext"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
-import { useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
 import { useTranslation } from "@/lib/i18n"
 import { prewarmDestination } from "@/app/navigation/destinations"
 
@@ -37,21 +34,16 @@ type DevicePresentation = {
   avatarUrl?: string | null
 }
 
-function initials(value: string): string {
-  const parts = value.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return "D"
-  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "D"
-}
-
-export function NavUser({ user }: { user: DevicePresentation | null | undefined }) {
+export function NavUser({ user: userProp }: { user?: DevicePresentation | null | undefined }) {
   const { theme, setTheme } = useTheme()
-  const { principalId } = useAuth()
+  const { user: authUser } = useAuth()
+  const user = userProp ?? authUser
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()
-  const principal = useQuery(api.devicePrincipals.getCurrent, principalId ? {} : "skip")
+  const navigateTo = useNavigateTo()
 
-  const menuTitle = principal?.displayName?.trim() || user?.displayName?.trim() || t("nav.thisComputer")
-  const avatarUrl = principal?.avatarUrl ?? user?.avatarUrl ?? null
+  const menuTitle = user?.displayName?.trim() || t("nav.thisComputer")
+  const avatarUrl = user?.avatarUrl ?? null
   const menuSummarySublabel = t("nav.localComputer")
 
   const isTourActive = useProductTourStore((state) => state.isActive)
@@ -105,7 +97,7 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
         setTheme(selectedTheme)
         return
       }
-      if (action === "device-settings") navigate("/projects/settings/account")
+      if (action === "device-settings") navigateTo({ to: "settings", section: "account" })
     },
     [isTourActive, menuSummarySublabel, menuTitle, navigate, setTheme, t, theme],
   )
@@ -125,12 +117,13 @@ export function NavUser({ user }: { user: DevicePresentation | null | undefined 
           aria-label={t("nav.openUserMenu")}
           title={t("nav.openUserMenu")}
         >
-          <Avatar className="size-5 shrink-0 rounded-[5px]">
-            {avatarUrl ? <AvatarImage src={avatarUrl} alt={menuTitle} /> : null}
-            <AvatarFallback className="rounded-[5px] text-2xs font-bold leading-none">
-              {initials(menuTitle)}
-            </AvatarFallback>
-          </Avatar>
+          <DeviceAvatar
+            displayName={menuTitle}
+            avatarUrl={avatarUrl}
+            useColor={false}
+            className="size-5 shrink-0"
+            fallbackClassName="text-2xs font-bold leading-none"
+          />
           <div className="flex min-w-0 flex-1 items-center text-left text-sm leading-none group-data-[collapsible=icon]:hidden">
             <span className="block w-full truncate font-normal leading-none text-sidebar-foreground">{menuTitle}</span>
           </div>

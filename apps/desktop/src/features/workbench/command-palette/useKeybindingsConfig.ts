@@ -6,7 +6,7 @@ import type {
 } from "@cozea/assistant-contracts"
 
 import { readNativeApi } from "@/lib/nativeApi"
-import { CLIENT_FALLBACK_KEYBINDINGS } from "@/lib/keybindings/defaults"
+import { CLIENT_FALLBACK_KEYBINDINGS } from "@/features/workbench/keybindings/defaults"
 import { onServerConfigUpdated } from "@/lib/wsNativeApi"
 
 export interface KeybindingsConfigState {

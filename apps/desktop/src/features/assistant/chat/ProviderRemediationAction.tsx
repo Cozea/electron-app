@@ -1,4 +1,4 @@
-import { useSettingsDrawerStore } from "@/features/settings/model/settingsDrawerStore"
+import { useNavigateTo } from "@/lib/navigation"
 import { CheckmarkCircle02Icon, Copy01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useRef, useState } from "react"
@@ -137,6 +137,7 @@ export function ProviderRemediationAction(props: {
   /** Called after a successful run so the host can re-probe/retry. */
   onResolved?: () => void
 }) {
+  const navigateTo = useNavigateTo()
   const remediation = resolveProviderRemediation(
     props.provider,
     props.message,
@@ -185,7 +186,7 @@ export function ProviderRemediationAction(props: {
     }
   }, [props.persistenceKey, remediationKey])
 
-  if (props.provider === "antigravity") return <Button size="sm" variant="outline" onClick={() => useSettingsDrawerStore.getState().open("tooling")}>Set up Antigravity</Button>
+  if (props.provider === "antigravity") return <Button size="sm" variant="outline" onClick={() => navigateTo({ to: "settings", section: "tooling" })}>Set up Antigravity</Button>
 
   if (!remediation) return null
 

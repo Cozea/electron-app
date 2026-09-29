@@ -10,7 +10,7 @@ const FileCode2 = (props: any) => <HugeiconsIcon icon={__FileCode2HugeIcon} {...
 
 const Shimmer = (props: any) => <div className={`animate-pulse bg-muted rounded ${props.className || 'h-full w-full'}`} />;
 import type { PresenceUser } from "@/hooks/useProjectPresence"
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
+import { DeviceAvatar } from "@/components/ui/DeviceAvatar"
 import { type CSSProperties, useMemo } from "react"
 import {
   Tooltip,
@@ -27,34 +27,8 @@ interface PresenceAvatarGroupProps {
   onUserClick?: (user: PresenceUser) => void
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2)
-}
-
-export function getUserColor(principalId: string): string {
-  // Generate a consistent color based on principalId
-  const colors = [
-    "#ef4444", // red
-    "#f97316", // orange
-    "#eab308", // yellow
-    "#22c55e", // green
-    "#14b8a6", // teal
-    "#0ea5e9", // sky
-    "#6366f1", // indigo
-    "#a855f7", // purple
-    "#ec4899", // pink
-  ]
-  let hash = 0
-  for (let i = 0; i < principalId.length; i++) {
-    hash = principalId.charCodeAt(i) + ((hash << 5) - hash)
-  }
-  return colors[Math.abs(hash) % colors.length]
-}
+import { getDeviceColor as getUserColor } from "@/lib/devicePresentation"
+export { getUserColor }
 
 function formatTabName(tab?: string): string {
   if (!tab) return "Project"
@@ -137,7 +111,6 @@ export function PresenceAvatarGroup({
       <div className={cn("flex items-center", className)}>
         <div className="flex -space-x-2">
           {visibleUsers.map((user, index) => {
-            const color = getUserColor(user.principalId)
             const TabIcon = getTabIcon(user.activeTab)
             return (
               <Tooltip key={user.principalId}>
@@ -147,25 +120,20 @@ export function PresenceAvatarGroup({
                     onClick={() => onUserClick?.(user)}
                     className={cn(
                       "relative cursor-pointer transition-transform hover:scale-110 hover:z-10",
-                      onUserClick && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-[6px]"
+                      onUserClick && "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded-full"
                     )}
                     style={{ zIndex: visibleUsers.length - index }}
                     title={onUserClick ? "Open this user in Changes" : undefined}
                   >
-                    <Avatar
-                      className="h-6 w-6 border-2 border-border/70 bg-background rounded-[6px]"
-                    >
-                      {user.avatarUrl ? (
-                        <AvatarImage src={user.avatarUrl} alt={user.displayName} />
-                      ) : null}
-                      <AvatarFallback
-                        className="text-[10px] font-medium"
-                        style={{ backgroundColor: color, color: "white" }}
-                      >
-                        {getInitials(user.displayName)}
-                      </AvatarFallback>
-                    </Avatar>
-                    {renderActivityBubble(user)}
+                    <DeviceAvatar
+                      displayName={user.displayName}
+                      avatarUrl={user.avatarUrl}
+                      principalId={user.principalId}
+                      className="h-6 w-6 bg-background"
+                      fallbackClassName="text-[10px] font-medium"
+                      ringClassName="border-2 border-border/70"
+                      statusIndicator={renderActivityBubble(user)}
+                    />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="flex flex-col gap-0.5">
@@ -193,11 +161,14 @@ export function PresenceAvatarGroup({
           {hiddenCount > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Avatar className="h-6 w-6 border-2 border-background bg-muted cursor-pointer rounded-[6px]">
-                  <AvatarFallback className="text-[10px] font-medium bg-muted text-muted-foreground">
-                    +{hiddenCount}
-                  </AvatarFallback>
-                </Avatar>
+                <span className="inline-flex cursor-pointer">
+                  <DeviceAvatar
+                    overflowCount={hiddenCount}
+                    className="h-6 w-6"
+                    fallbackClassName="text-[10px] font-medium"
+                    ringClassName="border-2 border-background bg-muted"
+                  />
+                </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 <p className="text-xs">

@@ -24,7 +24,6 @@
   },
   "include": [
     "apps/desktop/electron.vite.config.ts",
-    "vitest.config.ts",
-    "vitest.contracts.config.ts"
+    "vitest.config.ts"
   ]
 }

@@ -97,11 +97,6 @@ export async function ensureDevicePrincipalFromConvex(
   })
 }
 
-interface ProjectAccessResult {
-  canAccess: boolean
-  canEdit: boolean
-}
-
 interface DevicePrincipalInfo {
   principalId: string
   identityKey: string
@@ -131,16 +126,6 @@ export async function requireActiveDeviceAccessInConvex(
     throw new Error('Device session has been revoked')
   }
   return principal
-}
-
-interface EncryptionBootstrapResult {
-  roomId: string
-  encryptionRequired: boolean
-  status: 'room_not_initialized' | 'ready' | 'missing_for_device' | 'device_revoked'
-  activeKeyVersion: number | null
-  wrappedRoomKey: string | null
-  wrapAlgorithm: string | null
-  senderPublicKeyJwk: string | null
 }
 
 function asQuery(name: string): AnyQueryReference {
@@ -269,10 +254,6 @@ async function runServerQuery<T>(env: Env, name: string, args: Record<string, un
     ...args,
     serverSecret: env.AI_GATEWAY_SECRET,
   })) as T
-}
-
-async function runQuery<T>(env: Env, name: string, args: Record<string, unknown>): Promise<T> {
-  return (await getClient(env).query(asQuery(name), args)) as T
 }
 
 export interface SessionRoomAccess {

@@ -1,4 +1,4 @@
-import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
+import { formatWorkspaceRelativePath } from "@/features/assistant/lib/filePathDisplay";
 import { commandProgramName } from "./shellCommandProgram";
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
 import type { deriveTimelineEntries } from "./session-logic";

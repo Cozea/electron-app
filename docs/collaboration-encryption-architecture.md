@@ -42,7 +42,7 @@ Add end-to-end encryption to Cozea collaboration on top of the websocket-only co
 - Git remains completely unrelated to collaboration durability
 - the shared-branch vs local-branch collaboration rule stays intact
 
-This document is the concrete encryption follow-up to [git-collaboration-decoupling-refactor-map.md](./git-collaboration-decoupling-refactor-map.md).
+This document is the concrete encryption follow-up to [git-collaboration-decoupling-refactor-map.md](./archive/git-collaboration-decoupling-refactor-map.md).
 
 ## Product Rules
 

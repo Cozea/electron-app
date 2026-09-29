@@ -88,9 +88,9 @@ import {
   expandCollapsedComposerCursor,
   formatAssistantCitationForComposer,
 } from "@/features/assistant/composer-logic";
-import { assistantCitationFromLocation } from "@/lib/assistantCitationNavigation";
+import { assistantCitationFromLocation } from "@/features/assistant/lib/assistantCitationNavigation";
 import type { AssistantCitation, EnvironmentId, ScopedThreadRef, ThreadId } from "@cozea/contracts/t3";
-import type { AssistantCitationSourceAnchor } from "@/lib/assistantTextSelection";
+import type { AssistantCitationSourceAnchor } from "@/features/assistant/lib/assistantTextSelection";
 import type { AssistantCitationRequest } from "./AssistantCitationSource";
 import { basenameOfPath, getVscodeIconUrlForEntry } from "@/features/assistant/vscode-icons";
 import type { ContextWindowSnapshot } from "@/features/assistant/lib/contextWindow";
@@ -2168,7 +2168,7 @@ export const CozeaChatSurface = memo(function CozeaChatSurface(props: CozeaChatS
         event.preventDefault();
         void handleSendWithMode();
       }}
-      className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col"
+      className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col [--chat-composer-drawer-inset:1.375rem]"
     >
       {/* Plus menu: sources, modes and runtime (floating above) */}
       {isPlusMenuOpen ? (

@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Spinner } from "@/components/ui/spinner"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
-import { buildProjectPath } from "@/contexts/project/projectRoutes"
+import { destinationHref } from "@/lib/destinations"
 import { loadGitBranchesCompat } from "@/features/workbench/branch-control/workbenchBranchCompat"
 import { appToast } from "@/lib/appToast"
 import { useViewTransitionNavigate } from "@/lib/navigation"
@@ -215,7 +215,7 @@ export function StartCollaborationDialog({
       onSessionStarted?.({ sessionId: String(result.sessionId), publicSessionId: result.publicSessionId })
       reset()
       onOpenChange(false)
-      navigate(buildProjectPath(String(projectId), "workbench"), {
+      navigate(destinationHref({ to: "workbench", projectId: String(projectId) }), {
         state: buildProjectRouteNavigationState({
           projectId: String(projectId),
           projectName,

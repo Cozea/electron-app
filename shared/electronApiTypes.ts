@@ -41,26 +41,6 @@ import type {
   WorkspaceCatalogSnapshot,
   TrashManagedWorkspaceResult,
 } from './workspaceTypes'
-import type {
-  NativePreviewActionResult,
-  NativePreviewCaptureScreenshotRequest,
-  NativePreviewCaptureScreenshotResult,
-  NativePreviewListIosSimulatorsResult,
-  NativePreviewResolveLaunchConfigRequest,
-  NativePreviewResolveLaunchConfigResult,
-  NativePreviewRotateRequest,
-  NativePreviewSendButtonRequest,
-  NativePreviewSendKeyRequest,
-  NativePreviewSendTouchesRequest,
-  NativePreviewSendWheelRequest,
-  NativePreviewSessionLocator,
-  NativePreviewSessionState,
-  NativePreviewStartSessionRequest,
-  NativePreviewStartSessionResult,
-  NativePreviewStateChangedEvent,
-  NativePreviewStopSessionRequest,
-  NativePreviewStopSessionResult,
-} from './nativePreviewTypes'
 
 export type { PersonalWorkspaceMembership, Session, User, WorkspaceMembership } from './types'
 
@@ -1560,7 +1540,6 @@ export interface WorkbenchSessionSnapshot {
   terminalBindings: Record<string, string>
   devServer: WorkbenchSessionDevServerState
   hasBrowserSurface: boolean
-  hasNativePreviewSession: boolean
 }
 
 export type {
@@ -1720,6 +1699,8 @@ export interface ElectronAPI {
       checkTarget: (
         publicSessionId: string,
       ) => Promise<{ success: true; target: ProjectdTargetStatus | null } | ProjectdCallFailure>
+      /** Checks now whether this Mac can save the session to Git, e.g. once its repository was linked. */
+      recheckGitAccess: (publicSessionId: string) => Promise<{ success: true } | ProjectdCallFailure>
       /** Hides the rebase recommendation for a while. */
       dismissTarget: (
         publicSessionId: string,
@@ -1802,6 +1783,8 @@ export interface ElectronAPI {
   }
   app: {
     onNavigate: (callback: (path: string) => void) => () => void
+    /** Menu Go ▸ Back/Forward, trackpad swipes and mouse app-commands. */
+    onHistoryNavigate: (callback: (direction: 'back' | 'forward') => void) => () => void
     onOpenSettings: (callback: (route: string) => void) => () => void
     getGpuDiagnostics: () => Promise<GpuAccelerationDiagnostics>
     setNativeThemeSource: (source: 'system' | 'light' | 'dark') => Promise<void>
@@ -2167,15 +2150,6 @@ export interface ElectronAPI {
       tileId: string
       close?: boolean
     }) => Promise<{ success: boolean; terminalId?: string }>
-    setNativePreviewSession: (options: {
-      sessionKey?: string | null
-      projectId: string
-      laneId: string
-      workspaceId?: string | null
-      workspaceRevision?: number
-      locator: import('./nativePreviewTypes').NativePreviewSessionLocator | null
-      stopPrevious?: boolean
-    }) => Promise<WorkbenchSessionSnapshot | null>
     onStateChanged: (callback: (session: WorkbenchSessionSnapshot) => void) => () => void
   }
   desktopPersistence: {
@@ -2212,23 +2186,6 @@ export interface ElectronAPI {
     inspectSelection: (options: PreviewInspectorSelectionInput) => Promise<PreviewInspectorSelectionResult>
     updateSelectionStyles: (options: PreviewInspectorStyleMutationInput) => Promise<PreviewInspectorMutationResult>
     updateSelectionText: (options: PreviewInspectorTextMutationInput) => Promise<PreviewInspectorMutationResult>
-  }
-  nativePreview: {
-    listIosSimulators: () => Promise<NativePreviewListIosSimulatorsResult>
-    resolveLaunchConfig: (
-      options: NativePreviewResolveLaunchConfigRequest,
-    ) => Promise<NativePreviewResolveLaunchConfigResult>
-    startSession: (options: NativePreviewStartSessionRequest) => Promise<NativePreviewStartSessionResult>
-    stopSession: (options: NativePreviewStopSessionRequest) => Promise<NativePreviewStopSessionResult>
-    getSessionState: (options: NativePreviewSessionLocator) => Promise<NativePreviewSessionState | null>
-    sendTouches: (options: NativePreviewSendTouchesRequest) => Promise<NativePreviewActionResult>
-    sendWheel: (options: NativePreviewSendWheelRequest) => Promise<NativePreviewActionResult>
-    sendKey: (options: NativePreviewSendKeyRequest) => Promise<NativePreviewActionResult>
-    sendButton: (options: NativePreviewSendButtonRequest) => Promise<NativePreviewActionResult>
-    rotate: (options: NativePreviewRotateRequest) => Promise<NativePreviewActionResult>
-    captureScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewCaptureScreenshotResult>
-    copyLastScreenshot: (options: NativePreviewCaptureScreenshotRequest) => Promise<NativePreviewActionResult>
-    onStateChanged: (callback: (event: NativePreviewStateChangedEvent) => void) => () => void
   }
   project: {
     listGitBranches: (options: { workspaceId: string }) => Promise<ProjectGitBranchListResult>

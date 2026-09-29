@@ -22,6 +22,8 @@ interface ProjectSidebarRouteStateArgs {
   currentProjectId: string | null
   currentWorkbenchPath: string | null
   currentProjectSettingsBasePath: string | null
+  /** The settings page's `?section=` value; sections share one route. */
+  projectSettingsSection?: string | null
   currentVisibleActiveTileId: string | null
 }
 
@@ -38,21 +40,18 @@ export function getProjectSidebarRouteState({
   currentProjectId,
   currentWorkbenchPath,
   currentProjectSettingsBasePath,
+  projectSettingsSection = null,
   currentVisibleActiveTileId,
 }: ProjectSidebarRouteStateArgs): ProjectSidebarRouteState {
   const isOnCurrentProjectWorkbench = currentWorkbenchPath === pathname
   const isOnCurrentProjectSubMenu = Boolean(currentProjectId) && !isOnCurrentProjectWorkbench
   const isOnCurrentProjectSettings = Boolean(
-    currentProjectSettingsBasePath &&
-      (pathname === currentProjectSettingsBasePath ||
-        pathname.startsWith(`${currentProjectSettingsBasePath}/`)),
+    currentProjectSettingsBasePath && pathname === currentProjectSettingsBasePath,
   )
 
   const currentProjectSettingsSection: ProjectSettingsSectionId = (() => {
-    if (!isOnCurrentProjectSettings || !currentProjectSettingsBasePath) return "general"
-    const suffix = pathname.slice(currentProjectSettingsBasePath.length).replace(/^\/+/, "")
-    if (suffix === "danger") return "danger"
-    return "general"
+    if (!isOnCurrentProjectSettings) return "general"
+    return projectSettingsSection === "danger" ? "danger" : "general"
   })()
 
   const currentSelectionLevel: SidebarActiveSelectionLevel = !currentProjectId

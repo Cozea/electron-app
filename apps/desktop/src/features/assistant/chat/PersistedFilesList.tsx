@@ -1,7 +1,7 @@
 import { memo } from "react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatWorkspaceRelativePath } from "@/lib/filePathDisplay";
+import { formatWorkspaceRelativePath } from "@/features/assistant/lib/filePathDisplay";
 import { cn } from "@/lib/utils";
 
 import { VscodeEntryIcon } from "./VscodeEntryIcon";

@@ -1,7 +1,10 @@
 import { app, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 
+export type HistoryNavigationDirection = 'back' | 'forward'
+
 interface CreateApplicationMenuOptions {
     onOpenSettings?: () => void
+    onHistoryNavigate?: (direction: HistoryNavigationDirection) => void
 }
 
 export function createApplicationMenu(options?: CreateApplicationMenuOptions) {
@@ -79,6 +82,26 @@ export function createApplicationMenu(options?: CreateApplicationMenuOptions) {
                 { role: 'togglefullscreen' },
             ],
         } as MenuItemConstructorOptions,
+        {
+            label: 'Go',
+            submenu: [
+                // Shown for discoverability but not registered with the system:
+                // ⌘[ outdents in editors and must reach them. The renderer
+                // handles the keys itself, outside editable targets.
+                {
+                    label: 'Back',
+                    accelerator: 'CmdOrCtrl+[',
+                    registerAccelerator: false,
+                    click: () => options?.onHistoryNavigate?.('back'),
+                },
+                {
+                    label: 'Forward',
+                    accelerator: 'CmdOrCtrl+]',
+                    registerAccelerator: false,
+                    click: () => options?.onHistoryNavigate?.('forward'),
+                },
+            ],
+        },
         // { role: 'windowMenu' }
         {
             label: 'Window',

@@ -4,6 +4,17 @@ import { withGitRepositoryCredential } from "./GitCredentialBroker"
 
 export type RepositoryCredentialProvider = (scope: { owner: string; repository: string }) => Promise<string>
 
+/** Cozea isn't set up to write to this repository; asking again soon gives the same answer. */
+export class RepositoryNotAuthorizedError extends Error {
+  readonly scope: { owner: string; repository: string }
+
+  constructor(scope: { owner: string; repository: string }) {
+    super(`Saving to Git isn't set up for ${scope.owner}/${scope.repository}. The Cozea GitHub App must be installed on it and allowed to save this project.`)
+    this.name = "RepositoryNotAuthorizedError"
+    this.scope = scope
+  }
+}
+
 /** Resolve the effective URL on every operation, including a distinct pushurl.
  * Repository config remains untouched; Cozea-owned GitHub SSH uses HTTPS here. */
 export async function executeScopedNetworkGit(process: GitProcess, args: string[], remote: string,

@@ -34,7 +34,3 @@ export async function getProjectShareScope(
   if (!project || project.status === "deleted") throw new Error("Project not found")
   return { project }
 }
-
-export async function assertPersonalProjectShareScope(ctx: ProjectSharingCtx, projectId: Id<"projects">) {
-  return await getProjectShareScope(ctx, projectId)
-}

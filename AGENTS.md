@@ -85,7 +85,6 @@ bun run build
 ## Desktop Releases
 
 Tagged releases are built by GitHub Actions and published as GitHub Releases in the **distribution repo**.
-Main-branch cloud releases can also be built by CircleCI and uploaded to Cloudflare R2 for Electron auto-updates.
 The fast agent-facing summary lives here; the fuller operator guide is in `docs/release-process.md`.
 
 ### Source vs Distribution Repos
@@ -109,7 +108,6 @@ The fast agent-facing summary lives here; the fuller operator guide is in `docs/
   - Canary -> `alpha`
 
 Workflow file: `.github/workflows/release.yml`
-CircleCI workflow file: `.circleci/config.yml`
 
 GitHub Actions signing gates use the `mac_signing` step's `signing` output for
 certificate import, publish-secret validation, and notarization. Signing defaults
@@ -149,15 +147,6 @@ The release workflow expects these to be set in GitHub Actions for `Cozea/electr
 - Vite build-time env: `VITE_CONVEX_URL` (provided via Actions Variables or Secrets; see workflow `env`)
 - Vite build-time env: `VITE_AI_API_URL` (provided via Actions Variables or Secrets; see workflow `env`)
 - Sentry (optional; monitoring stays inert when unset): `VITE_SENTRY_DSN` (Variables or Secrets), source-map upload via `SENTRY_AUTH_TOKEN` (Secret) + `SENTRY_ORG`/`SENTRY_PROJECT` (Variables)
-
-CircleCI expects a context named `cozea-release` with:
-
-- Vite build-time env: `VITE_CONVEX_URL`, `VITE_AI_API_URL`
-- Sentry (optional; same inert-when-unset behavior): `VITE_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`
-- Cloudflare R2 upload: `COZEA_UPDATE_BASE_URL`, `COZEA_UPDATE_BUCKET`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`
-- Apple notarization: `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`
-- macOS signing: `CSC_LINK`, `CSC_KEY_PASSWORD`
-- Optional runtime metadata signing: `COZEA_RUNTIME_SIGNING_PRIVATE_KEY` or `COZEA_RUNTIME_SIGNING_PRIVATE_KEY_PATH`
 
 ### Controlled-update conversation continuation
 

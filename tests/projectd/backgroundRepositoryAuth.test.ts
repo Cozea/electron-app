@@ -5,6 +5,7 @@ import {
   getBackgroundRepositoryCapabilities,
   getBackgroundRepositoryToken,
 } from "../../apps/projectd/src/collaboration/BackgroundRepositoryAuth"
+import { RepositoryNotAuthorizedError } from "../../apps/projectd/src/git/ScopedNetworkGit"
 
 const cloud = vi.hoisted(() => ({ action: vi.fn(), setAuth: vi.fn() }))
 vi.mock("convex/browser", () => ({ ConvexHttpClient: class { action = cloud.action; setAuth = cloud.setAuth } }))
@@ -61,5 +62,37 @@ it("discovers operator capabilities without requesting a GitHub installation tok
   cloud.action.mockResolvedValueOnce({ projectId: "project", repositoryUrl: "https://github.com/team/other.git", pullRequest: true, gitWrite: true })
   expect(await getBackgroundRepositoryCapabilities(descriptor, { owner: "team", repository: "app" }, manager))
     .toEqual({ pullRequest: false, gitWrite: false })
+  vi.restoreAllMocks()
+})
+
+it("tells a repository that isn't set up for Git writes apart from a failure that may pass", async () => {
+  const manager = new BackgroundDeviceIdentityManager()
+  const identity = await manager.generateNewIdentity()
+  vi.spyOn(manager, "loadExistingIdentity").mockResolvedValue(identity)
+  vi.spyOn(manager, "authenticateWithCloud").mockResolvedValue({ token: "device-token", principalId: "principal", expiresAt: Date.now() + 60_000 })
+  const descriptor = { publicSessionId: "session", projectId: "project", workspaceId: "workspace", rootPath: "/unused",
+    background: { gatewayUrl: "https://gateway.example", convexUrl: "https://example.convex.cloud" } }
+  const scope = { owner: "team", repository: "app" }
+  const capabilities = (gitWrite: boolean) => ({ projectId: "project", repositoryUrl: "https://github.com/team/app.git", pullRequest: true, gitWrite })
+  const refusedThen = (answer: () => Promise<unknown>) => cloud.action.mockReset()
+    .mockRejectedValueOnce(new Error("Background repository authorization is unavailable."))
+    .mockImplementationOnce(answer)
+  const writeToken = () => getBackgroundRepositoryToken(descriptor, scope, manager, "git_write")
+
+  refusedThen(async () => capabilities(false))
+  await expect(writeToken()).rejects.toBeInstanceOf(RepositoryNotAuthorizedError)
+  expect(getFunctionName(cloud.action.mock.calls[1]![0])).toBe("sessionRepositoryCredentials:capabilities")
+
+  for (const answer of [async () => capabilities(true), async () => { throw new Error("offline") }]) {
+    refusedThen(answer)
+    const failure = await writeToken().catch((error: unknown) => error)
+    expect(failure).not.toBeInstanceOf(RepositoryNotAuthorizedError)
+    expect(String(failure)).toContain("authorization is unavailable")
+  }
+
+  // Pull request tokens never spend a second call classifying the refusal.
+  refusedThen(async () => capabilities(false))
+  await expect(getBackgroundRepositoryToken(descriptor, scope, manager)).rejects.not.toBeInstanceOf(RepositoryNotAuthorizedError)
+  expect(cloud.action).toHaveBeenCalledTimes(1)
   vi.restoreAllMocks()
 })
