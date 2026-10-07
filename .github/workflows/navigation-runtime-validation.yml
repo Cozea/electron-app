@@ -30,11 +30,11 @@ jobs:
           git rev-parse HEAD | tee build/navigation-validation/candidate-sha.txt
           pin="$(git ls-tree HEAD vendor/t3code | awk '{print $3}')"
           test -n "$pin"
-          git init "$RUNNER_TEMP/navigation-t3-source"
-          git -C "$RUNNER_TEMP/navigation-t3-source" fetch --depth=1 https://github.com/Cozea/t3code.git "$pin"
-          test "$(git -C "$RUNNER_TEMP/navigation-t3-source" rev-parse FETCH_HEAD)" = "$pin"
-          mkdir -p vendor/t3code
-          git -C "$RUNNER_TEMP/navigation-t3-source" archive FETCH_HEAD | tar -x -C vendor/t3code
+          git init vendor/t3code
+          git -C vendor/t3code remote add origin https://github.com/Cozea/t3code.git
+          git -C vendor/t3code fetch --depth=1 origin "$pin"
+          git -C vendor/t3code checkout --detach FETCH_HEAD
+          test "$(git -C vendor/t3code rev-parse HEAD)" = "$pin"
           git ls-files '*AGENTS.md' | tee build/navigation-validation/agent-instructions.txt
       - name: Install locked dependencies
         id: dependencies
