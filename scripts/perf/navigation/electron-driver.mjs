@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -84,15 +84,10 @@ async function waitForSnapshot(cdp, predicate, message) {
   throw new Error(`${message}; last snapshot: ${JSON.stringify(lastSnapshot)}`)
 }
 
-async function createGitFixture(root, name) {
+async function createWorkspaceFixture(root, name) {
   const folder = path.join(root, name)
   await fs.mkdir(folder, { recursive: true })
   await fs.writeFile(path.join(folder, 'README.md'), `# ${name}\n`)
-  execFileSync('git', ['init', '-b', 'main'], { cwd: folder, stdio: 'ignore' })
-  execFileSync('git', ['config', 'user.email', 'navigation-test@cozea.invalid'], { cwd: folder })
-  execFileSync('git', ['config', 'user.name', 'Navigation Test'], { cwd: folder })
-  execFileSync('git', ['add', 'README.md'], { cwd: folder })
-  execFileSync('git', ['commit', '-m', 'fixture'], { cwd: folder, stdio: 'ignore' })
   return folder
 }
 
@@ -127,7 +122,7 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
     await waitForProductionRuntime(cdp, child)
 
     const folders = Object.fromEntries(await Promise.all(
-      ['a', 'b', 'c', 'd'].map(async name => [name, await createGitFixture(workspaces, name)]),
+      ['a', 'b', 'c', 'd'].map(async name => [name, await createWorkspaceFixture(workspaces, name)]),
     ))
     const attached = {}
     for (const name of ['a', 'b', 'c', 'd']) {
