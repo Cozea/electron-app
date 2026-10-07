@@ -60,6 +60,11 @@ jobs:
       - name: Prepare matching T3 runtime for Electron
         if: always() && steps.vendor_bundle.outcome == 'success'
         run: bun run prepare:t3-runtime
+      - name: Build T3 terminal native module for Electron smoke tests
+        if: always() && steps.vendor_bundle.outcome == 'success'
+        run: |
+          pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
+          bun x "$pm" --dir vendor/t3code --filter t3 rebuild node-pty
       - name: Navigation unit tests
         if: always() && steps.dependencies.outcome == 'success'
         run: |
