@@ -7,7 +7,7 @@ import {
   selectWorkbenchKeepAliveSessions,
   type WorkbenchKeepAliveSession,
 } from "@/features/workbench/workbenchKeepAlive"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { WorkbenchSessionSnapshot } from "@cozea/app-contract/electronApi"
 import {
   ProjectRouteContext,
   useOptionalProjectRouteContext,

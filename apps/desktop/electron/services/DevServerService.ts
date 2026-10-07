@@ -7,7 +7,7 @@ import {
   applyDevServerPortOverride,
   applyDevServerPortPlaceholder,
 } from './devServerCommandPortOverride'
-import type { DevServerManagedProcessState } from '../../../../shared/electronApiTypes'
+import type { DevServerManagedProcessState } from '@cozea/app-contract/electronApi'
 
 export interface DevServerAuxiliaryProcessOptions {
   id: string

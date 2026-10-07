@@ -4,7 +4,7 @@ import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { useNavigateTo, useViewTransitionNavigate } from '@/lib/navigation'
 import { useSearchParams } from '@/lib/router'
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation, useQuery } from '@/lib/cloudQueries'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectTeam } from '@/hooks/useProjectTeam'
@@ -13,9 +13,6 @@ import { SessionRecoveryPanel } from '@/features/settings/ui/SessionRecoveryPane
 import { useTranslation } from '@/lib/i18n'
 import { featureFlags } from '@/lib/featureFlags'
 import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
-import { confirmProjectDeletion, type ProjectDeleteConfirmOptions } from '@/features/projects/ui/ProjectDeleteDialog'
-import { cleanupDeletedProjectLocally } from '@/features/projects/lib/projectLocalCleanup'
-import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDeletedProjectFromUi'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { PublishedDevAppIcon } from '@/features/devapps/components/PublishedDevAppIcon'
@@ -36,6 +33,7 @@ import {
 } from '@/features/settings/ui/SettingsChrome'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { LocalProjectSettings } from '@/features/settings/ui/LocalProjectSettings'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -54,6 +52,21 @@ const LazyProjectDevAppLogoDialog = lazy(() =>
 /** The project's settings page, at /projects/p/:projectId/settings. */
 
 export function ProjectSettingsPage() {
+  const [searchParams] = useSearchParams()
+  const { localProject, project, catalogReady } = useAccessibleProject()
+  if (localProject && searchParams.get('section') !== 'shared') {
+    return <LocalProjectSettings project={localProject} sharedAvailable={Boolean(project)} />
+  }
+  if (localProject && !project) {
+    return <LocalProjectSettings project={localProject} sharedAvailable={false} />
+  }
+  if (!catalogReady && !project) {
+    return <div className="p-8 text-sm text-muted-foreground">Loading local project…</div>
+  }
+  return <SharedProjectSettingsPage />
+}
+
+function SharedProjectSettingsPage() {
   const navigate = useViewTransitionNavigate()
   const navigateTo = useNavigateTo()
   const [searchParams] = useSearchParams()
@@ -172,11 +185,10 @@ export function ProjectSettingsPage() {
     }
   }, [archiveProject, principalId, navigate, project, t])
 
-  const handleDelete = useCallback(async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
+  const handleDelete = useCallback(async () => {
     if (!project || !principalId) return
 
     setIsDeleting(true)
-    const deletedProjectId = String(project._id)
     try {
       await withProjectMutationTimeout(
         removeProject({
@@ -188,13 +200,6 @@ export function ProjectSettingsPage() {
         'Deleting this project is taking longer than expected. Check your connection and try again.',
       )
 
-      detachDeletedProjectFromUi(deletedProjectId)
-      navigateTo({ to: "projects" }, { replace: true })
-
-      await cleanupDeletedProjectLocally(deletedProjectId, {
-        keepLocalFiles,
-        projectSlug: project.slug,
-      })
     } catch (error) {
       const presentation = formatProjectDeleteError(error)
       const message = presentation.detail
@@ -247,7 +252,7 @@ export function ProjectSettingsPage() {
             <div className="w-full min-h-full px-8 sm:px-10 pt-6 pb-12 mx-auto max-w-4xl">
               <div className="mb-6 flex items-start justify-between gap-4">
                 <SettingsPageHeader
-                  title={project.name}
+                  title={`Shared project: ${project.name}`}
                   className="mb-0 min-w-0 flex-1"
                 />
                 <Button
@@ -272,7 +277,7 @@ export function ProjectSettingsPage() {
                   <SettingsSectionTitle>{t('settings.section.general')}</SettingsSectionTitle>
                   <SettingsGroup>
                     <SettingsRow isFirst>
-                      <SettingsRowLabel title={t('settings.label.projectName')} htmlFor="name" />
+                      <SettingsRowLabel title="Shared project name" description="Changes the name shown to collaborators." htmlFor="name" />
                       <SettingsRowControl>
                         <Input
                           id="name"
@@ -416,8 +421,8 @@ export function ProjectSettingsPage() {
                   <SettingsDangerGroup>
                     <SettingsRow isFirst>
                       <SettingsRowLabel
-                        title={t('settings.label.archiveProject')}
-                        description={t('settings.desc.archiveProject')}
+                        title="Archive Shared Project"
+                        description="Changes shared availability for all collaborators."
                       />
                       <SettingsRowControl>
                         <SettingsDangerButton
@@ -426,9 +431,9 @@ export function ProjectSettingsPage() {
                           onClick={async () => {
                             const result = await window.electronAPI.dialog.showMessageBox({
                               type: 'warning',
-                              title: t('settings.dialog.archive.title'),
-                              message: `${t('settings.dialog.archive.title')}?`,
-                              detail: t('settings.dialog.archive.desc'),
+                              title: "Archive Shared Project",
+                              message: `Archive the shared project “${project.name}”?`,
+                              detail: "Collaborators see the archived project. Local visibility on this device is independent.",
                               buttons: [t('settings.dialog.archive.action'), t('settings.action.cancel')],
                               defaultId: 0,
                               cancelId: 1,
@@ -445,24 +450,24 @@ export function ProjectSettingsPage() {
                     </SettingsRow>
                     <SettingsRow>
                       <SettingsRowLabel
-                        title={t('settings.label.deleteProject')}
-                        description={t('settings.desc.deleteProject')}
+                        title="Delete Shared Project"
+                        description="Removes cloud data and collaborator access. The local project stays on this device."
                       />
                       <SettingsRowControl>
                         <SettingsDangerButton
                           tone="irreversible"
                           disabled={!principalId || isDeleting}
                           onClick={async () => {
-                            const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
-                              projectId: String(project._id),
-                              projectName: project.name,
+                            const confirmation = await window.electronAPI.dialog.showMessageBox({
+                              type: "warning", title: "Delete Shared Project",
+                              message: `Delete the shared project “${project.name}”?`,
+                              detail: "This removes cloud data and access for all collaborators. Local folders and workbenches stay on this device.",
+                              buttons: ["Cancel", "Delete Shared Project"], defaultId: 0, cancelId: 0,
                             })
-                            if (confirmed) {
-                              void handleDelete({ keepLocalFiles })
-                            }
+                            if (confirmation.response === 1) void handleDelete()
                           }}
                         >
-                          {isDeleting ? 'Deleting...' : t('settings.action.delete')}
+                          {isDeleting ? 'Deleting...' : 'Delete Shared Project'}
                         </SettingsDangerButton>
                       </SettingsRowControl>
                     </SettingsRow>

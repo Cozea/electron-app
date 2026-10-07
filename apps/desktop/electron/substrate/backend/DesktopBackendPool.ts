@@ -21,6 +21,7 @@ interface RegisteredBackend {
 export interface DesktopBackendPoolOptions {
   readonly entryPath: string;
   readonly logsRootDirectory: string;
+  readonly workspaceCatalogPath?: string;
 }
 
 /**
@@ -28,11 +29,13 @@ export interface DesktopBackendPoolOptions {
  * DesktopBackendPool port for Cozea).
  */
 export class DesktopBackendPool {
+  private readonly workspaceCatalogPath: string | undefined;
   private readonly entryPath: string;
   private readonly logsRootDirectory: string;
   private readonly instances = new Map<string, RegisteredBackend>();
 
   constructor(options: DesktopBackendPoolOptions) {
+    this.workspaceCatalogPath = options.workspaceCatalogPath;
     this.entryPath = options.entryPath;
     this.logsRootDirectory = options.logsRootDirectory;
   }
@@ -56,6 +59,7 @@ export class DesktopBackendPool {
 
     const host = input.host ?? readSubstrateShadowServerFlags().host;
     const manager = new ShadowServerManager({
+      workspaceCatalogPath: this.workspaceCatalogPath,
       entryPath: this.entryPath,
       logDirectory: input.logDirectory,
       flags: {

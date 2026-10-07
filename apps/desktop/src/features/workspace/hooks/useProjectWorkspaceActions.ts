@@ -1,30 +1,24 @@
 import { useCallback } from "react"
 import { appToast } from "@/lib/appToast"
-import { useMutation } from "convex/react"
-
-import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
-import { useAuth } from "@/contexts/AuthContext"
-import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
+import { useNavigateTo } from "@/lib/navigation"
 import { browseForDirectory } from "@/lib/browseForDirectory"
-import { formatWorkspaceBindFailure } from "@/features/workspace/formatWorkspaceBindFailure"
 import { buildProjectRouteNavigationState } from "@/contexts/project/projectNavigationState"
 import {
   clearProjectBranchSession,
 } from "@/features/source-control/model/projectBranchSessionStore"
 import { clearCachedProjectLaneState } from "@/features/workbench/hooks/useProjectLaneState"
-import { clonePersistedWorkbenchLayoutsForWorkspace } from "@/features/workbench/model/workbenchLayoutPersistence"
-import { useProjectWorkbenchStore } from "@/lib/workbenchStore"
 import { useWorkspaceRuntimeStore } from "@/lib/workspaceRuntimeStore"
 import { invalidateProjectWorkspaceResolution } from "@/features/workspace/useProjectWorkspaceResolution"
 import { evictTerminalViewsForWorkspace } from "@/features/terminal/terminalViewKeepAlive"
+import { requireLocalProjectsApi } from "@/features/projects/lib/localProjectsApi"
 
 interface ProjectWorkspaceActionProject {
-  _id: Id<"projects">
+  _id: Id<"projects"> | null
   id: string
   name: string
   slug: string
-  /** When "provisioning", a successful relink finalizes the saga to active. */
+  /** Last-known local presentation. Repair never mutates shared status. */
   status?: string
 }
 
@@ -38,72 +32,45 @@ function normalizeWorkspaceId(workspaceId: string | null | undefined): string | 
 }
 
 export function useProjectWorkspaceActions() {
-  const navigate = useViewTransitionNavigate()
   const navigateTo = useNavigateTo()
-  const { principalId } = useAuth()
-  const updateProjectStatus = useMutation(api.projects.updateStatus)
-  const cloneWorkspaceState = useProjectWorkbenchStore((state) => state.actions.cloneWorkspaceState)
   const closeRuntime = useWorkspaceRuntimeStore((state) => state.actions.closeRuntime)
 
-  const relinkProjectWorkspace = useCallback(
+  const repairProjectWorkspace = useCallback(
     async (
       project: ProjectWorkspaceActionProject,
       currentWorkspaceId: string | null,
+      folderPath: string,
       options?: NavigateOptions,
     ): Promise<string | null> => {
-      const folderPath = await browseForDirectory(`Choose local folder for ${project.name}`)
-      if (!folderPath) {
+      const localProject = await requireLocalProjectsApi().get(project.id)
+      if (!localProject || !currentWorkspaceId) {
+        appToast.error({ title: `Could not repair ${project.name}`, description: "The original folder binding is unavailable. Open the folder as a local project to continue." })
         return null
       }
-
-      const bindResult = await window.electronAPI.workspace!.attachExistingFolder({
-        projectId: project.id,
-        folderPath,
-        setActive: true,
+      const bindResult = await requireLocalProjectsApi().repair({
+        operationId: crypto.randomUUID(), projectId: localProject.projectId,
+        workspaceId: currentWorkspaceId, folderPath,
       })
-      if (!bindResult.success || !bindResult.workspace) {
+      if (!bindResult.success) {
         // Conflicts used to die in a console.warn: the user picked a folder
         // and nothing visibly happened.
         appToast.error({
           title: `Could not relink ${project.name}`,
-          description: formatWorkspaceBindFailure(bindResult),
+          description: bindResult.error,
         })
         return null
       }
 
-      const nextWorkspaceId = bindResult.workspace.workspaceId
+      const nextWorkspaceId = bindResult.value.workspace.workspaceId
 
-      // Finalize the create saga if this relink is the repair for a project
-      // left stuck "provisioning" by an earlier crash. Other create flows
-      // finalize on their own happy path; relink is the one that didn't.
-      if (project.status === "provisioning" && principalId) {
-        try {
-          await updateProjectStatus({
-            projectId: project._id,
-            principalId: principalId,
-            status: "active",
-          })
-        } catch (finalizeError) {
-          console.warn("[ProjectWorkspaceActions] Failed to finalize provisioning project on relink:", finalizeError)
-        }
+      for (const record of Object.values(useWorkspaceRuntimeStore.getState().runtimes)) {
+        if (record.config.projectId === project.id && record.config.workspaceId === currentWorkspaceId) closeRuntime(record.runtimeId)
       }
+      evictTerminalViewsForWorkspace(currentWorkspaceId)
+      clearProjectBranchSession(project.id, currentWorkspaceId)
+      clearCachedProjectLaneState(project.id, currentWorkspaceId)
 
       invalidateProjectWorkspaceResolution(project.id)
-      cloneWorkspaceState(project.id, currentWorkspaceId, nextWorkspaceId)
-      try {
-        await clonePersistedWorkbenchLayoutsForWorkspace({
-          projectId: project.id,
-          fromWorkspace: currentWorkspaceId,
-          toWorkspace: nextWorkspaceId,
-        })
-      } catch (error) {
-        console.error("[ProjectWorkspaceActions] Failed to restore layouts before relink navigation:", error)
-        appToast.error({
-          title: `${project.name} was relinked, but its workbench layout could not be restored.`,
-          description: "Reopen the project after desktop storage is available. Navigation was stopped to protect the saved layout.",
-        })
-        return null
-      }
 
       navigateTo({ to: "workbench", projectId: project.id }, {
         replace: options?.replace,
@@ -117,8 +84,17 @@ export function useProjectWorkspaceActions() {
 
       return nextWorkspaceId
     },
-    [cloneWorkspaceState, principalId, navigate, updateProjectStatus],
+    [closeRuntime, navigateTo],
   )
+
+  const relinkProjectWorkspace = useCallback(async (
+    project: ProjectWorkspaceActionProject,
+    currentWorkspaceId: string | null,
+    options?: NavigateOptions,
+  ): Promise<string | null> => {
+    const folderPath = await browseForDirectory(`Choose local folder for ${project.name}`)
+    return folderPath ? repairProjectWorkspace(project, currentWorkspaceId, folderPath, options) : null
+  }, [repairProjectWorkspace])
 
   const closeProjectWorkspace = useCallback(
     async (
@@ -139,30 +115,21 @@ export function useProjectWorkspaceActions() {
         title: "Close Workspace",
         message: `Close ${project.name} on this local root?`,
         detail:
-          "This explicitly stops retained terminals, dev servers, and browser bindings for the current local folder. You can relink it again later.",
+          "Stops this workspace's idle chat sessions, terminals, Dev Server and browser surfaces. Files, conversations, drafts and layouts are kept. Running chats must be stopped first. You can reopen the same workspace later.",
       })
 
       if (confirmation.response !== 1) {
         return false
       }
 
-      const sessions = await window.electronAPI.workbenchSession.listSessions()
-      const matchingSessions = sessions.filter((session) => {
-        return (
-          session.projectId === project.id &&
-          normalizeWorkspaceId(session.workspaceId) === normalizedWorkspaceId
-        )
-      })
-
-      await Promise.all(
-        matchingSessions.map((session) =>
-          window.electronAPI.workbenchSession.closeSession({
-            sessionKey: session.sessionKey,
-            projectId: session.projectId,
-            laneId: session.laneId,
-          }),
-        ),
-      )
+      const api = requireLocalProjectsApi()
+      const localProject = await api.get(project.id)
+      if (!localProject) return false
+      const result = await api.close({ operationId: crypto.randomUUID(), projectId: localProject.projectId, workspaceId: normalizedWorkspaceId })
+      if (!result.success) {
+        appToast.error({ title: `Could not close ${project.name}`, description: result.error })
+        return false
+      }
 
       const runtimeRecords = Object.values(useWorkspaceRuntimeStore.getState().runtimes)
       for (const runtimeRecord of runtimeRecords) {
@@ -174,28 +141,23 @@ export function useProjectWorkspaceActions() {
         }
       }
 
-      await window.electronAPI.workspace!.forget(normalizedWorkspaceId)
       invalidateProjectWorkspaceResolution(project.id)
       evictTerminalViewsForWorkspace(normalizedWorkspaceId)
 
       clearProjectBranchSession(project.id, normalizedWorkspaceId)
       clearCachedProjectLaneState(project.id, normalizedWorkspaceId)
 
-      navigateTo({ to: "workbench", projectId: project.id }, {
+      navigateTo({ to: "projects" }, {
         replace: options?.replace ?? true,
-        state: buildProjectRouteNavigationState({
-          projectId: project.id,
-          projectSlug: project.slug,
-          projectName: project.name,
-        }),
       })
 
       return true
     },
-    [closeRuntime, navigate],
+    [closeRuntime, navigateTo],
   )
 
   return {
+    repairProjectWorkspace,
     relinkProjectWorkspace,
     closeProjectWorkspace,
   }

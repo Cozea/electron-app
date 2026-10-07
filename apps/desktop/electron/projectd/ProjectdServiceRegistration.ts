@@ -19,6 +19,8 @@ import { app } from "electron"
 import { ProjectdClient } from "@cozea/projectd-protocol"
 
 import { getSharedProjectdClient, resetSharedProjectdClient } from "./ProjectdClient"
+import { WorkspaceCatalogBridge } from "./WorkspaceCatalogBridge"
+import { getCatalogSnapshot, subscribeCatalogSnapshot } from "../workspaces/CatalogSnapshot"
 import {
   ensureProjectdRunning,
   type ProjectdLaunchContext,
@@ -27,6 +29,28 @@ import {
 } from "./ProjectdLauncher"
 
 const PROBE_TIMEOUT_MS = 1_000
+let bridge: WorkspaceCatalogBridge | null = null
+let bridgeUnsubscribe: (() => void) | null = null
+let bridgeTimer: NodeJS.Timeout | null = null
+let daemonPid: number | null = null
+let bridgeSweepRunning = false
+
+async function reconcileCatalogBridge(): Promise<void> {
+  if (bridgeSweepRunning || !bridge) return
+  bridgeSweepRunning = true
+  const activeBridge = bridge
+  try {
+    const health = await getSharedProjectdClient().health()
+    if (daemonPid !== health.pid) {
+      activeBridge.resetAcknowledgments()
+      daemonPid = health.pid
+    }
+    await activeBridge.enqueue(await getCatalogSnapshot())
+  } catch {
+    // Local projects remain available while the daemon is absent. The next
+    // local sweep retries; shared-session entry reports daemon availability.
+  } finally { bridgeSweepRunning = false }
+}
 
 /** The checkout root in development: the nearest folder above the app that holds projectd's source. */
 function findRepoRoot(start: string): string {
@@ -52,6 +76,7 @@ function launchContext(socketPath: string): ProjectdLaunchContext {
     tmpDir: os.tmpdir(),
     uid: typeof process.getuid === "function" ? process.getuid() : 0,
     socketPath,
+    workspaceCatalogPath: path.join(app.getPath("userData"), "local-workspaces.sqlite"),
     env: process.env,
   }
 }
@@ -94,7 +119,7 @@ function launcherEffects(socketPath: string): ProjectdLauncherEffects {
     spawnDetached: (command, args, options) =>
       new Promise((resolve, reject) => {
         const log = fs.openSync(options.logPath, "a")
-        const env = { ...process.env }
+        const env = { ...process.env, ...options.environment }
         delete env.ELECTRON_RUN_AS_NODE
         if (!app.isPackaged) {
           const devHelper = path.join(findRepoRoot(app.getAppPath()), "build", "projectd-helper", "cozea-projectd-mac-helper")
@@ -127,12 +152,27 @@ export async function initProjectdService(): Promise<void> {
     console.log(`[Electron] Starting cozea-projectd failed (${error instanceof Error ? error.message : String(error)})`)
     return "failed"
   })
+  if (!bridge) {
+    const lastErrors = new Map<string, string>()
+    bridge = new WorkspaceCatalogBridge({
+      register: (request) => client.registerWorkspace(request),
+      onError: (workspaceId, error) => {
+        if (lastErrors.get(workspaceId) === error) return
+        lastErrors.set(workspaceId, error)
+        console.warn(`[WorkspaceCatalogBridge] ${workspaceId}: ${error}`)
+      },
+    })
+    bridgeUnsubscribe = subscribeCatalogSnapshot(() => { void reconcileCatalogBridge() })
+    bridgeTimer = setInterval(() => { void reconcileCatalogBridge() }, 10_000)
+    bridgeTimer.unref()
+  }
   try {
     await client.connect()
     const health = await client.health()
     console.log(
       `[Electron] Connected to cozea-projectd on ${client.socketPath} (version: ${health.version}, pid: ${health.pid}, ${outcome})`,
     )
+    await reconcileCatalogBridge()
   } catch (err: any) {
     // Non-blocking: the app runs without the daemon, and live sessions report it.
     console.log(`[Electron] cozea-projectd is not reachable (${err?.message})`)
@@ -140,5 +180,12 @@ export async function initProjectdService(): Promise<void> {
 }
 
 export function disposeProjectdService(): void {
+  bridge?.stop()
+  bridge = null
+  bridgeUnsubscribe?.()
+  bridgeUnsubscribe = null
+  if (bridgeTimer) clearInterval(bridgeTimer)
+  bridgeTimer = null
+  daemonPid = null
   resetSharedProjectdClient()
 }

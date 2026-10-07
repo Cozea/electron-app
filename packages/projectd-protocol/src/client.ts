@@ -1,4 +1,5 @@
 import net from "node:net"
+import type { ProjectdProjectRemovalRequest, ProjectdWorkspaceCloseRequest, ProjectdWorkspaceRecord, ProjectdWorkspaceRegistration } from "../../../shared/projectdWorkspaceTypes"
 
 import {
   encodeMessage,
@@ -340,8 +341,16 @@ export class ProjectdClient {
     return this.request<T | null>("workspaces.get", { workspaceId })
   }
 
-  async registerWorkspace<T = any>(params: any): Promise<T> {
+  async registerWorkspace<T = ProjectdWorkspaceRecord>(params: ProjectdWorkspaceRegistration): Promise<T> {
     return this.request<T>("workspaces.register", params)
+  }
+
+  async removeProject(params: ProjectdProjectRemovalRequest): Promise<{ operationId: string; state: "removing" | "removed" | "cancelled" }> {
+    return this.request("workspaces.removeProject", params)
+  }
+
+  async closeWorkspace(params: ProjectdWorkspaceCloseRequest): Promise<ProjectdWorkspaceRecord> {
+    return this.request<ProjectdWorkspaceRecord>("workspaces.close", params)
   }
 
   async gitHealth<T = any>(): Promise<T> {

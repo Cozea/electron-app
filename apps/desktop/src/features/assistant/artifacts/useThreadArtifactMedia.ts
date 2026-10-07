@@ -85,10 +85,7 @@ export function useThreadArtifactMedia(
       try {
         const session = await fetchT3RpcSession(transport.shadowBaseUrl!)
         if (cancelled) return
-        client = new T3OrchestrationClient({
-          baseUrl: session.baseUrl,
-          wsTicket: session.wsTicket,
-        })
+        client = new T3OrchestrationClient(session)
         const results = await Promise.allSettled(
           missingIds.map(async (artifactId) => {
             const result = await client!.createAssetUrl({

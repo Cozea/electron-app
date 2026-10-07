@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { AgentSkillRecord } from "@shared/electronApiTypes";
+import type { AgentSkillRecord } from "@cozea/app-contract/electronApi";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {

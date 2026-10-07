@@ -7,7 +7,8 @@ import {
   useState,
   type KeyboardEvent,
 } from "react"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation, useQuery } from "@/lib/cloudQueries"
+import { CloudConnectionPrompt } from "@/components/CloudConnectionPrompt"
 
 import { api } from "../../../../../convex/_generated/api"
 import type { Id } from "../../../../../convex/_generated/dataModel"
@@ -385,6 +386,7 @@ export function Organizations({ surface = "page", route: _route }: Organizations
 
   return (
     <SettingsPageBody surface={surface}>
+      <CloudConnectionPrompt />
       <SettingsPageHeader
         title={t("settings.nav.organizations")}
       />

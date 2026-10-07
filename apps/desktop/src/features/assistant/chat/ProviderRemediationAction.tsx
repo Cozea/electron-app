@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import type { AgentToolId } from "@shared/electronApiTypes"
+import type { AgentToolId } from "@cozea/app-contract/electronApi"
 import {
   isProviderRemediationResolved,
   markProviderRemediationResolved,

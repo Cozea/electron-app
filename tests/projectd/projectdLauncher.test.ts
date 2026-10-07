@@ -154,6 +154,10 @@ describe("planning how cozea-projectd starts", () => {
       args: [SOURCE_ENTRY],
       cwd: "/src/electron-app",
       logPath: "/tmp/cozea-projectd-dev.log",
+      environment: {
+        COZEA_PROJECTD_SOCKET: DEVELOPMENT.socketPath,
+        COZEA_WORKSPACE_CATALOG_PATH: "/Users/tester/Library/Application Support/Cozea/local-workspaces.sqlite",
+      },
     })
   })
 
@@ -176,6 +180,15 @@ describe("planning how cozea-projectd starts", () => {
       logPath: "/tmp/log",
     })
     expect(plist).toContain("<string>/Volumes/R&amp;D &lt;copy&gt;/Cozea</string>")
+  })
+
+  it("passes Electron's concrete catalog location to both daemon launch modes", () => {
+    const workspaceCatalogPath = "/custom profile/local-workspaces.sqlite"
+    const dev = planProjectdLaunch({ ...DEVELOPMENT, workspaceCatalogPath }, () => true)
+    expect(dev).toMatchObject({ environment: { COZEA_WORKSPACE_CATALOG_PATH: workspaceCatalogPath } })
+    const packaged = planProjectdLaunch({ ...PACKAGED, workspaceCatalogPath }, () => true)
+    expect(packaged.kind).toBe("launch-agent")
+    if (packaged.kind === "launch-agent") expect(packaged.plist).toContain(`<string>${workspaceCatalogPath}</string>`)
   })
 })
 

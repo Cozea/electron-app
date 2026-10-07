@@ -36,7 +36,7 @@ type DevicePresentation = {
 
 export function NavUser({ user: userProp }: { user?: DevicePresentation | null | undefined }) {
   const { theme, setTheme } = useTheme()
-  const { user: authUser } = useAuth()
+  const { localDevice: authUser } = useAuth()
   const user = userProp ?? authUser
   const { t } = useTranslation()
   const navigate = useViewTransitionNavigate()

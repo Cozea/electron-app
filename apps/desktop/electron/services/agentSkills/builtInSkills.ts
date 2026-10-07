@@ -1,4 +1,4 @@
-import type { AgentSkillProvider } from '../../../../../shared/electronApiTypes'
+import type { AgentSkillProvider } from '@cozea/app-contract/electronApi'
 
 /**
  * Skills Cozea ships and seeds into the user's library on first run.

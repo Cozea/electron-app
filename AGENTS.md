@@ -69,14 +69,19 @@ bun run dev
 # Deploy Convex to production (ALWAYS use this, NEVER use `convex dev`)
 bunx convex deploy
 
-# Run API server
-cd server && bun run dev
+# Run the collab/API worker (Cloudflare Worker, @cozea/collab-worker)
+cd cloudflare/worker && bun run dev
 
 # Type checking
 bun run typecheck
 
-# Linting
+# Linting (oxlint + architecture boundaries)
 bun run lint
+
+# Architecture boundaries only (dependency-cruiser; known violations frozen in
+# .dependency-cruiser-known-violations.json, regenerate with `bun run check:boundaries:baseline`
+# only after FIXING violations — never to hide new ones)
+bun run check:boundaries
 
 # Build for production
 bun run build
@@ -195,39 +200,59 @@ GH_TOKEN="$(gh auth token)" bun run release
 ├── convex/                     # Convex backend functions
 │   ├── schema.ts               # Database schema
 │   └── lib/                    # Shared utilities
-├── server/                     # Fastify API gateway
-│   └── src/routes/             # AI model catalog, provider helpers, collab gateway
+├── cloudflare/worker/          # Collab/API worker (@cozea/collab-worker): AI model catalog, provider helpers, collab gateway
 ├── packages/                   # Internal packages (effect-acp, effect-sql, pty, contracts)
 └── shared/                     # Shared types (collab protocol, assistant contracts)
 ```
 
 ## How Project Creation Works
 
+Projectd receives the concrete Electron catalog path (`local-workspaces.sqlite`) in development and packaged launches. Its read-only initial import retries a missing catalog; a live main-process bridge reconciles verified bindings by revision and never deletes omitted session rows. Older partial bindings receive one catalog qualification at the same root. Retained collaboration session roots cannot move through ordinary registration. See `docs/local-project-catalog.md`.
+
+The local project catalog foundation is version 4 of `local-workspaces.sqlite`:
+`local_projects` owns device metadata and optional shared association, and
+`project_operations` journals immutable intent/resource evidence with revisions.
+Use `WorkspaceCatalog.projects` / typed `workspace.projects` IPC and distinguish
+`LocalProjectId` from `CloudProjectId`; never cast a new local ID to a Convex ID.
+Sidebar discovery, Search, create/import and default project settings use this
+local catalog. Local rename/hide never changes collaborators' presentation.
+The remaining cutover is tracked in `docs/current/project-system-implementation.md`.
+See `docs/local-project-catalog.md` for migration, snapshot and journal contracts.
+
+Project route/workspace runtime consumers use the local entry as execution identity.
+Keep genuine optional cloud documents/IDs separate; unknown `lpj_` routes never
+enter cloud discovery. Local runtimes need no cloud principal. Historical session
+bindings retain their equal-ID compatibility gate until daemon local/cloud ownership
+is implemented. See `docs/local-project-routing.md`.
+
 Project creation is a simple form — there is no conversational wizard or AI involvement at this stage.
 
 **Entry**: `/projects/new?mode=empty` or `mode=local`
-**Component**: `apps/desktop/src/pages/NewProject.tsx` → `apps/desktop/src/features/projects/components/CreateProjectDialog.tsx`
+**Component**: `apps/desktop/src/pages/NewProject.tsx` → `apps/desktop/src/features/projects/ui/CreateProjectDialog.tsx`
 
 ### Fresh project (`mode=empty`)
 
 1. User fills in: project name, local folder location, optional GitHub repo toggle
 2. On submit:
-   - IPC creates the folder on disk, runs `git init`, writes `.gitignore`
-   - If GitHub repo requested: runs `gh repo create` via IPC
-   - Convex `projects.create()` mutation creates the shared DB record (`syncStatus: "local_only"`)
-   - `updateStatus()` mutation moves it to `"active"`
-   - The device-local workspace catalog records the created folder as `managed`, including its concrete managed-root ID; no absolute path is written as cloud authority
-3. Navigates to `/projects/p/{projectId}/workbench`
+   - The dialog flushes its immutable creation request to device-local desktop persistence before IPC. An interrupted attempt reuses that request.
+   - Main-owned `workspace.projects.create()` atomically reserves the local project and operation, then creates the managed folder, records ownership, initializes Git and attaches its concrete workspace/root IDs.
+   - Optional DevApp scaffolding and GitHub creation retain separate local progress receipts. An uncertain optional effect is not automatically repeated; its receipt survives opening the existing project.
+   - Personal creation makes no Convex project record. Explicit shared promotion is a later implementation phase, required before publishing/sharing a new local project.
+3. Main publishes a post-commit catalog snapshot before returning success; navigation opens `/projects/p/{localProjectId}/workbench` with the returned workspace ID.
 
 ### Open existing folder (`mode=local`)
 
 1. Electron preflights the selected directory and existing Git metadata.
 2. If the canonical path already belongs to a local project, Cozea opens that project instead of creating a duplicate.
-3. Otherwise Convex creates an idempotent `provisioning` project, then the workspace catalog attaches the exact selected path as `attached`.
+3. Otherwise main-owned `workspace.projects.open()` reserves a local project and attaches the exact selected path as `attached`. An unfinished attachment reuses its original request and source evidence, even after restart or a changed form name. No cloud access probe or project creation is involved.
 4. Cozea never copies, renames, relocates, or assumes deletion ownership of an existing folder. Attached non-Git folders receive no source marker; attached Git folders may use the private `.git/cozea` marker.
-5. Once attachment succeeds, the project becomes `active` and the workbench opens at the returned workspace ID.
+5. Once attachment succeeds, local metadata becomes `active`; main publishes the catalog before the workbench opens at the returned workspace ID. The folder picker requires local device readiness, not cloud enrollment.
 
-Project deletion and **Clear all** may move only catalog-proven `managed` workspaces to Trash. Attached folders always remain on disk, including when they happen to live inside the configured managed-projects directory. Deleting a project stops its Dev Servers and sessions, clears project-scoped renderer/T3 state and local DevApp records, forgets its local workspace bindings, and schedules a bounded Convex cascade that removes project-owned rows and stored blobs before deleting the project document. Archiving does none of this cleanup and remains reversible.
+Create/import tile intents are consumed only by the visible matching project/workspace. Verified non-Git folders use their concrete catalog lane; Git workspaces still await branch resolution. Local rename/hide replies also await their committed catalog snapshot before controls become available again. See `docs/local-project-routing.md` for these ordering and execution contracts.
+
+Original-folder repair uses `workspace.projects.repair/resumeRepair`, not compatibility attach/forget. Its immutable receipt proves the original directory and preserves project/workspace/lane IDs; main requires the exact daemon binding and stops local workbench/terminal/Dev Server ownership before catalog publication. Completed consecutive repair revisions alone authorize rebasing the same native assistant project and exact draft/history roots. Running chats block assistant reconciliation. Missing bindings remain in the catalog and do not block settings; creation allocation skips absent reserved paths. Startup resumes bounded local create/attach attempts, never explicit repair/removal or network effects. See `docs/local-project-catalog.md` and `docs/local-project-routing.md` for bounds and unsupported legacy/nested cases.
+
+The sidebar's **Hide on This Device** is reversible local presentation and does not stop runtimes, clear drafts or detach folders. **Show hidden projects** and Search keep hidden entries reachable. Default project settings edit local preferences; **Open Shared Settings** requires a genuine association and available shared document. **Close Workspace** uses main-owned journal/native acknowledgments and preserves folder bindings, lanes, conversations, drafts and layouts; running chats or retained collaboration sessions block it. Retry/Cancel recover interrupted closes. See `docs/local-project-close.md`; never use raw `forget` or best-effort renderer deletion for close. **Delete Shared Project** targets collaborators' cloud project and preserves local workspaces and runtime state. Shared deletion receipts, permanent local removal/retention controls, optional-effect reconciliation and journal compaction remain pending. Existing compatibility cleanup and **Clear all** may move only catalog-proven `managed` workspaces to Trash; original physical identity and canonical managed-root containment are required. Attached folders always remain on disk, even inside the configured managed-projects directory. Never infer ownership from location.
 
 ## How the AI / Workbench Works
 
@@ -244,6 +269,9 @@ The AI chat runs **after** project creation, inside the workbench.
 - Application overlays share the semantic body-portal/layer contract in `docs/workbench-overlay-architecture.md`. Browser-owned presentation belongs in `HostedBrowserWebview`; custom application overlays use `AppOverlayPortal` or its bounded anchored variant instead of raw global z-index values.
 
 ## How Device Identity Works
+
+- Local shell entry uses `AuthContext.localDevice` / `isLocalDeviceReady`, resolved through the physical installation key. `desktop-local-device.v1.json` stores bounded presentation only, never a cloud principal or credentials. Fresh onboarding/device settings work locally; shared presentation synchronization is still pending the project-system cutover. See `docs/offline-desktop-shell.md`.
+- Import renderer cloud hooks from `@/lib/cloudQueries`. Its client is genuinely configured or null; missing configuration must not block local children or create a dummy SDK client. SDK providers mount only with real clients. Cached `user` / `isAuthenticated` is presentation, not local readiness or cloud authority; cloud access still requires the live token and server authorization.
 
 - One physical Cozea installation is one independent device principal. There is no human account or login layer.
 - `identityKey` is the sole public immutable `czd_…` device identity. `principalId` is only the internal Convex document ID used for relationships; never expose `deviceId`/`userId` aliases for the public identity.

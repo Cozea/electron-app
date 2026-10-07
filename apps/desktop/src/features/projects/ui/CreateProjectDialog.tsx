@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Spinner } from "@/components/ui/spinner"
-import { useMutation } from "convex/react"
+import { appToast } from "@/lib/appToast"
+import { continueLocalProjectCreation } from "@/features/projects/lib/continueLocalProjectCreation"
+import { requireLocalProjectsApi } from "@/features/projects/lib/localProjectsApi"
 
-import { api } from "../../../../../../convex/_generated/api"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { UnifiedModal } from "@/components/ui/unified-modal"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { GhCliStatus } from "../../../../../../shared/electronApiTypes"
+import type { GhCliStatus } from "@cozea/app-contract/electronApi"
 import type { DevAppScaffoldStarter } from "../../../../../../shared/devAppAuthoringTypes"
-import { useAuth } from "@/contexts/AuthContext"
 import { useNavigateTo } from "@/lib/navigation"
 import { cn } from "@/lib/utils"
 import {
@@ -38,6 +38,12 @@ import {
 } from "@/lib/workbenchStore"
 import { useTranslation } from "@/lib/i18n"
 import { useLocalProjectImport } from "@/features/projects/hooks/useLocalProjectImport"
+import {
+  readLocalProjectCreationIntent,
+  saveLocalProjectCreationIntent,
+  clearLocalProjectCreationIntent,
+  type LocalProjectCreationIntent,
+} from "@/features/projects/lib/localProjectCreationIntent"
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Folder01Icon } from '@hugeicons/core-free-icons'
@@ -97,11 +103,11 @@ export function CreateProjectDialog({
 }: CreateProjectDialogProps) {
   const { t } = useTranslation()
   const navigateTo = useNavigateTo()
-  const { principalId } = useAuth()
-  const createProject = useMutation(api.projects.create)
-  const updateProjectStatus = useMutation(api.projects.updateStatus)
   const { importPickedLocalFolder } = useLocalProjectImport()
 
+  const [creationIntent, setCreationIntent] = useState<LocalProjectCreationIntent | null>(null)
+  const [isIntentReady, setIsIntentReady] = useState(false)
+  const submissionRef = useRef(false)
   const [name, setName] = useState("")
   const [parentDirectory, setParentDirectory] = useState("")
   const [localFolderPath, setLocalFolderPath] = useState("")
@@ -116,7 +122,8 @@ export function CreateProjectDialog({
   const [devAppStarter, setDevAppStarter] = useState<DevAppScaffoldStarter>("view-worker")
   const isLocalMode = mode === "local" || mode === "devapp-local"
   const isFreshMode = !isLocalMode
-  const isDevAppMode = mode === "devapp" || mode === "devapp-local"
+  const isDevAppMode = creationIntent?.mode === "devapp" || mode === "devapp" || mode === "devapp-local"
+  const areFieldsLocked = isSubmitting || Boolean(creationIntent) || !isIntentReady
 
   const copy = useMemo(() => {
     const selectedLocalFolderPath = localFolderPath.trim() || initialLocalFolderPath.trim()
@@ -177,19 +184,25 @@ export function CreateProjectDialog({
 
     let cancelled = false
 
-    void window.electronAPI.settings
-      .get()
-      .then((settings) => {
+    setIsIntentReady(false)
+    void Promise.all([
+      window.electronAPI.settings.get(),
+      isFreshMode ? readLocalProjectCreationIntent() : Promise.resolve(null),
+    ]).then(([settings, pending]) => {
         if (cancelled) return
 
-        setName("")
-        setParentDirectory(settings.projectsDirectory)
+        setCreationIntent(pending)
+        setName(pending?.request.name ?? "")
+        setParentDirectory(pending?.request.parentFolder ?? settings.projectsDirectory)
+        setScaffoldWarnings(pending?.warnings ?? [])
         setLocalFolderPath(isLocalMode ? initialLocalFolderPath : "")
         setLocalGitState(null)
         setError(null)
         setHasEditedName(false)
-        setCreateGitHubRepo(false)
-        setDevAppStarter("view-worker")
+        setCreateGitHubRepo(pending?.createGitHubRepo ?? false)
+        setRepoVisibility(pending?.repoVisibility ?? "public")
+        setDevAppStarter(pending?.starter ?? "view-worker")
+        setIsIntentReady(true)
 
         // Resolve cached gh CLI status (fires once per app session)
         if (isFreshMode) {
@@ -260,7 +273,7 @@ export function CreateProjectDialog({
         .getState()
         .actions.ensureWorkbench(projectId, DEFAULT_WORKBENCH_LANE_ID, workspaceId)
       navigateTo(
-        { to: "workbench", projectId, laneId: DEFAULT_WORKBENCH_LANE_ID },
+        { to: "workbench", projectId },
         {
           state: buildProjectRouteNavigationState(
             {
@@ -280,7 +293,7 @@ export function CreateProjectDialog({
                       sourceRef: devAppRef,
                     },
                   }
-                : { openTile: "assistantChat" as const }),
+                : { ensureTile: "assistantChat" as const }),
             }),
           ),
         },
@@ -289,12 +302,12 @@ export function CreateProjectDialog({
     [navigateTo, onOpenChange],
   )
   const isCreateProjectDisabled =
-    isSubmitting ||
+    isSubmitting || !isIntentReady ||
     (isFreshMode && name.trim().length === 0) ||
     (isLocalMode && localFolderPath.trim().length === 0)
 
   const handleSubmit = useCallback(async () => {
-    if (!principalId || isSubmitting) {
+    if (!isIntentReady || submissionRef.current || isSubmitting) {
       return
     }
 
@@ -319,96 +332,38 @@ export function CreateProjectDialog({
       return
     }
 
+    submissionRef.current = true
     setIsSubmitting(true)
     setError(null)
 
-    let createdWorkspaceId: string | null = null
-
     try {
       if (isFreshMode) {
-        const result = await createProject({
-          principalId: principalId,
-          name: trimmedName,
-          template: "blank",
-          creationPath: "fresh",
-        })
-
-        console.log("[CreateProjectDialog] Calling workspace.createForProject with:", {
-          projectId: result.projectId,
-          slug: buildFilesystemSlug(trimmedName),
-          rootPathOverride: trimmedParentDirectory,
-        })
-        const createWorkspaceResult = await window.electronAPI.workspace!.createForProject({
-          projectId: result.projectId,
-          slug: buildFilesystemSlug(trimmedName),
-          initGit: true,
-          rootPathOverride: trimmedParentDirectory,
-          setActive: true,
-        })
-        console.log("[CreateProjectDialog] createWorkspaceResult:", createWorkspaceResult)
-
-        if (!createWorkspaceResult.success || !createWorkspaceResult.workspace) {
-          throw new Error(createWorkspaceResult.error || "Failed to create the local project folder.")
+        const initial: LocalProjectCreationIntent = creationIntent ?? {
+          request: { operationId: crypto.randomUUID(), name: trimmedName,
+            slug: buildFilesystemSlug(trimmedName), parentFolder: trimmedParentDirectory },
+          mode: isDevAppMode ? "devapp" : "empty",
+          starter: devAppStarter,
+          createGitHubRepo,
+          repoVisibility,
+          postEffects: "pending",
         }
-
-        createdWorkspaceId = createWorkspaceResult.workspace.workspaceId
-
-        const scaffold = isDevAppMode
-          ? await window.electronAPI.devAppAuthoring.scaffold({
-              workspaceId: createdWorkspaceId,
-              name: trimmedName,
-              starter: devAppStarter,
-            })
-          : null
-        if (scaffold && !scaffold.success) {
-          throw new Error(scaffold.error)
-        }
-        // The package previews fine without these; it cannot publish. Say so now rather than
-        // letting the author discover it from the publish dialog later.
-        // Tolerate a main process that predates this field: a project that was created must
-        // not look like a failure because the renderer expected a newer reply shape.
-        const preparationWarnings = scaffold?.success ? (scaffold.preparation?.warnings ?? []) : []
-        if (preparationWarnings.length > 0) setScaffoldWarnings(preparationWarnings)
-
-        // Optionally create a GitHub repo
-        let gitHubRepoUrl: string | undefined
-        if (createGitHubRepo) {
-          const ghResult = await window.electronAPI.project.createGitHubRepo({
-            workspaceId: createdWorkspaceId,
-            name: buildFilesystemSlug(trimmedName),
-            visibility: repoVisibility,
-          })
-          if (!ghResult.success) {
-            throw new Error(ghResult.error || "Failed to create GitHub repository.")
-          }
-          gitHubRepoUrl = ghResult.repoUrl
-        }
-
-        if (gitHubRepoUrl) {
-          // If we created a GitHub repo, update the project with sourceControl
-          // (This requires a mutation to update sourceControl, but since we already created it,
-          //  we might need a new mutation or just skip it for now. Actually, let's just leave it 
-          //  as created in GitHub. The app will sync it.)
-        }
-
-        await updateProjectStatus({
-          projectId: result.projectId,
-          principalId: principalId,
-          status: "active",
+        const { outcome, intent, needsReview, needsAcknowledgement } = await continueLocalProjectCreation(initial, {
+          projects: requireLocalProjectsApi(),
+          scaffold: (request) => window.electronAPI.devAppAuthoring.scaffold(request),
+          createGitHubRepo: (request) => window.electronAPI.project.createGitHubRepo(request),
+          saveIntent: saveLocalProjectCreationIntent,
+          onIntentChanged: setCreationIntent,
         })
+        const { project, workspace } = outcome
+        setScaffoldWarnings(intent.warnings ?? [])
+        if (needsReview) appToast.error({ title: "Project setup needs review",
+          description: "The project exists. An earlier DevApp or GitHub step was interrupted; inspect it from the workbench before trying that step again." })
+        if (needsAcknowledgement) return
 
-        // Navigating away would close this dialog over the notice, so a package that cannot
-        // publish would report that to nobody. Hold here and let the author dismiss it; the
-        // project already exists and is in the sidebar either way.
-        if (preparationWarnings.length > 0) return
-
-        navigateToProjectWorkbench(
-          String(result.projectId),
-          result.slug,
-          createdWorkspaceId,
-          trimmedName,
-          scaffold?.success ? scaffold.source.ref : null,
-        )
+        // Retain uncertain optional-effect evidence before acknowledging the local result.
+        await clearLocalProjectCreationIntent(intent, project.projectId)
+        navigateToProjectWorkbench(project.projectId, project.slug,
+          workspace.workspaceId, project.name, intent.devAppRef)
         return
       }
 
@@ -417,7 +372,7 @@ export function CreateProjectDialog({
           requireDevApp: mode === "devapp-local",
         })
         if (outcome === "imported") {
-          closeDialog()
+          onOpenChange(false)
         } else if (outcome === "error") {
           setError("Cozea could not attach that folder. Review the error and try again.")
         }
@@ -426,12 +381,13 @@ export function CreateProjectDialog({
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Failed to create project.")
     } finally {
+      submissionRef.current = false
       setIsSubmitting(false)
     }
   }, [
-    principalId,
+    creationIntent,
+    isIntentReady,
     createGitHubRepo,
-    createProject,
     isSubmitting,
     importPickedLocalFolder,
     isDevAppMode,
@@ -442,8 +398,8 @@ export function CreateProjectDialog({
     name,
     navigateToProjectWorkbench,
     closeDialog,
+    onOpenChange,
     parentDirectory,
-    updateProjectStatus,
     devAppStarter,
   ])
 
@@ -472,13 +428,15 @@ export function CreateProjectDialog({
             {isSubmitting ? (
               <Spinner size="xs" />
             ) : null}
-            {copy.submitLabel}
+            {creationIntent ? creationIntent.postEffects === "pending" ? "Continue Creating" : "Open Project" : copy.submitLabel}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">{copy.description}</p>
+        <p className="text-sm text-muted-foreground">{creationIntent
+          ? "Continue the saved request for this project. Its name and folder are kept until creation is resolved."
+          : copy.description}</p>
 
         <div className={isLocalMode ? "space-y-2" : "space-y-2.5"}>
           <section>
@@ -499,7 +457,7 @@ export function CreateProjectDialog({
                         ? localFolderName || t('createProject.folderNamePlaceholder')
                         : t('createProject.namePlaceholder')
                     }
-                    disabled={isSubmitting}
+                    disabled={areFieldsLocked}
                     autoFocus
                     className="h-7 w-full border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 dark:bg-transparent"
                   />
@@ -525,7 +483,7 @@ export function CreateProjectDialog({
                         setParentDirectory(selectedPath)
                         setError(null)
                       }}
-                      disabled={isSubmitting}
+                      disabled={areFieldsLocked}
                       title={parentDirectory || t('createProject.chooseParentFolder')}
                     >
                       <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
@@ -556,7 +514,7 @@ export function CreateProjectDialog({
                         setLocalFolderPath(selectedPath)
                         setError(null)
                       }}
-                      disabled={isSubmitting}
+                      disabled={areFieldsLocked}
                       title={localFolderPath || t('createProject.chooseLocalFolder')}
                     >
                       <HugeiconsIcon icon={Folder01Icon} className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/80" />
@@ -580,7 +538,7 @@ export function CreateProjectDialog({
                       id="create-devapp-starter"
                       value={devAppStarter}
                       onChange={(event) => setDevAppStarter(event.target.value as DevAppScaffoldStarter)}
-                      disabled={isSubmitting}
+                      disabled={areFieldsLocked}
                       className="h-7 w-full rounded-md border border-border/60 bg-background px-2 text-xs text-foreground outline-none"
                     >
                       <option value="view-worker">{t("createProject.devAppStarterViewWorker")}</option>
@@ -619,7 +577,7 @@ export function CreateProjectDialog({
                         id="create-project-github"
                         checked={createGitHubRepo}
                         onCheckedChange={setCreateGitHubRepo}
-                        disabled={isSubmitting}
+                        disabled={areFieldsLocked}
                       />
                     )}
                   </SettingsRowControl>
@@ -638,7 +596,7 @@ export function CreateProjectDialog({
                       id="create-project-visibility"
                       checked={repoVisibility === "private"}
                       onCheckedChange={(checked) => setRepoVisibility(checked ? "private" : "public")}
-                      disabled={isSubmitting}
+                      disabled={areFieldsLocked}
                     />
                   </SettingsRowControl>
                 </SettingsRow>
@@ -661,7 +619,7 @@ export function CreateProjectDialog({
           {scaffoldWarnings.length > 0 ? (
             <div className="text-sm text-muted-foreground">
               <p className="font-medium text-foreground">
-                The DevApp was created, but it cannot be published yet.
+                The local project is available. Review these setup details in its workbench.
               </p>
               {scaffoldWarnings.map((warning) => (
                 <p key={warning}>{warning}</p>

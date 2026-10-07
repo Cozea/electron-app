@@ -32,7 +32,7 @@ export function ProjectRenameDialog({
     <UnifiedModal
       open={open}
       onOpenChange={onOpenChange}
-      title="Rename Project"
+      title="Rename on This Device"
       size="md"
       dismissable={!isSaving}
       footer={
@@ -53,8 +53,7 @@ export function ProjectRenameDialog({
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          Update the project name shown across your workspace. Existing access and project data
-          stay the same.
+          Choose the project name shown on this device. Collaborators keep the shared project name.
         </p>
 
         <UnifiedModalField

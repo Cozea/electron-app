@@ -1,3 +1,5 @@
+import type { LocalProjectDTO } from "./localProjectTypes"
+
 // ─── Enumerations ────────────────────────────────────────────────────────────
 
 export type CwdSpec =
@@ -357,6 +359,8 @@ export interface WorkspaceCatalogSnapshot {
   revision: number
   generatedAt: number
   entries: Record<string, WorkspaceCatalogSnapshotEntry>
+  /** All durable local entries, including hidden/unbound projects. Older snapshots omit it. */
+  projects?: Record<string, LocalProjectDTO>
 }
 
 // ─── Active workspace context (renderer) ─────────────────────────────────────

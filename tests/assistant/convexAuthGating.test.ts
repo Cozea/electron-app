@@ -26,11 +26,23 @@ describe("convex auth gating", () => {
     // before any cloud call can succeed, so it is the wrong gate for a query.
     expect(authContext).toContain("isConvexAuthReady: Boolean(accessToken)");
     expect(authContext).toContain("isAuthenticated: Boolean(user)");
+    expect(authContext).toContain("isLocalDeviceReady: Boolean(localDevice)");
+  });
+
+  it("contains cloud-profile rejection without replacing the local shell", () => {
+    expect(authContext).toContain("const profileQuery = useSafeConvexQuery(");
+    const start = authContext.indexOf("if (profileQuery.status !== 'error') return")
+    const end = authContext.indexOf("}, [profileQuery.status])", start)
+    expect(start).toBeGreaterThanOrEqual(0)
+    const failure = authContext.slice(start, end)
+    expect(failure).toContain("setPrincipalId(null)")
+    expect(failure).toContain("setAccessToken(null)")
+    expect(failure).not.toContain("setLocalDevice")
   });
 
   it("gates presence on convex auth readiness, not merely on runtime readiness", () => {
     expect(projectLayout).toContain(
-      "const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime && isConvexAuthReady",
+      "const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime && isConvexAuthReady && liveSession.membership === \"active\"",
     );
     expect(presence).toContain("projectId && isConvexAuthReady ? { projectId } : \"skip\"");
     // The heartbeat mutation shares the gate so a 30s interval cannot turn the
@@ -78,7 +90,7 @@ describe("convex auth gating", () => {
     // cached shell presentation alone must never open cloud queries. The reads
     // live in useProjectTeam now; the invariant is unchanged, only the file.
     expect(shareButtonTeam).toContain(
-      'projectId && principalId ? { projectId, principalId: principalId } : "skip"',
+      'projectId && principalId && isConvexAuthReady ? { projectId, principalId: principalId } : "skip"',
     );
   });
 });

@@ -7,7 +7,7 @@
  */
 
 import type { ProjectdSessionStatus, ProjectdSessionTicket } from "@cozea/projectd-protocol"
-import type { ElectronAPI } from "@shared/electronApiTypes"
+import type { ElectronAPI } from "@cozea/app-contract/electronApi"
 
 export type SessionKeyState =
   | {

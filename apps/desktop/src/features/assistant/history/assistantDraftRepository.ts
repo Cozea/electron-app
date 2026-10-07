@@ -227,6 +227,7 @@ export function createAssistantDraftRepository(storage: AssistantDraftStorage) {
   const dirty = new Set<string>();
   const pendingDeletes = new Set<string>();
   const removed = new Set<string>();
+  const removedProjects = new Set<string>();
   const failure = (error: unknown) =>
     store.setState({
       error: error instanceof Error ? error.message : "Could not save this draft on this device.",
@@ -284,7 +285,7 @@ export function createAssistantDraftRepository(storage: AssistantDraftStorage) {
   const save = (input: AssistantContentDraft) => {
     const adoption = adoptions.get(input.key);
     const record = adoption ? { ...input, ...adoption } : input;
-    if (removed.has(record.key)) return;
+    if (removed.has(record.key) || removedProjects.has(record.projectId)) return;
     dirty.add(record.key);
     store.setState((state) => ({ drafts: { ...state.drafts, [record.key]: record } }));
     void ensurePersistence().catch(() => {});
@@ -341,6 +342,7 @@ export function createAssistantDraftRepository(storage: AssistantDraftStorage) {
       await flush();
     },
     async removeProject(projectId: string) {
+      removedProjects.add(projectId);
       await load();
       await remove(
         Object.values(store.getState().drafts)

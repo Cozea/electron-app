@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import { useConvex } from "convex/react";
+import { useConvex } from "@/lib/cloudQueries";
 
 import { api } from "../../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../../convex/_generated/dataModel";
@@ -15,12 +15,19 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useGitChangesStore } from "@/features/source-control/model/gitChangesStore";
 import { useHeaderOverflow } from "./HeaderOverflowContext";
+import { useAuth } from "@/contexts/AuthContext";
 
-export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"projects"> | null }) {
+interface HeaderProjectChangesButtonProps {
+  projectId: string | null;
+  cloudProjectId?: Id<"projects"> | null;
+}
+
+export function HeaderProjectChangesButton({ projectId, cloudProjectId = null }: HeaderProjectChangesButtonProps) {
   const headerOverflow = useHeaderOverflow();
   const navigateTo = useNavigateTo();
   const pathname = useLocation({ select: (location) => location.pathname });
   const convex = useConvex();
+  const { isConvexAuthReady } = useAuth();
   const routeContext = useOptionalProjectRouteContext();
   const workspaceId = routeContext?.activeLane?.workspaceId ?? routeContext?.workspaceId ?? null;
   const projectState = useGitChangesStore((state) => workspaceId ? state.projects[workspaceId] : undefined)
@@ -36,9 +43,9 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
   const sidebarActions = useChangesSidebarStore((state) => state.actions);
 
   const prewarmChanges = useCallback(() => {
-    if (!projectId) return;
+    if (!cloudProjectId || !convex || !isConvexAuthReady) return;
 
-    const activityCacheKey = getProjectChangesActivityCacheKey(projectId);
+    const activityCacheKey = getProjectChangesActivityCacheKey(cloudProjectId);
     const queryCache = useQueryCache.getState();
     if (queryCache.get(activityCacheKey, 30_000) !== undefined) {
       return;
@@ -47,7 +54,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
     void scheduleTask(async () => {
       try {
         const activity = await convex.query(api.activity.getRecentActivity, {
-          projectId,
+          projectId: cloudProjectId,
           limit: 100,
         });
 
@@ -58,7 +65,7 @@ export function HeaderProjectChangesButton({ projectId }: { projectId: Id<"proje
         // Ignore prewarm failures and let the drawer queries resolve normally.
       }
     }, "background");
-  }, [convex, projectId]);
+  }, [convex, cloudProjectId, isConvexAuthReady]);
 
   if (!projectId) return null;
 

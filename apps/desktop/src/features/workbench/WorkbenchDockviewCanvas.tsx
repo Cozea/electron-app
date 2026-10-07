@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, type ComponentProps } from "react"
+import { memo, useCallback, useMemo, useRef, type ComponentProps, type CSSProperties } from "react"
 import {
   DockviewReact,
   themeAbyssSpaced,
@@ -32,6 +32,8 @@ import { cn } from "@/lib/utils"
 import type { ContextMenuItem } from "@shared/assistant-contracts/ipc"
 import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
 import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
+import { useTranslation } from "@/lib/i18n"
+import { closeWorkbenchPanels } from "@/features/workbench/closeWorkbenchPanels"
 
 const WORKBENCH_TAB_GROUP_COLORS = [
   { id: "agent", value: "var(--primary)", label: "Agent" },
@@ -49,6 +51,11 @@ const getWorkbenchTabGroupChipContextMenuItems: NonNullable<
   ComponentProps<typeof DockviewReact>["getTabGroupChipContextMenuItems"]
 > = () => ["rename", "colorPicker"]
 
+// One measure for the space between tiles and around the outer edge. Dockview
+// takes the gap in JS; the outer padding is CSS, which reads it back through
+// --cozea-workbench-gap on the host (see workbench.css).
+const WORKBENCH_TILE_GAP = 4
+
 function buildCozeaDockviewTheme(
   baseTheme: DockviewTheme,
   themeScheme: "dark" | "light",
@@ -64,7 +71,7 @@ function buildCozeaDockviewTheme(
     tabGroupIndicator: "none",
     // Tighter inter-tile gap than the Spaced theme default (10px) so adjacent
     // tiles sit closer while still reading as separate cards.
-    gap: 6,
+    gap: WORKBENCH_TILE_GAP,
   }
 }
 
@@ -120,6 +127,9 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
   // runtime value changes (it does on every hide/show of the workbench).
   const runtimeRef = useRef(runtime)
   runtimeRef.current = runtime
+  const { t } = useTranslation()
+  const tRef = useRef(t)
+  tRef.current = t
   const dockviewTheme = useMemo(
     () =>
       buildCozeaDockviewTheme(
@@ -342,13 +352,16 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
             runtime.onDuplicateAssistantTile(panel.id)
             break
           case "close":
-            panel.api.close()
+            void closeWorkbenchPanels([panel], tRef.current)
             break
           case "close-others":
-            params.group.panels.filter((p) => p !== panel).forEach((p) => p.api.close())
+            void closeWorkbenchPanels(
+              params.group.panels.filter((p) => p !== panel),
+              tRef.current,
+            )
             break
           case "close-all":
-            [...params.group.panels].forEach((p) => p.api.close())
+            void closeWorkbenchPanels(params.group.panels, tRef.current)
             break
         }
       })
@@ -359,7 +372,10 @@ export const WorkbenchDockviewCanvas = memo(function WorkbenchDockviewCanvas({
   )
 
   return (
-    <div className={cn("cozea-workbench-dockview-host h-full min-h-0 w-full min-w-0", className)}>
+    <div
+      className={cn("cozea-workbench-dockview-host h-full min-h-0 w-full min-w-0", className)}
+      style={{ "--cozea-workbench-gap": `${WORKBENCH_TILE_GAP}px` } as CSSProperties}
+    >
       <DockviewReact
         key={dockviewKey}
         className="cozea-workbench-dockview h-full min-h-0 w-full min-w-0"

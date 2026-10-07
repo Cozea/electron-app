@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { AppSettings } from '@shared/electronApiTypes'
+import type { AppSettings } from '@cozea/app-contract/electronApi'
 import { createLocalSnapshot } from '@/lib/localSnapshot'
 
 export interface LocalAppSettings extends AppSettings {

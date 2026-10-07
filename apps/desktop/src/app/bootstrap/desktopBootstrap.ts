@@ -1,7 +1,7 @@
 import {
   DESKTOP_BOOTSTRAP_VERSION,
   type DesktopBootstrapSnapshot,
-} from '@shared/desktopBootstrapTypes'
+} from '@cozea/app-contract/desktopBootstrap'
 
 let initialSnapshot: DesktopBootstrapSnapshot | null = null
 

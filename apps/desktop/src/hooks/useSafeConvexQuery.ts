@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { useQueries, type RequestForQueries } from "convex/react"
+import { useQueries, type RequestForQueries } from "@/lib/cloudQueries"
 import { convexToJson, type Value } from "convex/values"
 import { getFunctionName, type FunctionReference } from "convex/server"
 

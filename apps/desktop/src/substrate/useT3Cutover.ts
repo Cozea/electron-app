@@ -117,7 +117,7 @@ export function startT3Cutover(
       }
       const payload = await fetchT3RpcSession(baseUrl, abort.signal);
       if (!attempt.isCurrent()) return;
-      const session = createT3RpcSession({ baseUrl: payload.baseUrl, wsTicket: payload.wsTicket });
+      const session = createT3RpcSession(payload);
       attempt.own(() => session.close());
       attempt.own(session.client.onDisconnect(attempt.disconnected));
       // Establish readiness with a read, not successful ticket acquisition alone.

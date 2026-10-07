@@ -2,7 +2,8 @@ import { useCallback, useMemo, useState } from "react"
 import { Spinner } from "@/components/ui/spinner"
 import { cleanConvexError } from "@/lib/convexError"
 import { useParams } from "@/lib/router"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation, useQuery } from "@/lib/cloudQueries"
+import { CloudConnectionPrompt } from "@/components/CloudConnectionPrompt"
 
 import { api } from "../../../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"
@@ -133,9 +134,10 @@ export function ProjectJoinPage() {
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
               <Spinner size="xs" className="text-primary" />
             </div>
-            <CardTitle>Preparing This Device...</CardTitle>
-            <CardDescription>Finishing the local device setup for project access.</CardDescription>
+            <CardTitle>Connect this device</CardTitle>
+            <CardDescription>Project access requires an authenticated cloud connection.</CardDescription>
           </CardHeader>
+          <CardContent><CloudConnectionPrompt /></CardContent>
         </Card>
       </div>
     )

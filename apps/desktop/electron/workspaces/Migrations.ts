@@ -5,11 +5,15 @@ import * as Effect from "effect/Effect";
 import Migration0001 from "./Migrations/001_InitialSchema.ts";
 import Migration0002 from "./Migrations/002_ActiveUniqueIndexes.ts";
 import Migration0003 from "./Migrations/003_WorkspaceStorageOwnership.ts";
+import Migration0005 from "./Migrations/005_ProjectRemoval.ts";
+import Migration0004 from "./Migrations/004_LocalProjects.ts";
 
 export const migrationEntries = [
   [1, "InitialSchema", Migration0001],
   [2, "ActiveUniqueIndexes", Migration0002],
   [3, "WorkspaceStorageOwnership", Migration0003],
+  [4, "LocalProjects", Migration0004],
+  [5, "ProjectRemoval", Migration0005],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

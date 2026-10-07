@@ -4,7 +4,7 @@ import type {
   ProjectMemoryGraph,
   ProjectMemoryNodeDetail,
   ProjectMemoryStatus,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import { ProjectMemoryService } from '../services/ProjectMemoryService'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization.ts'
 

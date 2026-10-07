@@ -17,7 +17,7 @@ import type {
   PreviewInjectBridgeResult,
   PreviewProbePortResult,
   PreviewProbeUrlResult,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 
 interface RegisterPreviewHandlersDeps {
   getMainWindow: () => BrowserWindow | null

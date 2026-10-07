@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { driver, type Driver, type PopoverDOM } from "driver.js";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/cloudQueries";
 
 import "driver.js/dist/driver.css";
 import "./productTour.css";
@@ -25,6 +25,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore";
 import { useNavigateTo } from "@/lib/navigation";
 import { useTranslation } from "@/lib/i18n";
+import { useWorkspaceCatalogSnapshot } from "@/features/workspace/useWorkspaceCatalogSnapshot";
+import { discoverLocalProjects } from "@/features/projects/lib/localProjectDiscovery";
 
 import {
   isActionStep,
@@ -121,14 +123,12 @@ function placeRing(ring: HTMLElement, rect: DOMRect): void {
 }
 
 export function ProductTour() {
-  const { principalId, isAuthenticated, isLoading, needsOnboarding } = useAuth();
+  const { principalId, isLocalDeviceReady, isLoading, needsOnboarding } = useAuth();
   const { t } = useTranslation();
   const navigateTo = useNavigateTo();
 
-  const projects = useQuery(
-    api.projects.listSummariesForCurrentUser,
-    principalId ? { principalId } : "skip",
-  );
+  const snapshot = useWorkspaceCatalogSnapshot();
+  const projects = discoverLocalProjects(snapshot);
   const organizations = useQuery(api.organizations.listMine, principalId ? {} : "skip");
   const isCreateDialogOpen = useCreateProjectDialogStore((state) => state.isOpen);
   const setTourActive = useProductTourStore((state) => state.setActive);
@@ -136,7 +136,7 @@ export function ProductTour() {
   // `undefined` means the query has not resolved. Starting the tour before it
   // resolves would decide the memory step against an unknown project list.
   const projectsResolved = projects !== undefined;
-  const firstProjectId = projects?.[0]?._id ?? null;
+  const firstProjectId = projects?.find((project) => !project.hidden)?.projectId ?? null;
   const hasProject = Boolean(firstProjectId);
   const projectCount = projects?.length ?? 0;
   const organizationCount = organizations?.length ?? 0;
@@ -276,7 +276,7 @@ export function ProductTour() {
   // Start the tour once, as soon as onboarding is behind us.
   useEffect(() => {
     if (startedRef.current) return;
-    if (!isAuthenticated || isLoading || needsOnboarding) return;
+    if (!isLocalDeviceReady || isLoading || needsOnboarding) return;
     if (!projectsResolved) return;
     if (steps.length === 0) return;
 
@@ -401,7 +401,7 @@ export function ProductTour() {
     beginStep,
     clearStepBindings,
     finish,
-    isAuthenticated,
+    isLocalDeviceReady,
     isLoading,
     needsOnboarding,
     prepareStep,

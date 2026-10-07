@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Spinner } from "@/components/ui/spinner"
-import { useConvex, useQuery } from "convex/react"
+import { requireCloudClient, useConvex, useQuery } from "@/lib/cloudQueries"
+import { CloudConnectionPrompt } from "@/components/CloudConnectionPrompt"
 import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -149,7 +150,7 @@ export function AppStorePage() {
         publicationId: entry.publicationId,
         version: entry.activeRelease.version,
       })
-      const artifact = await convex.query(api.devApps.getArtifactUrl, { ref })
+      const artifact = await requireCloudClient(convex).query(api.devApps.getArtifactUrl, { ref })
       if (!artifact) throw new Error(t("appStore.install.accessLost"))
       const result = await window.electronAPI.orgDevApp.install({
         downloadUrl: artifact.url,
@@ -596,6 +597,7 @@ export function AppStorePage() {
         </section>
       ) : null}
 
+      {scope === "organization" ? <CloudConnectionPrompt /> : null}
       {orgLoading && scope === "organization" ? (
         <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
           {[0, 1, 2, 3].map((row) => (

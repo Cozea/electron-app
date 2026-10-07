@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import { createJSONStorage, persist, type StateStorage } from "zustand/middleware"
 
-import type { DevServerAuxiliaryProcessConfig } from "@shared/electronApiTypes"
+import type { DevServerAuxiliaryProcessConfig } from "@cozea/app-contract/electronApi"
 
 export const MAX_DEV_SERVER_AUXILIARY_PROCESSES = 6
 export const MAX_DEV_SERVER_PROCESS_NAME_LENGTH = 48

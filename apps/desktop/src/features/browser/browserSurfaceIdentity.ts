@@ -1,4 +1,4 @@
-import type { BrowserSurfaceKind } from "@shared/browserSurfaceTypes";
+import type { BrowserSurfaceKind } from "@cozea/app-contract/browserSurface";
 
 interface BrowserWorkbenchSessionIdentity {
   readonly projectId: string;

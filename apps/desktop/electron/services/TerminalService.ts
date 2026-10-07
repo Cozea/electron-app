@@ -9,7 +9,7 @@ import type {
   TerminalInfo,
   TerminalOutputEvent,
   TerminalSnapshot,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import { shouldPreserveWindowlessRuntime } from '../appLifecycleState'
 import { createIpcOutputBatcher } from '../lib/ipcOutputBatcher'
 import { TerminalProvenanceService } from './TerminalProvenanceService'
@@ -639,6 +639,18 @@ export class TerminalService {
     for (const terminalId of terminalIds) {
       this.killTerminal(terminalId)
     }
+  }
+
+  /** Await the process owner's exit events rather than dropping its mirror. */
+  async closeAllForWorkspace(workspaceId: string): Promise<void> {
+    const ids = await this.runtimeClient.request<string[]>('terminal.list', { workspaceId })
+    for (const terminalId of ids) await this.runtimeClient.request<{ success: boolean }>('terminal.kill', { terminalId })
+    const deadline = Date.now() + 5_000
+    while ((await this.runtimeClient.request<string[]>('terminal.list', { workspaceId })).length) {
+      if (Date.now() >= deadline) throw new Error('Workspace terminals have not confirmed exit. Retry the saved close.')
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    }
+    for (const terminalId of ids) this.evictTerminalCaches(terminalId)
   }
 
   killAll(): void {

@@ -1,5 +1,5 @@
 import type { Id } from "../../../../convex/_generated/dataModel"
-import type { DesktopBootstrapSession } from "@shared/desktopBootstrapTypes"
+import type { DesktopBootstrapSession } from "@cozea/app-contract/desktopBootstrap"
 import type { PersonalWorkspaceMembership, User } from "@shared/types"
 
 export interface DeviceSession {
@@ -84,6 +84,11 @@ async function issueDeviceSession(): Promise<DeviceSession> {
     body: JSON.stringify({ challenge, signature: signed.signature }),
   })
   const session = await parseResponse<DeviceSession>(completeResponse)
+  if (session?.user?.identityKey !== identity.identityKey || !session.principalId ||
+    session.user.principalId !== session.principalId || !session.accessToken ||
+    !Number.isFinite(session.expiresAt)) {
+    throw new Error("The authentication response differs from this physical device.")
+  }
   try {
     await window.cozeaBootstrap?.storeSession(toBootstrapSession(session))
   } catch (error) {

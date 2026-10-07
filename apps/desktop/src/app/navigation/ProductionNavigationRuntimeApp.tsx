@@ -24,6 +24,14 @@ import { createMemoryHistory } from '@tanstack/react-router'
 type Destination = 'store' | 'inbox' | 'a' | 'b' | 'c' | 'd'
 
 const testAuth: AuthContextType = {
+  localDevice: {
+    identityKey: 'navigation-test-device', platform: 'linux', displayName: 'Navigation Test',
+    presentationConfigured: true, avatarUrl: null, updatedAt: 0,
+  },
+  isLocalDeviceReady: true,
+  localDeviceError: null,
+  retryLocalDevice: async () => {},
+  updateLocalDevice: async () => {},
   user: {
     principalId: 'navigation-test-principal',
     identityKey: 'navigation-test-device',

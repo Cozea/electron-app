@@ -1,44 +1,9 @@
-import type { ContextMenuItem } from '@cozea/assistant-contracts'
-
-export * from '@shared/electronApiTypes'
-
-interface DesktopBridgeSurface {
-  preview?: import('@shared/browserSurfaceTypes').CozeaDesktopPreviewBridge
-  getAssistantRuntimeStatus: () => Promise<{
-    phase: 'idle' | 'starting' | 'ready' | 'error'
-    wsUrl: string
-    lastError: string | null
-    updatedAt: number
-  }>
-  getSubstrateShadowStatus?: () => Promise<import('@/lib/desktopBridgeClient').SubstrateShadowBridgeStatus>
-  substrateVcs?: {
-    invalidate: (
-      cwd: string,
-    ) => Promise<import('@/substrate/vcsClient').SubstrateVcsInvalidateResult>
-    getCapabilities: () => Promise<import('@/substrate/vcsClient').SubstrateVcsCapabilities>
-  }
-  getWsUrl: () => string | null
-  pickFolder: () => Promise<string | null>
-  confirm: (message: string) => Promise<boolean>
-  showContextMenu: <T extends string>(
-    items: readonly ContextMenuItem<T>[],
-    position?: { x: number; y: number },
-  ) => Promise<T | null>
-  openExternal: (url: string) => Promise<boolean>
-  onAssistantRuntimeStatus?: (
-    listener: (status: {
-      phase: 'idle' | 'starting' | 'ready' | 'error'
-      wsUrl: string
-      lastError: string | null
-      updatedAt: number
-    }) => void,
-  ) => () => void
-}
+export * from '@cozea/app-contract/electronApi'
 
 declare global {
   interface Window {
-    electronAPI: import('@shared/electronApiTypes').ElectronAPI
-    desktopBridge?: DesktopBridgeSurface
+    electronAPI: import('@cozea/app-contract/electronApi').ElectronAPI
+    desktopBridge?: import('@cozea/app-contract/desktopBridge').DesktopBridgeSurface
     nativeApi?: import('@cozea/assistant-contracts').NativeApi
   }
 }

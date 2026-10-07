@@ -1,6 +1,6 @@
 import { useHeaderOverflow } from "./HeaderOverflowContext";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "@/lib/cloudQueries";
 
 import { api } from "../../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../../convex/_generated/dataModel";
@@ -103,16 +103,19 @@ export function HeaderProjectShareButton({
   /** Branch the folder has checked out; the session button prefers its session. */
   activeBranch?: string | null;
 }) {
-  const { principalId, user } = useAuth();
+  const { principalId, isConvexAuthReady, localDevice: user } = useAuth();
+  const [open, setOpen] = useState(false);
+  const [hubOpen, setHubOpen] = useState(false);
+  const [startSessionOpen, setStartSessionOpen] = useState(false);
   const syncContext = useOptionalProjectSyncContext();
-  const { members, memberRole } = useProjectTeam(projectId);
+  const { members, memberRole } = useProjectTeam(projectId, open || hubOpen || startSessionOpen);
   const pendingEnrollments = useQuery(
     api.projectDeviceEnrollments.listForProject,
-    projectId && principalId && memberRole === "project_manager" ? { projectId } : "skip",
+    open && isConvexAuthReady && projectId && principalId && memberRole === "project_manager" ? { projectId } : "skip",
   );
   const joinLinkState = useQuery(
     api.projectJoinLinks.getForProject,
-    projectId && principalId ? { projectId } : "skip",
+    open && isConvexAuthReady && projectId && principalId ? { projectId } : "skip",
   );
 
   const createEnrollment = useMutation(api.projectDeviceEnrollments.create);
@@ -123,9 +126,6 @@ export function HeaderProjectShareButton({
   const updateMemberRole = useMutation(api.projectMembers.updateRole);
   const removeMember = useMutation(api.projectMembers.removeMember);
 
-  const [open, setOpen] = useState(false);
-  const [hubOpen, setHubOpen] = useState(false);
-  const [startSessionOpen, setStartSessionOpen] = useState(false);
   // Read only while the Start dialog is open, to tell the creator what the session starts from.
   const dirtySnapshot = useGitDirtySnapshot(startSessionOpen ? syncContext?.workspaceId ?? null : null);
   const headerOverflow = useHeaderOverflow();
@@ -146,8 +146,8 @@ export function HeaderProjectShareButton({
     MAX_PROJECT_USERS - (members?.length ?? 0) - (pendingEnrollments ?? []).length,
   );
   const activeLink = joinLinkState?.activeLink ?? null;
-  const roleCheckPending = Boolean(projectId && principalId && memberRole === undefined);
-  const shareStatePending = Boolean(projectId && principalId && joinLinkState === undefined);
+  const roleCheckPending = Boolean(open && isConvexAuthReady && projectId && principalId && memberRole === undefined);
+  const shareStatePending = Boolean(open && isConvexAuthReady && projectId && principalId && joinLinkState === undefined);
 
   useEffect(() => {
     if (activeLink?.role) setJoinRole(activeLink.role as ProjectRole);

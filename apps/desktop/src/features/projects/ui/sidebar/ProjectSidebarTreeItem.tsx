@@ -8,7 +8,7 @@ import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
 import { cn } from "@/lib/utils"
 import { featureFlags } from "@/lib/featureFlags"
 import { useAuth } from "@/contexts/AuthContext"
-import { useConvex } from "convex/react"
+import { useConvex } from "@/lib/cloudQueries"
 import { prefetchProjectSwitch } from "@/features/projects/lib/projectSwitchPrefetch"
 import { useElementOverflowTitleFor } from "@/hooks/usePretextOverflowTitle"
 import { useWorkspaceSnapshotEntry } from "@/features/workspace/useWorkspaceCatalogSnapshot"
@@ -84,7 +84,7 @@ export const ProjectSidebarTreeItem = React.memo(
   }: SidebarProjectTreeItemProps) {
     const shouldLoadLanes = selection.isExpanded || context.isCurrentProject
     const collabBranch = React.useMemo(() => resolveProjectCollabBranch(project), [project])
-    const { principalId } = useAuth()
+    const { principalId, isConvexAuthReady: isConvexReady } = useAuth()
     const convex = useConvex()
     // Pushed catalog snapshot: no per-row resolveProject IPC. The layout still
     // does a fresh, candidate-scanning resolution when a project is opened.
@@ -189,18 +189,21 @@ export const ProjectSidebarTreeItem = React.memo(
       if (context.isCurrentProject) return
       prefetchProjectSwitch({
         projectId: project.id,
+        cloudProjectId: project._id,
         projectSlug: project.slug,
         workspaceId,
         collabBranch,
         convex,
-        principalId: principalId ?? null,
+        principalId: isConvexReady ? principalId ?? null : null,
       })
     }, [
       collabBranch,
       context.isCurrentProject,
       convex,
       principalId,
+      isConvexReady,
       project.id,
+      project._id,
       project.slug,
       workspaceId,
     ]);
@@ -247,14 +250,18 @@ export const ProjectSidebarTreeItem = React.memo(
 
         items.push(
           { id: "divider-primary", label: "", type: "separator" },
-          { id: "rename", label: "Rename", icon: getNativeMenuIcon("rename") },
+          { id: "rename", label: "Rename on This Device…", icon: getNativeMenuIcon("rename") },
           {
-            id: project.status === "archived" ? "restore" : "archive",
-            label: project.status === "archived" ? "Restore" : "Archive",
-            icon: project.status === "archived" ? getNativeMenuIcon("restore") : getNativeMenuIcon("archive"),
+            id: project.hidden ? "restore" : "archive",
+            label: project.hidden ? "Show on This Device" : "Hide on This Device",
+            icon: project.hidden ? getNativeMenuIcon("restore") : getNativeMenuIcon("archive"),
           },
-          { id: "delete", label: "Delete", destructive: true, icon: getNativeMenuIcon("delete") },
         )
+
+        if (project._id) {
+          items.push({ id: "delete", label: "Delete Shared Project…", enabled: Boolean(principalId && isConvexReady),
+            destructive: true, icon: getNativeMenuIcon("delete") })
+        }
 
         const hasSidebarActions =
           projectIndex > 0 ||
@@ -336,7 +343,9 @@ export const ProjectSidebarTreeItem = React.memo(
         workspaceId,
         project,
         project.id,
-        project.status,
+        project.hidden,
+        principalId,
+        isConvexReady,
         projectCount,
         projectIndex,
       ],
@@ -421,7 +430,7 @@ export const ProjectSidebarTreeItem = React.memo(
               type="button"
               className="group flex min-h-7 min-w-0 max-w-full flex-1 cursor-pointer items-center gap-2 text-left text-sm font-medium text-sidebar-foreground focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring hover:text-foreground"
               onClick={handleProjectOpenClick}
-              aria-label={`Open ${project.name}`}
+              aria-label={`Open ${project.name}${project.hidden ? " (hidden on this device)" : ""}`}
             >
               <ProjectPixelInvaderIcon
                 name={project.name || project.id}

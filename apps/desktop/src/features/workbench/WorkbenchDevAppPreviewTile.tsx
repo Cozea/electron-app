@@ -23,7 +23,7 @@ import {
   Shield01Icon,
 } from "@hugeicons/core-free-icons";
 import { DevAppCapabilityList } from "@/features/devapps/components/DevAppCapabilityList";
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
+import type { BrowserSurfaceDescriptor } from "@cozea/app-contract/browserSurface";
 import type { DevAppPreviewStatus } from "@shared/devAppPreviewTypes";
 
 /**
@@ -250,7 +250,6 @@ export function WorkbenchDevAppPreviewTile({
       title={running?.name || tile.title}
       tileType="devAppPreview"
       panelApi={panelApi}
-      containerApi={containerApi}
       controls={<DevelopmentBadge status={status} hotReload={hotReload} />}
     >
       <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-content-surface">

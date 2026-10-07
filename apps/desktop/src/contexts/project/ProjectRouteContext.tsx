@@ -1,7 +1,8 @@
 import { createContext, useContext } from "react";
 
 import type { Doc, Id } from "../../../../../convex/_generated/dataModel";
-import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes";
+import type { ProjectLaneDescriptor, ProjectLaneState } from "@cozea/app-contract/electronApi";
+import type { LocalProjectDTO } from "@shared/localProjectTypes";
 
 export interface ProjectRouteSlugResolutionCandidate {
   projectId: Id<"projects">;
@@ -20,6 +21,11 @@ export interface ProjectRouteSlugResolutionResult {
 
 export interface ProjectRouteContextValue {
   project: Doc<"projects"> | null | undefined;
+  localProject?: LocalProjectDTO | null;
+  localProjectId?: string | null;
+  cloudProjectId?: Id<"projects"> | null;
+  catalogReady?: boolean;
+  cloudError?: Error | null;
   projectIdParam: string | null;
   slugParam: string | null;
   slugResolution?: ProjectRouteSlugResolutionResult;

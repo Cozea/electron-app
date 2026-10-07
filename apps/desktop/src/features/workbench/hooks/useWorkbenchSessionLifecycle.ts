@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { WorkbenchSessionSnapshot } from "@cozea/app-contract/electronApi"
 import {
   buildPresentationInstanceKey,
   type ResolvedWorkbenchIdentity,

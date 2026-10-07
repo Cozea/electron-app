@@ -27,7 +27,7 @@ import type {
   AgentSkillSetupPack,
   AgentSkillSetupPackResult,
   AgentSkillUpdateSource,
-} from "../../../../shared/electronApiTypes";
+} from "@cozea/app-contract/electronApi";
 import {
   parseSkillMarkdown,
   renderSkillMarkdown,

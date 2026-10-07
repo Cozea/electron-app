@@ -20,6 +20,7 @@ import type {
   RuntimeMode,
 } from "@cozea/assistant-contracts"
 import type { BrowserStorageScope } from "@shared/browserTileTypes"
+import type { ProjectOperationDTO } from "@shared/localProjectTypes"
 import type { SerializedDockview } from "dockview-react"
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
@@ -195,7 +196,7 @@ interface ProjectWorkbenchState extends PersistedWorkbenchState {
   lastActiveScopeKey: string | null
   actions: {
     ensureWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
-    bindWorkspaceRevision: (projectId: string, laneId: string, workspaceId: string, workspaceRevision: number) => void
+    bindWorkspaceRevision: (projectId: string, laneId: string, workspaceId: string, workspaceRevision: number, completedRepair?: ProjectOperationDTO) => void
     resetWorkbench: (projectId: string, laneId: string, workspaceId?: string | null) => void
     removeProject: (projectId: string) => void
     cloneWorkspaceState: (
@@ -1149,7 +1150,7 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             }
           })
         },
-        bindWorkspaceRevision: (projectId, laneId, workspaceId, workspaceRevision) => {
+        bindWorkspaceRevision: (projectId, laneId, workspaceId, workspaceRevision, completedRepair) => {
           if (!projectId || !workspaceId || !Number.isSafeInteger(workspaceRevision) || workspaceRevision < 1) return
           set((state) => {
             const { scopeKey, workbench, normalizedLaneId, normalizedWorkspace } = resolveMutableWorkbenchState(
@@ -1157,6 +1158,13 @@ export const useProjectWorkbenchStore = create<ProjectWorkbenchState>()(
             )
             if (!workbench) return
             if (workbench.workspaceRevision && workbench.workspaceRevision !== workspaceRevision) {
+              if (completedRepair?.kind === "repair" && completedRepair.state === "completed" &&
+                completedRepair.projectId === projectId && completedRepair.details.workspaceId === workspaceId &&
+                Number(completedRepair.details.expectedWorkspaceRevision) + 1 === workspaceRevision &&
+                workbench.workspaceRevision < workspaceRevision) {
+                workbench.workspaceRevision = workspaceRevision
+                return
+              }
               state.workbenches[scopeKey] = {
                 ...createDefaultWorkbenchState(projectId, normalizedLaneId, normalizedWorkspace),
                 workspaceRevision,

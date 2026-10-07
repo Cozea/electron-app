@@ -1,14 +1,9 @@
-import { useMemo } from "react"
 import { useParams } from '@/lib/router'
-import { useQuery } from "convex/react"
-
-import { api } from "../../../../../convex/_generated/api"
-import type { Id } from "../../../../../convex/_generated/dataModel"
 import { useAuth } from "@/contexts/AuthContext"
 import {
   useOptionalProjectRouteContext,
-  type ProjectRouteSlugResolutionResult,
 } from "@/contexts/project/ProjectRouteContext"
+import { useProjectRouteData } from "./useProjectRouteData"
 
 export function useAccessibleProject() {
   const { slug, projectId } = useParams()
@@ -17,47 +12,20 @@ export function useAccessibleProject() {
   const routeProjectIdParam = projectRouteContext?.projectIdParam ?? projectId ?? null
   const routeSlugParam = projectRouteContext?.slugParam ?? slug ?? null
 
-  const projectById = useQuery(
-    api.projects.getAccessibleById,
-    !projectRouteContext && routeProjectIdParam && principalId
-      ? { projectId: routeProjectIdParam as Id<"projects"> }
-      : "skip"
-  )
-
-  const projectBySlugResult = useQuery(
-    api.projects.getAccessibleBySlug,
-    !projectRouteContext && !routeProjectIdParam && routeSlugParam && principalId
-      ? {
-          slug: routeSlugParam,
-          principalId: principalId,
-        }
-      : "skip"
-  ) as ProjectRouteSlugResolutionResult | undefined
-
-  const project = useMemo(() => {
-    if (projectRouteContext) {
-      return projectRouteContext.project
-    }
-    if (routeProjectIdParam) {
-      return projectById
-    }
-    if (!routeSlugParam) {
-      return null
-    }
-    if (projectBySlugResult === undefined) {
-      return undefined
-    }
-    if (projectBySlugResult.status !== "ok") {
-      return null
-    }
-    return projectBySlugResult.project ?? null
-  }, [projectById, projectBySlugResult, projectRouteContext, routeProjectIdParam, routeSlugParam])
+  const data = useProjectRouteData(routeProjectIdParam, routeSlugParam, !projectRouteContext)
 
   return {
-    project,
+    project: projectRouteContext ? projectRouteContext.project : data.project,
+    localProject: projectRouteContext?.localProject ?? data.localProject,
+    localProjectId: projectRouteContext?.localProjectId ?? projectRouteContext?.localProject?.projectId ??
+      projectRouteContext?.projectIdParam ?? projectRouteContext?.project?._id ?? data.localProjectId,
+    cloudProjectId: projectRouteContext?.cloudProjectId ?? projectRouteContext?.project?._id ?? data.cloudProjectId,
+    projectName: projectRouteContext?.projectName ?? data.projectName,
+    catalogReady: projectRouteContext?.catalogReady ?? data.catalogReady,
+    cloudError: projectRouteContext?.cloudError ?? data.cloudError,
     projectIdParam: routeProjectIdParam,
     slugParam: routeSlugParam,
     principalId,
-    slugResolution: projectRouteContext?.slugResolution ?? projectBySlugResult,
+    slugResolution: projectRouteContext?.slugResolution ?? data.slugResolution,
   }
 }

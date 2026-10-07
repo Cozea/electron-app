@@ -70,6 +70,7 @@ export class SqliteWorkbenchStore implements LocalProjectWorkbenchStore {
 
     this.db.db.exec("BEGIN IMMEDIATE;")
     try {
+      if (this.db.db.prepare("SELECT 1 FROM project_exclusions WHERE project_id = ?").get(workbench.projectId)) throw new Error("Project removal excludes new workbenches.")
       if (workbench.lifecycle === "active") {
         const activeCheck = this.db.db.prepare(
           "SELECT workbench_id FROM local_workbenches WHERE project_id = ? AND lifecycle = 'active' AND workbench_id != ? LIMIT 1",
@@ -156,6 +157,7 @@ export class SqliteWorkbenchStore implements LocalProjectWorkbenchStore {
   ): Promise<SetActiveWorkbenchResult> {
     this.db.db.exec("BEGIN IMMEDIATE;")
     try {
+      if (this.db.db.prepare("SELECT 1 FROM project_exclusions WHERE project_id = ?").get(projectId)) throw new Error("Project removal excludes workbench activation.")
       const getStmt = this.db.db.prepare("SELECT * FROM local_workbenches WHERE workbench_id = ?")
       const row = getStmt.get(workbenchId) as any
 

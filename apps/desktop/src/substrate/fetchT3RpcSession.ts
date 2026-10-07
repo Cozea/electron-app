@@ -4,6 +4,7 @@ export const SUBSTRATE_T3_RPC_SESSION_PATH = "/.well-known/cozea/substrate/t3-rp
 export interface T3RpcSessionPayload {
   readonly ok: true;
   readonly baseUrl: string;
+  readonly rpcBaseUrl?: string;
   readonly wsTicket: string;
 }
 
@@ -21,5 +22,12 @@ export async function fetchT3RpcSession(
         : `T3 RPC session unavailable (${response.status})`,
     );
   }
+  for (const address of [json.baseUrl, json.rpcBaseUrl ?? json.baseUrl]) {
+    const parsed = new URL(address);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+      throw new Error("Invalid T3 session address");
+    }
+  }
+  if (typeof json.wsTicket !== "string" || !json.wsTicket) throw new Error("Invalid T3 session ticket");
   return json;
 }

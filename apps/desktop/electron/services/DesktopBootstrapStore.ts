@@ -8,10 +8,14 @@ import {
   type DesktopBootstrapSession,
   type DesktopBootstrapSnapshot,
   type DesktopWorkbenchLocator,
-} from '../../../../shared/desktopBootstrapTypes'
+  type LocalDevicePresentation,
+  type LocalDevicePresentationUpdate,
+} from '@cozea/app-contract/desktopBootstrap'
+import { isDeviceIdentityKey } from '../../../../shared/deviceIdentity'
 
 const SESSION_FILE_NAME = 'desktop-bootstrap-session.v2.enc'
 const NAVIGATION_FILE_NAME = 'desktop-bootstrap-navigation.v1.json'
+const LOCAL_DEVICE_FILE_NAME = 'desktop-local-device.v1.json'
 
 interface StoredNavigationState {
   version: 1
@@ -81,6 +85,33 @@ function isDesktopWorkbenchLocator(value: unknown): value is DesktopWorkbenchLoc
   )
 }
 
+function isLocalAvatar(value: unknown): value is string | null {
+  if (value === null) return true
+  if (typeof value !== 'string' || value.length > 2_000_000 || hasControlCharacters(value)) return false
+  if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value)) return true
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && !url.username && !url.password && !/\s/.test(value)
+  } catch {
+    return false
+  }
+}
+
+function hasControlCharacters(value: string): boolean {
+  return [...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
+}
+
+function isLocalDevicePresentation(value: unknown): value is LocalDevicePresentation {
+  return isRecord(value) && typeof value.identityKey === 'string' && isDeviceIdentityKey(value.identityKey) &&
+    value.identityKey === value.identityKey.trim().toLowerCase() &&
+    Object.keys(value).every((key) => ['identityKey', 'platform', 'displayName', 'avatarUrl', 'presentationConfigured', 'updatedAt'].includes(key)) &&
+    typeof value.platform === 'string' && value.platform.length > 0 && value.platform.length <= 32 &&
+    typeof value.displayName === 'string' && value.displayName.trim().length > 0 && value.displayName.length <= 80 &&
+    !hasControlCharacters(value.displayName) && isLocalAvatar(value.avatarUrl) &&
+    typeof value.presentationConfigured === 'boolean' && typeof value.updatedAt === 'number' &&
+    Number.isSafeInteger(value.updatedAt) && value.updatedAt >= 0
+}
+
 async function atomicWrite(filePath: string, data: Buffer | string): Promise<void> {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
   const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`
@@ -95,6 +126,11 @@ async function atomicWrite(filePath: string, data: Buffer | string): Promise<voi
 
 export class DesktopBootstrapStore {
   private writeQueues = new Map<string, Promise<void>>()
+  private readonly getDeviceIdentity?: () => Promise<{ identityKey: string; platform: string }>
+
+  constructor(getDeviceIdentity?: () => Promise<{ identityKey: string; platform: string }>) {
+    this.getDeviceIdentity = getDeviceIdentity
+  }
 
   private get sessionPath(): string {
     return path.join(app.getPath('userData'), SESSION_FILE_NAME)
@@ -102,6 +138,10 @@ export class DesktopBootstrapStore {
 
   private get navigationPath(): string {
     return path.join(app.getPath('userData'), NAVIGATION_FILE_NAME)
+  }
+
+  private get localDevicePath(): string {
+    return path.join(app.getPath('userData'), LOCAL_DEVICE_FILE_NAME)
   }
 
   private async enqueueWrite(filePath: string, writeFn: () => Promise<void>): Promise<void> {
@@ -118,16 +158,69 @@ export class DesktopBootstrapStore {
   }
 
   async getInitialSnapshot(): Promise<DesktopBootstrapSnapshot> {
-    const [session, lastWorkbenchRoute] = await Promise.all([
+    const [session, lastWorkbenchRoute, localDevice] = await Promise.all([
       this.readSession(),
       this.readLastWorkbenchRoute(),
+      this.readLocalDevice(),
     ])
     return {
       version: DESKTOP_BOOTSTRAP_VERSION,
       capturedAt: Date.now(),
       session,
+      localDevice,
       lastWorkbenchRoute,
     }
+  }
+
+  async getLocalDevice(): Promise<LocalDevicePresentation> {
+    if (!this.getDeviceIdentity) throw new Error('Local device identity service is unavailable.')
+    const identity = await this.getDeviceIdentity()
+    if (!isDeviceIdentityKey(identity.identityKey)) throw new Error('Invalid physical device identity.')
+    let result: LocalDevicePresentation | undefined
+    await this.enqueueWrite(this.localDevicePath, async () => {
+      const stored = await this.readLocalDevice()
+      if (stored?.identityKey === identity.identityKey && stored.platform === identity.platform) {
+        result = stored
+        return
+      }
+      // Migration copies presentation only after checking the actual local key.
+      const session = await this.readSession()
+      const previous = session?.user.identityKey === identity.identityKey ? session.user : null
+      const candidate: LocalDevicePresentation = {
+        identityKey: identity.identityKey,
+        platform: identity.platform,
+        displayName: previous?.displayName ?? 'This Device',
+        avatarUrl: previous?.avatarUrl ?? null,
+        presentationConfigured: previous?.presentationConfigured ?? false,
+        updatedAt: Date.now(),
+      }
+      result = isLocalDevicePresentation(candidate) ? candidate : {
+        identityKey: identity.identityKey, platform: identity.platform, updatedAt: Date.now(),
+        displayName: 'This Device', avatarUrl: null, presentationConfigured: false }
+      if (!isLocalDevicePresentation(result)) throw new Error('Invalid physical device presentation.')
+      await atomicWrite(this.localDevicePath, `${JSON.stringify(result)}\n`)
+    })
+    return result!
+  }
+
+  async updateLocalDevice(update: LocalDevicePresentationUpdate): Promise<LocalDevicePresentation> {
+    if (!isRecord(update) || typeof update.identityKey !== 'string' || typeof update.displayName !== 'string' ||
+      (update.avatarUrl !== undefined && !isLocalAvatar(update.avatarUrl))) {
+      throw new Error('Invalid local device presentation update.')
+    }
+    const current = await this.getLocalDevice()
+    if (update.identityKey !== current.identityKey) throw new Error('The physical device identity changed.')
+    let result: LocalDevicePresentation | undefined
+    await this.enqueueWrite(this.localDevicePath, async () => {
+      const latest = await this.readLocalDevice()
+      if (!latest || latest.identityKey !== update.identityKey) throw new Error('The physical device identity changed.')
+      result = { ...latest, displayName: update.displayName.trim(),
+        avatarUrl: update.avatarUrl === undefined ? latest.avatarUrl : update.avatarUrl,
+        presentationConfigured: true, updatedAt: Date.now() }
+      if (!isLocalDevicePresentation(result)) throw new Error('Invalid local device presentation update.')
+      await atomicWrite(this.localDevicePath, `${JSON.stringify(result)}\n`)
+    })
+    return result!
   }
 
   async storeSession(session: DesktopBootstrapSession): Promise<void> {
@@ -176,6 +269,17 @@ export class DesktopBootstrapStore {
       const parsed: unknown = JSON.parse(await fs.promises.readFile(this.navigationPath, 'utf8'))
       if (!isRecord(parsed) || parsed.version !== 1) return null
       return isDesktopWorkbenchLocator(parsed.lastWorkbenchRoute) ? parsed.lastWorkbenchRoute : null
+    } catch {
+      return null
+    }
+  }
+
+  private async readLocalDevice(): Promise<LocalDevicePresentation | null> {
+    try {
+      const stat = await fs.promises.stat(this.localDevicePath)
+      if (stat.size > 2_001_024) return null
+      const parsed: unknown = JSON.parse(await fs.promises.readFile(this.localDevicePath, 'utf8'))
+      return isLocalDevicePresentation(parsed) ? parsed : null
     } catch {
       return null
     }

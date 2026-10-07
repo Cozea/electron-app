@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject";
+import { readProjectRouteNavigationState } from "@/contexts/project/projectNavigationState";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProjectHeader } from "@/lib/useProjectHeader";
 import { useActiveWorkbenchScope } from "@/contexts/project/useActiveWorkbenchScope"
@@ -30,6 +31,7 @@ import { WorkbenchHeaderTitle } from "@/features/workbench/WorkbenchHeaderTitle"
 import { useProjectWorkbenchSearchParamSync } from "@/features/workbench/hooks/useProjectWorkbenchSearchParamSync";
 import {
   markWorkbenchIntentApplied,
+  canApplyWorkbenchIntentToScope,
   readWorkbenchIntentFromState,
   wasWorkbenchIntentApplied,
 } from "@/features/workbench/model/workbenchIntent";
@@ -46,6 +48,9 @@ import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
 import { useTranslation } from "@/lib/i18n";
 import { buildPresentationInstanceKey } from "@shared/navigationRuntimeTypes";
 import type { ResolvedWorkbenchIdentity } from "@shared/navigationRuntimeTypes";
+import { reconcileWorkbenchRevision } from "@/features/workbench/model/reconcileWorkbenchRevision";
+import { requireLocalProjectsApi } from "@/features/projects/lib/localProjectsApi";
+import { Button } from "@/components/ui/button";
 
 const LazyTaskFocusOverlay = lazy(() =>
   import("@/features/tasks/ui/TaskFocusOverlay").then((module) => ({
@@ -76,13 +81,13 @@ interface ProjectWorkbenchSurfaceProps {
 export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurfaceProps) {
   const { t } = useTranslation();
   const projectRouteContext = useOptionalProjectRouteContext();
-  const { project } = useAccessibleProject();
+  const { project, localProject, projectName: resolvedProjectName } = useAccessibleProject();
   const activeWorkspace = useActiveWorkspaceOrNull();
   const {
     projectRootPath: identityProjectRootPath,
     gitRootPath: identityGitRootPath,
   } = useWorkspaceIdentity();
-  const projectName = project?.name ?? projectRouteContext?.projectName ?? "Project";
+  const projectName = resolvedProjectName ?? projectRouteContext?.projectName ?? "Project";
   const taskOverlayState = useLocation({
     select: (location) => (location.state as TaskOverlayLocationState | null)?.taskOverlay ?? null,
   });
@@ -99,7 +104,7 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     laneResolutionPending,
   } = useActiveWorkbenchScope();
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { localDevice: user } = useAuth();
   const [taskCards, setTaskCards] = useState<TaskOverlayPayload[]>(() =>
     taskOverlayState ? [taskOverlayState] : [],
   );
@@ -114,16 +119,20 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     ),
   );
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions);
+  const [revisionError, setRevisionError] = useState<string | null>(null);
+  const [revisionRetry, setRevisionRetry] = useState(0);
+  const workspaceRevision = activeWorkspace?.workspace.workspaceRevision;
+  const revisionPending = Boolean(workspaceRevision && projectWorkbench?.workspaceRevision && projectWorkbench.workspaceRevision !== workspaceRevision);
   const workspaceSelectionId = user?.identityKey ?? "local-device";
   const currentWorkspaceRuntimeId = useMemo(
     () =>
       resolveWorkspaceRuntimeId({
-        projectId: project?._id ?? null,
+        projectId,
         workspaceId: activeWorkspace?.workspace.workspaceId ?? null,
         laneId: activeLaneId,
         workspaceRevision: activeWorkspace?.workspace.workspaceRevision ?? 1,
       }),
-    [activeLaneId, activeWorkspace?.workspace.workspaceId, activeWorkspace?.workspace.workspaceRevision, project?._id],
+    [activeLaneId, activeWorkspace?.workspace.workspaceId, activeWorkspace?.workspace.workspaceRevision, projectId],
   );
   const workspaceRuntimeRecord = useWorkspaceRuntimeStore(
     useMemo(
@@ -187,10 +196,10 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
       <WorkbenchHeaderTitle
         projectName={projectName}
         hasActiveLiveSession={hasActiveLiveSession}
-        hasProjectRecord={Boolean(project?._id)}
+        hasProjectRecord={Boolean(localProject || activeWorkspace)}
       />
     ),
-    [hasActiveLiveSession, project?._id, projectName],
+    [hasActiveLiveSession, localProject, activeWorkspace, projectName],
   );
 
   useProjectHeader(visible ? headerWorkbench : null, null);
@@ -244,8 +253,18 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
   const workbenchIntent = useLocation({
     select: (location) => readWorkbenchIntentFromState(location.state),
   });
+  const intentProjectId = useLocation({
+    select: (location) => readProjectRouteNavigationState(location.state)?.projectId ?? null,
+  });
+  const intentWorkspaceId = useLocation({
+    select: (location) => readProjectRouteNavigationState(location.state)?.preferredWorkspaceId ?? null,
+  });
   useEffect(() => {
-    if (!projectId || !workbenchIntent || laneResolutionPending) return;
+    if (!projectId || !workbenchIntent || laneResolutionPending || revisionPending) return;
+    if (!canApplyWorkbenchIntentToScope({
+      projectId, workspaceId: activeWorkbenchId, targetProjectId: intentProjectId,
+      targetWorkspaceId: intentWorkspaceId, visible,
+    })) return;
     if (wasWorkbenchIntentApplied(workbenchIntent)) return;
 
     // A freshly created/imported project can render this route before its local
@@ -280,6 +299,17 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
       }
       return;
     }
+    if (workbenchIntent.ensureTile) {
+      const liveWorkbench = selectProjectWorkbench(
+        projectId, activeLaneId, activeWorkbenchId,
+      )(useProjectWorkbenchStore.getState());
+      const existingTile = Object.values(liveWorkbench?.tiles ?? {}).find(
+        (tile) => tile.type === workbenchIntent.ensureTile,
+      );
+      if (existingTile) focusWorkbenchTile(existingTile.id);
+      else openWorkbenchTarget(workbenchIntent.ensureTile);
+      return;
+    }
     if (workbenchIntent.openTile) {
       openWorkbenchTarget(workbenchIntent.openTile);
       return;
@@ -307,19 +337,34 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     laneResolutionPending,
     openWorkbenchTarget,
     projectId,
+    intentProjectId,
+    intentWorkspaceId,
+    visible,
     refreshLaneState,
     workbenchIntent,
     workbenchActions,
+    revisionPending,
   ]);
 
   useLayoutEffect(() => {
     if (!projectId || laneResolutionPending) return;
     workbenchActions.ensureWorkbench(projectId, activeLaneId, activeWorkbenchId);
-    const workspaceRevision = activeWorkspace?.workspace.workspaceRevision;
     if (activeWorkbenchId && workspaceRevision) {
+      if (revisionPending && projectWorkbench?.workspaceRevision && projectRootPath && workbenchScopeKey) {
+        let cancelled = false;
+        setRevisionError(null);
+        void reconcileWorkbenchRevision({ projectId, workspaceId: activeWorkbenchId, rootPath: projectRootPath,
+          scopeKey: workbenchScopeKey, layoutResetKey: projectWorkbench.layoutResetKey,
+          previousRevision: projectWorkbench.workspaceRevision, currentRevision: workspaceRevision,
+          projects: requireLocalProjectsApi(), isCurrent: () => !cancelled,
+          commit: (repair) => workbenchActions.bindWorkspaceRevision(projectId, activeLaneId, activeWorkbenchId, workspaceRevision, repair),
+        }).catch((error: unknown) => { if (!cancelled) setRevisionError(error instanceof Error ? error.message : String(error)); });
+        return () => { cancelled = true; };
+      }
       workbenchActions.bindWorkspaceRevision(projectId, activeLaneId, activeWorkbenchId, workspaceRevision);
     }
-  }, [activeLaneId, activeWorkspace?.workspace.workspaceRevision, activeWorkbenchId, laneResolutionPending, projectId, workbenchActions]);
+  }, [activeLaneId, workspaceRevision, activeWorkbenchId, laneResolutionPending, projectId, workbenchActions,
+    revisionPending, projectWorkbench?.workspaceRevision, projectWorkbench?.layoutResetKey, projectRootPath, workbenchScopeKey, revisionRetry]);
 
   useEffect(() => {
     if (!projectId || !workspaceSelectionId || laneResolutionPending) {
@@ -367,7 +412,7 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
       !workbenchScopeKey ||
       !activeWorkbenchId ||
       !workspaceRevision ||
-      laneResolutionPending
+      laneResolutionPending || revisionPending
     ) {
       return null;
     }
@@ -412,6 +457,7 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
     workbenchScopeKey,
     workbenchSessionKey,
     visible,
+    revisionPending,
   ]);
 
   return (
@@ -430,12 +476,12 @@ export function ProjectWorkbenchSurface({ visible = true }: ProjectWorkbenchSurf
           <div
             className="relative min-w-0 flex-1 overflow-hidden bg-transparent"
           >
-            <WorkbenchKeepAliveHost
+            {revisionPending && revisionError ? <div className="flex h-full flex-col items-center justify-center gap-3 p-8"><p className="text-sm text-muted-foreground" role="alert">{revisionError}</p><Button variant="outline" onClick={() => setRevisionRetry((value) => value + 1)}>Retry workspace recovery</Button></div> : <WorkbenchKeepAliveHost
               current={currentKeepAliveSession}
               getWorkbenchSession={getWorkbenchSession}
               fallback={<WorkbenchOverlayLoading />}
               onSessionsChange={handleRetainedSessionsChange}
-            />
+            />}
           </div>
 
           {taskCards.length > 0 ? (

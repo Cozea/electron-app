@@ -5,6 +5,7 @@ import { Outlet, useLocation } from '@/lib/router'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { LanguageProvider } from './lib/i18n'
+import { ProjectRemovalHost } from '@/features/projects/ui/ProjectRemovalHost'
 import { CreateProjectDialogHost } from '@/features/projects/ui/CreateProjectDialogHost'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useNavigateTo, useViewTransitionNavigate } from './lib/navigation'
@@ -153,7 +154,7 @@ function ElectronSettingsBridge() {
 
 function AppContent() {
   const {
-    isAuthenticated,
+    isLocalDeviceReady,
     isLoading,
     needsOnboarding,
   } = useAuth()
@@ -161,7 +162,7 @@ function AppContent() {
   const isSettingsWindow = window.electronAPI?.windowContext === 'settings'
 
   useEffect(() => {
-    if (!isAuthenticated || isLoading || needsOnboarding) return
+    if (!isLocalDeviceReady || isLoading || needsOnboarding) return
     const shouldWarmNewProject = pathname === "/projects" || pathname === "/projects/"
 
     return scheduleIdleWarmup(() => {
@@ -180,10 +181,10 @@ function AppContent() {
       delayMs: 250,
       timeoutMs: 3_000,
     })
-  }, [isAuthenticated, isLoading, pathname, needsOnboarding])
+  }, [isLocalDeviceReady, isLoading, pathname, needsOnboarding])
 
   useEffect(() => {
-    if (!isAuthenticated || isLoading || needsOnboarding) {
+    if (!isLocalDeviceReady || isLoading || needsOnboarding) {
       return
     }
 
@@ -196,7 +197,7 @@ function AppContent() {
         module.prewarmToolingSettings?.()
       )
     }, { delayMs: 750, timeoutMs: 15_000 })
-  }, [isAuthenticated, isLoading, pathname, needsOnboarding])
+  }, [isLocalDeviceReady, isLoading, pathname, needsOnboarding])
 
   if (isLoading) {
     return <FullscreenLoading />
@@ -208,7 +209,7 @@ function AppContent() {
   const isProjectInviteRoute = pathname.startsWith('/projects/invite/')
   const isPublicProjectAccessRoute = isProjectJoinRoute || isProjectInviteRoute
 
-  if (!isAuthenticated) {
+  if (!isLocalDeviceReady) {
     if (isPublicProjectAccessRoute) {
       return <Outlet />
     }
@@ -234,6 +235,7 @@ function AppContent() {
     <>
       <ElectronNavigationBridge />
       <ElectronSettingsBridge />
+      <ProjectRemovalHost />
       <AppAgentRuntimeHost enableScheduledTasks={!isSettingsWindow} />
       <DeferredUpdateMenu enabled={!isSettingsWindow} />
       <Outlet />

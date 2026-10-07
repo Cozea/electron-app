@@ -5,7 +5,7 @@ import type { MouseEvent } from "react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { AvailableExternalEditor, ExternalEditorId } from "@shared/electronApiTypes"
+import type { AvailableExternalEditor, ExternalEditorId } from "@cozea/app-contract/electronApi"
 import {
   openProjectFileInExternalEditor,
   orderDetectedEditors,

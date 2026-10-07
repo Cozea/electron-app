@@ -58,7 +58,7 @@ import type {
   AgentSkillsSnapshot,
   AgentSkillSetupPack,
   AgentSkillSetupPackSkill,
-} from "@shared/electronApiTypes";
+} from "@cozea/app-contract/electronApi";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -753,7 +753,7 @@ function SetupPackBrowser({
 }
 
 export function AgentSkillsPage() {
-  const { user } = useAuth();
+  const { localDevice: user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: snapshot, error: loadError } = useAgentSkillsSnapshot();
   const [selectedSkillId, setSelectedSkillId] = React.useState<string | null>(null);

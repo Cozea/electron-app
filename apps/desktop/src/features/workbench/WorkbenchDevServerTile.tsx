@@ -5,8 +5,8 @@ import type {
   AvailableExternalBrowserResult,
   DevCommandSuggestion,
   ExternalBrowserId,
-} from "@shared/electronApiTypes"
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
+} from "@cozea/app-contract/electronApi"
+import type { BrowserSurfaceDescriptor } from "@cozea/app-contract/browserSurface"
 
 import { appToast } from "@/lib/appToast"
 import { Button } from "@/components/ui/button"
@@ -919,8 +919,6 @@ function WorkbenchRuntimePreviewTile({
       <WorkbenchTileChrome
         title={tile.title}
         panelApi={panelApi}
-        containerApi={containerApi}
-        hideTitlePill
         tileType={isMobileSimulatorSurface ? "mobileSimulator" : "devServer"}
         devAppId={tile.type === "devServer" ? tile.devAppId : undefined}
       >

@@ -10,7 +10,8 @@ import {
   type ReactNode,
 } from "react"
 import { useRouter, useRouterState } from "@tanstack/react-router"
-import { ConvexProvider, useConvex } from "convex/react"
+import { ConvexProvider } from "convex/react"
+import { CloudClientContext, useConvex } from "@/lib/cloudQueries"
 
 import { RegionErrorBoundary } from "@/components/RegionErrorBoundary"
 import { RETAINED_PAGE_ATTRIBUTE } from "@/lib/activePageDom"
@@ -192,7 +193,11 @@ const RetainedPageSlot = memo(function RetainedPageSlot({
       </Activity>
     </RetainedPageFrame>
   )
-  return queries ? <ConvexProvider client={queries.client}>{page}</ConvexProvider> : page
+  return queries ? (
+    <CloudClientContext value={queries.client}>
+      <ConvexProvider client={queries.client}>{page}</ConvexProvider>
+    </CloudClientContext>
+  ) : page
 })
 
 /**

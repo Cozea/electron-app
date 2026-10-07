@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { useConvex, useQuery } from "convex/react"
+import { requireCloudClient, useConvex, useQuery } from "@/lib/cloudQueries"
 import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../convex/_generated/api"
@@ -134,7 +134,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
         publicationId: entry.publicationId,
         version: entry.activeRelease.version,
       })
-      const artifact = await convex.query(api.devApps.getArtifactUrl, { ref })
+      const artifact = await requireCloudClient(convex).query(api.devApps.getArtifactUrl, { ref })
       if (!artifact) throw new Error(t("appStore.install.accessLost"))
       const result = await window.electronAPI.orgDevApp.install({
         downloadUrl: artifact.url,

@@ -5,7 +5,7 @@ import type {
   AgentToolLoginStartResult,
   AgentToolPrepareResult,
   AgentToolStatus,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 
 interface LazyAgentToolService {
   getStatus(toolId: AgentToolId): Promise<AgentToolStatus>

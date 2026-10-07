@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Spinner } from "@/components/ui/spinner"
 import { PageHeader } from "@/components/PageHeader"
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation, useQuery } from '@/lib/cloudQueries'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { api } from '../../../../../../convex/_generated/api'
 import { cleanConvexError as cleanError } from "@/lib/convexError"

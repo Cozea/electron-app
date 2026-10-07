@@ -46,6 +46,10 @@ import {
 import { verifyWorkspacePath } from "./verification.ts"
 import { scanForCandidates } from "./candidates.ts"
 import { runGitCommand } from "../gitRuntime.ts"
+import { makeLocalProjectCatalog, type LocalProjectCatalogInterface } from "./LocalProjectCatalog.ts"
+import { makeLocalProjectRemoval } from "./LocalProjectRemoval.ts"
+import { makeLocalProjectLifecycle, type LocalProjectLifecycleInterface } from "./LocalProjectLifecycle.ts"
+import type { LocalProjectResult } from "../../../../shared/localProjectTypes.ts"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -240,6 +244,8 @@ function defaultResolutionActions(workspaceId?: string): WorkspaceResolutionActi
 // ─── Service tag ──────────────────────────────────────────────────────────────
 
 export interface WorkspaceCatalogInterface {
+  readonly projects: LocalProjectCatalogInterface
+  readonly projectLifecycle: LocalProjectLifecycleInterface
   readonly resolveProject: (
     req: ResolveProjectWorkspaceRequest,
   ) => Effect.Effect<ResolveProjectWorkspaceResult>
@@ -345,6 +351,7 @@ export const WorkspaceCatalogLive = Layer.effect(
   WorkspaceCatalog,
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient
+    const projects = yield* makeLocalProjectCatalog
 
     // ── Internal helpers ────────────────────────────────────────────────────
 
@@ -424,6 +431,7 @@ export const WorkspaceCatalogLive = Layer.effect(
 
     const doSetActive = (workspaceId: string, projectId: string) =>
       Effect.gen(function* () {
+        if (yield* projects.isExcluded(projectId)) throw new Error("The project is excluded by its saved removal.")
         const ts = now()
         yield* sql`
           UPDATE local_workspaces
@@ -549,6 +557,7 @@ export const WorkspaceCatalogLive = Layer.effect(
       Effect.gen(function* () {
         const record = yield* queryWorkspaceById(workspaceId)
         if (record) {
+          if (yield* projects.isExcluded(record.projectId)) throw new Error("Recover the saved removal before forgetting bindings.")
           yield* deleteMarkerForWorkspace(record)
         }
         yield* sql`DELETE FROM workspace_lanes WHERE workspace_id = ${workspaceId}`
@@ -579,11 +588,9 @@ export const WorkspaceCatalogLive = Layer.effect(
           }).pipe(Effect.orElseSucceed(() => false as const))
           if (exists) continue
 
-          yield* forgetWorkspaceBinding(workspaceId, {
-            reason: "missing_managed_project_root",
-            projectRootPath,
-            realPath,
-          })
+          // A missing folder is repairable. Creating another project must not
+          // erase the identity, lanes and history needed to locate this one.
+          yield* updateVerificationStatus(workspaceId, "missing", "The managed project folder is missing. Locate its original folder to repair the binding.")
         }
       })
 
@@ -982,6 +989,8 @@ export const WorkspaceCatalogLive = Layer.effect(
           markerPolicy: requestedMarkerPolicy,
           workspaceIdOverride,
         } = req
+
+        if (yield* projects.isExcluded(projectId)) return { success: false, error: "Recover this project's saved removal before opening a workspace." }
 
         if (storageOwnership === "managed" && !managedRootId) {
           return { success: false, error: "Managed workspaces require a recorded managed root." }
@@ -1654,6 +1663,17 @@ function humanizeCloneError(detail: string, url: string): string {
         )
         if (!root?.realPath) return null
 
+        const original = yield* Effect.tryPromise({ try: async () => {
+          const [stat, canonical, canonicalRoot] = await Promise.all([
+            fs.stat(workspace.projectRootPath), fs.realpath(workspace.projectRootPath), fs.realpath(root.realPath),
+          ])
+          return stat.isDirectory() && canonical === workspace.projectRootPath && canonicalRoot === root.realPath &&
+            isNestedDirectory(canonicalRoot, canonical) && workspace.projectRootRelativePath === "." &&
+            workspace.filesystemDevice === String(stat.dev) && workspace.filesystemInode === String(stat.ino) &&
+            workspace.filesystemBirthtimeMs === stat.birthtimeMs
+        }, catch: () => false }).pipe(Effect.orElseSucceed(() => false))
+        if (!original) return null
+
         const marker = yield* Effect.tryPromise({
           try: () => readWorkspaceMarker(workspace.projectRootPath),
           catch: () => null,
@@ -1669,11 +1689,15 @@ function humanizeCloneError(detail: string, url: string): string {
         const otherClaims = yield* sql`
           SELECT project_root_path FROM local_workspaces
           WHERE workspace_id != ${workspace.workspaceId}
+          UNION SELECT root_path AS project_root_path FROM local_workspaces
+            WHERE workspace_id != ${workspace.workspaceId}
+          UNION SELECT project_root_path FROM workspace_lanes
+            WHERE workspace_id != ${workspace.workspaceId}
         `
         for (const claim of otherClaims as Array<{ projectRootPath?: string }>) {
           if (
             claim.projectRootPath &&
-            isSameOrNestedDirectory(workspace.projectRootPath, claim.projectRootPath)
+            (isSameOrNestedDirectory(workspace.projectRootPath, claim.projectRootPath) || isSameOrNestedDirectory(claim.projectRootPath, workspace.projectRootPath))
           ) {
             return null
           }
@@ -1743,17 +1767,19 @@ function humanizeCloneError(detail: string, url: string): string {
 
         const lanesByWorkspaceId = new Map(lanes.map((lane) => [lane.workspaceId, lane] as const))
 
+        const excluded = new Set((yield* sql<{ projectId: string }>`SELECT project_id FROM project_exclusions`).map((row) => row.projectId))
         return workspaces.map((workspace): WorkspaceCatalogSnapshotEntry => {
           const lane = lanesByWorkspaceId.get(workspace.workspaceId) ?? null
-          const broken = BROKEN_VERIFICATION_STATUSES.has(workspace.verificationStatus)
+          const removing = excluded.has(workspace.projectId)
+          const broken = removing || BROKEN_VERIFICATION_STATUSES.has(workspace.verificationStatus)
           return {
             projectId: workspace.projectId,
             status: broken ? "broken" : "ready",
             workspace: recordToDTO(workspace),
             lane: lane ? laneRecordToDTO(lane) : null,
-            runtimeIdentity: lane ? buildRuntimeIdentity(workspace, lane) : null,
+            runtimeIdentity: lane && !removing ? buildRuntimeIdentity(workspace, lane) : null,
             collaborationScopeId: buildCollaborationScopeId(workspace.projectId),
-            reason: broken
+            reason: removing ? "Recover or cancel this project's saved local removal." : broken
               ? (workspace.verificationReason ?? workspace.verificationStatus)
               : null,
           }
@@ -1796,12 +1822,137 @@ function humanizeCloneError(detail: string, url: string): string {
       `.pipe(Effect.asVoid)
     }
 
+    const prepareRepairBinding = (workspaceId: string, folder: string, expectedRevision: number): Effect.Effect<LocalProjectResult<LocalWorkspaceDTO>, unknown> => Effect.gen(function* () {
+      const record = yield* queryWorkspaceById(workspaceId)
+      if (!record || !Number.isSafeInteger(expectedRevision) || expectedRevision < 1) return { success: false as const, error: "The original workspace revision is unavailable." }
+      const replay = record.workspaceRevision === expectedRevision + 1 && record.projectRootPath === folder
+      if (!replay && record.workspaceRevision !== expectedRevision) return { success: false as const, error: "This workspace binding changed. Refresh before repairing it." }
+      if (record.projectRootRelativePath !== ".") return { success: false as const, error: "Select the original workspace root; nested project bindings require a separate repair." }
+      const stat = yield* Effect.tryPromise({ try: () => fs.stat(folder), catch: (e) => e })
+      const canonical = yield* Effect.tryPromise({ try: () => fs.realpath(folder), catch: (e) => e })
+      if (!stat.isDirectory() || canonical !== folder) return { success: false as const, error: "The selected repair folder is not a canonical directory." }
+      const marker = yield* Effect.tryPromise({ try: () => readWorkspaceMarker(folder), catch: (e) => e })
+      const markerMatches = marker?.marker.workspaceId === record.workspaceId && marker.marker.projectId === record.projectId
+      if (marker && !markerMatches || record.markerPolicy === "required" && !markerMatches) return { success: false as const, error: "This folder does not carry the original workspace's ownership marker." }
+      const hasIdentity = record.filesystemDevice !== null && record.filesystemInode !== null && record.filesystemBirthtimeMs !== null
+      if (hasIdentity ? record.filesystemDevice !== String(stat.dev) || record.filesystemInode !== String(stat.ino) || record.filesystemBirthtimeMs !== stat.birthtimeMs : record.projectRootPath !== folder || !markerMatches) {
+        return { success: false as const, error: "Choose the original folder. A copied or replacement folder cannot take over its conversations and binding." }
+      }
+      if (!replay && record.projectRootPath !== folder) {
+        const oldStat = yield* Effect.tryPromise({ try: async () => {
+          try { return await fs.stat(record.projectRootPath) }
+          catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e }
+        }, catch: (e) => e })
+        if (oldStat && (!hasIdentity || record.filesystemDevice === String(oldStat.dev) && record.filesystemInode === String(oldStat.ino) && record.filesystemBirthtimeMs === oldStat.birthtimeMs)) return { success: false as const, error: "The original folder still exists. Repair cannot replace a live folder binding." }
+        // A different folder may now occupy the former path. The selected
+        // directory's original filesystem identity is already proven above;
+        // rebinding it must leave the replacement directory untouched.
+      }
+      const claims = yield* sql<{ workspaceId: string }>`SELECT workspace_id FROM local_workspaces WHERE real_path = ${folder} AND workspace_id != ${workspaceId} LIMIT 1`
+      if (claims.length) return { success: false as const, error: "This folder is already attached to another workspace." }
+      const repo = yield* Effect.tryPromise({ try: () => readGitRepoIdentity(folder), catch: (e) => e })
+      const expectedRepo = record.gitRepoIdentityJson ? JSON.parse(record.gitRepoIdentityJson) as RepoIdentity : null
+      if (expectedRepo && (!repo || !repoIdentitiesMatch(expectedRepo, repo))) return { success: false as const, error: "The selected folder's repository identity changed." }
+      const gitDir = yield* Effect.tryPromise({ try: () => readGitDirPath(folder), catch: (e) => e })
+      let ownership = record.storageOwnership
+      let managedRootId = record.managedRootId
+      if (ownership === "managed") {
+        const roots = managedRootId ? yield* sql<{ realPath: string }>`SELECT real_path FROM local_roots WHERE root_id = ${managedRootId}` : []
+        if (!roots[0] || !isNestedDirectory(roots[0].realPath, folder)) { ownership = "attached"; managedRootId = null }
+      }
+      return { success: true as const, value: {
+        ...recordToDTO(record), rootPath: folder, projectRootPath: folder, displayPath: folder,
+        gitRootPath: gitDir ? folder : null, gitOriginUrl: repo?.url ?? null, gitRepoIdentity: repo,
+        storageOwnership: ownership, managedRootId, workspaceRevision: expectedRevision + 1,
+        verificationStatus: "verified" as const, verificationReason: null,
+      } }
+    }).pipe(Effect.catch((error) => Effect.succeed({ success: false as const, error: formatWorkspaceCatalogError(error) })))
+
+    const commitRepairBinding = (workspaceId: string, folder: string, expectedRevision: number) => sql.withTransaction(Effect.gen(function* () {
+      const prepared = yield* prepareRepairBinding(workspaceId, folder, expectedRevision)
+      if (!prepared.success) return prepared
+      const old = (yield* queryWorkspaceById(workspaceId))!
+      if (old.workspaceRevision === expectedRevision + 1) return prepared
+      const next = prepared.value
+      const gitDir = yield* Effect.tryPromise({ try: () => readGitDirPath(folder), catch: (e) => e })
+      const ts = now()
+      yield* sql`UPDATE local_workspaces SET root_path = ${folder}, real_path = ${folder}, project_root_path = ${folder},
+        git_root_path = ${next.gitRootPath}, git_dir_path = ${gitDir}, git_origin_url = ${next.gitOriginUrl},
+        git_repo_identity_json = ${next.gitRepoIdentity ? JSON.stringify(next.gitRepoIdentity) : null},
+        storage_ownership = ${next.storageOwnership}, managed_root_id = ${next.managedRootId},
+        verification_status = 'verified', verification_reason = NULL, verified_at = ${ts},
+        workspace_revision = ${expectedRevision + 1}, updated_at = ${ts}
+        WHERE workspace_id = ${workspaceId} AND workspace_revision = ${expectedRevision}`
+      // Preserve lane IDs. Independent worktree roots must remain independent.
+      yield* sql`UPDATE workspace_lanes SET project_root_path = ${folder}, git_root_path = ${next.gitRootPath},
+        git_dir_path = ${gitDir}, updated_at = ${ts} WHERE workspace_id = ${workspaceId} AND project_root_path = ${old.projectRootPath}`
+      yield* emitEvent(workspaceId, old.projectId, "workspace.repaired", { previousProjectRootPath: old.projectRootPath, projectRootPath: folder })
+      return { success: true as const, value: recordToDTO((yield* queryWorkspaceById(workspaceId))!) }
+    })).pipe(Effect.catch((error) => Effect.succeed({ success: false as const, error: formatWorkspaceCatalogError(error) })))
+
+    const removal = yield* makeLocalProjectRemoval({ projects,
+      capture: (projectId, operationId, trash) => Effect.gen(function* () {
+        const rows = yield* sql`SELECT * FROM local_workspaces WHERE project_id = ${projectId} ORDER BY workspace_id`
+        const scope = []
+        for (const row of rows) {
+          const record = mapRow(row as Record<string, unknown>)
+          const roots = yield* sql<{ projectRootPath: string }>`SELECT project_root_path FROM local_workspaces WHERE workspace_id = ${record.workspaceId}
+            UNION SELECT project_root_path FROM workspace_lanes WHERE workspace_id = ${record.workspaceId}`
+          const runtimeRoots = roots.map((item) => item.projectRootPath).sort()
+          if (runtimeRoots.length > 64) return yield* Effect.fail(new Error("The workspace runtime scope is too large for this removal."))
+          const target = trash && record.storageOwnership === "managed" ? yield* getManagedDeletionTarget(record.workspaceId) : null
+          if (trash && record.storageOwnership === "managed" && !target) return yield* Effect.fail(new Error("The managed folder's original ownership cannot be proven. Keep files or repair its binding before removal."))
+          scope.push({ workspace: recordToDTO(record), roots: runtimeRoots, trash: target ? {
+            folder: target.projectRootPath, staging: path.join(path.dirname(target.projectRootPath), `.cozea-remove-${operationId}-${record.workspaceId}`, "source"),
+            device: record.filesystemDevice!, inode: record.filesystemInode!, birthtime: String(record.filesystemBirthtimeMs),
+          } : null })
+        }
+        return scope
+      }),
+    })
+    const projectLifecycle = yield* makeLocalProjectLifecycle({
+      removal,
+      projects,
+      resolveManagedRoot: (parentFolder) => resolveLocalRoot(undefined, parentFolder),
+      findByPath,
+      isPathReserved: (folder, operationId) => sql`
+        SELECT 1 FROM local_workspaces
+          WHERE real_path = ${folder} OR root_path = ${folder} OR project_root_path = ${folder}
+        UNION ALL SELECT 1 FROM project_operations
+          WHERE operation_id != ${operationId} AND kind IN ('create', 'attach')
+            AND state IN ('pending', 'running', 'unknown', 'failed')
+            AND (json_extract(details_json, '$.destinationFolder') = ${folder}
+              OR json_extract(details_json, '$.sourceFolder') = ${folder})
+        LIMIT 1
+      `.pipe(Effect.map((rows) => rows.length > 0)),
+      getWorkspace: (workspaceId) => queryWorkspaceById(workspaceId).pipe(
+        Effect.map((record) => record ? recordToDTO(record) : null),
+      ),
+      getRuntimeRoots: (workspaceId) => sql<{ projectRootPath: string }>`
+        SELECT project_root_path FROM local_workspaces WHERE workspace_id = ${workspaceId}
+        UNION SELECT project_root_path FROM workspace_lanes WHERE workspace_id = ${workspaceId}
+      `.pipe(Effect.map((rows) => rows.map((row) => row.projectRootPath).sort())),
+      setActive: (workspaceId, projectId) => doSetActive(workspaceId, projectId).pipe(Effect.asVoid),
+      bindManaged: (projectId, folderPath, workspaceId, rootId) => bindExistingFolder({
+        projectId, folderPath, workspaceIdOverride: workspaceId,
+        writeMarker: true, setActive: true, source: "create", storageOwnership: "managed",
+        managedRootId: rootId, markerPolicy: "required",
+      }),
+      attach: (projectId, folderPath) => attachExistingFolder({ projectId, folderPath, setActive: true }),
+      prepareRepairBinding, commitRepairBinding,
+    })
+
     // Every member is declared infallible: SQL and filesystem failures here are
     // unrecoverable infrastructure faults, so they become defects at this
     // boundary instead of leaking into a never-typed error channel.
     return {
+      projects,
+      projectLifecycle,
       resolveProject,
-      getActive: (projectId: string) => queryActiveWorkspace(projectId).pipe(Effect.orDie),
+      getActive: (projectId: string) => Effect.gen(function* () {
+        if (yield* projects.isExcluded(projectId)) return null
+        return yield* queryActiveWorkspace(projectId)
+      }).pipe(Effect.orDie),
       listForProject: (projectId) =>
         sql`SELECT * FROM local_workspaces WHERE project_id = ${projectId}`.pipe(
           Effect.map((rows) => rows.map((r) => mapRow(r as Record<string, unknown>))),
@@ -1822,7 +1973,7 @@ function humanizeCloneError(detail: string, url: string): string {
       getById: (workspaceId: string) =>
         Effect.gen(function* () {
           const w = yield* queryWorkspaceById(workspaceId)
-          return w ? recordToDTO(w) : null
+          return w && !(yield* projects.isExcluded(w.projectId)) ? recordToDTO(w) : null
         }).pipe(Effect.orDie),
       findByPath: (folderPath: string) => findByPath(folderPath).pipe(Effect.orDie),
       getManagedDeletionTarget: (workspaceId: string) =>
@@ -1830,6 +1981,8 @@ function humanizeCloneError(detail: string, url: string): string {
       listManagedDeletionTargets: () => listManagedDeletionTargets().pipe(Effect.orDie),
       getLane: (workspaceId: string, laneId?: string | null) =>
         Effect.gen(function* () {
+          const workspace = yield* queryWorkspaceById(workspaceId)
+          if (workspace && (yield* projects.isExcluded(workspace.projectId))) return null
           let l = laneId ? yield* queryLaneById(laneId) : yield* queryActiveLane(workspaceId)
           if (!l) {
             const w = yield* queryWorkspaceById(workspaceId)

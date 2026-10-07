@@ -51,6 +51,7 @@ import {
 } from "@/features/devapps/registry"
 import type { DevAppWorkbenchTileTarget } from "@/features/devapps/registry/types"
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
+import { closeWorkbenchPanels } from "@/features/workbench/closeWorkbenchPanels"
 import { DevServerProcessesDialog } from "@/features/workbench/DevServerProcessesDialog"
 import { useWorkbenchDockHeaderControls } from "@/features/workbench/workbenchDockHeaderControls"
 import { useChangesSidebarStore } from "@/features/source-control/model/changesSidebarStore"
@@ -275,7 +276,6 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
     props.params.tileId,
   )
   const title = tile?.title ?? props.api.title ?? resolveTabTileTypeLabel(tile)
-  const active = props.api.isActive
   // Collapse to the mini pill only while the dock header carries the tile's
   // identity (URL bar etc.). Chrome-owned surfaces render their header
   // controls directly from the dock header now, so that holds whenever the
@@ -297,26 +297,16 @@ export const WorkbenchDockTab = memo(function WorkbenchDockTab(
 
   return (
     <div
-      className={cn(
-        "cozea-workbench-tab flex h-full w-full min-w-0 max-w-full items-center gap-1.5 px-2 text-sm font-medium overflow-hidden",
-        active ? "text-foreground" : "text-muted-foreground",
-      )}
+      // No colour of its own: dockview re-renders tabs only on param changes,
+      // so an `isActive` read here goes stale. The .dv-tab state classes and
+      // --dv-*-tab-color tokens (workbench.css) colour it instead.
+      className="cozea-workbench-tab flex h-full w-full min-w-0 max-w-full items-center gap-1.5 px-2 text-sm font-medium overflow-hidden"
       title={title}
     >
       <WorkbenchDockTabIcon tile={tile} />
       <span className="min-w-0 truncate">{title}</span>
       {tile?.type === "assistantChat" ? (
         <WorkbenchAssistantTabStatus tile={tile} />
-      ) : null}
-      <div className="min-w-0 flex-1" />
-      {tile?.type === "assistantChat" && tile.model ? (
-        <span className="hidden max-w-20 shrink-0 truncate rounded-sm bg-secondary px-1 text-2xs text-muted-foreground group-hover:inline-flex">
-          {tile.model}
-        </span>
-      ) : tile?.type ? (
-        <span className="hidden shrink-0 rounded-sm bg-secondary px-1 text-2xs text-muted-foreground group-hover:inline-flex">
-          {resolveTabTileTypeLabel(tile)}
-        </span>
       ) : null}
     </div>
   )
@@ -679,6 +669,9 @@ export const WorkbenchDockHeaderControls = memo(function WorkbenchDockHeaderCont
   )
 })
 
+/** Shared tile header buttons match the tiles' own header actions (28px). */
+const WORKBENCH_HEADER_BUTTON_CLASS = "h-7 w-7 text-muted-foreground hover:text-foreground"
+
 export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActions(
   props: IDockviewHeaderActionsProps,
 ) {
@@ -691,6 +684,7 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
     setIsMaximized(activePanel?.api.isMaximized() ?? false)
 
     const disposable = props.containerApi?.onDidMaximizedGroupChange((event) => {
+      if (event.group.id !== props.group.id) return
       setIsMaximized(event.isMaximized)
     })
 
@@ -702,7 +696,7 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
       disposable?.dispose()
       groupChangeDisposable?.dispose?.()
     }
-  }, [props.containerApi, activePanel])
+  }, [props.containerApi, props.group, activePanel])
 
   const registeredHeader = useWorkbenchDockHeaderControls(activePanel?.id)
   const dockDefinition = getWorkbenchDockDefinition(activePanel?.api.component)
@@ -744,9 +738,11 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
       ) : null}
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            variant="ghost"
+            size="icon"
+            className={WORKBENCH_HEADER_BUTTON_CLASS}
             aria-label={t("workbench.layout.optionsLabel")}
             onClick={async (event) => {
               event.preventDefault()
@@ -815,15 +811,17 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
             }}
           >
             <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{t("workbench.layout.optionsLabel")}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+            variant="ghost"
+            size="icon"
+            className={WORKBENCH_HEADER_BUTTON_CLASS}
             aria-label={
               isMaximized ? t("workbench.layout.restore") : t("workbench.layout.maximize")
             }
@@ -843,7 +841,7 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
               icon={isMaximized ? __RestoreHugeIcon : __MaximizeHugeIcon}
               className="h-3.5 w-3.5"
             />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {isMaximized ? t("workbench.layout.restore") : t("workbench.layout.maximize")}
@@ -851,18 +849,23 @@ export const WorkbenchDockHeaderActions = memo(function WorkbenchDockHeaderActio
       </Tooltip>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
-            className="inline-flex h-6 w-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              WORKBENCH_HEADER_BUTTON_CLASS,
+              "hover:bg-destructive/10 hover:text-destructive",
+            )}
             aria-label={t("workbench.panel.close")}
             onClick={(event) => {
               event.preventDefault()
               event.stopPropagation()
-              activePanel.api.close()
+              void closeWorkbenchPanels([activePanel], t)
             }}
           >
             <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">{t("workbench.panel.close")}</TooltipContent>
       </Tooltip>
@@ -925,10 +928,7 @@ const SelectionPanel = memo(function SelectionPanel(
       <WorkbenchTileChrome
         title={t("workbench.selection.addDevApp")}
         panelApi={props.api}
-        containerApi={props.containerApi}
-        chromeVariant="pill"
         tileType="selection"
-        hideWindowActions={isSoleSelectionTile && !isMaximized}
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -941,10 +941,7 @@ const SelectionPanel = memo(function SelectionPanel(
     <WorkbenchTileChrome
       title={selectionTile.title}
       panelApi={props.api}
-      containerApi={props.containerApi}
-      chromeVariant="pill"
       tileType="selection"
-      hideWindowActions={isSoleSelectionTile && !isMaximized}
       contentClassName="h-full"
     >
       <Suspense fallback={changesSuspenseFallback}>
@@ -979,7 +976,7 @@ const BrowserPanel = memo(function BrowserPanel(
 
   if (!tile || tile.type !== "browser") {
     return (
-      <WorkbenchTileChrome title="Browser" panelApi={props.api} containerApi={props.containerApi}>
+      <WorkbenchTileChrome title="Browser" panelApi={props.api}>
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
     )
@@ -1019,8 +1016,6 @@ const OrgDevAppPanel = memo(function OrgDevAppPanel(
       <WorkbenchTileChrome
         title="DevApp"
         panelApi={props.api}
-        containerApi={props.containerApi}
-        chromeVariant="pill"
         tileType="orgDevApp"
       >
         <MissingTilePlaceholder />
@@ -1061,8 +1056,6 @@ const DevAppPreviewPanel = memo(function DevAppPreviewPanel(
       <WorkbenchTileChrome
         title="DevApp (development)"
         panelApi={props.api}
-        containerApi={props.containerApi}
-        chromeVariant="pill"
         tileType="devAppPreview"
       >
         <MissingTilePlaceholder />
@@ -1103,8 +1096,6 @@ const TerminalPanel = memo(function TerminalPanel(
       <WorkbenchTileChrome
         title="Terminal"
         panelApi={props.api}
-        containerApi={props.containerApi}
-        chromeVariant="pill"
         tileType="terminal"
       >
         <MissingTilePlaceholder />
@@ -1121,7 +1112,6 @@ const TerminalPanel = memo(function TerminalPanel(
         workspaceId={runtime.workspaceId}
         workbenchSessionKey={runtime.workbenchSessionKey}
         panelApi={props.api}
-        containerApi={props.containerApi}
       />
     </Suspense>
   )
@@ -1145,7 +1135,6 @@ const DevServerPanel = memo(function DevServerPanel(
       <WorkbenchTileChrome
         title="Dev Server"
         panelApi={props.api}
-        containerApi={props.containerApi}
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -1188,7 +1177,6 @@ const MobileSimulatorPanel = memo(function MobileSimulatorPanel(
       <WorkbenchTileChrome
         title="iOS Simulator"
         panelApi={props.api}
-        containerApi={props.containerApi}
       >
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
@@ -1226,7 +1214,7 @@ const LlamaPanel = memo(function LlamaPanel(props: IDockviewPanelProps<Workbench
 
   if (!tile || tile.type !== "llama") {
     return (
-      <WorkbenchTileChrome title="Llama" panelApi={props.api} containerApi={props.containerApi}>
+      <WorkbenchTileChrome title="Llama" panelApi={props.api}>
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
     )
@@ -1240,7 +1228,6 @@ const LlamaPanel = memo(function LlamaPanel(props: IDockviewPanelProps<Workbench
         tile={tile as WorkbenchLlamaTileRecord}
         workspaceId={runtime.workspaceId}
         panelApi={props.api}
-        containerApi={props.containerApi}
       />
     </Suspense>
   )
@@ -1264,8 +1251,6 @@ const AssistantChatPanel = memo(function AssistantChatPanel(
       <WorkbenchTileChrome
         title="AI Agent"
         panelApi={props.api}
-        containerApi={props.containerApi}
-        chromeVariant="pill"
         tileType="assistantChat"
       >
         <MissingTilePlaceholder />
@@ -1282,7 +1267,6 @@ const AssistantChatPanel = memo(function AssistantChatPanel(
         projectRootPath={runtime.projectRootPath}
         tile={tile as WorkbenchAssistantChatTileRecord}
         panelApi={props.api}
-        containerApi={props.containerApi}
         onDuplicate={runtime.onDuplicateAssistantTile}
       />
     </Suspense>
@@ -1338,7 +1322,7 @@ const MemoryPanel: FunctionComponent<IDockviewPanelProps> = memo(function Memory
 
   if (!tile || tile.type !== "memory") {
     return (
-      <WorkbenchTileChrome title="Memory" panelApi={props.api} containerApi={props.containerApi}>
+      <WorkbenchTileChrome title="Memory" panelApi={props.api}>
         <MissingTilePlaceholder />
       </WorkbenchTileChrome>
     )
@@ -1348,7 +1332,6 @@ const MemoryPanel: FunctionComponent<IDockviewPanelProps> = memo(function Memory
     <WorkbenchTileChrome
       title={tile.title}
       panelApi={props.api}
-      containerApi={props.containerApi}
       tileType="memory"
       controls={
         <WorkbenchMemoryTileInfo

@@ -1,4 +1,4 @@
-import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
+import type { ProjectLaneDescriptor, ProjectLaneState } from "@cozea/app-contract/electronApi"
 
 const STORAGE_KEY = "cozea:project-branch-sessions:v1"
 const COLLAB_LANE_ID = "collab"

@@ -20,7 +20,7 @@ import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
 import { useProjectWorkbenchStore } from "@/lib/workbenchStore";
 import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/lib/workbenchStore";
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
+import type { BrowserSurfaceDescriptor } from "@cozea/app-contract/browserSurface";
 
 interface WorkbenchBrowserTileProps {
   projectId: string;
@@ -162,8 +162,6 @@ export function WorkbenchBrowserTile({
       <WorkbenchTileChrome
         title={tile.title || "Browser"}
         panelApi={panelApi}
-        containerApi={containerApi}
-        hideTitlePill
         tileType="browser"
       >
         <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">

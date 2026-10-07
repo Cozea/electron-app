@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useState } from "react"
-import { useAction } from "convex/react"
+import { useAction } from "@/lib/cloudQueries"
 
 import { api } from "../../../../../convex/_generated/api"
 import type { Id } from "../../../../../convex/_generated/dataModel"

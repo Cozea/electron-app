@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 
-import type { DevServerAuxiliaryProcessConfig } from "@shared/electronApiTypes"
+import type { DevServerAuxiliaryProcessConfig } from "@cozea/app-contract/electronApi"
 
 import { Button } from "@/components/ui/button"
 import {

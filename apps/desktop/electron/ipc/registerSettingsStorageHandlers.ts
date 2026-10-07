@@ -12,7 +12,7 @@ import type {
   StorageProjectsPage,
   StorageSnapshot,
   StorageUsage,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import { rememberApprovedExternalReadRoot } from '../fsAccess'
 import { ComputerUseService } from '../services/ComputerUseService'
 import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'

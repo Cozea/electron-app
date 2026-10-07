@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react"
-import { useMutation } from "convex/react"
+import { useMutation } from "@/lib/cloudQueries"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"

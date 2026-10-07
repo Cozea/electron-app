@@ -1,5 +1,5 @@
-import { useEffect, useCallback, useMemo, useRef } from "react"
-import { useMutation } from "convex/react"
+import { useEffect, useMemo, useRef } from "react"
+import { useMutation } from "@/lib/cloudQueries"
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import { useLocation } from '@/lib/router'
@@ -7,7 +7,7 @@ import { useCollaborationActivityStore } from "@/features/collaboration/model/co
 import { useAuth } from "@/contexts/AuthContext"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 
-const HEARTBEAT_INTERVAL_MS = 30 * 1000
+import { createProjectPresencePublisher } from "./projectPresencePublisher"
 
 interface UseProjectPresenceOptions {
   projectId: Id<"projects"> | null | undefined
@@ -35,146 +35,9 @@ export interface PresenceUser {
   lastHeartbeat: number
 }
 
-export function useProjectPresence({
-  projectId,
-  principalId,
-  activeFile,
-  activeRoute,
-}: UseProjectPresenceOptions) {
-  // Only the pathname is used; the whole location would re-render the
-  // project layout on search and state changes too.
-  const pathname = useLocation({ select: (location) => location.pathname })
+/** Read-only presence consumer; mounting a header never writes or leaves. */
+export function useProjectPresence({ projectId, principalId }: UseProjectPresenceOptions) {
   const { isConvexAuthReady } = useAuth()
-  const heartbeat = useMutation(api.projectPresence.heartbeat)
-  const leave = useMutation(api.projectPresence.leave)
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null)
-  const lastTransitionHeartbeatAtRef = useRef(0)
-  const {
-    isAiTyping,
-    isAgentWorking,
-    lastActivityAt,
-    actions: collaborationActions,
-  } = useCollaborationActivityStore((state) => state)
-  const activitySnapshotRef = useRef({
-    activeFile: activeFile ?? null,
-    activeRoute: activeRoute ?? null,
-    activeTab: "editor",
-    isAiTyping,
-    isAgentWorking,
-    lastActivityAt,
-  })
-
-  const getActiveTab = useCallback(() => {
-    const path = pathname
-    if (path.includes("/workbench")) return "workbench"
-    if (path.includes("/settings")) return "settings"
-    if (path.includes("/deployments")) return "deployments"
-    return "editor"
-  }, [pathname])
-  const activeTab = getActiveTab()
-
-  useEffect(() => {
-    activitySnapshotRef.current = {
-      activeFile: activeFile ?? null,
-      activeRoute: activeRoute ?? null,
-      activeTab,
-      isAiTyping,
-      isAgentWorking,
-      lastActivityAt,
-    }
-  }, [activeFile, activeRoute, activeTab, isAiTyping, isAgentWorking, lastActivityAt])
-
-  const sendHeartbeat = useCallback(async () => {
-    if (!projectId || !principalId || !isConvexAuthReady) return
-
-    try {
-      const snapshot = activitySnapshotRef.current
-      // Identity and presentation are intentionally absent. Convex derives the
-      // canonical device principal from ctx.auth and reads its name/avatar.
-      await heartbeat({
-        projectId,
-        activeTab: snapshot.activeTab,
-        activeFile: snapshot.activeFile ?? undefined,
-        activeRoute: snapshot.activeRoute ?? undefined,
-        isAiTyping: snapshot.isAiTyping,
-        isAgentWorking: snapshot.isAgentWorking,
-        lastActivityAt: snapshot.lastActivityAt > 0 ? snapshot.lastActivityAt : undefined,
-      })
-    } catch (error) {
-      console.warn("[Presence] Heartbeat failed:", error)
-    }
-  }, [heartbeat, isConvexAuthReady, projectId, principalId])
-
-  const handleLeave = useCallback(async () => {
-    if (!projectId || !principalId || !isConvexAuthReady) return
-
-    try {
-      await leave({ projectId })
-    } catch (error) {
-      console.warn("[Presence] Leave failed:", error)
-    }
-  }, [isConvexAuthReady, projectId, principalId, leave])
-
-  useEffect(() => {
-    if (!projectId || !principalId) return
-
-    void sendHeartbeat()
-    heartbeatRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS)
-
-    return () => {
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current)
-        heartbeatRef.current = null
-      }
-      void handleLeave()
-    }
-  }, [projectId, principalId, sendHeartbeat, handleLeave])
-
-  useEffect(() => {
-    if (projectId && principalId) void sendHeartbeat()
-  }, [activeTab, projectId, principalId, sendHeartbeat])
-
-  useEffect(() => {
-    if (!projectId || !principalId) return
-    const now = Date.now()
-    if (now - lastTransitionHeartbeatAtRef.current < 1000) return
-    lastTransitionHeartbeatAtRef.current = now
-    void sendHeartbeat()
-  }, [
-    activeFile,
-    activeRoute,
-    isAgentWorking,
-    isAiTyping,
-    projectId,
-    sendHeartbeat,
-    principalId,
-  ])
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") void sendHeartbeat()
-    }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
-  }, [sendHeartbeat])
-
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // Convex mutations cannot be reliably sent during beforeunload; expiry
-      // handles cleanup.
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload)
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      collaborationActions.reset()
-    }
-  }, [collaborationActions])
-
   const activeUsersQuery = useSafeConvexQuery(
     api.projectPresence.getActiveUsers,
     projectId && isConvexAuthReady ? { projectId } : "skip"
@@ -198,6 +61,47 @@ export function useProjectPresence({
     otherUsers,
     isLoading: activeUsersQuery.status === "loading",
     error: activeUsersQuery.error,
-    sendHeartbeat,
   }
+}
+
+/** Mounted once by the visible project layout, only for explicit session membership. */
+export function useProjectPresencePublisher({ projectId, principalId, activeFile, activeRoute }: UseProjectPresenceOptions) {
+  const pathname = useLocation({ select: (location) => location.pathname })
+  const { isConvexAuthReady } = useAuth()
+  const heartbeat = useMutation(api.projectPresence.heartbeat)
+  const leave = useMutation(api.projectPresence.leave)
+  const { isAiTyping, isAgentWorking, lastActivityAt } = useCollaborationActivityStore((state) => state)
+  const activeTab = pathname.includes("/workbench") ? "workbench" : pathname.includes("/settings") ? "settings" : "editor"
+  const snapshot = useRef({ activeFile, activeRoute, activeTab, isAiTyping, isAgentWorking, lastActivityAt })
+  snapshot.current = { activeFile, activeRoute, activeTab, isAiTyping, isAgentWorking, lastActivityAt }
+  const publisher = useRef<ReturnType<typeof createProjectPresencePublisher> | null>(null)
+  useEffect(() => {
+    if (!projectId || !principalId || !isConvexAuthReady) return
+    const owner = createProjectPresencePublisher({
+      heartbeat: async () => {
+        const current = snapshot.current
+        await heartbeat({
+          projectId,
+          activeTab: current.activeTab,
+          activeFile: current.activeFile ?? undefined,
+          activeRoute: current.activeRoute ?? undefined,
+          isAiTyping: current.isAiTyping,
+          isAgentWorking: current.isAgentWorking,
+          lastActivityAt: current.lastActivityAt > 0 ? current.lastActivityAt : undefined,
+        })
+      },
+      leave: () => leave({ projectId }),
+      isVisible: () => document.visibilityState === "visible",
+      onVisibilityChange: (callback) => {
+        document.addEventListener("visibilitychange", callback)
+        return () => document.removeEventListener("visibilitychange", callback)
+      },
+      setInterval: (callback, delay) => setInterval(callback, delay),
+      clearInterval: (timer) => clearInterval(timer as ReturnType<typeof setInterval>),
+      onError: (error) => console.warn("[Presence] Foreground publication failed:", error),
+    }, `${projectId}:${principalId}`)
+    publisher.current = owner
+    return () => { owner.stop(); if (publisher.current === owner) publisher.current = null }
+  }, [projectId, principalId, isConvexAuthReady, heartbeat, leave])
+  useEffect(() => { publisher.current?.update() }, [activeFile, activeRoute, activeTab, isAiTyping, isAgentWorking])
 }

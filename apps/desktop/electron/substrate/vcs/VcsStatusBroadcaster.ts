@@ -6,7 +6,7 @@
 
 import path from "node:path";
 
-import type { GitChangesScope, GitChangesSnapshot } from "../../../../../shared/electronApiTypes";
+import type { GitChangesScope, GitChangesSnapshot } from "@cozea/app-contract/electronApi";
 import { getChangesCheckpointReads } from "./checkpointsFacade";
 import { countDiffLines } from "./diffStats";
 

@@ -13,7 +13,7 @@ import { create } from "zustand"
 import type { Id } from "../../../../convex/_generated/dataModel"
 import type { ProjectSyncContextValue } from "@/contexts/project/projectSyncShared"
 import { buildWorkspaceIdentityKey, normalizeWorkspaceLaneId } from "@/lib/workspaceIdentity"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { WorkbenchSessionSnapshot } from "@cozea/app-contract/electronApi"
 
 export type WorkspaceRuntimeLifecycle =
   | "focused"
@@ -27,7 +27,9 @@ const BACKGROUND_FROZEN_IDLE_MS = 10 * 60 * 1000
 
 export interface WorkspaceRuntimeConfig {
   workspaceId: string
-  projectId: Id<"projects"> | null
+  projectId: string | null
+  cloudProjectId?: Id<"projects"> | null
+  cloudActivityEnabled?: boolean
   principalId: Id<"devicePrincipals"> | null
   displayName: string | null
   projectSlug: string | null
@@ -48,6 +50,8 @@ function workspaceRuntimeConfigsEqual(
   return (
     a.workspaceId === b.workspaceId &&
     a.projectId === b.projectId &&
+    (a.cloudProjectId ?? null) === (b.cloudProjectId ?? null) &&
+    (a.cloudActivityEnabled ?? false) === (b.cloudActivityEnabled ?? false) &&
     a.principalId === b.principalId &&
     a.displayName === b.displayName &&
     a.projectSlug === b.projectSlug &&
@@ -262,7 +266,7 @@ function applyResolvedLifecycle(record: WorkspaceRuntimeRecord, now = Date.now()
 }
 
 export function resolveWorkspaceRuntimeId(input: {
-  projectId: Id<"projects"> | null
+  projectId: string | null
   workspaceId: string | null
   laneId?: string | null
   workspaceRevision?: number

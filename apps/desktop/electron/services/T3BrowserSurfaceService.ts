@@ -42,7 +42,7 @@ import type {
   BrowserSurfaceInventoryEntry,
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
-} from "../../../../shared/browserSurfaceTypes";
+} from "@cozea/app-contract/browserSurface";
 import { partitionForDescriptor } from "../../../../shared/browserSurfaceSessions";
 import { browserHttpDiagnosticForResponse } from "../../../../shared/browserHttpDiagnostics";
 import {

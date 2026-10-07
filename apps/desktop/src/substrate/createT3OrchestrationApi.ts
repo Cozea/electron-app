@@ -62,11 +62,13 @@ export function createT3OrchestrationApiFromClient(
 
 export function createT3OrchestrationApi(input: {
   readonly baseUrl: string;
+  readonly rpcBaseUrl?: string;
   readonly wsTicket: string;
 }): T3OrchestrationApiHandle {
   return createT3OrchestrationApiFromClient(
     new T3OrchestrationClient({
       baseUrl: input.baseUrl,
+      rpcBaseUrl: input.rpcBaseUrl,
       wsTicket: input.wsTicket,
     }),
   );

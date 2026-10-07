@@ -2,7 +2,7 @@ import type { ComponentType } from "react"
 import { FaBrave, FaChrome, FaEdge, FaFirefoxBrowser, FaSafari } from "react-icons/fa6"
 import { TbBrandArc } from "react-icons/tb"
 
-import type { AvailableExternalBrowser, ExternalBrowserId } from "@shared/electronApiTypes"
+import type { AvailableExternalBrowser, ExternalBrowserId } from "@cozea/app-contract/electronApi"
 
 import { Globe02Icon as __GlobeHugeIcon } from '@hugeicons/core-free-icons'
 

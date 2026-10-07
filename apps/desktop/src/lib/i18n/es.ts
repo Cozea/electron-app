@@ -388,7 +388,6 @@ const es: Record<TranslationKey, string> = {
   "workbench.layout.splitDown": "Dividir hacia abajo",
   "workbench.layout.splitUp": "Dividir hacia arriba",
   "workbench.layout.optionsLabel": "Opciones de diseño",
-  "workbench.layout.closeLabel": "Cerrar {title}",
   "workbench.surface.loading": "Cargando…",
   "workbench.surface.loadingWorkbench": "Cargando espacio de trabajo…",
   "workbench.surface.closeChanges": "Cerrar cambios",
@@ -666,6 +665,9 @@ const es: Record<TranslationKey, string> = {
 
   // ── Workbench panels / header ───────────────────────────────────────
   "workbench.panel.close": "Cerrar panel",
+  "workbench.panel.closeRunningTerminal.title": "¿Cerrar la terminal con un proceso en ejecución?",
+  "workbench.panel.closeRunningTerminal.message": "Al cerrar el panel se detiene lo que se esté ejecutando en él.",
+  "workbench.panel.closeRunningTerminal.confirm": "Cerrar y detener",
   "workbench.branch.currentBranch": "Rama actual",
   "workbench.memory.state.new": "Nuevo",
   "workbench.memory.state.changed": "Modificado",

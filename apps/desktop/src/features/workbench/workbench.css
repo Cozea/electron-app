@@ -1,7 +1,11 @@
 .cozea-workbench-dockview-host {
   background: transparent;
-  margin-top: -6px;
-  height: calc(100% + 6px);
+  /* Pull the grid up under the header's bottom spacing, but only by what the
+     root padding (--cozea-workbench-gap) adds beyond a 2px lead-in. A fixed
+     -6px assumed 8px padding and cropped the top edge once the gap shrank. */
+  --cozea-workbench-top-offset: calc(2px - var(--cozea-workbench-gap, 6px));
+  margin-top: var(--cozea-workbench-top-offset);
+  height: calc(100% - var(--cozea-workbench-top-offset));
 }
 
 /* Breathing room so terminal output doesn't sit flush against the tile
@@ -17,7 +21,11 @@
   --dv-tabs-and-actions-container-font-size: 13px;
   --dv-tab-font-size: 13px;
   --dv-spacing-padding: 8px;
-  --dv-border-radius: 12px;
+  /* Match the macOS window's own corner (10pt on macOS 11-15, which have a
+     title bar; Tahoe's is larger, so revisit there). Tiles, their tab headers
+     and floating cards all derive from this one value. */
+  --cozea-window-radius: 10px;
+  --dv-border-radius: var(--cozea-window-radius);
   --dv-overlay-z-index: var(--cozea-layer-dockview-float-base);
   --dv-icon-hover-background-color: color-mix(in oklch, var(--foreground) 8%, transparent);
   /* Resize sash + drop-target hint. dockview ties BOTH the active resize sash
@@ -86,6 +94,54 @@
   --dv-drag-over-border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
 }
 
+/* The Spaced theme pads the dockview root by --dv-spacing-padding (8px) while
+   the gap between tiles is the theme's `gap`, so the outer margin read wider
+   than the inter-tile gap. Both now follow WORKBENCH_TILE_GAP in
+   WorkbenchDockviewCanvas, exposed here as --cozea-workbench-gap. The doubled
+   class out-specifies the theme's own `.dockview-theme-*-spaced` padding rule
+   without touching --dv-spacing-padding, which floating groups still use. */
+.cozea-workbench-dockview-theme.cozea-workbench-dockview-theme {
+  padding: var(--cozea-workbench-gap, 6px);
+}
+
+/* Resize sash (dockview's `.dv-sash`, the strip between tiles that shows on
+   hover/drag). Its box is hard-coded to 4px in dockview's CSS *and* in the
+   splitview's position maths, so thinning the box itself would shift it off
+   centre and shrink the grab area. Keep the 4px hit area, hide its own fill and
+   draw a thinner centred line on a pseudo-element instead. */
+.cozea-workbench-dockview-theme {
+  --cozea-sash-line: 2px;
+}
+
+.cozea-workbench-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash,
+.cozea-workbench-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash:not(.disabled):hover,
+.cozea-workbench-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash:not(.disabled):active {
+  background-color: transparent;
+}
+
+.cozea-workbench-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  border-radius: calc(var(--cozea-sash-line) / 2);
+  background-color: var(--dv-sash-color, transparent);
+}
+
+.cozea-workbench-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash:hover::after,
+.cozea-workbench-dockview-theme .dv-split-view-container > .dv-sash-container > .dv-sash:active::after {
+  background-color: var(--dv-active-sash-color, transparent);
+  transition: background-color var(--dv-active-sash-transition-duration, 0.1s) ease-in-out
+    var(--dv-active-sash-transition-delay, 0.5s);
+}
+
+.cozea-workbench-dockview-theme .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash::after {
+  inset: 0 calc((4px - var(--cozea-sash-line)) / 2);
+}
+
+.cozea-workbench-dockview-theme .dv-split-view-container.dv-vertical > .dv-sash-container > .dv-sash::after {
+  inset: calc((4px - var(--cozea-sash-line)) / 2) 0;
+}
+
 .cozea-workbench-dockview-theme .cozea-workbench-dockview,
 .cozea-workbench-dockview-theme .dv-dockview,
 .cozea-workbench-dockview-theme .dv-resize-container,
@@ -113,7 +169,7 @@
 .cozea-workbench-dockview-theme .dv-resize-container-with-titlebar {
   --dv-floating-titlebar-height: 16px;
   background-color: var(--content-surface) !important;
-  border-radius: var(--dv-border-radius, 12px);
+  border-radius: var(--dv-border-radius, 10px);
   /* No `overflow: hidden` here: the resize handles are positioned outside the
      container box (`.dv-resize-handle-top` sits at top: -2px, -10px on coarse
      pointers) and clipping them breaks edge-resizing. The group below rounds
@@ -142,7 +198,7 @@
   .dv-resize-container-with-titlebar
   .dv-groupview {
   border: none !important;
-  border-radius: 0 0 var(--dv-border-radius, 12px) var(--dv-border-radius, 12px) !important;
+  border-radius: 0 0 var(--dv-border-radius, 10px) var(--dv-border-radius, 10px) !important;
   box-shadow: none !important;
 }
 
@@ -237,9 +293,13 @@
   border: 1px solid color-mix(in oklch, var(--border) 80%, transparent) !important;
   box-shadow:
     inset 0 1px 0 0 rgb(255 255 255 / 0.8),
-    0 1px 2px rgb(0 0 0 / 0.04),
-    0 6px 20px rgb(0 0 0 / 0.07) !important;
+    0 1px 2px rgb(0 0 0 / 0.04) !important;
 }
+
+/* Docked tiles sit in splitview cells that clip to the cell box (and the gap is
+   only a few px), so a wide ambient shadow can't show along the edges. All it
+   did was fill the square pocket outside each rounded corner with a tinted
+   patch, which read as the corner radius being off. Keep the shadow tight. */
 
 /* Dark themes: faint hairline perimeter border, ambient 3D drop shadow, and a razor-thin
    top specular highlight line tracing the upper rim and rounded corners. */
@@ -249,8 +309,7 @@
   border: 0.5px solid color-mix(in oklch, var(--foreground) 7%, transparent) !important;
   box-shadow:
     inset 0 0.5px 0 0 color-mix(in oklch, var(--foreground) 16%, transparent),
-    0 1px 3px 0 rgb(0 0 0 / 0.5),
-    0 8px 24px -4px rgb(0 0 0 / 0.6) !important;
+    0 1px 3px 0 rgb(0 0 0 / 0.5) !important;
 }
 
 .theme-dark .cozea-workbench-dockview-theme .dv-groupview::before,
@@ -327,8 +386,11 @@
   min-width: 0;
 }
 
+/* Room for one icon-only tab (2.5rem) plus its horizontal --dv-tab-margin
+   (0.25rem each side). At a bare 2.5rem the tab overflowed by its margins, got
+   clipped, and dockview counted it as a hidden tab. */
 .cozea-workbench-dockview .dv-tabs-container {
-  min-width: 2.5rem;
+  min-width: 3rem;
 }
 
 /* dockview's `tabGroupIndicator: "none"` still draws a flat accent bar
@@ -338,8 +400,12 @@
 }
 
 /* Basic tab overflow control (OSS list — not enterprise search).
-   Only show when a group has multiple tabs and at least one overflows. */
-.cozea-workbench-dockview-theme .dv-tabs-and-actions-container:has(.dv-tabs-container > .dv-tab:only-child) .dv-tabs-overflow-container {
+   Only show when a group has multiple tabs and at least one overflows. In
+   dockview 7 the trigger ("⌄ N") is `.dv-tabs-overflow-dropdown-root`;
+   `.dv-tabs-overflow-container` is only the popup list it opens. */
+.cozea-workbench-dockview-theme
+  .dv-tabs-and-actions-container:has(.dv-tabs-container > .dv-tab:only-child)
+  :is(.dv-tabs-overflow-dropdown-root, .dv-tabs-overflow-container) {
   display: none !important;
 }
 

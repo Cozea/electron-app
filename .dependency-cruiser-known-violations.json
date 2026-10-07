@@ -1,0 +1,500 @@
+[
+  {
+    "type": "cycle",
+    "from": "apps/desktop/electron/services/ComputerUseRuntimeService.ts",
+    "to": "apps/desktop/electron/services/CuaSocketClient.ts",
+    "unresolvedTo": "./CuaSocketClient",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/desktop/electron/services/CuaSocketClient.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/services/ComputerUseRuntimeService.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/desktop/electron/services/ComputerUseRuntimeService.ts",
+    "to": "apps/desktop/electron/services/EmbeddedCuaDaemon.ts",
+    "unresolvedTo": "./EmbeddedCuaDaemon",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/desktop/electron/services/EmbeddedCuaDaemon.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/services/CuaSocketClient.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/services/ComputerUseRuntimeService.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/desktop/electron/substrate/backend/DesktopBackendPool.ts",
+    "to": "apps/desktop/electron/substrate/backend/types.ts",
+    "unresolvedTo": "./types",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/desktop/electron/substrate/backend/types.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/remoteEnvironments.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/backend/DesktopBackendPool.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/desktop/electron/substrate/backend/types.ts",
+    "to": "apps/desktop/electron/substrate/remoteEnvironments.ts",
+    "unresolvedTo": "../remoteEnvironments",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/desktop/electron/substrate/remoteEnvironments.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/backend/types.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/desktop/electron/substrate/remoteEnvironments.ts",
+    "to": "apps/desktop/electron/substrate/wsl/wslBackend.ts",
+    "unresolvedTo": "./wsl/wslBackend",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/desktop/electron/substrate/wsl/wslBackend.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/backend/DesktopBackendPool.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/backend/types.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/remoteEnvironments.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/desktop/electron/substrate/wsl/wslBackend.ts",
+    "to": "apps/desktop/electron/substrate/backend/types.ts",
+    "unresolvedTo": "../backend/types",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/desktop/electron/substrate/backend/types.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/remoteEnvironments.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/desktop/electron/substrate/wsl/wslBackend.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "apps/projectd/src/collaboration/ConflictEngine.ts",
+    "to": "apps/projectd/src/collaboration/TreeDoc.ts",
+    "unresolvedTo": "./TreeDoc",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "apps/projectd/src/collaboration/TreeDoc.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "apps/projectd/src/collaboration/ConflictEngine.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "packages/projectd-protocol/src/client.ts",
+    "to": "packages/projectd-protocol/src/index.ts",
+    "unresolvedTo": "./index",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "packages/projectd-protocol/src/index.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
+        "name": "packages/projectd-protocol/src/client.ts",
+        "dependencyTypes": [
+          "local",
+          "export"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "shared/assistant-contracts/model.ts",
+    "to": "shared/assistant-contracts/orchestration.ts",
+    "unresolvedTo": "./orchestration",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "shared/assistant-contracts/orchestration.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "shared/assistant-contracts/model.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "shared/localProjectTypes.ts",
+    "to": "shared/workspaceTypes.ts",
+    "unresolvedTo": "./workspaceTypes",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "shared/workspaceTypes.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "shared/localProjectTypes.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "cycle",
+    "from": "shared/types.ts",
+    "to": "shared/workspaceIdentity.ts",
+    "unresolvedTo": "./workspaceIdentity",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "no-circular"
+    },
+    "cycle": [
+      {
+        "name": "shared/workspaceIdentity.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      },
+      {
+        "name": "shared/types.ts",
+        "dependencyTypes": [
+          "local",
+          "type-only",
+          "import"
+        ]
+      }
+    ]
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/bootstrap.ts",
+    "to": "apps/desktop/electron/substrate-shadow-server/createShadowHttpServer.ts",
+    "unresolvedTo": "../../../apps/desktop/electron/substrate-shadow-server/createShadowHttpServer",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/bootstrap.ts",
+    "to": "apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers.ts",
+    "unresolvedTo": "../../../apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/bootstrap.ts",
+    "to": "apps/desktop/electron/substrate/constants.ts",
+    "unresolvedTo": "../../../apps/desktop/electron/substrate/constants",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/bootstrap.ts",
+    "to": "apps/desktop/electron/substrate/flags.ts",
+    "unresolvedTo": "../../../apps/desktop/electron/substrate/flags",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/closeWorkspaceChats.ts",
+    "to": "apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers.ts",
+    "unresolvedTo": "../../../apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/removeWorkspaceChats.ts",
+    "to": "apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers.ts",
+    "unresolvedTo": "../../../apps/desktop/electron/substrate-shadow-server/rpcOrchestrationHandlers",
+    "dependencyTypes": [
+      "local",
+      "type-only",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/t3/orchestrationProxy.ts",
+    "to": "apps/desktop/electron/substrate/migrations/t3-orchestration-projection-replay.ts",
+    "unresolvedTo": "../../../../apps/desktop/electron/substrate/migrations/t3-orchestration-projection-replay.ts",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  },
+  {
+    "type": "dependency",
+    "from": "apps/server/src/t3/paths.ts",
+    "to": "apps/desktop/electron/substrate/constants.ts",
+    "unresolvedTo": "../../../../apps/desktop/electron/substrate/constants",
+    "dependencyTypes": [
+      "local",
+      "import"
+    ],
+    "rule": {
+      "severity": "error",
+      "name": "server-no-shell"
+    }
+  }
+]

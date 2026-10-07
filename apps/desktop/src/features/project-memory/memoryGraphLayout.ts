@@ -1,4 +1,4 @@
-import type { ProjectMemoryGraph, ProjectMemoryNode } from "@shared/electronApiTypes"
+import type { ProjectMemoryGraph, ProjectMemoryNode } from "@cozea/app-contract/electronApi"
 
 /**
  * Deterministic layout instead of a force simulation.

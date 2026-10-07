@@ -21,7 +21,7 @@ import {
   readScopedProjectBranchSession,
   rememberProjectBranchSession,
 } from "@/features/source-control/model/projectBranchSessionStore"
-import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
+import type { ProjectLaneDescriptor, ProjectLaneState } from "@cozea/app-contract/electronApi"
 import {
   useOptionalProjectSyncContext,
   type CollabEncryptionStatus,

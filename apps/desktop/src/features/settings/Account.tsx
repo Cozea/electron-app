@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { useAction, useMutation } from "convex/react";
+import { useMutation } from "@/lib/cloudQueries";
 import { api } from "../../../../../convex/_generated/api";
 import { useAuth } from "../../contexts/AuthContext";
+import { CloudConnectionPrompt } from "@/components/CloudConnectionPrompt";
 import { DeviceAvatar } from "@/components/ui/DeviceAvatar";
 import { AvatarUploader } from "@/components/ui/avatar-uploader";
 import {
@@ -46,13 +47,10 @@ interface AccountProps {
 }
 
 export function Account({ surface = "page", route: _route }: AccountProps) {
-  const { user, principalId, preferences, refreshToken } = useAuth();
+  const { localDevice: user, user: cloudUser, principalId, preferences, updateLocalDevice, retryDeviceSession } = useAuth();
   const { t } = useTranslation();
 
   const updatePreferencesMutation = useMutation(api.devicePrincipals.updatePreferences);
-  const updateDevicePresentation = useMutation(api.devicePrincipals.updateDevicePresentation);
-  const uploadAvatar = useAction(api.devicePrincipals.uploadAvatar);
-  const removeAvatarMutation = useMutation(api.devicePrincipals.removeAvatar);
   const revokeCurrentDevice = useMutation(api.devicePrincipals.revokeCurrentDevice);
 
   const initialDisplayName = user?.displayName ?? "";
@@ -70,6 +68,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
     if (preferences?.pushNotifications !== undefined) {
@@ -96,12 +95,18 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   const handleResetDevice = async () => {
     if (resetConfirmation !== "RESET" || resetting) return;
     setResetting(true);
+    setResetError(null);
     try {
-      await revokeCurrentDevice({ reason: "local_identity_reset" });
+      if (cloudUser) {
+        if (!principalId) await retryDeviceSession();
+        await revokeCurrentDevice({ reason: "local_identity_reset" });
+      }
       const result = await window.electronAPI.collab.deleteDeviceIdentity();
       if (!result.success) throw new Error(result.error || "Could not delete the local device identity");
       await clearDeviceSession();
       window.location.reload();
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : "Could not reset this device.");
     } finally {
       setResetting(false);
     }
@@ -137,19 +142,12 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   }
 
   const savePresentation = async () => {
-    if (!principalId || !normalizedDeviceName || savingPresentation || processingAvatar) return
+    if (!user || !normalizedDeviceName || savingPresentation || processingAvatar) return
     setSavingPresentation(true)
     setPresentationError(null)
     try {
-      await updateDevicePresentation({ displayName: normalizedDeviceName })
-      if (removeAvatar) {
-        await removeAvatarMutation({})
-      } else if (pendingAvatarDataUrl) {
-        const bytes = await fetch(pendingAvatarDataUrl).then((response) => response.arrayBuffer())
-        await uploadAvatar({ bytes })
-      }
-      const status = await refreshToken()
-      if (status !== 'refreshed') throw new Error('Saved, but the local device session could not refresh')
+      await updateLocalDevice({ displayName: normalizedDeviceName,
+        ...(removeAvatar ? { avatarUrl: null } : pendingAvatarDataUrl ? { avatarUrl: pendingAvatarDataUrl } : {}) })
       setSavedDeviceName(normalizedDeviceName)
       setPendingAvatarDataUrl(null)
       setRemoveAvatar(false)
@@ -165,11 +163,12 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
   return (
     <SettingsPageBody surface={surface}>
       <SettingsPageHeader title={t("settings.account.deviceIdentity")} />
+      <CloudConnectionPrompt />
 
       <section>
         <SettingsSectionTitle>Device presentation</SettingsSectionTitle>
         <SettingsSectionDescription>
-          Visible device profile shown to collaborators.
+          Your device name and photo, stored on this device.
         </SettingsSectionDescription>
         <SettingsGroup>
           <SettingsRow isFirst>
@@ -290,7 +289,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
               <Switch
                 checked={userPrefs.pushNotifications}
                 onCheckedChange={(checked) => void handlePrefChange("pushNotifications", checked)}
-                disabled={isProfileLoading}
+                disabled={isProfileLoading || !principalId}
               />
             </SettingsRowControl>
           </SettingsRow>
@@ -331,6 +330,7 @@ export function Account({ surface = "page", route: _route }: AccountProps) {
                   onChange={(event) => setResetConfirmation(event.target.value)}
                   disabled={resetting}
                 />
+                {resetError ? <p className="text-sm text-destructive" role="alert">{resetError}</p> : null}
               </ConfirmModal>
             </SettingsRowControl>
           </SettingsRow>

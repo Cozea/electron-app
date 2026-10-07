@@ -87,6 +87,10 @@ Run `bun run dist:local` to assemble the production application and installers w
 
 ## Operating Rules
 
+The desktop shell now separates local device readiness from optional cloud enrollment. Existing encrypted sessions/navigation locators retain their formats; a bounded `desktop-local-device.v1.json` adds presentation without credentials. Include fresh and previously enrolled profiles, missing Convex configuration, unreachable issuer, identity mismatch and local onboarding/settings in packaged qualification. The complete project route/sidebar cutover is still pending. See [offline desktop shell](offline-desktop-shell.md) and the [implementation ledger](current/project-system-implementation.md).
+
+Packaged projectd LaunchAgents include `COZEA_WORKSPACE_CATALOG_PATH` pointing at Electron's concrete `userData/local-workspaces.sqlite`. Development detached launches receive the same path and socket explicitly. A profile path change updates the LaunchAgent configuration; this preserves the established reload behavior. The daemon reads the initial catalog without modifying source folders and Electron subsequently reconciles verified bindings by revision. Include existing-profile qualification, catalog absence/retry and retained headless-session checks in the packaged acceptance matrix; fixture tests alone do not qualify launchd or signed upgrades. See [local project catalog](local-project-catalog.md).
+
 - Do not publish GitHub Release artifacts from branches.
 - Do not rebuild a release from code that is not already tagged.
 - Do not introduce channels other than `canary`, `beta`, and `stable` without updating the release model intentionally.

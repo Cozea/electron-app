@@ -72,7 +72,7 @@ import type {
   AgentSkillProvider,
   AgentSkillMutationResult,
   AgentSkillRecord,
-} from "@shared/electronApiTypes";
+} from "@cozea/app-contract/electronApi";
 
 import {
   HugeiconsIcon,

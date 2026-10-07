@@ -1,6 +1,6 @@
 import { ConvexError } from "convex/values"
 
-import type { Doc } from "../_generated/dataModel"
+import type { Doc, Id } from "../_generated/dataModel"
 import type { MutationCtx, QueryCtx } from "../_generated/server"
 import { isDeviceIdentityKey, isTokenIssuedAfterRevocationBoundary, normalizeDeviceIdentityKey } from "../../shared/deviceIdentity"
 
@@ -82,4 +82,16 @@ export async function requireAuthenticatedDevice(
     signingKeyVersion,
     tokenValidAfter,
   }
+}
+
+/** A legacy caller claim may be checked, but never supplies authority. */
+export async function requireAuthenticatedCaller(
+  ctx: AuthenticatedCtx,
+  claimedPrincipalId?: Id<"devicePrincipals">,
+): Promise<DevicePrincipal> {
+  const principal = await requireAuthenticatedDevice(ctx)
+  if (claimedPrincipalId !== undefined && claimedPrincipalId !== principal._id) {
+    throw new ConvexError("Caller principalId does not match the authenticated device")
+  }
+  return principal
 }

@@ -84,6 +84,18 @@ export const useAssistantHistoryStore = create<AssistantHistoryState>()(
   ),
 );
 
+/** Called only after the journal and native runtime confirm the original folder move. */
+export function relocateAssistantHistory(input: { projectId: string; workspaceId: string; previousFolder: string; currentFolder: string; assistantProjectId: string }) {
+  const relocate = (entry: AssistantProjectAssociation) =>
+    entry.projectId === input.projectId && entry.workspaceId === input.workspaceId &&
+    entry.assistantProjectId === input.assistantProjectId && entry.rootPath === input.previousFolder
+      ? { ...entry, rootPath: input.currentFolder } : entry;
+  useAssistantHistoryStore.setState((state) => ({
+    projects: Object.fromEntries(Object.entries(state.projects).map(([key, entry]) => [key, relocate(entry)])),
+    conversations: Object.fromEntries(Object.entries(state.conversations).map(([key, entry]) => [key, relocate(entry)])),
+  }));
+}
+
 /** Exact, catalog-backed matches only. Never infer ownership from a repo URL/name. */
 export function backfillAssistantHistory(
   state: AppState,

@@ -15,17 +15,18 @@ import type {
   TerminalCreateOptions,
   TerminalOutputEvent,
   UpdateState,
-} from '../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import type { ProjectdRecoveryPreviewBridge } from '../../../shared/projectdRecoveryPreviewApi'
 import type { WorkspaceCatalogSnapshot } from '../../../shared/workspaceTypes'
 import type { MessageBoxOptions } from 'electron'
+import type { AssistantRuntimeBridgeStatus, DesktopBridgeSurface } from '@cozea/app-contract/desktopBridge'
 import type { ContextMenuItem } from '../../../shared/assistant-contracts/ipc'
 import { BROWSER_SURFACE_IPC } from '../../../shared/browserSurfaceIpc'
 import type {
   BrowserSurfaceDescriptor,
   CozeaBrowserSurfaceState,
   CozeaDesktopPreviewBridge,
-} from '../../../shared/browserSurfaceTypes'
+} from '@cozea/app-contract/browserSurface'
 import type { DesktopPreviewPointerEvent, DesktopPreviewRecordingFrame } from '@cozea/contracts/t3/ipc'
 
 const WINDOW_CONTEXT_ARG_PREFIX = '--cozea-window='
@@ -37,13 +38,6 @@ const SUBSTRATE_SHADOW_STATUS_HANDLE = 'substrateShadow:getStatus'
 const SUBSTRATE_VCS_INVALIDATE_HANDLE = 'substrate:vcs:invalidate'
 const SUBSTRATE_VCS_CAPABILITIES_HANDLE = 'substrate:vcs:capabilities'
 const WORKBENCH_SESSION_STATE_CHANGED_CHANNEL = 'workbenchSession:stateChanged'
-
-type AssistantRuntimeBridgeStatus = {
-  phase: 'idle' | 'starting' | 'ready' | 'error'
-  wsUrl: string
-  lastError: string | null
-  updatedAt: number
-}
 
 function resolveWindowContext(argv: readonly string[]): ElectronWindowContext {
   const contextArg = argv.find((value) => value.startsWith(WINDOW_CONTEXT_ARG_PREFIX))
@@ -377,7 +371,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listAvailableBrowsers: () => ipcRenderer.invoke('shell:listAvailableBrowsers'),
     openInBrowser: (options: {
       url: string
-      browserId?: import('../../../shared/electronApiTypes').ExternalBrowserId
+      browserId?: import('@cozea/app-contract/electronApi').ExternalBrowserId
     }) => ipcRenderer.invoke('shell:openInBrowser', options),
   },
   editor: {
@@ -632,11 +626,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       close?: boolean
     }) => ipcRenderer.invoke('workbenchSession:releaseTerminal', options),
     onStateChanged: (
-      callback: (session: import('../../../shared/electronApiTypes').WorkbenchSessionSnapshot) => void,
+      callback: (session: import('@cozea/app-contract/electronApi').WorkbenchSessionSnapshot) => void,
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        session: import('../../../shared/electronApiTypes').WorkbenchSessionSnapshot,
+        session: import('@cozea/app-contract/electronApi').WorkbenchSessionSnapshot,
       ) => callback(session)
       ipcRenderer.on(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
       return () => ipcRenderer.removeListener(WORKBENCH_SESSION_STATE_CHANGED_CHANNEL, handler)
@@ -703,7 +697,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       filePath: string
       content: string
       encoding?: 'utf8' | 'base64'
-      origin?: 'agent' | 'remote' | 'sync' | import('../../../shared/electronApiTypes').FileChangeAttribution
+      origin?: 'agent' | 'remote' | 'sync' | import('@cozea/app-contract/electronApi').FileChangeAttribution
     }) => ipcRenderer.invoke('project:writeFile', options),
     readFile: (options: { workspaceId: string; filePath: string }) => ipcRenderer.invoke('project:readFile', options),
     readFileBase64: (options: { workspaceId: string; filePath: string }) =>
@@ -713,18 +707,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     listFiles: (options: { workspaceId: string }) => ipcRenderer.invoke('project:listFiles', options),
     getContextOptions: (options: {
       workspaceId: string
-      frameworkInfo?: import('../../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
+      frameworkInfo?: import('@cozea/app-contract/electronApi').ProjectStoredFrameworkInfo | null
     }) => ipcRenderer.invoke('project:getContextOptions', options),
     renameFile: (options: {
       workspaceId: string
       oldPath: string
       newPath: string
-      origin?: 'agent' | 'remote' | 'sync' | import('../../../shared/electronApiTypes').FileChangeAttribution
+      origin?: 'agent' | 'remote' | 'sync' | import('@cozea/app-contract/electronApi').FileChangeAttribution
     }) => ipcRenderer.invoke('project:renameFile', options),
     deletePath: (options: {
       workspaceId: string
       targetPath: string
-      origin?: 'agent' | 'remote' | 'sync' | import('../../../shared/electronApiTypes').FileChangeAttribution
+      origin?: 'agent' | 'remote' | 'sync' | import('@cozea/app-contract/electronApi').FileChangeAttribution
     }) => ipcRenderer.invoke('project:deletePath', options),
     copyPath: (options: { workspaceId: string; sourcePath: string; destinationPath: string }) =>
       ipcRenderer.invoke('project:copyPath', options),
@@ -803,11 +797,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     unsubscribeGitChanges: (options: { workspaceId: string; scope: 'current' | 'branch' }) =>
       ipcRenderer.invoke('workspaceSync:unsubscribeGitChanges', options),
     onGitChangesUpdated: (
-      callback: (snapshot: import('../../../shared/electronApiTypes').GitChangesSnapshot) => void,
+      callback: (snapshot: import('@cozea/app-contract/electronApi').GitChangesSnapshot) => void,
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        snapshot: import('../../../shared/electronApiTypes').GitChangesSnapshot,
+        snapshot: import('@cozea/app-contract/electronApi').GitChangesSnapshot,
       ) => callback(snapshot)
       ipcRenderer.on('workspaceSync:gitChangesUpdated', handler)
       return () => ipcRenderer.removeListener('workspaceSync:gitChangesUpdated', handler)
@@ -817,11 +811,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     unsubscribeGitDirtyState: (options: { workspaceId: string }) =>
       ipcRenderer.invoke('workspaceSync:unsubscribeGitDirtyState', options),
     onGitDirtyStateChange: (
-      callback: (snapshot: import('../../../shared/electronApiTypes').GitDirtyStateSnapshot) => void,
+      callback: (snapshot: import('@cozea/app-contract/electronApi').GitDirtyStateSnapshot) => void,
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        snapshot: import('../../../shared/electronApiTypes').GitDirtyStateSnapshot,
+        snapshot: import('@cozea/app-contract/electronApi').GitDirtyStateSnapshot,
       ) => callback(snapshot)
       ipcRenderer.on('workspaceSync:gitDirtyStateChanged', handler)
       return () => ipcRenderer.removeListener('workspaceSync:gitDirtyStateChanged', handler)
@@ -853,7 +847,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       command: string
       bootstrapCommand?: string | null
-      auxiliaryProcesses?: import('../../../shared/electronApiTypes').DevServerAuxiliaryProcessConfig[]
+      auxiliaryProcesses?: import('@cozea/app-contract/electronApi').DevServerAuxiliaryProcessConfig[]
       port: number
       sessionKey?: string | null
       framework?: string | null
@@ -867,7 +861,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       laneId?: string | null
       command: string
       bootstrapCommand?: string | null
-      auxiliaryProcesses?: import('../../../shared/electronApiTypes').DevServerAuxiliaryProcessConfig[]
+      auxiliaryProcesses?: import('@cozea/app-contract/electronApi').DevServerAuxiliaryProcessConfig[]
       port: number
       sessionKey?: string | null
       framework?: string | null
@@ -884,11 +878,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getState: (options: { workspaceId: string; laneId?: string | null }) =>
       ipcRenderer.invoke('devServer:getState', options),
     onStateChange: (
-      callback: (data: import('../../../shared/electronApiTypes').DevServerProcessStateEvent) => void,
+      callback: (data: import('@cozea/app-contract/electronApi').DevServerProcessStateEvent) => void,
     ) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        data: import('../../../shared/electronApiTypes').DevServerProcessStateEvent,
+        data: import('@cozea/app-contract/electronApi').DevServerProcessStateEvent,
       ) => callback(data)
       ipcRenderer.on('devServer:state', handler)
       return () => ipcRenderer.removeListener('devServer:state', handler)
@@ -945,18 +939,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   agentTools: {
-    getStatus: (options: { toolId: import('../../../shared/electronApiTypes').AgentToolId }) =>
+    getStatus: (options: { toolId: import('@cozea/app-contract/electronApi').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:getStatus', options),
-    prepare: (options: { toolId: import('../../../shared/electronApiTypes').AgentToolId }) =>
+    prepare: (options: { toolId: import('@cozea/app-contract/electronApi').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:prepare', options),
-    loginStart: (options: { toolId: import('../../../shared/electronApiTypes').AgentToolId }) =>
+    loginStart: (options: { toolId: import('@cozea/app-contract/electronApi').AgentToolId }) =>
       ipcRenderer.invoke('agentTools:loginStart', options),
     loginInput: (options: { sessionId: string; value: string }) => ipcRenderer.invoke('agentTools:loginInput', options),
     loginCancel: (options: { sessionId: string }) => ipcRenderer.invoke('agentTools:loginCancel', options),
-    onLoginEvent: (callback: (event: import('../../../shared/electronApiTypes').AgentToolLoginEvent) => void) => {
+    onLoginEvent: (callback: (event: import('@cozea/app-contract/electronApi').AgentToolLoginEvent) => void) => {
       const handler = (
         _event: Electron.IpcRendererEvent,
-        payload: import('../../../shared/electronApiTypes').AgentToolLoginEvent,
+        payload: import('@cozea/app-contract/electronApi').AgentToolLoginEvent,
       ) => callback(payload)
       ipcRenderer.on('agentTools:login-event', handler)
       return () => ipcRenderer.removeListener('agentTools:login-event', handler)
@@ -972,11 +966,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   agentSkills: {
     list: () => ipcRenderer.invoke('agentSkills:list'),
-    save: (draft: import('../../../shared/electronApiTypes').AgentSkillDraft) =>
+    save: (draft: import('@cozea/app-contract/electronApi').AgentSkillDraft) =>
       ipcRenderer.invoke('agentSkills:save', draft),
     setProviderEnabled: (options: {
       skillId: string
-      provider: import('../../../shared/electronApiTypes').AgentSkillProvider
+      provider: import('@cozea/app-contract/electronApi').AgentSkillProvider
       enabled: boolean
     }) => ipcRenderer.invoke('agentSkills:setProviderEnabled', options),
     setEnabled: (options: { skillId: string; enabled: boolean }) =>
@@ -996,7 +990,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     importDirectory: () => ipcRenderer.invoke('agentSkills:importDirectory'),
     openSetupPack: () => ipcRenderer.invoke('agentSkills:openSetupPack'),
     copyFromSetupPack: (options: {
-      pack: import('../../../shared/electronApiTypes').AgentSkillSetupPack
+      pack: import('@cozea/app-contract/electronApi').AgentSkillSetupPack
       packSkillId: string
     }) => ipcRenderer.invoke('agentSkills:copyFromSetupPack', options),
     exportSetupPack: (options: { setupName: string; authorName: string }) =>
@@ -1026,8 +1020,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     showOpenInEditorPicker: (options: {
       x: number
       y: number
-      editors: ReadonlyArray<{ id: import('../../../shared/electronApiTypes').ExternalEditorId; name: string }>
-      selectedEditorId: import('../../../shared/electronApiTypes').ExternalEditorId | null
+      editors: ReadonlyArray<{ id: import('@cozea/app-contract/electronApi').ExternalEditorId; name: string }>
+      selectedEditorId: import('@cozea/app-contract/electronApi').ExternalEditorId | null
     }) => ipcRenderer.invoke('contextMenu:showOpenInEditorPicker', options),
   },
   updates: {
@@ -1042,6 +1036,36 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
   workspace: {
+    projects: {
+      list: () => ipcRenderer.invoke('workspace:projects:list'),
+      get: (projectId: string) => ipcRenderer.invoke('workspace:projects:get', projectId),
+      createEntry: (req: unknown) => ipcRenderer.invoke('workspace:projects:createEntry', req),
+      updateMetadata: (req: unknown) => ipcRenderer.invoke('workspace:projects:updateMetadata', req),
+      observeShared: (req: unknown) => ipcRenderer.invoke('workspace:projects:observeShared', req),
+      beginOperation: (req: unknown) => ipcRenderer.invoke('workspace:projects:beginOperation', req),
+      getOperation: (operationId: string) => ipcRenderer.invoke('workspace:projects:getOperation', operationId),
+      getCompletedRepair: (workspaceId: string, previousFolder: string | null, currentFolder: string, previousRevision?: number) => ipcRenderer.invoke('workspace:projects:getCompletedRepair', workspaceId, previousFolder, currentFolder, previousRevision),
+      advanceOperation: (req: unknown) => ipcRenderer.invoke('workspace:projects:advanceOperation', req),
+      listRecoverableOperations: (projectId?: string) => ipcRenderer.invoke('workspace:projects:listRecoverableOperations', projectId),
+      create: (req: unknown) => ipcRenderer.invoke('workspace:projects:create', req),
+      open: (req: unknown) => ipcRenderer.invoke('workspace:projects:open', req),
+      resume: (operationId: string) => ipcRenderer.invoke('workspace:projects:resume', operationId),
+      repair: (req: unknown) => ipcRenderer.invoke('workspace:projects:repair', req),
+      resumeRepair: (operationId: string) => ipcRenderer.invoke('workspace:projects:resumeRepair', operationId),
+      close: (req: unknown) => ipcRenderer.invoke('workspace:projects:close', req),
+      resumeClose: (operationId: string) => ipcRenderer.invoke('workspace:projects:resumeClose', operationId),
+      remove: (req: unknown) => ipcRenderer.invoke('workspace:projects:remove', req),
+      resumeRemove: (operationId: string) => ipcRenderer.invoke('workspace:projects:resumeRemove', operationId),
+      cancelRemove: (operationId: string) => ipcRenderer.invoke('workspace:projects:cancelRemove', operationId),
+      confirmTrashOutcome: (operationId: string, workspaceId: string) => ipcRenderer.invoke('workspace:projects:confirmTrashOutcome', operationId, workspaceId),
+      onRemovalRequest: (callback) => {
+        const handler = (_event: Electron.IpcRendererEvent, request: import('../../../shared/localProjectTypes').ProjectRemovalRendererRequest) => callback(request)
+        ipcRenderer.on('workspace:projects:removalRequest', handler)
+        return () => ipcRenderer.removeListener('workspace:projects:removalRequest', handler)
+      },
+      replyRemoval: (requestId: string, error: string | null) => ipcRenderer.invoke('workspace:projects:removalReply', requestId, error),
+      cancelClose: (operationId: string) => ipcRenderer.invoke('workspace:projects:cancelClose', operationId),
+    },
     resolveProject: (req: unknown) => ipcRenderer.invoke('workspace:resolveProject', req),
     listForProject: (projectId: string) => ipcRenderer.invoke('workspace:listForProject', projectId),
     getActiveForProject: (projectId: string) => ipcRenderer.invoke('workspace:getActiveForProject', projectId),
@@ -1140,4 +1164,4 @@ contextBridge.exposeInMainWorld('desktopBridge', {
     ipcRenderer.on('updates:status', handler)
     return () => ipcRenderer.removeListener('updates:status', handler)
   },
-})
+} satisfies DesktopBridgeSurface)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { DockviewApi, DockviewPanelApi } from "dockview-react";
+import type { DockviewPanelApi } from "dockview-react";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -35,7 +35,6 @@ interface WorkbenchAssistantChatTileProps {
   projectRootPath: string | null;
   tile: WorkbenchAssistantChatTileRecord;
   panelApi: DockviewPanelApi;
-  containerApi: DockviewApi;
   onDuplicate: (tileId: string) => void;
 }
 
@@ -169,8 +168,6 @@ function WorkbenchAssistantChatTileContent(props: WorkbenchAssistantChatTileProp
       <WorkbenchTileChrome
         title={chatTitle}
         panelApi={props.panelApi}
-        containerApi={props.containerApi}
-        chromeVariant="pill"
         contentClassName="overflow-hidden"
         tileType="assistantChat"
         assistantProvider={props.tile.provider}

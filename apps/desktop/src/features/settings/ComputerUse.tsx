@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch'
 import { saveLocalSettings, useLocalSettings } from '@/lib/settings/localSettings'
 import { appToast } from '@/lib/appToast'
 import { useTranslation } from '@/lib/i18n'
-import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
+import type { ComputerUseDiagnostics } from '@cozea/app-contract/electronApi'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {

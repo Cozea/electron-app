@@ -1,7 +1,7 @@
 import { providerEssentialCount, cozeaSkills, providerSkillCounts } from "@/features/projects/model/skillBuildModel";
 import { Logo } from "@/components/Logo";
 import { cn } from "@/lib/utils";
-import type { AgentSkillBuild, AgentSkillProvider, AgentSkillRecord } from "@shared/electronApiTypes";
+import type { AgentSkillBuild, AgentSkillProvider, AgentSkillRecord } from "@cozea/app-contract/electronApi";
 import { BUILD_PROVIDER_ICONS } from "./skillBuildProviderIcons";
 
 /**

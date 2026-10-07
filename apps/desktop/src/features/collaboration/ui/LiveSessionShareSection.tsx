@@ -10,7 +10,7 @@
 
 import { useState, type ReactNode } from "react"
 import { useTranslation } from "@/lib/i18n"
-import { useMutation, useQuery } from "convex/react"
+import { useMutation, useQuery } from "@/lib/cloudQueries"
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"

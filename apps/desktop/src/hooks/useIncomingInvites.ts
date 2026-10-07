@@ -1,4 +1,4 @@
-import { useQuery } from "convex/react"
+import { useQuery } from "@/lib/cloudQueries"
 
 import { api } from "../../../../convex/_generated/api"
 import { useAuth } from "@/contexts/AuthContext"

@@ -8,11 +8,14 @@ import type {
   DesktopBootstrapBridge,
   DesktopBootstrapSession,
   DesktopWorkbenchLocator,
-} from '../../../shared/desktopBootstrapTypes'
+  LocalDevicePresentationUpdate,
+} from '@cozea/app-contract/desktopBootstrap'
 import './preload'
 
 const desktopBootstrapBridge: DesktopBootstrapBridge = {
   getInitialSnapshot: () => ipcRenderer.invoke('desktopBootstrap:getInitialSnapshot'),
+  getLocalDevice: () => ipcRenderer.invoke('desktopBootstrap:getLocalDevice'),
+  updateLocalDevice: (update: LocalDevicePresentationUpdate) => ipcRenderer.invoke('desktopBootstrap:updateLocalDevice', update),
   storeSession: (session: DesktopBootstrapSession) =>
     ipcRenderer.invoke('desktopBootstrap:storeSession', session),
   clearSession: () => ipcRenderer.invoke('desktopBootstrap:clearSession'),

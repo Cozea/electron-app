@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@cozea/app-contract": ["packages/app-contract/src/index.ts"],
+      "@cozea/app-contract/*": ["packages/app-contract/src/*"],
+      "@cozea/assistant-contracts": ["shared/assistant-contracts/index.ts"],
+      "@cozea/assistant-contracts/*": ["shared/assistant-contracts/*"],
+      "@cozea/assistant-shared/*": ["shared/assistant-shared/*"],
+      "@cozea/effect-acp": ["packages/effect-acp/src/client.ts"],
+      "@cozea/effect-acp/*": ["packages/effect-acp/src/*"],
+      "@/*": ["apps/desktop/src/*"],
+      "@shared/*": ["shared/*"],
+      "@cozea/contracts": ["packages/contracts/src/index.ts"],
+      "@cozea/contracts/*": ["packages/contracts/src/*"],
+      "@cozea/client-runtime": ["packages/client-runtime/src/index.ts"],
+      "@cozea/client-runtime/*": ["packages/client-runtime/src/*"],
+      "@cozea/substrate-contracts": ["packages/substrate-contracts/src/index.ts"],
+      "@cozea/substrate-client-runtime": ["packages/substrate-client-runtime/src/index.ts"],
+      "@cozea/projectd-protocol": ["packages/projectd-protocol/src/index.ts"],
+      "@cozea/projectd-protocol/*": ["packages/projectd-protocol/src/*"]
+    }
+  },
+  "include": ["apps/desktop/src", "apps/desktop/electron", "apps/server/src", "apps/projectd/src", "packages", "shared"],
+  "exclude": ["**/node_modules", "**/out", "**/dist"]
+}

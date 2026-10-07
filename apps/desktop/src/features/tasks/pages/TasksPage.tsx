@@ -7,7 +7,7 @@ import {
 import {
   useMutation,
   useQuery,
-} from 'convex/react';
+} from '@/lib/cloudQueries';
 import type {
   Id,
 } from '../../../../../../convex/_generated/dataModel';
@@ -65,7 +65,7 @@ import {
 
 import type {
   ProjectScannedRoute,
-} from '@shared/electronApiTypes';
+} from '@cozea/app-contract/electronApi';
 import {
   ScrollArea,
 } from '@/components/ui/scroll-area';

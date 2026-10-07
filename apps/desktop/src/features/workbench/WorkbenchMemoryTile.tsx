@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
-import type { ProjectMemoryNodeState } from "@shared/electronApiTypes"
+import type { ProjectMemoryNodeState } from "@cozea/app-contract/electronApi"
 
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"

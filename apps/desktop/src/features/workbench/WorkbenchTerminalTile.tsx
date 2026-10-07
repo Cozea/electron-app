@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react"
-import type { DockviewApi, DockviewPanelApi } from "dockview-react"
+import type { DockviewPanelApi } from "dockview-react"
 
 import { Button } from "@/components/ui/button"
 import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome"
@@ -19,7 +19,6 @@ interface WorkbenchTerminalTileProps {
   workspaceId: string | null
   workbenchSessionKey: string | null
   panelApi: DockviewPanelApi
-  containerApi: DockviewApi
 }
 
 export function WorkbenchTerminalTile({
@@ -29,7 +28,6 @@ export function WorkbenchTerminalTile({
   workspaceId,
   workbenchSessionKey,
   panelApi,
-  containerApi,
 }: WorkbenchTerminalTileProps) {
   const panelActivity = useWorkbenchPanelActivityMode(panelApi)
   const [retryKey, setRetryKey] = useState(0)
@@ -101,8 +99,6 @@ export function WorkbenchTerminalTile({
     <WorkbenchTileChrome
       title="Terminal"
       panelApi={panelApi}
-      containerApi={containerApi}
-      chromeVariant="pill"
       tileType="terminal"
     >
       <div className="h-full min-h-0">{body}</div>

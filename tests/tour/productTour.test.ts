@@ -356,7 +356,7 @@ describe("product tour behaviour", () => {
 
   it("starts only after device onboarding is finished", () => {
     expect(tourSource).toContain("needsOnboarding");
-    expect(tourSource).toMatch(/if \(!isAuthenticated \|\| isLoading \|\| needsOnboarding\) return/);
+    expect(tourSource).toMatch(/if \(!isLocalDeviceReady \|\| isLoading \|\| needsOnboarding\) return/);
   });
 
   it("cannot be dismissed by clicking outside it or by the keyboard", () => {

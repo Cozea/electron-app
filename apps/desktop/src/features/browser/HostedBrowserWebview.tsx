@@ -2,7 +2,7 @@ import type {
   BrowserSurfaceDescriptor,
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
-} from "@shared/browserSurfaceTypes";
+} from "@cozea/app-contract/browserSurface";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 

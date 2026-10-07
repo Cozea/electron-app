@@ -19,7 +19,7 @@ import type {
   ReadFileResult,
   WatchProjectResult,
   WriteFileResult,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import { isReadPathAllowed } from '../fsAccess'
 import { runGitCommand as runGitRuntimeCommand } from '../gitRuntime'
 import { resolvePathWithinDirectory } from '../pathUtils'
@@ -527,7 +527,7 @@ export function registerProjectHandlers(
         frameworkInfo,
       }: {
         workspaceId: string
-        frameworkInfo?: import('../../../../shared/electronApiTypes').ProjectStoredFrameworkInfo | null
+        frameworkInfo?: import('@cozea/app-contract/electronApi').ProjectStoredFrameworkInfo | null
       },
     ) => {
       try {

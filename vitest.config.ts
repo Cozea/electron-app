@@ -9,6 +9,11 @@ export default defineConfig({
     alias: {
       "@": path.resolve(desktopRoot, "./src"),
       "@shared": path.resolve(repoRoot, "./shared"),
+      "@cozea/app-contract/desktopBridge": path.resolve(repoRoot, "./packages/app-contract/src/desktopBridge.ts"),
+      "@cozea/app-contract/electronApi": path.resolve(repoRoot, "./packages/app-contract/src/electronApi.ts"),
+      "@cozea/app-contract/desktopBootstrap": path.resolve(repoRoot, "./packages/app-contract/src/desktopBootstrap.ts"),
+      "@cozea/app-contract/browserSurface": path.resolve(repoRoot, "./packages/app-contract/src/browserSurface.ts"),
+      "@cozea/app-contract": path.resolve(repoRoot, "./packages/app-contract/src/index.ts"),
       "@cozea/assistant-contracts": path.resolve(repoRoot, "./shared/assistant-contracts/index.ts"),
       "@cozea/assistant-shared": path.resolve(repoRoot, "./shared/assistant-shared"),
       "@cozea/contracts/t3/providerSetup": path.resolve(repoRoot, "./packages/contracts/src/t3/providerSetup.ts"),

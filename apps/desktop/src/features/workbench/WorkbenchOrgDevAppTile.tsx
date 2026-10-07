@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
-import { useQuery } from "convex/react"
+import { useQuery } from "@/lib/cloudQueries"
 
 import { api } from "../../../../../convex/_generated/api"
 import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot"
@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input"
 import { UnifiedModal } from "@/components/ui/unified-modal"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import { DevAppCapabilityList } from "@/features/devapps/components/DevAppCapabilityList"
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
+import type { BrowserSurfaceDescriptor } from "@cozea/app-contract/browserSurface"
 import type { OrgDevAppRuntimeState } from "@shared/orgDevAppRuntime"
 import type { OrgDevAppEnvironmentStatus } from "@shared/orgDevAppEnvironment"
 import type { OrgDevAppInstallation } from "@shared/orgDevAppInstallation"
@@ -498,12 +498,9 @@ export function WorkbenchOrgDevAppTile({
     <WorkbenchTileChrome
       title={tile.title}
       panelApi={panelApi}
-      containerApi={containerApi}
-      chromeVariant="pill"
       tileType="orgDevApp"
       devAppId={artifact?.publicationId ?? tile.publicationId}
       logoDataUrl={tile.logoDataUrl}
-      hideTitlePill={false}
       actions={
         artifact?.parts.runtime ? (
           <div className="flex items-center gap-1">

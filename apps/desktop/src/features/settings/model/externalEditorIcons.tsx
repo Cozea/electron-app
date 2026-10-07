@@ -13,7 +13,7 @@ import {
 import { VscVscodeInsiders } from 'react-icons/vsc'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { CodeCircleIcon as __Code2HugeIcon } from '@hugeicons/core-free-icons'
-import type { ExternalEditorId } from '@shared/electronApiTypes'
+import type { ExternalEditorId } from '@cozea/app-contract/electronApi'
 
 import {
   AntigravityIcon,

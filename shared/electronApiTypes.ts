@@ -1,4 +1,5 @@
 import type { Session } from './types'
+import type { LocalProjectsElectronAPI } from './localProjectTypes'
 import type {
   ProjectdHealthResult,
   ProjectdCheckpointResult,
@@ -2530,6 +2531,7 @@ export interface ElectronAPI {
     onStatus: (callback: (state: UpdateState) => void) => () => void
   }
   workspace?: {
+    projects?: LocalProjectsElectronAPI
     resolveProject: (req: ResolveProjectWorkspaceRequest) => Promise<ResolveProjectWorkspaceResult>
     listForProject: (projectId: string) => Promise<LocalWorkspaceRecord[]>
     getActiveForProject: (projectId: string) => Promise<LocalWorkspaceRecord | null>

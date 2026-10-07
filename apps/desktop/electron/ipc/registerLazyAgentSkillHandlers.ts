@@ -4,7 +4,7 @@ import type {
   AgentSkillDraft,
   AgentSkillProvider,
   AgentSkillSetupPack,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 
 interface LazyAgentSkillService {
   list(): unknown

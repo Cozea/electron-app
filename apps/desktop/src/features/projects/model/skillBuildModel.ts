@@ -1,5 +1,5 @@
 import { agentSkillCategoryLabel, agentSkillCategoryOrder } from "@shared/agentSkillCategories";
-import type { AgentSkillBuild, AgentSkillProvider, AgentSkillRecord } from "@shared/electronApiTypes";
+import type { AgentSkillBuild, AgentSkillProvider, AgentSkillRecord } from "@cozea/app-contract/electronApi";
 
 /**
  * Everything a build can draw on: what is installed, plus what the providers'

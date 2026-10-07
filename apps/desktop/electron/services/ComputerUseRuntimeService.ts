@@ -3,7 +3,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { execFileSync } from 'node:child_process'
 
 import { readComputerUseAppSettings, type ComputerUseAppSettings } from './computerUseSettings'
-import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
+import type { ComputerUseDiagnostics } from '@cozea/app-contract/electronApi'
 import { EmbeddedCuaDaemon } from './EmbeddedCuaDaemon'
 import { CuaSocketClient, parseToolResult, type CuaContentItem } from './CuaSocketClient'
 import {

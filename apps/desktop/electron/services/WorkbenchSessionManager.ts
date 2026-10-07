@@ -1,3 +1,4 @@
+import { assertProjectRuntimeAvailable } from "../workspaces/runtimeExclusion.ts"
 import { app } from 'electron'
 import { EventEmitter } from 'node:events'
 import fs from 'node:fs'
@@ -6,7 +7,7 @@ import path from 'node:path'
 import type {
   WorkbenchSessionLifecycle,
   WorkbenchSessionSnapshot,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import { DevServerService } from './DevServerService'
 import { TerminalService } from './TerminalService'
 import { getDesktopStatePersistenceService } from './DesktopStatePersistenceService'
@@ -953,6 +954,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     workspaceRevision?: number
   }): Promise<WorkbenchSessionSnapshot> {
     await this.registryHydration
+    await assertProjectRuntimeAvailable(input.projectId)
     const sanitizedInput = this.sanitizeSessionInput(input)
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
     await this.reconcileSessionWorkspaceId(sessionKey, record, sanitizedInput.workspaceId)
@@ -982,6 +984,7 @@ export class WorkbenchSessionManager extends EventEmitter<{
     workspaceRevision?: number
   }, mayActivate: () => boolean | Promise<boolean>): Promise<WorkbenchSessionSnapshot | null> {
     await this.registryHydration
+    await assertProjectRuntimeAvailable(input.projectId)
     const sanitizedInput = this.sanitizeSessionInput(input)
     const { sessionKey, record } = this.getOrCreateSession(sanitizedInput)
     await this.reconcileSessionWorkspaceId(sessionKey, record, sanitizedInput.workspaceId)
@@ -1147,6 +1150,14 @@ export class WorkbenchSessionManager extends EventEmitter<{
     return Array.from(this.sessions.entries()).map(([sessionKey, record]) =>
       this.buildSnapshot(sessionKey, record),
     )
+  }
+
+  async closeWorkspaceSessions(projectId: string, workspaceId: string): Promise<void> {
+    await this.registryHydration
+    for (const session of this.listSessions()) {
+      if (session.projectId !== projectId || session.workspaceId !== workspaceId) continue
+      await this.closeSession({ sessionKey: session.sessionKey, projectId, workspaceId, laneId: session.laneId })
+    }
   }
 
   setPinned(input: {

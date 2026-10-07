@@ -1,4 +1,4 @@
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
+import type { BrowserSurfaceDescriptor } from "@cozea/app-contract/browserSurface";
 import { useEffect, useRef } from "react";
 import { create } from "zustand";
 

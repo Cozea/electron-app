@@ -16,10 +16,11 @@ export function layoutProjectQueryCacheKey(
 
 export interface PrefetchProjectSwitchInput {
   projectId: string
+  cloudProjectId?: Id<"projects"> | null
   projectSlug?: string | null
   workspaceId?: string | null
   collabBranch?: string | null
-  convex: Pick<ConvexReactClient, "query">
+  convex: Pick<ConvexReactClient, "query"> | null
   principalId: Id<"devicePrincipals"> | null
 }
 
@@ -31,7 +32,7 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
     return
   }
 
-  const inflightKey = `${projectId}::${input.workspaceId ?? ""}::${input.principalId ?? ""}`
+  const inflightKey = `${projectId}::${input.cloudProjectId ?? ""}::${input.workspaceId ?? ""}::${input.principalId ?? ""}`
   if (prefetchInflight.has(inflightKey)) {
     return
   }
@@ -44,11 +45,12 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
       tasks.push(import("@/features/projects/pages/ProjectWorkbenchPage"))
       tasks.push(import("@/features/projects/pages/ProjectWorkbenchSurface"))
 
-      if (input.principalId) {
+      if (input.principalId && input.convex && input.cloudProjectId) {
         tasks.push(
           prefetchLayoutProject({
             convex: input.convex,
             projectId,
+            cloudProjectId: input.cloudProjectId,
             principalId: input.principalId,
           }),
         )
@@ -106,16 +108,17 @@ export function prefetchProjectSwitch(input: PrefetchProjectSwitchInput): void {
 export async function prefetchLayoutProject(input: {
   convex: Pick<ConvexReactClient, "query">
   projectId: string
+  cloudProjectId: Id<"projects">
   principalId: Id<"devicePrincipals">
 }): Promise<void> {
   const cacheKey = layoutProjectQueryCacheKey(input.projectId, null)
-  const cached = useQueryCache.getState().get(cacheKey)
-  if (cached) {
+  const cached = useQueryCache.getState().get<{ _id: Id<"projects"> }>(cacheKey)
+  if (cached?._id === input.cloudProjectId) {
     return
   }
 
   const project = await input.convex.query(api.projects.getAccessibleById, {
-    projectId: input.projectId as Id<"projects">,
+    projectId: input.cloudProjectId,
   })
   if (project) {
     useQueryCache.getState().set(cacheKey, project)

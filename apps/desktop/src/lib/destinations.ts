@@ -12,7 +12,7 @@
 import { getSettingsSurfaceRoute, resolveSettingsSurfaceFromRoute } from "@/lib/settings/settingsRegistry"
 import type { SettingsSurfaceId } from "@/lib/settings/settingsSurfaceTypes"
 
-export type ProjectSettingsSection = "general" | "danger"
+export type ProjectSettingsSection = "general" | "danger" | "shared"
 export type SkillsView = "builds" | "schedules"
 
 export type Destination =

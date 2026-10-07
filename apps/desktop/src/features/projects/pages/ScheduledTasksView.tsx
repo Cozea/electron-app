@@ -33,7 +33,7 @@ import {
   ScheduledTaskDetail,
 } from "@/features/projects/pages/ScheduledTaskDetail";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/cloudQueries";
 import { api } from "../../../../../../convex/_generated/api";
 import { useAssistantComposerDraftStore } from "@/features/assistant/chat/composerDraftStore";
 import { useAssistantRuntimeMetadata } from "@/features/assistant/model/assistantRuntimeMetadataStore";

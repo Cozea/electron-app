@@ -16,6 +16,7 @@ export interface BootstrapT3ServerOptions {
 }
 
 export interface T3ServerBootstrapHandle {
+  readonly localRemovalDirectory: string;
   readonly process: T3ServerProcessHandle;
   readonly proxy: OrchestrationBackendProxy;
   readonly issueWsTicket: () => Promise<string>;
@@ -48,6 +49,7 @@ export async function bootstrapT3Server(
   });
 
   return {
+    localRemovalDirectory: path.join(baseDir, "cozea", "project-removals"),
     process: processHandle,
     proxy,
     issueWsTicket: () => issueWebSocketTicket(processHandle.baseUrl, accessToken),

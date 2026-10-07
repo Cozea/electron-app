@@ -11,9 +11,10 @@ import { browseForDirectory } from "@/lib/browseForDirectory"
 import { resolveDroppedLocalFolderPath } from "@/lib/resolveDroppedLocalFolderPath"
 import { useTranslation } from "@/lib/i18n"
 import { useCreateProjectDialogStore } from "@/lib/createProjectDialogStore"
+import { LocalProjectRecoveryPanel } from "@/features/projects/ui/LocalProjectRecoveryPanel"
 
 export function ProjectsLaunchPage() {
-  const { user } = useAuth()
+  const { localDevice: user } = useAuth()
   const { t } = useTranslation()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const workspaceSelectionId = user?.identityKey ?? "local-device"
@@ -125,7 +126,7 @@ export function ProjectsLaunchPage() {
   )
 
   return (
-    <div className="flex min-h-full flex-1 items-center justify-center p-6 md:p-12">
+    <div className="flex min-h-full flex-1 flex-col items-center justify-center p-6 md:p-12">
       <EmptyFolder
         title={
           isSelectingFolder
@@ -148,6 +149,7 @@ export function ProjectsLaunchPage() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       />
+      <LocalProjectRecoveryPanel />
     </div>
   )
 }

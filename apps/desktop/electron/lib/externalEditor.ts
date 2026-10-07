@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { app, shell } from 'electron'
 
-import type { AvailableExternalEditor, ExternalEditorId } from '../../../../shared/electronApiTypes'
+import type { AvailableExternalEditor, ExternalEditorId } from '@cozea/app-contract/electronApi'
 
 interface EditorSpec {
   id: Exclude<ExternalEditorId, 'cozea'>

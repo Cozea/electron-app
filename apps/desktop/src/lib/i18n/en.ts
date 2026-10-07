@@ -378,7 +378,6 @@ const en = {
   "workbench.layout.splitDown": "Split Down",
   "workbench.layout.splitUp": "Split Up",
   "workbench.layout.optionsLabel": "Layout options",
-  "workbench.layout.closeLabel": "Close {title}",
   "workbench.surface.loading": "Loading…",
   "workbench.surface.loadingWorkbench": "Loading workbench…",
   "workbench.surface.closeChanges": "Close changes",
@@ -656,6 +655,9 @@ const en = {
 
   // ── Workbench panels / header ───────────────────────────────────────
   "workbench.panel.close": "Close panel",
+  "workbench.panel.closeRunningTerminal.title": "Close terminal with a running process?",
+  "workbench.panel.closeRunningTerminal.message": "Closing the tile stops whatever is running in it.",
+  "workbench.panel.closeRunningTerminal.confirm": "Close and Stop",
   "workbench.branch.currentBranch": "Current branch",
   "workbench.memory.state.new": "New",
   "workbench.memory.state.changed": "Changed",

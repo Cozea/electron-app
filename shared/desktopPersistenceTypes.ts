@@ -1,4 +1,4 @@
-export const DESKTOP_STATE_NAMESPACES = ['queryCache', 'workbenchModel', 'workbenchLayout', 'lastWorkbenchRoute', 'sessionRegistry'] as const
+export const DESKTOP_STATE_NAMESPACES = ['queryCache', 'workbenchModel', 'workbenchLayout', 'lastWorkbenchRoute', 'sessionRegistry', 'projectCreationIntent'] as const
 export type DesktopStateNamespace = typeof DESKTOP_STATE_NAMESPACES[number]
 export const LEGACY_DESKTOP_DOMAINS = ['cozea-query-cache', 'cozea:project-workbench-layouts', 'cozea:project-workbench'] as const
 export type LegacyDesktopDomain = typeof LEGACY_DESKTOP_DOMAINS[number]

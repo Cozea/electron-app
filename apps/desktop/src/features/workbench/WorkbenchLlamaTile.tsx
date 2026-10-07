@@ -1,5 +1,5 @@
 import { memo } from "react"
-import type { DockviewApi, DockviewPanelApi } from "dockview-react"
+import type { DockviewPanelApi } from "dockview-react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CpuChargeIcon as __CpuChargeHugeIcon,
@@ -21,7 +21,6 @@ interface WorkbenchLlamaTileProps {
   tile: WorkbenchLlamaTileRecord
   workspaceId: string | null
   panelApi: DockviewPanelApi
-  containerApi: DockviewApi
 }
 
 export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
@@ -33,9 +32,7 @@ export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
     <WorkbenchTileChrome
       title="Llama"
       panelApi={props.panelApi}
-      containerApi={props.containerApi}
       tileType="llama"
-      chromeVariant="pill"
       contentClassName="h-full"
     >
       <div className="flex h-full w-full flex-col items-center justify-center overflow-y-auto px-6 py-10 bg-content-surface">

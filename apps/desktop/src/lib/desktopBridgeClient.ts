@@ -1,30 +1,15 @@
 import type { ContextMenuItem } from "@cozea/assistant-contracts"
 
-export type AssistantRuntimePhase = "idle" | "starting" | "ready" | "error"
-
-export interface AssistantRuntimeBridgeStatus {
-  phase: AssistantRuntimePhase
-  wsUrl: string | null
-  lastError: string | null
-  updatedAt: number
-}
-
-export interface SubstrateShadowFeatureFlags {
-  readonly rpcChat: boolean
-  readonly providers: boolean
-  readonly vcs: boolean
-  readonly primary: boolean
-  readonly inProcessAssistant: boolean
-}
-
-export interface SubstrateShadowBridgeStatus {
-  readonly phase: "stopped" | "starting" | "ready" | "error" | "stopping"
-  readonly enabled: boolean
-  readonly baseUrl: string
-  readonly readyPath: string
-  readonly lastError: string | null
-  readonly features: SubstrateShadowFeatureFlags
-}
+export type {
+  AssistantRuntimeBridgeStatus,
+  AssistantRuntimePhase,
+  SubstrateShadowBridgeStatus,
+  SubstrateShadowFeatureFlags,
+} from "@cozea/app-contract/desktopBridge"
+import type {
+  AssistantRuntimeBridgeStatus,
+  SubstrateShadowBridgeStatus,
+} from "@cozea/app-contract/desktopBridge"
 
 type AssistantRuntimeBridgeListener = (
   status: Partial<AssistantRuntimeBridgeStatus> | null | undefined,

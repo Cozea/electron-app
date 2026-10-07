@@ -2,7 +2,7 @@ import path from 'node:path'
 
 import type { WebContents } from 'electron'
 
-import type { GitChangesSnapshot, GitChangesScope, GitDirtyStateSnapshot } from '../../../../shared/electronApiTypes'
+import type { GitChangesSnapshot, GitChangesScope, GitDirtyStateSnapshot } from '@cozea/app-contract/electronApi'
 import { watchGitDir } from '../substrate/vcs/gitDirWatcher'
 import { invalidateVcsStatus } from '../substrate/vcs/statusInvalidation'
 import { VcsStatusBroadcaster } from '../substrate/vcs/VcsStatusBroadcaster'

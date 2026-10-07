@@ -4,7 +4,7 @@ import type {
   ExternalBrowserId,
   ExternalEditorId,
   GpuAccelerationDiagnostics,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import type { IpcMain } from 'electron'
 import { resolveAuthorizedWorkspaceAccess } from '../workspaces/authorization'
 
