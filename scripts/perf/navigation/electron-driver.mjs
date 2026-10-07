@@ -206,7 +206,8 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
       'Second workspace binding did not activate a workspace-scoped session',
     )
     assert(revised.sessionKey !== a1, 'Second workspace binding reused the prior main-process session key')
-    assert(!revised.sessions.some(session => session.sessionKey === a1), 'Inactive workspace binding retained old runtime resources')
+    assert(revised.sessions.some(session => session.sessionKey === a1), 'Switching workspaces discarded the retained first workspace session')
+    assert(revised.sessions.some(session => session.sessionKey?.includes(rebound.workspaceId)), 'Second workspace binding has no retained runtime session')
     assert(!await evaluate(cdp, `Boolean(document.querySelector('.cozea-workbench-dockview-host[data-navigation-sentinel="a1"]'))`), 'Superseded Dockview instance survived binding invalidation')
 
     const timings = []
