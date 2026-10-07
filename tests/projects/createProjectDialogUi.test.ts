@@ -13,15 +13,22 @@ describe("create project dialog UI", () => {
   )
 
   it("renders the project setup dialog on an opaque readable surface", () => {
-    const dialogContentSource = dialogSource.slice(
-      dialogSource.indexOf("<DialogContent"),
-      dialogSource.indexOf("<DialogHeader"),
+    // The dialog is a UnifiedModal, whose popup owns the surface.
+    const modalSource = readWorkspaceSource("apps/desktop/src/components/ui/unified-modal.tsx")
+    const popupSource = modalSource.slice(
+      modalSource.indexOf("<BaseDialog.Popup"),
+      modalSource.indexOf('data-slot="unified-modal-header"'),
     )
 
-    expect(dialogContentSource).toContain("bg-popover")
-    expect(dialogContentSource).toContain("shadow-xl")
-    expect(dialogContentSource).not.toContain("bg-transparent")
-    expect(dialogContentSource).not.toContain("shadow-none")
+    expect(dialogSource).toContain("<UnifiedModal")
+    expect(dialogSource).not.toContain("<DialogContent")
+    expect(popupSource).toContain("bg-popover")
+    expect(popupSource).not.toContain("bg-transparent")
+    expect(popupSource).not.toContain("shadow-none")
+  })
+
+  it("keeps the tour's anchor on the dialog itself", () => {
+    expect(dialogSource).toContain('tourTarget="create-project-dialog"')
   })
 
   it("submits the chosen local project name with a folder-name fallback", () => {

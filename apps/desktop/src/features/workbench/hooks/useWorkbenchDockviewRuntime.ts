@@ -234,6 +234,8 @@ export function useWorkbenchDockviewRuntime(
     if (!api || !scopeKey || isHydratingRef.current) {
       return;
     }
+    const liveRevision = getLiveWorkbench()?.workspaceRevision;
+    if (liveRevision && liveRevision !== workspaceRevisionRef.current) return;
     if (Object.keys(selectionPreviewTilesRef.current).length > 0) {
       return;
     }
@@ -1123,6 +1125,8 @@ export function useWorkbenchDockviewRuntime(
       layoutSnapshotDebouncerRef.current?.cancel();
       layoutSnapshotDebouncerRef.current = new Debouncer(
         (pending: PendingWorkbenchLayoutWrite) => {
+          const liveRevision = getLiveWorkbench()?.workspaceRevision;
+          if (liveRevision && liveRevision !== pending.bindingRevision) return;
           // Deliberately writes the identity the snapshot was captured with
           // rather than whatever is current. This is flushed on scope change,
           // where the outgoing workbench's last layout is still worth saving —

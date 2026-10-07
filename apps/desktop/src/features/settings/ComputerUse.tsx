@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Spinner } from '@/components/ui/spinner'
 import {
   SettingsGroup,
   SettingsPageBody,
@@ -15,7 +16,7 @@ import { Switch } from '@/components/ui/switch'
 import { saveLocalSettings, useLocalSettings } from '@/lib/settings/localSettings'
 import { appToast } from '@/lib/appToast'
 import { useTranslation } from '@/lib/i18n'
-import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
+import type { ComputerUseDiagnostics } from '@cozea/app-contract/electronApi'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -235,7 +236,7 @@ export function ComputerUse({ surface = 'page', route: _route }: ComputerUseProp
                 <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3" />
               </span>
               <span className="t-icon flex items-center justify-center" data-icon="loading">
-                <div className="loader shrink-0 text-muted-foreground" />
+                <Spinner size="xs" className="shrink-0 text-muted-foreground" />
               </span>
             </span>
             {t('settings.computerUse.refresh')}

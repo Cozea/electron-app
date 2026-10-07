@@ -71,7 +71,7 @@ function renderActivityBubble(user: PresenceUser) {
       className="pointer-events-none absolute -bottom-2 left-1/2 flex h-4 min-w-7 -translate-x-1/2 items-center justify-center rounded-full border border-border/60 bg-secondary px-1 shadow-sm"
     >
       <span className="inline-flex h-full items-center justify-center leading-none" style={AI_DOT_SHIMMER_STYLE}>
-        <Shimmer as="span" className="block text-[12px] font-semibold leading-none tracking-[-0.02em]">
+        <Shimmer as="span" className="block text-xs font-semibold leading-none tracking-[-0.02em]">
           •••
         </Shimmer>
       </span>
@@ -130,7 +130,7 @@ export function PresenceAvatarGroup({
                       avatarUrl={user.avatarUrl}
                       principalId={user.principalId}
                       className="h-6 w-6 bg-background"
-                      fallbackClassName="text-[10px] font-medium"
+                      fallbackClassName="text-2xs font-medium"
                       ringClassName="border-2 border-border/70"
                       statusIndicator={renderActivityBubble(user)}
                     />
@@ -165,7 +165,7 @@ export function PresenceAvatarGroup({
                   <DeviceAvatar
                     overflowCount={hiddenCount}
                     className="h-6 w-6"
-                    fallbackClassName="text-[10px] font-medium"
+                    fallbackClassName="text-2xs font-medium"
                     ringClassName="border-2 border-background bg-muted"
                   />
                 </span>

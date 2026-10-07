@@ -5,7 +5,7 @@
 
 import { useSyncExternalStore, useEffect, useCallback, useMemo } from 'react';
 import type { ResolveProjectWorkspaceResult, RepoIdentity } from '@shared/workspaceTypes';
-import type { ProjectLaneDescriptor, ProjectLaneState } from '@shared/electronApiTypes';
+import type { ProjectLaneDescriptor, ProjectLaneState } from '@cozea/app-contract/electronApi';
 import {
   getWorkspaceResolutionResource,
   getProjectLaneResource,

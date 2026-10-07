@@ -1,3 +1,4 @@
+import { resolveAuthorizedWorkspaceAccess } from "../workspaces/authorization.ts"
 import { fork, type ChildProcess } from 'node:child_process'
 import path from 'node:path'
 
@@ -43,6 +44,11 @@ export class WorkbenchRuntimeClient {
       throw new Error('Workbench runtime client is disposed.')
     }
 
+    if (method === 'terminal.create') {
+      const input = params as { workspaceId?: unknown; laneId?: unknown }
+      if (typeof input?.workspaceId !== 'string') throw new Error('A catalog workspace is required for terminal creation.')
+      await resolveAuthorizedWorkspaceAccess({ workspaceId: input.workspaceId, laneId: typeof input.laneId === 'string' ? input.laneId : null, operation: 'terminal-create' })
+    }
     const child = this.ensureChildProcess()
     const requestId = this.nextRequestId
     this.nextRequestId += 1

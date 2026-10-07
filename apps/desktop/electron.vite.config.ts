@@ -80,6 +80,14 @@ const sharedAliases: Alias[] = [
     replacement: 'effect/unstable/sql',
   },
   {
+    find: /^@cozea\/app-contract\/(.*)$/,
+    replacement: `${path.resolve(repoRoot, './packages/app-contract/src')}/$1`,
+  },
+  {
+    find: '@cozea/app-contract',
+    replacement: path.resolve(repoRoot, './packages/app-contract/src/index.ts'),
+  },
+  {
     find: /^@cozea\/assistant-contracts\/(.*)$/,
     replacement: `${path.resolve(repoRoot, './shared/assistant-contracts')}/$1`,
   },

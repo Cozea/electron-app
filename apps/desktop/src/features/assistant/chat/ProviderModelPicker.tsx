@@ -7,6 +7,7 @@ import {
   type ProviderOptionDescriptor,
 } from "@cozea/assistant-contracts";
 import { getProviderOptionCurrentValue } from "@cozea/assistant-shared/model";
+import { useTranslation } from "@/lib/i18n"
 import { memo, useMemo, type Ref } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -50,6 +51,7 @@ interface ProviderModelPickerProps {
 }
 
 export const ProviderModelPicker = memo(function ProviderModelPicker(props: ProviderModelPickerProps) {
+  const { t } = useTranslation()
   const instanceEntries = useMemo(
     () => sortProviderInstanceEntries(deriveProviderInstanceEntries(props.providers ?? [])),
     [props.providers],
@@ -171,7 +173,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
             <span ref={containerRef} className="min-w-0 truncate">
               <span className="truncate">{triggerTitle}</span>
               {currentAgentLabel && currentAgentLabel.toLowerCase() !== "build" ? (
-                <span className="ml-1.5 shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="ml-1.5 shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                   {currentAgentLabel}
                 </span>
               ) : null}
@@ -211,8 +213,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: Prov
       {isFastModeActive ? (
         <HugeiconsIcon
           icon={__ZapIconHugeIcon}
-          className="size-3 shrink-0 fill-current text-amber-500"
-          aria-label="Fast mode on"
+          className="size-3 shrink-0 fill-current text-warning"
+          aria-label={t("assistant.fastModeOn")}
         />
       ) : null}
     </div>

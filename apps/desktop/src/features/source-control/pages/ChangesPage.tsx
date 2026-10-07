@@ -11,8 +11,9 @@ import {
   ArrowDown01Icon as __ChevronDownHugeIcon,
 } from '@hugeicons/core-free-icons'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
-import { useQuery } from 'convex/react'
-import type { GitChangeFileSummary, GitChangesScope } from '@shared/electronApiTypes'
+import { useSafeConvexQuery } from '@/hooks/useSafeConvexQuery'
+import { useAuth } from '@/contexts/AuthContext'
+import type { GitChangeFileSummary, GitChangesScope } from '@cozea/app-contract/electronApi'
 import type { ContextMenuItem } from '@cozea/assistant-contracts'
 
 import { api } from '../../../../../../convex/_generated/api'
@@ -308,7 +309,7 @@ function ChangesScopeMenu(props: {
       className="flex h-7 max-w-[14rem] items-center gap-1.5 rounded-md px-1.5 text-foreground outline-none transition-colors hover:bg-muted/70"
       onClick={handleOpenMenu}
     >
-      <span className="truncate text-[13px] font-medium">{selectedOption?.label ?? 'Current'}</span>
+      <span className="truncate text-sm font-medium">{selectedOption?.label ?? 'Current'}</span>
       <ScopeCountBadge count={selectedOption?.count ?? null} />
       <HugeiconsIcon icon={__ChevronDownHugeIcon} className="size-3 shrink-0 text-muted-foreground" />
     </button>
@@ -1102,7 +1103,8 @@ const LastTurnChangesView = memo(function LastTurnChangesView(props: {
 
 export function ChangesPage(_props: ChangesPageProps) {
   const { t } = useTranslation()
-  const { project } = useAccessibleProject()
+  const { project, localProject, cloudProjectId } = useAccessibleProject()
+  const { isConvexAuthReady } = useAuth()
   const routeContext = useOptionalProjectRouteContext()
   const syncContext = useOptionalProjectSyncContext()
   const workspaceId =
@@ -1112,12 +1114,14 @@ export function ChangesPage(_props: ChangesPageProps) {
     syncContext?.workspaceId ??
     null
 
-  const activity = useQuery(
+  const activityQuery = useSafeConvexQuery(
     api.activity.getRecentActivity,
-    project?._id ? { projectId: project._id, limit: 200 } : 'skip',
-  ) as ActivityFeedItem[] | undefined
+    cloudProjectId && isConvexAuthReady ? { projectId: cloudProjectId, limit: 200 } : 'skip',
+  )
+  const activity = activityQuery.data as ActivityFeedItem[] | undefined
 
-  const hasActivityLoaded = activity !== undefined;
+  const sharedHistoryUnavailable = !cloudProjectId || !isConvexAuthReady || activityQuery.status === 'error';
+  const hasActivityLoaded = activity !== undefined || sharedHistoryUnavailable;
   const changesPageData = useMemo(() => deriveChangesPageData(activity), [activity]);
   const {
     groups,
@@ -1286,15 +1290,15 @@ export function ChangesPage(_props: ChangesPageProps) {
   }, [groups, groupsByFilePath, selectedFilePath]);
 
   useEffect(() => {
-    if (!project?.slug) return
-    markSyncFeedAsSeen(project.slug)
-  }, [project?.slug])
+    const slug = localProject?.slug ?? project?.slug
+    if (slug) markSyncFeedAsSeen(slug)
+  }, [localProject?.slug, project?.slug])
 
   return (
     <CheckpointDiffWorkerProvider>
       <div className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 overflow-auto">
-          {!project ? (
+          {!workspaceId && !localProject && !project ? (
             <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
               {t('changes.empty.projectUnavailable')}
             </div>
@@ -1330,7 +1334,7 @@ export function ChangesPage(_props: ChangesPageProps) {
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-foreground">{t('changes.empty.title')}</p>
                         <p className="text-xs text-muted-foreground">
-                          {t('changes.empty.desc')}
+                          {sharedHistoryUnavailable ? 'Shared change history requires a connected shared project.' : t('changes.empty.desc')}
                         </p>
                       </div>
                     </div>

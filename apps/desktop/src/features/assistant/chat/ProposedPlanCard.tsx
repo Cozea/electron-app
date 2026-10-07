@@ -1,6 +1,8 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
+import { useTranslation } from "@/lib/i18n"
+import { appToast } from "@/lib/appToast";
 import { AlignHorizontalCenterIcon as __EllipsisIconHugeIcon } from '@hugeicons/core-free-icons'
 
 import { memo, useState, useId, useMemo } from "react";
@@ -14,7 +16,7 @@ import {
 } from "../proposedPlan";
 import ChatMarkdown from "./ChatMarkdown";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { UnifiedModal, UnifiedModalField } from "@/components/ui/unified-modal";
 import {
   DropdownMenu as Menu,
   DropdownMenuContent as MenuPopup,
@@ -23,15 +25,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { toastManager } from "@/components/ui/toast";
 import { usePretextOverflowTitleFor } from "@/hooks/usePretextOverflowTitle";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
@@ -43,6 +36,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   cwd: string | undefined;
   workspaceRoot: string | undefined;
 }) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [savePath, setSavePath] = useState("");
@@ -71,10 +65,9 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
 
   const openSaveDialog = () => {
     if (!workspaceRoot) {
-      toastManager.add({
-        type: "error",
-        title: "Workspace path is unavailable",
-        description: "This thread does not have a workspace path to save into.",
+      appToast.error({
+        title: t("assistant.workspacePathIsUnavailable"),
+        description: t("assistant.thisThreadDoesNotHaveA"),
       });
       return;
     }
@@ -88,9 +81,8 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       return;
     }
     if (!relativePath) {
-      toastManager.add({
-        type: "warning",
-        title: "Enter a workspace path",
+      appToast.warning({
+        title: t("assistant.enterAWorkspacePath"),
       });
       return;
     }
@@ -107,16 +99,14 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           throw new Error(result.error ?? "An error occurred while saving.");
         }
         setIsSaveDialogOpen(false);
-        toastManager.add({
-          type: "success",
-          title: "Plan saved to workspace",
+        appToast.success({
+          title: t("assistant.planSavedToWorkspace"),
           description: relativePath,
         });
       })
       .catch((error) => {
-        toastManager.add({
-          type: "error",
-          title: "Could not save plan",
+        appToast.error({
+          title: t("assistant.couldNotSavePlan"),
           description: error instanceof Error ? error.message : "An error occurred while saving.",
         });
       })
@@ -134,21 +124,21 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     <div className="rounded-[24px] border border-border/80 bg-card/70 p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div ref={containerRef} className="flex min-w-0 items-center gap-2">
-          <Badge variant="secondary">Plan</Badge>
+          <Badge variant="secondary">{t("assistant.plan")}</Badge>
           <p className="truncate text-sm font-medium text-foreground" title={titleTooltip}>
             {title}
           </p>
         </div>
         <Menu>
           <MenuTrigger
-            render={<Button aria-label="Plan actions" size="icon-xs" variant="outline" />}
+            render={<Button aria-label={t("assistant.planActions")} size="icon-xs" variant="outline" />}
           >
             <HugeiconsIcon icon={__EllipsisIconHugeIcon} aria-hidden="true" className="size-4" />
           </MenuTrigger>
           <MenuPopup align="end">
-            <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
+            <MenuItem onClick={handleDownload}>{t("assistant.downloadAsMarkdown")}</MenuItem>
             <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
-              Save to workspace
+              {t("assistant.saveToWorkspace")}
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -178,42 +168,21 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         ) : null}
       </div>
 
-      <Dialog
+      <UnifiedModal
         open={isSaveDialogOpen}
-        onOpenChange={(open) => {
-          if (!isSavingToWorkspace) {
-            setIsSaveDialogOpen(open);
-          }
-        }}
-      >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Save plan to workspace</DialogTitle>
-            <DialogDescription>
-              Enter a path relative to <code>the workspace</code>.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <label htmlFor={savePathInputId} className="grid gap-1.5">
-              <span className="text-xs font-medium text-foreground">Workspace path</span>
-              <Input
-                id={savePathInputId}
-                value={savePath}
-                onChange={(event) => setSavePath(event.target.value)}
-                placeholder={downloadFilename}
-                spellCheck={false}
-                disabled={isSavingToWorkspace}
-              />
-            </label>
-          </div>
-          <DialogFooter>
+        onOpenChange={setIsSaveDialogOpen}
+        title={t("assistant.savePlanToWorkspace")}
+        size="lg"
+        dismissable={!isSavingToWorkspace}
+        footer={
+          <>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsSaveDialogOpen(false)}
               disabled={isSavingToWorkspace}
             >
-              Cancel
+              {t("assistant.cancel")}
             </Button>
             <Button
               size="sm"
@@ -222,9 +191,23 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             >
               {isSavingToWorkspace ? "Saving..." : "Save"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {t("assistant.enterAPathRelativeTo")} <code>the workspace</code>.
+          </p>
+          <UnifiedModalField
+            id={savePathInputId}
+            label={t("assistant.workspacePath")}
+            value={savePath}
+            onChange={setSavePath}
+            spellCheck={false}
+            disabled={isSavingToWorkspace}
+          />
+        </div>
+      </UnifiedModal>
     </div>
   );
 });

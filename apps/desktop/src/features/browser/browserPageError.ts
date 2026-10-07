@@ -1,4 +1,4 @@
-import type { BrowserHttpDiagnostic, CozeaBrowserSurfaceState } from "@shared/browserSurfaceTypes";
+import type { BrowserHttpDiagnostic, CozeaBrowserSurfaceState } from "@cozea/app-contract/browserSurface";
 
 export type BrowserPageError =
   | {

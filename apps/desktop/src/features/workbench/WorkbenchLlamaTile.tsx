@@ -1,5 +1,5 @@
 import { memo } from "react"
-import type { DockviewApi, DockviewPanelApi } from "dockview-react"
+import type { DockviewPanelApi } from "dockview-react"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   CpuChargeIcon as __CpuChargeHugeIcon,
@@ -21,7 +21,6 @@ interface WorkbenchLlamaTileProps {
   tile: WorkbenchLlamaTileRecord
   workspaceId: string | null
   panelApi: DockviewPanelApi
-  containerApi: DockviewApi
 }
 
 export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
@@ -33,9 +32,7 @@ export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
     <WorkbenchTileChrome
       title="Llama"
       panelApi={props.panelApi}
-      containerApi={props.containerApi}
       tileType="llama"
-      chromeVariant="pill"
       contentClassName="h-full"
     >
       <div className="flex h-full w-full flex-col items-center justify-center overflow-y-auto px-6 py-10 bg-content-surface">
@@ -65,7 +62,7 @@ export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
               <h2 className="text-2xl font-bold tracking-tight text-foreground">
                 Llama Local Runtime
               </h2>
-              <Badge variant="secondary" className="rounded-full px-2 text-[11px] font-normal">
+              <Badge variant="secondary" className="rounded-full px-2 text-caption font-normal">
                 Coming soon
               </Badge>
             </div>
@@ -81,7 +78,7 @@ export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
                 <HugeiconsIcon icon={__ShieldHugeIcon} className="h-4 w-4" />
               </div>
               <span className="text-xs font-semibold text-foreground">100% Private</span>
-              <p className="text-[11px] leading-tight text-muted-foreground">
+              <p className="text-caption leading-tight text-muted-foreground">
                 Inference runs on your local GPU & CPU hardware.
               </p>
             </div>
@@ -91,7 +88,7 @@ export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
                 <HugeiconsIcon icon={__LayersHugeIcon} className="h-4 w-4" />
               </div>
               <span className="text-xs font-semibold text-foreground">Model Choice</span>
-              <p className="text-[11px] leading-tight text-muted-foreground">
+              <p className="text-caption leading-tight text-muted-foreground">
                 Llama 3.3, DeepSeek R1, CodeLlama, and GGUF quants.
               </p>
             </div>
@@ -101,7 +98,7 @@ export const WorkbenchLlamaTile = memo(function WorkbenchLlamaTile(
                 <HugeiconsIcon icon={__FlashHugeIcon} className="h-4 w-4" />
               </div>
               <span className="text-xs font-semibold text-foreground">Ollama & vLLM</span>
-              <p className="text-[11px] leading-tight text-muted-foreground">
+              <p className="text-caption leading-tight text-muted-foreground">
                 Native bridge to local Ollama and OpenAI-compatible runners.
               </p>
             </div>

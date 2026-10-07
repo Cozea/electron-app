@@ -109,3 +109,21 @@ export function buildOrderedProjects(
 
   return [...orderedProjects, ...sortProjectsAlphabetically([...projectsById.values()])]
 }
+
+export function moveSidebarProject(
+  projects: SidebarProjectItem[],
+  order: readonly string[],
+  projectId: string,
+  direction: "up" | "down",
+  showHidden: boolean,
+): string[] {
+  const ordered = buildOrderedProjects(projects, order)
+  const visible = ordered.filter((project) => showHidden || !project.hidden)
+  const index = visible.findIndex((project) => project.id === projectId)
+  const target = visible[index + (direction === "up" ? -1 : 1)]
+  const ids = ordered.map((project) => project.id)
+  if (index < 0 || !target) return ids
+  ids.splice(ids.indexOf(projectId), 1)
+  ids.splice(ids.indexOf(target.id) + (direction === "down" ? 1 : 0), 0, projectId)
+  return ids
+}

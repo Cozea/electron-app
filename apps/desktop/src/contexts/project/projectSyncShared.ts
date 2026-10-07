@@ -47,7 +47,9 @@ export function useOptionalProjectSyncContext() {
 
 export interface ProjectSyncProviderProps {
   children: ReactNode;
-  projectId: Id<"projects"> | null;
+  projectId: string | null;
+  cloudProjectId?: Id<"projects"> | null;
+  cloudActivityEnabled?: boolean;
   principalId: Id<"devicePrincipals"> | null;
   displayName: string | null;
   workspaceId: string | null;

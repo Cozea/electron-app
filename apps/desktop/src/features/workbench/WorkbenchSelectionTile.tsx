@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react"
-import { useQuery } from "convex/react"
+import { useQuery } from "@/lib/cloudQueries"
 
 import { api } from "../../../../../convex/_generated/api"
 import { FilterChip } from "@/components/ui/filter-chip"

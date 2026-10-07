@@ -1,6 +1,5 @@
 import {
   Activity,
-  Component,
   memo,
   useEffect,
   useLayoutEffect,
@@ -11,9 +10,10 @@ import {
   type ReactNode,
 } from "react"
 import { useRouter, useRouterState } from "@tanstack/react-router"
-import { ConvexProvider, useConvex } from "convex/react"
+import { ConvexProvider } from "convex/react"
+import { CloudClientContext, useConvex } from "@/lib/cloudQueries"
 
-import { AppErrorScreen } from "@/components/AppErrorScreen"
+import { RegionErrorBoundary } from "@/components/RegionErrorBoundary"
 import { RETAINED_PAGE_ATTRIBUTE } from "@/lib/activePageDom"
 import { Outlet, RouteSnapshotContext, type RouteSnapshot } from "@/lib/router"
 
@@ -185,14 +185,19 @@ const RetainedPageSlot = memo(function RetainedPageSlot({
     <RetainedPageFrame visible={visible}>
       <Activity mode={visible ? "visible" : "hidden"} name={`page:${pageKey}`}>
         <RouteSnapshotContext.Provider value={snapshot}>
-          <RetainedPageErrorBoundary>
+          {/* Pages render outside TanStack's per-match boundary, so each gets its own. */}
+          <RegionErrorBoundary>
             <Component />
-          </RetainedPageErrorBoundary>
+          </RegionErrorBoundary>
         </RouteSnapshotContext.Provider>
       </Activity>
     </RetainedPageFrame>
   )
-  return queries ? <ConvexProvider client={queries.client}>{page}</ConvexProvider> : page
+  return queries ? (
+    <CloudClientContext value={queries.client}>
+      <ConvexProvider client={queries.client}>{page}</ConvexProvider>
+    </CloudClientContext>
+  ) : page
 })
 
 /**
@@ -240,28 +245,4 @@ function RetainedPageFrame({ visible, children }: { visible: boolean; children: 
       {children}
     </div>
   )
-}
-
-/**
- * Pages rendered here are outside TanStack's per-match boundary, so each gets
- * its own; a crash in one retained page must not take the others with it.
- */
-class RetainedPageErrorBoundary extends Component<
-  { children: ReactNode },
-  { error: unknown }
-> {
-  state: { error: unknown } = { error: null }
-
-  static getDerivedStateFromError(error: unknown) {
-    return { error }
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <AppErrorScreen error={this.state.error} reset={() => this.setState({ error: null })} />
-      )
-    }
-    return this.props.children
-  }
 }

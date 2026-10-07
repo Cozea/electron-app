@@ -16,7 +16,7 @@ import {
 import type {
   EnsureDesktopSessionWorkbenchRequest,
   EnsureDesktopSessionWorkbenchResponse,
-} from "@shared/electronApiTypes"
+} from "@cozea/app-contract/electronApi"
 import type { LocalWorkspaceRecord } from "@shared/workspaceTypes"
 
 export type InviteeCopyOutcome =

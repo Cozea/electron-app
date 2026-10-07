@@ -288,7 +288,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                   </Badge>
                 </div>
                 {!gitRuntimeHealth.available && (
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+                  <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
                     {t('settings.tooling.gitRequired')}
                     {gitRuntimeHealth.error ? ` (${gitRuntimeHealth.error})` : ''}
                   </div>
@@ -384,7 +384,7 @@ export function Tooling({ surface = 'page', route: _route }: ToolingProps) {
                               {runtime.executablePath || runtime.error || '—'}
                             </span>
                             <div className="flex items-center justify-end">
-                              <Badge variant={badgeVariant} className="gap-1 rounded-full text-[10px]">
+                              <Badge variant={badgeVariant} className="gap-1 rounded-full text-2xs">
                                 <HugeiconsIcon
                                   icon={runtime.available ? __CheckHugeIcon : __AlertTriangleHugeIcon}
                                   className="h-3 w-3"

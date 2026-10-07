@@ -2,7 +2,7 @@ import { app } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import type { AppSettings } from '@shared/electronApiTypes'
+import type { AppSettings } from '@cozea/app-contract/electronApi'
 
 export interface ComputerUseAppSettings extends AppSettings {
   computerUseAllowGlobalPointerFallbacks?: boolean

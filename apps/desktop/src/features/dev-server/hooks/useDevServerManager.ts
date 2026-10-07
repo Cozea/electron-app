@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { DevServerLaunchContext } from '@/utils/projectDetector'
-import type { DevServerAuxiliaryProcessConfig } from '@shared/electronApiTypes'
+import type { DevServerAuxiliaryProcessConfig } from '@cozea/app-contract/electronApi'
 import {
   DEFAULT_DEV_SERVER_RUN,
   buildDevServerRunKey,

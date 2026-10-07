@@ -1,4 +1,4 @@
-import type { ProjectLaneDescriptor, ProjectLaneState } from "@shared/electronApiTypes"
+import type { ProjectLaneDescriptor, ProjectLaneState } from "@cozea/app-contract/electronApi"
 import {
   getProjectLaneResource,
   invalidateProjectLaneState,

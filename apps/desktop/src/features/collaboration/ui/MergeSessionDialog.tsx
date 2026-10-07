@@ -11,18 +11,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 
 import type { ProjectdMergePreview, ProjectdMergeResult, ProjectdMergeStrategy, ProjectdPullRequestResult } from "@cozea/projectd-protocol"
 
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { Spinner } from "@/components/ui/spinner"
 import { appToast } from "@/lib/appToast"
 
@@ -62,15 +56,16 @@ export function MergeSessionBody({
   onSaveNow,
   onCheckAgain,
 }: MergeSessionBodyProps) {
+  const { t } = useTranslation()
   if (result) {
     return (
       <div className="space-y-2 text-sm">
-        <p className={result.outcome === "merged" ? "text-foreground" : "text-amber-700 dark:text-amber-400"}>
+        <p className={result.outcome === "merged" ? "text-foreground" : "text-warning"}>
           {result.message}
         </p>
         {result.outcome === "merged" ? (
           <p className="text-xs text-muted-foreground">
-            The session&apos;s branch stays on its remote. Delete it there when you no longer need it.
+            {t("collab.theSessionsBranchStaysOnIts")}
           </p>
         ) : null}
       </div>
@@ -104,7 +99,7 @@ export function MergeSessionBody({
       </p>
 
       {unsaved > 0 ? (
-        <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+        <div className="space-y-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
           <p>
             {unsaved === 1 ? "1 session change isn't" : `${unsaved} session changes aren't`} saved to Git yet, so the
             merge leaves {unsaved === 1 ? "it" : "them"} out.
@@ -113,12 +108,12 @@ export function MergeSessionBody({
           <div className="flex gap-2">
             {onSaveNow ? (
               <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={onSaveNow}>
-                Save now
+                {t("collab.saveNow")}
               </Button>
             ) : null}
             {onCheckAgain ? (
               <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={onCheckAgain}>
-                Check again
+                {t("collab.checkAgain")}
               </Button>
             ) : null}
           </div>
@@ -135,7 +130,7 @@ export function MergeSessionBody({
         </div>
       ) : preview.ahead > 0 ? (
         <fieldset className="space-y-1.5">
-          <legend className="text-sm font-medium">How to merge</legend>
+          <legend className="text-sm font-medium">{t("collab.howToMerge")}</legend>
           <label className="flex cursor-pointer items-center gap-2">
             <input
               type="radio"
@@ -143,7 +138,7 @@ export function MergeSessionBody({
               checked={strategy === "merge"}
               onChange={() => onStrategyChange("merge")}
             />
-            <span>Merge commit, keeping the session&apos;s commits</span>
+            <span>{t("collab.mergeCommitKeepingTheSessionsCommits")}</span>
           </label>
           <label className="flex cursor-pointer items-center gap-2">
             <input
@@ -152,7 +147,7 @@ export function MergeSessionBody({
               checked={strategy === "squash"}
               onChange={() => onStrategyChange("squash")}
             />
-            <span>Squash into one commit</span>
+            <span>{t("collab.squashIntoOneCommit")}</span>
           </label>
         </fieldset>
       ) : null}
@@ -182,6 +177,7 @@ export function MergeSessionDialog({
   onPause,
   onEnd,
 }: MergeSessionDialogProps) {
+  const { t } = useTranslation()
   const sessions = window.electronAPI.projectd.sessions
   const [preview, setPreview] = useState<ProjectdMergePreview | null>(null)
   const [loading, setLoading] = useState(false)
@@ -285,34 +281,14 @@ export function MergeSessionDialog({
   const close = () => onOpenChange(false)
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => (merging ? undefined : onOpenChange(open))}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>
-            Merge <span className="font-mono">{branchName}</span> into <span className="font-mono">{targetBranch}</span>
-          </DialogTitle>
-          <DialogDescription>
-            The merge takes the session&apos;s last save to Git, never the live files, so everyone&apos;s unsaved edits
-            stay out of it.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="py-2">
-          <MergeSessionBody
-            targetBranch={targetBranch}
-            preview={preview}
-            loading={loading}
-            error={error}
-            result={result}
-            strategy={strategy}
-            onStrategyChange={setStrategy}
-            saveNote={saveNote}
-            onSaveNow={() => void saveNow()}
-            onCheckAgain={() => void load()}
-          />
-        </div>
-
-        <DialogFooter>
+    <UnifiedModal
+      open={isOpen}
+      onOpenChange={(open) => (merging ? undefined : onOpenChange(open))}
+      title={`Merge ${branchName} into ${targetBranch}`}
+      size="lg"
+      dismissable={!merging}
+      footer={
+        <>
           {merged ? (
             <>
               {canManage ? (
@@ -325,7 +301,7 @@ export function MergeSessionDialog({
                       close()
                     }}
                   >
-                    Pause the session
+                    {t("collab.pauseTheSession")}
                   </Button>
                   <Button
                     type="button"
@@ -335,12 +311,12 @@ export function MergeSessionDialog({
                       close()
                     }}
                   >
-                    End the session
+                    {t("collab.endTheSession")}
                   </Button>
                 </>
               ) : null}
               <Button type="button" onClick={close}>
-                Keep the session going
+                {t("collab.keepTheSessionGoing")}
               </Button>
             </>
           ) : (
@@ -357,19 +333,19 @@ export function MergeSessionDialog({
                     void load()
                   }}
                 >
-                  Review again
+                  {t("collab.reviewAgain")}
                 </Button>
               ) : null}
               {pullRequest ? <p role="status">Pull request #{pullRequest.number} is open.</p> : null}
               {preview?.canCreatePullRequest && !pullRequest ? (
                 <Button type="button" variant="outline" disabled={loading || merging || preview.unsavedChanges > 0 || preview.ahead === 0 || result?.outcome === "moved"}
                   onClick={() => void createPullRequest()}>
-                  Create or find PR
+                  {t("collab.createOrFindPr")}
                 </Button>
               ) : null}
               {pullRequestUrl ? (
                 <Button type="button" variant="outline" onClick={() => void window.electronAPI.shell.openExternal(pullRequestUrl)}>
-                  Open pull request
+                  {t("collab.openPullRequest")}
                 </Button>
               ) : null}
               {!result ? (
@@ -380,8 +356,29 @@ export function MergeSessionDialog({
               ) : null}
             </>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {t("collab.mergeTakesLastSave")}
+        </p>
+
+        <div className="py-2">
+          <MergeSessionBody
+            targetBranch={targetBranch}
+            preview={preview}
+            loading={loading}
+            error={error}
+            result={result}
+            strategy={strategy}
+            onStrategyChange={setStrategy}
+            saveNote={saveNote}
+            onSaveNow={() => void saveNow()}
+            onCheckAgain={() => void load()}
+          />
+        </div>
+      </div>
+    </UnifiedModal>
   )
 }

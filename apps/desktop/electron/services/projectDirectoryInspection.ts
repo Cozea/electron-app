@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-import type { ProjectDirectoryEntry } from '../../../../shared/electronApiTypes'
+import type { ProjectDirectoryEntry } from '@cozea/app-contract/electronApi'
 import { resolvePathWithinDirectory } from '../pathUtils'
 
 function assertCanonicalPathInsideRoot(rootPath: string, candidatePath: string): void {

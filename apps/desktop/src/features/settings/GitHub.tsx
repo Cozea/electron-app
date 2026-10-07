@@ -4,7 +4,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { useAction, useMutation, useQuery } from 'convex/react'
+import { useAction, useMutation, useQuery } from '@/lib/cloudQueries'
+import { CloudConnectionPrompt } from '@/components/CloudConnectionPrompt'
 
 import { api } from '../../../../../convex/_generated/api'
 import { Badge } from '@/components/ui/badge'
@@ -83,6 +84,7 @@ export function GitHubSettings({ surface = 'page' }: GitHubSettingsProps) {
 
   return (
     <SettingsPageBody surface={surface} className="space-y-6">
+      <CloudConnectionPrompt />
       <SettingsPageHeader title={t('settings.github.title')} />
 
       <section>

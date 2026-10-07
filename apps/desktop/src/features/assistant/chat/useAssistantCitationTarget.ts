@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type { TimelineEntry } from "./session-logic";
 import type { ConversationRow } from "./conversationRows";
 import type { AssistantCitationRequest, AssistantCitationTarget } from "./AssistantCitationSource";
-import { toastManager } from "@/components/ui/toast";
+import { appToast } from "@/lib/appToast";
 
 export interface CitationHistoryPage {
   readonly loading: boolean;
@@ -81,7 +81,7 @@ export function useAssistantCitationTarget({
     const fail = (title: string, description: string) => {
       navigation.done = true;
       setFinishedKey(navigation.target.key);
-      toastManager.add({ type: "warning", title, description });
+      appToast.warning({ title, description });
     };
     const source = entries.find(
       (entry) =>

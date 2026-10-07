@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { Spinner } from "@/components/ui/spinner"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation"
@@ -20,7 +21,7 @@ function resolveMode(search: string): CreateProjectDialogMode {
 export default function NewProject() {
   const navigate = useViewTransitionNavigate()
   const navigateTo = useNavigateTo()
-  const { principalId } = useAuth()
+  const { isLocalDeviceReady } = useAuth()
   const openCreateProjectDialog = useCreateProjectDialogStore((state) => state.open)
   const { t } = useTranslation()
   // The effect's callback deps change identity when auth finishes resolving;
@@ -42,9 +43,8 @@ export default function NewProject() {
     const nextMode = resolveMode(window.location.search)
 
     if (nextMode === "local" || nextMode === "devapp-local") {
-      // Local import needs the Convex profile; wait for auth before the
-      // one-shot picker so the import doesn't run with a stale null user.
-      if (!principalId) return
+      // Wait for the installation identity before opening the one-shot picker.
+      if (!isLocalDeviceReady) return
       hasStartedRef.current = true
       void browseForDirectory(
         nextMode === "devapp-local" ? "Select existing DevApp project" : "Select local project folder",
@@ -66,11 +66,11 @@ export default function NewProject() {
     hasStartedRef.current = true
     openCreateProjectDialog({ mode: nextMode })
     navigateTo({ to: "projects" }, { replace: true })
-  }, [principalId, navigate, openCreateProjectDialog])
+  }, [isLocalDeviceReady, navigate, openCreateProjectDialog])
 
   return (
     <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-      <div className="loader mr-2" />
+      <Spinner size="xs" className="mr-2" />
       {t("newProject.openingSetup")}
     </div>
   )

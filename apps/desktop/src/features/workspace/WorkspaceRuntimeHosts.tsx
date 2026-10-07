@@ -31,13 +31,15 @@ function WorkspaceRuntimeObserver({ runtimeId }: { runtimeId: string }) {
 const WorkspaceRuntimeHost = memo(function WorkspaceRuntimeHost({ record }: { record: WorkspaceRuntimeRecord }) {
   const { config, runtimeId, workspaceId } = record
 
-  if (!config.projectId || !config.principalId || !config.workspaceId) {
+  if (!config.projectId || !config.workspaceId) {
     return null
   }
 
   return (
     <ProjectSyncProviderRuntime
       projectId={config.projectId}
+      cloudProjectId={config.cloudProjectId}
+      cloudActivityEnabled={config.cloudActivityEnabled}
       principalId={config.principalId}
       displayName={config.displayName}
       laneId={config.laneId}

@@ -1,7 +1,7 @@
 import { shell } from 'electron'
 
 import { ComputerUseRuntimeService } from './ComputerUseRuntimeService'
-import type { ComputerUseDiagnostics } from '@shared/electronApiTypes'
+import type { ComputerUseDiagnostics } from '@cozea/app-contract/electronApi'
 
 /**
  * Compatibility facade retained while older main/settings call sites still

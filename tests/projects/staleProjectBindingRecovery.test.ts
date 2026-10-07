@@ -40,14 +40,12 @@ describe("stale local project binding recovery", () => {
     expect(lookupSource).not.toContain("userId: v.id")
   })
 
-  it("validates an existing binding before reuse and preserves attached source during cleanup", () => {
-    expect(importHookSource).toContain("convex.query(api.projects.getAccessibleById")
-    expect(importHookSource).toContain("if (accessibleProject)")
-    expect(importHookSource).toContain("cleanupDeletedProjectLocally(String(existingProjectId)")
-    expect(importHookSource).toContain("keepLocalFiles: true")
-    expect(importHookSource.indexOf("cleanupDeletedProjectLocally(String(existingProjectId)")).toBeLessThan(
-      importHookSource.indexOf("const result = await createProject"),
-    )
+  it("uses the local lifecycle and preserves bindings regardless of cloud access", () => {
+    expect(importHookSource).toContain("requireLocalProjectsApi().open({")
+    expect(importHookSource).toContain("result.value.project.projectId")
+    expect(importHookSource).not.toContain("api.projects")
+    expect(importHookSource).not.toContain("cleanupDeletedProjectLocally")
+    expect(importHookSource).not.toContain('as Id<"projects">')
   })
 
   it("does not expose an unverified last-workbench project to header collaboration queries", () => {
@@ -56,16 +54,17 @@ describe("stale local project binding recovery", () => {
       projectLayoutSource.indexOf("const chromeHeader"),
     )
 
-    expect(collaborationIdSource).toContain("return project?._id ?? null")
+    expect(collaborationIdSource).toContain("return cloudProjectId")
     expect(collaborationIdSource).not.toContain("readLastWorkbenchRoute")
   })
 
   it("opens the initial chat through idempotent navigation state instead of a replayable URL effect", () => {
     for (const source of [importHookSource, createProjectDialogSource]) {
       expect(source).toContain("buildWorkbenchIntentState({")
-      expect(source).toContain('openTile: "assistantChat"')
+      expect(source).toContain('ensureTile: "assistantChat"')
       // The URL names only the workbench; the chat to open travels in state.
-      expect(source).toContain('{ to: "workbench", projectId, laneId: DEFAULT_WORKBENCH_LANE_ID }')
+      expect(source).toContain('{ to: "workbench", projectId }')
+      expect(source).not.toContain('{ to: "workbench", projectId, laneId: DEFAULT_WORKBENCH_LANE_ID }')
       expect(source).not.toContain("laneId: DEFAULT_WORKBENCH_LANE_ID, openTile")
     }
   })

@@ -47,6 +47,10 @@ export class ProjectdDatabase {
         applied_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS project_exclusions (
+        project_id TEXT PRIMARY KEY, operation_id TEXT NOT NULL UNIQUE, scope_json TEXT NOT NULL,
+        state TEXT NOT NULL CHECK(state IN ('removing', 'removed')), updated_at INTEGER NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS workspaces (
         workspace_id TEXT PRIMARY KEY,
         project_id TEXT NOT NULL,
@@ -61,6 +65,7 @@ export class ProjectdDatabase {
         marker_policy TEXT NOT NULL DEFAULT 'none',
         is_active INTEGER NOT NULL DEFAULT 0,
         workspace_revision INTEGER NOT NULL DEFAULT 1,
+        catalog_binding_revision INTEGER,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
         last_opened_at INTEGER
@@ -181,6 +186,26 @@ export class ProjectdDatabase {
         updated_at INTEGER NOT NULL
       );
     `)
+    this.db.exec(`
+      CREATE TRIGGER IF NOT EXISTS removal_session_binding_insert BEFORE INSERT ON session_bindings
+        WHEN EXISTS(SELECT 1 FROM workspaces w JOIN project_exclusions e ON e.project_id = w.project_id WHERE w.workspace_id = NEW.workspace_id)
+        BEGIN SELECT RAISE(ABORT, 'Project removal excludes session enrollment'); END;
+      CREATE TRIGGER IF NOT EXISTS removal_session_folder_insert BEFORE INSERT ON session_folders
+        WHEN EXISTS(SELECT 1 FROM workspaces w JOIN project_exclusions e ON e.project_id = w.project_id WHERE w.workspace_id = NEW.workspace_id)
+        BEGIN SELECT RAISE(ABORT, 'Project removal excludes session materialization'); END;
+      CREATE TRIGGER IF NOT EXISTS removal_session_binding_update BEFORE UPDATE OF workspace_id, project_id ON session_bindings
+        WHEN EXISTS(SELECT 1 FROM workspaces w JOIN project_exclusions e ON e.project_id = w.project_id WHERE w.workspace_id = NEW.workspace_id)
+        BEGIN SELECT RAISE(ABORT, 'Project removal excludes session enrollment'); END;
+      CREATE TRIGGER IF NOT EXISTS removal_session_folder_update BEFORE UPDATE OF workspace_id ON session_folders
+        WHEN EXISTS(SELECT 1 FROM workspaces w JOIN project_exclusions e ON e.project_id = w.project_id WHERE w.workspace_id = NEW.workspace_id)
+        BEGIN SELECT RAISE(ABORT, 'Project removal excludes session materialization'); END;
+    `)
+    // Existing daemon databases predate catalog qualification. Their binding
+    // revision is not evidence that all catalog-owned fields were imported.
+    const workspaceColumns = this.db.prepare("PRAGMA table_info(workspaces)").all()
+    if (!workspaceColumns.some((column) => column.name === "catalog_binding_revision")) {
+      this.db.exec("ALTER TABLE workspaces ADD COLUMN catalog_binding_revision INTEGER")
+    }
   }
 
   close(): void {

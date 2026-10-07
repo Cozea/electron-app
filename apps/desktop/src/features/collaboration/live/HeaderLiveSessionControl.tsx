@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { ArrowDown01Icon, MicOff01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { MdCloud, MdCloudOff } from "react-icons/md"
@@ -82,6 +83,7 @@ function SessionStatusPill({
   onResume: () => void
   onEnd: () => void
 }) {
+  const { t } = useTranslation()
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -277,7 +279,7 @@ function SessionStatusPill({
     >
       <span className="t-icon-swap size-4 shrink-0" data-state={isActive ? "active" : "inactive"}>
         <span className="t-icon flex items-center justify-center" data-icon="active">
-          <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-sky-400" />
+          <MdCloud className="size-4 shrink-0 text-blue-500 dark:text-info" />
         </span>
         <span className="t-icon flex items-center justify-center" data-icon="inactive">
           <MdCloudOff className="size-4 shrink-0 text-muted-foreground" />
@@ -305,7 +307,7 @@ function SessionStatusPill({
           {displayedSaveAge}
         </span>
         <span className="t-icon flex items-center justify-center" data-icon="loading">
-          <div className="loader shrink-0 text-muted-foreground" aria-label="Loading save status…" />
+          <Spinner size="xs" className="shrink-0 text-muted-foreground" label={t("collab.loadingSaveStatus")} />
         </span>
       </span>
     </Button>
@@ -319,6 +321,7 @@ function AudioControlPill({
   media: SessionMediaController | null
   visible?: boolean
 }) {
+  const { t } = useTranslation()
   if (!visible || !media) {
     return (
       <div
@@ -400,7 +403,7 @@ function AudioControlPill({
             ? "text-destructive hover:bg-destructive/10"
             : isMuted
               ? "text-muted-foreground hover:text-foreground hover:bg-accent/60"
-              : "text-emerald-500 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 font-medium shadow-[0_0_8px_rgba(16,185,129,0.15)]",
+              : "text-success hover:text-success bg-success/10 hover:bg-success/15 font-medium shadow-[0_0_8px_rgba(16,185,129,0.15)]",
         )}
         onClick={() => {
           if (isDenied) {
@@ -435,9 +438,9 @@ function AudioControlPill({
           </span>
         </span>
         {isDenied ? (
-          <span className="text-[11px] leading-none">Mic error</span>
+          <span className="text-caption leading-none">{t("collab.micError")}</span>
         ) : !isMuted ? (
-          <span className="text-[11px] leading-none">Voice</span>
+          <span className="text-caption leading-none">{t("collab.voice")}</span>
         ) : null}
       </Button>
 
@@ -446,8 +449,8 @@ function AudioControlPill({
         size="sm"
         variant="ghost"
         className="h-7 w-5 p-0 text-muted-foreground hover:text-foreground hover:bg-accent/60 rounded-l-none rounded-r-md border-y-0 border-r-0 border-l border-border/40 transition-[background-color,color,transform] duration-150 active:scale-[0.92]"
-        title="Audio settings"
-        aria-label="Select audio input device"
+        title={t("collab.audioSettings")}
+        aria-label={t("collab.selectAudioInputDevice")}
         aria-haspopup="menu"
         onClick={handleOpenAudioMenu}
       >

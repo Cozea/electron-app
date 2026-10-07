@@ -84,8 +84,8 @@ function RunStatusBadge({ status }: { status: ScheduledTaskRunStatus }) {
     <Badge
       variant="outline"
       className={cn(
-        "h-5 rounded-full border-0 px-2 text-[11px] font-medium",
-        copy.tone === "ok" && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+        "h-5 rounded-full border-0 px-2 text-caption font-medium",
+        copy.tone === "ok" && "bg-success/15 text-success",
         copy.tone === "error" && "bg-destructive/15 text-destructive",
         copy.tone === "muted" && "bg-muted/60 text-muted-foreground",
       )}
@@ -121,7 +121,7 @@ function RunMark({ run }: { run: ScheduledTaskRun }) {
         <span
           className={cn(
             "flex shrink-0 items-center gap-1.5 text-sm",
-            isSkipped ? "text-muted-foreground" : "text-amber-600 dark:text-amber-500",
+            isSkipped ? "text-muted-foreground" : "text-warning",
           )}
         >
           {isSkipped ? (
@@ -185,7 +185,7 @@ export function ScheduledTaskDetail({
         <p
           className={cn(
             "shrink-0 -mx-6 bg-background/85 px-6 py-3 text-sm tabular-nums backdrop-blur",
-            task.enabled ? "text-muted-foreground" : "text-amber-700 dark:text-amber-500",
+            task.enabled ? "text-muted-foreground" : "text-warning",
           )}
         >
           {task.enabled ? summary : `${summary} · resumes only when you start it again`}
@@ -200,7 +200,7 @@ export function ScheduledTaskDetail({
                     {RUN_TIME_FORMAT.format(new Date(selectedRun.ranAt))}
                   </span>
                   {selectedRun.id === runs[0]?.id ? (
-                    <Badge variant="secondary" className="h-5 rounded-full px-2 text-[11px] font-medium">
+                    <Badge variant="secondary" className="h-5 rounded-full px-2 text-caption font-medium">
                       Latest
                     </Badge>
                   ) : null}

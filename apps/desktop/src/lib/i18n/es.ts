@@ -105,6 +105,7 @@ const es: Record<TranslationKey, string> = {
   "settings.account.localDeviceControls": "Controles del dispositivo local",
   "settings.account.deleteAccount": "Eliminar cuenta",
   "settings.account.resetDeviceIdentity": "Restablecer identidad del dispositivo",
+  "settings.account.resetAction": "Restablecer",
   "settings.account.deleteAccountDesc":
     "Eliminar permanentemente tu cuenta y todos los datos",
   "settings.account.resetDeviceDesc":
@@ -120,7 +121,6 @@ const es: Record<TranslationKey, string> = {
   "settings.account.resetConfirmLabel":
     'Escribe "RESET" para confirmar',
   "settings.account.deleteConfirmPlaceholder": "eliminar mi cuenta",
-  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Configuración: Apariencia ───────────────────────────────────────
   "settings.appearance.theme": "Tema",
@@ -191,7 +191,7 @@ const es: Record<TranslationKey, string> = {
   "settings.organizations.error": "Esa acción de organización falló.",
 
   // ── Configuración: Herramientas ─────────────────────────────────────
-  "settings.tooling.title": "Soporte de herramientas y frameworks",
+  "settings.tooling.title": "Entorno local",
   "settings.tooling.description":
     "Esta página refleja lo que tu instancia actual de Cozea puede ejecutar en este dispositivo.",
   "settings.tooling.gitRuntime": "Entorno Git",
@@ -388,7 +388,6 @@ const es: Record<TranslationKey, string> = {
   "workbench.layout.splitDown": "Dividir hacia abajo",
   "workbench.layout.splitUp": "Dividir hacia arriba",
   "workbench.layout.optionsLabel": "Opciones de diseño",
-  "workbench.layout.closeLabel": "Cerrar {title}",
   "workbench.surface.loading": "Cargando…",
   "workbench.surface.loadingWorkbench": "Cargando espacio de trabajo…",
   "workbench.surface.closeChanges": "Cerrar cambios",
@@ -427,9 +426,7 @@ const es: Record<TranslationKey, string> = {
   "tasks.create.title": "Añadir Tarea",
   "tasks.create.desc": "Crea una tarea con fecha límite, objetivos, un responsable y un archivo vinculado.",
   "tasks.label.title": "Título",
-  "tasks.placeholder.title": "Configuración de facturación",
   "tasks.label.desc": "Descripción",
-  "tasks.placeholder.desc": "Contexto breve para esta tarea",
   "tasks.label.deadline": "Fecha límite",
   "tasks.label.assignee": "Responsable",
   "tasks.placeholder.searchPeople": "Buscar personas...",
@@ -527,7 +524,6 @@ const es: Record<TranslationKey, string> = {
   "settings.error.archiveFailed": "Error al archivar el proyecto",
   "settings.error.projectNotFound": "Proyecto no encontrado",
   "settings.loading": "Cargando la configuración del proyecto…",
-  "settings.action.close": "Cerrar configuración",
   "settings.action.save": "Guardar cambios",
   "settings.action.saving": "Guardando...",
   "settings.action.archive": "Archivar",
@@ -665,9 +661,13 @@ const es: Record<TranslationKey, string> = {
   "errorScreen.description": "Ocurrió un error inesperado en esta vista. Puedes intentarlo de nuevo o recargar la aplicación.",
   "errorScreen.tryAgain": "Intentar de nuevo",
   "errorScreen.reload": "Recargar aplicación",
+  "errorScreen.details": "Detalles",
 
   // ── Workbench panels / header ───────────────────────────────────────
   "workbench.panel.close": "Cerrar panel",
+  "workbench.panel.closeRunningTerminal.title": "¿Cerrar la terminal con un proceso en ejecución?",
+  "workbench.panel.closeRunningTerminal.message": "Al cerrar el panel se detiene lo que se esté ejecutando en él.",
+  "workbench.panel.closeRunningTerminal.confirm": "Cerrar y detener",
   "workbench.branch.currentBranch": "Rama actual",
   "workbench.memory.state.new": "Nuevo",
   "workbench.memory.state.changed": "Modificado",
@@ -745,9 +745,7 @@ const es: Record<TranslationKey, string> = {
   "workbench.devserver.processes.automatic": "Detectado automáticamente",
   "workbench.devserver.processes.default": "Predeterminado",
   "workbench.devserver.processes.name": "Nombre",
-  "workbench.devserver.processes.namePlaceholder": "Backend",
   "workbench.devserver.processes.command": "Comando",
-  "workbench.devserver.processes.commandPlaceholder": "bun run dev",
   "workbench.devserver.processes.remove": "Eliminar proceso",
   "workbench.devserver.processes.toggleDetails": "Mostrar u ocultar los detalles del proceso",
   "workbench.devserver.processes.untitled": "Proceso sin título",

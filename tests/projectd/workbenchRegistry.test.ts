@@ -281,6 +281,7 @@ describe("P04 daemon-owned workspace + Workbench registry", () => {
       server = new ProjectdServer({
         socketPath: testSocketPath,
         database: db,
+        sourceCatalogPath: testCatalogPath,
       })
       await server.start()
 

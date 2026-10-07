@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import type { ProjectdRebaseChoice, ProjectdRebaseRecoveryRequest, ProjectdRebaseRecoveryResponse, ProjectdRebaseResult, ProjectdRebaseReview } from "@cozea/projectd-protocol"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -10,6 +11,7 @@ interface RebaseRecoveryEditorProps {
 }
 
 export function RebaseRecoveryEditor({ publicSessionId, recoveryId, onApplied }: RebaseRecoveryEditorProps) {
+  const { t } = useTranslation()
   const [review, setReview] = useState<ProjectdRebaseReview | null>(null)
   const [journals, setJournals] = useState<NonNullable<ProjectdRebaseRecoveryResponse["journals"]>>([])
   const [choices, setChoices] = useState<Record<string, ProjectdRebaseChoice>>({})
@@ -57,13 +59,13 @@ export function RebaseRecoveryEditor({ publicSessionId, recoveryId, onApplied }:
   return <div className="space-y-3" aria-busy={busy}>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     {!review && journals.length > 0 && <div className="space-y-2">
-      <p className="text-sm">Retained rebases on this Mac</p>
+      <p className="text-sm">{t("collab.retainedRebasesOnThisMac")}</p>
       {journals.map((journal) => <Button key={journal.id} variant="outline" size="sm" disabled={busy}
         onClick={() => void run({ action: "review", recoveryId: journal.id })}>Review {new Date(journal.createdAt).toLocaleString()}</Button>)}
     </div>}
     {review && <>
-      <p className="text-xs text-muted-foreground">Resolutions are prepared separately. Apply updates the live session and rewrites the reviewed Git history.</p>
-      {review.state === "adopting" && <p className="text-sm">An earlier Apply was interrupted. Retry Apply to finish saving the retained rebase.</p>}
+      <p className="text-xs text-muted-foreground">{t("collab.resolutionsArePreparedSeparatelyApplyUpdates")}</p>
+      {review.state === "adopting" && <p className="text-sm">{t("collab.anEarlierApplyWasInterruptedRetry")}</p>}
       <div className="max-h-80 space-y-4 overflow-auto">
         {paths.map((filePath) => <div key={filePath} className="space-y-2 rounded-md border p-3">
           <p className="break-all font-mono text-xs">{filePath}</p>
@@ -75,10 +77,10 @@ export function RebaseRecoveryEditor({ publicSessionId, recoveryId, onApplied }:
           </details>)}
           <div className="flex gap-2">
             <Button size="sm" variant={choices[filePath]?.kind === "delete" ? "default" : "outline"} disabled={busy}
-              onClick={() => setChoices((prior) => ({ ...prior, [filePath]: { path: filePath, kind: "delete" } }))}>Delete file</Button>
+              onClick={() => setChoices((prior) => ({ ...prior, [filePath]: { path: filePath, kind: "delete" } }))}>{t("collab.deleteFile")}</Button>
             <Button size="sm" variant={choices[filePath]?.kind === "content" ? "default" : "outline"} disabled={busy}
               onClick={() => setChoices((prior) => ({ ...prior, [filePath]: { path: filePath, kind: "content", text: review.variants.find((variant) => variant.path === filePath && variant.stage === 3)?.text ?? "",
-                executable: review.variants.some((variant) => variant.path === filePath && variant.stage === 3 && variant.mode === "100755") } }))}>Edit text</Button>
+                executable: review.variants.some((variant) => variant.path === filePath && variant.stage === 3 && variant.mode === "100755") } }))}>{t("collab.editText")}</Button>
           </div>
           {choices[filePath]?.kind === "content" && <Textarea aria-label={`Resolution for ${filePath}`} disabled={busy} value={choices[filePath].text}
             onChange={(event) => { const text = event.target.value; setChoices((prior) => ({ ...prior, [filePath]: { ...prior[filePath] as Extract<ProjectdRebaseChoice, { kind: "content" }>, text } })) }} />}
@@ -86,10 +88,10 @@ export function RebaseRecoveryEditor({ publicSessionId, recoveryId, onApplied }:
       </div>
       <div className="flex flex-wrap gap-2">
         {review.state === "conflicted" && <Button disabled={busy || paths.some((filePath) => !choices[filePath]) || !review.fingerprint}
-          onClick={() => void run({ action: "resolve", recoveryId: review.recoveryId, fingerprint: review.fingerprint!, choices: paths.map((filePath) => choices[filePath]) })}>Prepare resolution</Button>}
-        {(review.state === "computed" || review.state === "adopting") && <Button disabled={busy} onClick={() => void run({ action: "apply", recoveryId: review.recoveryId })}>Apply resolved rebase</Button>}
-        {review.state !== "adopting" && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "continue", recoveryId: review.recoveryId })}>Retry / continue</Button>}
-        {review.state !== "adopting" && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "cancel", recoveryId: review.recoveryId })}>Discard isolated rebase</Button>}
+          onClick={() => void run({ action: "resolve", recoveryId: review.recoveryId, fingerprint: review.fingerprint!, choices: paths.map((filePath) => choices[filePath]) })}>{t("collab.prepareResolution")}</Button>}
+        {(review.state === "computed" || review.state === "adopting") && <Button disabled={busy} onClick={() => void run({ action: "apply", recoveryId: review.recoveryId })}>{t("collab.applyResolvedRebase")}</Button>}
+        {review.state !== "adopting" && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "continue", recoveryId: review.recoveryId })}>{t("collab.retryContinue")}</Button>}
+        {review.state !== "adopting" && <Button variant="outline" disabled={busy} onClick={() => void run({ action: "cancel", recoveryId: review.recoveryId })}>{t("collab.discardIsolatedRebase")}</Button>}
       </div>
     </>}
   </div>

@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Spinner } from "@/components/ui/spinner"
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import type {
@@ -232,7 +233,7 @@ export function AssistantHistoryButton(props: AssistantHistoryButtonProps) {
               <HugeiconsIcon icon={Clock01Icon} className="size-3.5" />
             </span>
             <span className="t-icon flex items-center justify-center" data-icon="loading">
-              <div className="loader shrink-0 text-muted-foreground" />
+              <Spinner size="xs" className="shrink-0 text-muted-foreground" />
             </span>
           </span>
         </Button>

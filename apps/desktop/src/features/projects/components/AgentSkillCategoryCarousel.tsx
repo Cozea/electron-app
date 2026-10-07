@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { AgentSkillRecord } from "@shared/electronApiTypes";
+import type { AgentSkillRecord } from "@cozea/app-contract/electronApi";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -384,7 +384,7 @@ export function AgentSkillCategoryCarousel({
                 )}
               >
                 <span className="text-sm font-semibold text-foreground">{group.label}</span>
-                <span className="text-[11px] tabular-nums text-muted-foreground/70">
+                <span className="text-caption tabular-nums text-muted-foreground/70">
                   {group.skills.length}
                 </span>
               </button>

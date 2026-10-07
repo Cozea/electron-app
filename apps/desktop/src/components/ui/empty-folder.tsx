@@ -238,7 +238,7 @@ function FileCard({
         {IconComponent ? (
           <HugeiconsIcon icon={IconComponent} className="size-3 text-muted-foreground" />
         ) : null}
-        <span className="font-mono text-[10px] text-muted-foreground truncate">{tag}</span>
+        <span className="font-mono text-2xs text-muted-foreground truncate">{tag}</span>
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="h-1.5 w-full rounded-full bg-[var(--empty-folder-line)]" />

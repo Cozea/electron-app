@@ -98,11 +98,6 @@ jobs:
           bun run postinstall
           pm="$(node -p 'require("./vendor/t3code/package.json").packageManager.split("+")[0]')"
           bun x "$pm" --dir vendor/t3code install --frozen-lockfile --ignore-scripts
-      - name: Computer Use behavior and provider contract tests
-        run: |
-          mkdir -p build/cu-validation
-          set -o pipefail
-          bun run test:computer-use 2>&1 | tee build/cu-validation/host-tests.log
       - name: Electron typecheck
         if: success() || (failure() && steps.dependencies.outcome == 'success')
         run: |
@@ -133,6 +128,11 @@ jobs:
           assert.equal(patchComputerUseContract(result.source).changed, false);
           console.log('Real T3 bundle accepts the canonical v2 tool catalogue; second application is unchanged.');
           JS
+      - name: Computer Use behavior and provider contract tests
+        run: |
+          mkdir -p build/cu-validation
+          set -o pipefail
+          bun run test:computer-use 2>&1 | tee build/cu-validation/host-tests.log
       - name: Verify unsupported-platform packaging
         if: success() || (failure() && steps.dependencies.outcome == 'success')
         run: |

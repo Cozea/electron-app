@@ -163,4 +163,65 @@ describe('DesktopBootstrapStore', () => {
     expect(snapshot.lastWorkbenchRoute).not.toBeNull()
     expect(snapshot.lastWorkbenchRoute?.laneId).toBe('lane_14')
   })
+
+  it('initializes and persists presentation without a cloud session or secure token storage', async () => {
+    electronState.encryptionAvailable = false
+    const identity = { identityKey: 'czd_00000000000000000000000000', platform: 'darwin' }
+    const store = new DesktopBootstrapStore(async () => identity)
+    const initial = await store.getLocalDevice()
+    expect(initial).toMatchObject({ ...identity, presentationConfigured: false })
+    expect(initial).not.toHaveProperty('principalId')
+    const configured = await store.updateLocalDevice({ ...identity, displayName: '  Offline Mac  ', avatarUrl: null })
+    expect(configured).toMatchObject({ ...identity, displayName: 'Offline Mac', presentationConfigured: true })
+    const restarted = new DesktopBootstrapStore(async () => identity)
+    expect(await restarted.getLocalDevice()).toEqual(configured)
+    expect((await restarted.getInitialSnapshot()).session).toBeNull()
+    expect((await restarted.getInitialSnapshot()).localDevice).toEqual(configured)
+    const raw = fs.readFileSync(path.join(electronState.root, 'desktop-local-device.v1.json'), 'utf8')
+    expect(raw).not.toMatch(/principalId|accessToken|privateKey/)
+  })
+
+  it('migrates cached presentation only when it matches the actual installation identity', async () => {
+    const session = sessionFixture()
+    const store = new DesktopBootstrapStore(async () => ({ identityKey: session.user.identityKey, platform: 'darwin' }))
+    await store.storeSession(session)
+    const device = await store.getLocalDevice()
+    expect(device).toMatchObject({ displayName: session.user.displayName, presentationConfigured: true })
+    expect(device).not.toHaveProperty('principalId')
+    const replacementIdentity = { identityKey: 'czd_10000000000000000000000000', platform: 'darwin' }
+    const replaced = new DesktopBootstrapStore(async () => replacementIdentity)
+    expect(await replaced.getLocalDevice()).toMatchObject({ ...replacementIdentity, displayName: 'This Device', presentationConfigured: false })
+    await expect(replaced.updateLocalDevice({ identityKey: device.identityKey, displayName: 'Wrong device' })).rejects.toThrow('identity changed')
+  })
+
+  it('bounds presentation writes and recovers a corrupt or credential-bearing local file', async () => {
+    const identity = { identityKey: 'czd_00000000000000000000000000', platform: 'darwin' }
+    const store = new DesktopBootstrapStore(async () => identity)
+    for (const update of [
+      { displayName: '' }, { displayName: 'x'.repeat(81) }, { displayName: 'bad\nname' },
+      { displayName: 'Device', avatarUrl: 'file:///private/key' },
+      { displayName: 'Device', avatarUrl: 'https://credential:secret@example.com/avatar' },
+      { displayName: 'Device', avatarUrl: `data:image/png;base64,${'a'.repeat(2_000_000)}` },
+    ]) {
+      await expect(store.updateLocalDevice({ identityKey: identity.identityKey, ...update })).rejects.toThrow('Invalid local device presentation')
+    }
+    const safe = await store.getLocalDevice()
+    const file = path.join(electronState.root, 'desktop-local-device.v1.json')
+    fs.writeFileSync(file, JSON.stringify({ ...safe, accessToken: 'unexpected' }))
+    expect((await store.getInitialSnapshot()).localDevice).toBeNull()
+    expect(await store.getLocalDevice()).toEqual(expect.objectContaining({ presentationConfigured: false }))
+    expect(fs.readFileSync(file, 'utf8')).not.toContain('accessToken')
+    fs.writeFileSync(file, '{broken')
+    expect(await store.getLocalDevice()).toMatchObject(identity)
+  })
+
+  it('serializes concurrent local name updates without losing an unchanged avatar', async () => {
+    const identity = { identityKey: 'czd_00000000000000000000000000', platform: 'darwin' }
+    const store = new DesktopBootstrapStore(async () => identity)
+    const avatarUrl = 'data:image/png;base64,YQ=='
+    await store.updateLocalDevice({ identityKey: identity.identityKey, displayName: 'First', avatarUrl })
+    await Promise.all(Array.from({ length: 8 }, (_, index) =>
+      store.updateLocalDevice({ identityKey: identity.identityKey, displayName: `Device ${index}` })))
+    expect(await store.getLocalDevice()).toMatchObject({ displayName: 'Device 7', avatarUrl })
+  })
 })

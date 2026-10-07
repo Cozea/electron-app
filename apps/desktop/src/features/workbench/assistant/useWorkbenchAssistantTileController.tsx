@@ -67,7 +67,10 @@ import { useAssistantContentDraft } from "@/features/assistant/history/useAssist
 import {
   useAssistantHistoryStore,
   conversationContextMatches,
+  relocateAssistantHistory,
 } from "@/features/assistant/history/assistantHistoryStore";
+import { reconcileRepairedAssistantProject } from "@/features/assistant/history/reconcileRepairedAssistantProject";
+import { requireLocalProjectsApi } from "@/features/projects/lib/localProjectsApi";
 import {
   deriveThreadImageArtifacts,
   type ThreadImageArtifact,
@@ -280,7 +283,6 @@ export function useWorkbenchAssistantTileController(
   );
   const setThreadError = useStore((state) => state.setError);
   const timelineRef = useRef<HTMLDivElement | null>(null);
-  const bindingInFlightRef = useRef(false);
   const sendInFlightRef = useRef(false);
   const handleSendRef = useRef<() => Promise<void>>(async () => undefined);
 
@@ -802,7 +804,6 @@ export function useWorkbenchAssistantTileController(
       return;
     }
 
-    bindingInFlightRef.current = false;
     setIsBinding(false);
   }, [isRuntimeReady]);
 
@@ -861,17 +862,15 @@ export function useWorkbenchAssistantTileController(
     }
     setBindingError(null);
     const workspaceRoot = input.projectRootPath;
-    if (bindingInFlightRef.current) {
-      return;
-    }
-    if (hasBoundThread || (!input.tile.threadId && input.tile.assistantProjectId)) {
+    const origin = (input.tile.assistantProjectId ? useAssistantHistoryStore.getState().projects[input.tile.assistantProjectId] : null) ?? savedContentDraft;
+    if ((hasBoundThread || (!input.tile.threadId && input.tile.assistantProjectId)) &&
+      assistantProject?.cwd === workspaceRoot && (!origin || origin.rootPath === workspaceRoot)) {
       setBindingError(null);
       setIsBinding(false);
       return;
     }
 
     let cancelled = false;
-    bindingInFlightRef.current = true;
     setIsBinding(true);
 
     const ensureBinding = async () => {
@@ -892,7 +891,8 @@ export function useWorkbenchAssistantTileController(
             selectAssistantProjectByCwd(currentAssistantState, workspaceRoot) ??
             null;
 
-          if (existingProject) {
+          const existingOrigin = (existingProject ? useAssistantHistoryStore.getState().projects[existingProject.id] : null) ?? savedContentDraft;
+          if (existingProject?.cwd === workspaceRoot && (!existingOrigin || existingOrigin.rootPath === workspaceRoot)) {
             if (input.tile.assistantProjectId !== existingProject.id) {
               updateAssistantTile(
                 input.projectId,
@@ -910,7 +910,10 @@ export function useWorkbenchAssistantTileController(
           }
         }
 
+        // The workspace lock serializes effects across tiles and renders. A
+        // cancelled effect must not prevent its replacement from taking over.
         await withWorkspaceBindingLock(workspaceRoot, async () => {
+          if (cancelled) return;
           const api = ensureNativeApi();
           const liveTile = () =>
             getLiveAssistantTile(input.projectId, input.laneId, input.tile.id, input.workspaceId) ??
@@ -996,6 +999,11 @@ export function useWorkbenchAssistantTileController(
                 throw createError;
               }
             }
+            // Command acknowledgement may precede the renderer's pushed read
+            // model. Read the committed snapshot before deciding creation failed.
+            const createdSnapshot = await getOrchestration().getSnapshot();
+            if (cancelled) return;
+            useStore.getState().syncServerReadModel(createdSnapshot);
             const nextAssistantState = useStore.getState();
             nextProject =
               nextProject ??
@@ -1006,6 +1014,27 @@ export function useWorkbenchAssistantTileController(
 
           if (!nextProject) {
             throw new Error("Unable to create an assistant project for this workspace.");
+          }
+
+          const association = useAssistantHistoryStore.getState().projects[nextProject.id];
+          const previousFolder = association?.rootPath ?? assistantDrafts.store.getState().drafts[contentDraftKey]?.rootPath ?? nextProject.cwd;
+          if (nextProject.cwd !== workspaceRoot || previousFolder !== workspaceRoot) {
+            const repaired = await reconcileRepairedAssistantProject({
+              projectId: input.projectId, workspaceId: input.workspaceId!, assistantProjectId: nextProject.id,
+              previousFolder, currentFolder: workspaceRoot, projects: requireLocalProjectsApi(), orchestration: getOrchestration(),
+            });
+            if (cancelled) return;
+            useStore.getState().syncServerReadModel(repaired);
+            await assistantDrafts.load();
+            for (const draft of Object.values(assistantDrafts.store.getState().drafts)) {
+              if (draft.projectId === input.projectId && draft.workspaceId === input.workspaceId &&
+                draft.rootPath === previousFolder && (!draft.assistantProjectId || draft.assistantProjectId === nextProject.id)) assistantDrafts.save({ ...draft, rootPath: workspaceRoot });
+            }
+            await assistantDrafts.flush();
+            relocateAssistantHistory({ projectId: input.projectId, workspaceId: input.workspaceId!,
+              assistantProjectId: nextProject.id, previousFolder, currentFolder: workspaceRoot });
+            nextProject = selectAssistantProjectById(useStore.getState(), nextProject.id)!;
+            setContextError(null);
           }
 
           if (isResumingExistingThread) {
@@ -1078,8 +1107,7 @@ export function useWorkbenchAssistantTileController(
           setBindingError(toErrorMessage(error));
         }
       } finally {
-        bindingInFlightRef.current = false;
-        setIsBinding(false);
+        if (!cancelled) setIsBinding(false);
       }
     };
 
@@ -1090,6 +1118,8 @@ export function useWorkbenchAssistantTileController(
     };
   }, [
     bindingRevision,
+    assistantProject?.cwd,
+    savedContentDraft?.rootPath,
     config,
     hasBoundThread,
     input.laneId,

@@ -1,4 +1,4 @@
-import type { DesktopBootstrapBridge } from '@shared/desktopBootstrapTypes'
+import type { DesktopBootstrapBridge } from '@cozea/app-contract/desktopBootstrap'
 
 declare global {
   interface Window {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
-import { useQuery } from "convex/react"
+import { useQuery } from "@/lib/cloudQueries"
 
 import { api } from "../../../../../../convex/_generated/api"
 import type { Id } from "../../../../../../convex/_generated/dataModel"
@@ -217,7 +217,7 @@ export function InviteDevicesField({
                     avatarUrl={item.avatarUrl}
                     principalId={item.principalId}
                     className="size-7"
-                    fallbackClassName="text-[11px] font-medium"
+                    fallbackClassName="text-caption font-medium"
                   />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-foreground">{item.displayName}</p>

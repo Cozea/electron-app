@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react"
 import {
   FolderGitIcon,
@@ -15,17 +16,9 @@ import {
 
 import type { Id } from "../../../../../../convex/_generated/dataModel"
 import { useProjectTeam } from "@/hooks/useProjectTeam"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { cn } from "@/lib/utils"
 import type { LiveSessionRecord, LiveSessionContext } from "../live/useLiveSession"
 import { useSessionMetrics } from "../live/useSessionMetrics"
@@ -53,6 +46,7 @@ export function SessionHubDialog({
   workspaceId,
   canManage,
 }: SessionHubDialogProps) {
+  const { t } = useTranslation()
   const { members: projectMembers } = useProjectTeam(projectId)
   const [activeTab, setActiveTab] = useState<"dashboard" | "share">("dashboard")
 
@@ -64,80 +58,13 @@ export function SessionHubDialog({
   })
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] max-w-xl overflow-y-auto">
-        <DialogHeader className="space-y-2">
-          <div className="flex items-center justify-between gap-2 pr-6">
-            <div className="flex items-center gap-2 min-w-0">
-              <DialogTitle className="text-base truncate">
-                Session Hub · {session.branchName}
-              </DialogTitle>
-              <Badge variant="outline" className="text-2xs font-normal border-emerald-500/30 text-emerald-500 bg-emerald-500/10 shrink-0">
-                LIVE
-              </Badge>
-            </div>
-          </div>
-
-          <DialogDescription className="text-sm text-muted-foreground">
-            {projectName ? `${projectName} · ` : ""}Active for {metrics.sessionDurationFormatted} · {metrics.totalOperations} edit operations batched
-          </DialogDescription>
-
-          {/* Segmented Tab Navigation */}
-          <div className="flex items-center gap-1 rounded-md bg-muted/60 p-1 w-full pt-0.5">
-            <button
-              type="button"
-              className={cn(
-                "flex-1 px-3 py-1.5 rounded-sm text-sm font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer",
-                activeTab === "dashboard"
-                  ? "bg-background text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setActiveTab("dashboard")}
-            >
-              <HugeiconsIcon icon={GitBranchIcon} className="size-4" />
-              <span>Work & Call Dashboard</span>
-            </button>
-            <button
-              type="button"
-              className={cn(
-                "flex-1 px-3 py-1.5 rounded-sm text-sm font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer",
-                activeTab === "share"
-                  ? "bg-background text-foreground shadow-xs"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-              onClick={() => setActiveTab("share")}
-            >
-              <HugeiconsIcon icon={Share01Icon} className="size-4" />
-              <span>Share & Invites</span>
-            </button>
-          </div>
-        </DialogHeader>
-
-        {/* Tab 1: Work & Call Dashboard */}
-        {activeTab === "dashboard" ? (
-          <div className="py-2">
-            <SessionWorkDashboard
-              session={session}
-              metrics={metrics}
-              media={liveSession.media ?? undefined}
-              canManage={canManage}
-            />
-          </div>
-        ) : null}
-
-        {/* Tab 2: Share & Invites */}
-        {activeTab === "share" ? (
-          <div className="py-2 space-y-4">
-            <LiveSessionShareSection
-              projectId={projectId}
-              projectMembers={projectMembers}
-              canManageProject={canManage}
-            />
-          </div>
-        ) : null}
-
-        {/* Action Footer */}
-        <DialogFooter className="flex items-center justify-between border-t border-border/60 pt-3 sm:justify-between">
+    <UnifiedModal
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Session Hub · ${session.branchName}`}
+      size="lg"
+      footer={
+        <div className="flex w-full items-center justify-between">
           <div className="flex items-center gap-2">
             {liveSession.autoGit?.canSave ? (
               <Button
@@ -147,12 +74,17 @@ export function SessionHubDialog({
                 onClick={() => void liveSession.saveNow()}
               >
                 <HugeiconsIcon icon={FolderGitIcon} className="size-3.5 text-muted-foreground" />
-                <span>Save to Git now</span>
+                <span>{t("collab.saveToGitNow")}</span>
               </Button>
             ) : null}
           </div>
 
           <div className="flex items-center gap-2">
+            {/* The only plain way out: the modal has no close button, and
+                without this one "Leave session" read as the exit. */}
+            <Button variant="ghost" size="sm" className="h-8 text-sm" onClick={() => onOpenChange(false)}>
+              {t("collab.close")}
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -162,7 +94,7 @@ export function SessionHubDialog({
                 liveSession.leave()
               }}
             >
-              Leave session
+              {t("collab.leaveSession")}
             </Button>
             {canManage ? (
               <Button
@@ -180,8 +112,69 @@ export function SessionHubDialog({
               </Button>
             ) : null}
           </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {projectName ? `${projectName} · ` : ""}Active for {metrics.sessionDurationFormatted} · {metrics.totalOperations} edit operations batched
+        </p>
+
+        {/* Segmented Tab Navigation */}
+        <div className="flex items-center gap-1 rounded-md bg-muted/60 p-1 w-full pt-0.5">
+          <button
+            type="button"
+            className={cn(
+              "flex-1 px-3 py-1.5 rounded-sm text-sm font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer",
+              activeTab === "dashboard"
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => setActiveTab("dashboard")}
+          >
+            <HugeiconsIcon icon={GitBranchIcon} className="size-4" />
+            <span>{t("collab.workCallDashboard")}</span>
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "flex-1 px-3 py-1.5 rounded-sm text-sm font-medium transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer",
+              activeTab === "share"
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            onClick={() => setActiveTab("share")}
+          >
+            <HugeiconsIcon icon={Share01Icon} className="size-4" />
+            <span>{t("collab.shareInvites")}</span>
+          </button>
+        </div>
+
+        <div className="max-h-[55vh] overflow-y-auto">
+          {/* Tab 1: Work & Call Dashboard */}
+          {activeTab === "dashboard" ? (
+            <div className="py-2">
+              <SessionWorkDashboard
+                session={session}
+                metrics={metrics}
+                media={liveSession.media ?? undefined}
+                canManage={canManage}
+              />
+            </div>
+          ) : null}
+
+          {/* Tab 2: Share & Invites */}
+          {activeTab === "share" ? (
+            <div className="py-2 space-y-4">
+              <LiveSessionShareSection
+                projectId={projectId}
+                projectMembers={projectMembers}
+                canManageProject={canManage}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </UnifiedModal>
   )
 }

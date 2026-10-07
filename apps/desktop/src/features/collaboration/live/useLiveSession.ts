@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { useMutation } from "convex/react"
+import { useMutation } from "@/lib/cloudQueries"
 import type { ProjectdClosePreflight, ProjectdCloseChoice } from "@cozea/projectd-protocol"
 
 import { api } from "../../../../../../convex/_generated/api"
@@ -181,6 +181,7 @@ export function useLiveSession(input: {
   sessions: readonly LiveSessionRecord[] | undefined
   projectId: string | null
   projectName?: string | null
+  cloudProjectId?: Id<"projects"> | null
   workspaceId: string | null
   rootPath: string | null
   principalId: string | null
@@ -347,7 +348,7 @@ export function useLiveSession(input: {
 
   const repositoryQuery = useSafeConvexQuery(
     api.githubLinks.projectRepositoryStatus,
-    signedIn && session && projectId ? { projectId: projectId as Id<"projects"> } : "skip",
+    signedIn && session && input.cloudProjectId ? { projectId: input.cloudProjectId } : "skip",
   )
   const repository = repositoryQuery.data ?? null
   const publicSessionId = session?.publicSessionId ?? null

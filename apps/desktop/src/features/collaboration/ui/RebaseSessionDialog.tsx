@@ -9,18 +9,12 @@
  */
 
 import { useEffect, useState } from "react"
+import { useTranslation } from "@/lib/i18n"
 
 import type { ProjectdRebaseResult } from "@cozea/projectd-protocol"
 
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { Spinner } from "@/components/ui/spinner"
 import { RebaseRecoveryEditor } from "./RebaseRecoveryEditor"
 import { appToast } from "@/lib/appToast"
@@ -38,6 +32,7 @@ export interface RebaseSessionBodyProps {
 }
 
 export function RebaseSessionBody({ targetBranch, result, error, rebasing }: RebaseSessionBodyProps) {
+  const { t } = useTranslation()
   if (error) {
     return (
       <p className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>
@@ -54,18 +49,17 @@ export function RebaseSessionBody({ targetBranch, result, error, rebasing }: Reb
   if (!result) {
     return (
       <p className="text-sm text-muted-foreground">
-        Cozea first saves the live session, then computes the rebase away from everyone&apos;s working folders. Editing can
-        continue while it runs.
+        {t("collab.rebaseRunsAwayFromFolders")}
       </p>
     )
   }
   if (result.outcome === "conflicts") {
     const paths = result.conflictingPaths ?? []
     return (
-      <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+      <div className="space-y-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
         <p>{result.message}</p>
         {paths.length > 0 ? <p className="font-mono">{listPaths(paths)}</p> : null}
-        <p>Choose the retained variants below, then apply the resolved rebase when ready.</p>
+        <p>{t("collab.chooseTheRetainedVariantsBelowThen")}</p>
       </div>
     )
   }
@@ -87,6 +81,7 @@ export function RebaseSessionDialog({
   branchName,
   targetBranch,
 }: RebaseSessionDialogProps) {
+  const { t } = useTranslation()
   const [result, setResult] = useState<ProjectdRebaseResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [rebasing, setRebasing] = useState(false)
@@ -108,7 +103,7 @@ export function RebaseSessionDialog({
       if (response.result.outcome === "rebased") {
         appToast.success({ title: `Rebased onto ${targetBranch}`, description: response.result.message })
       } else if (response.result.outcome === "requested") {
-        appToast.info({ title: "Rebase requested", description: response.result.message })
+        appToast.info({ title: t("collab.rebaseRequested"), description: response.result.message })
       }
     } catch (rebaseError) {
       setError(rebaseError instanceof Error ? rebaseError.message : String(rebaseError))
@@ -121,24 +116,14 @@ export function RebaseSessionDialog({
   const finished = Boolean(result && result.outcome !== "conflicts")
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => (rebasing ? undefined : onOpenChange(open))}>
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle>
-            Rebase <span className="font-mono">{branchName}</span> onto <span className="font-mono">{targetBranch}</span>
-          </DialogTitle>
-          <DialogDescription>
-            This is an explicit Git history rewrite of the session branch. Cozea uses the last save as the reviewed base
-            and updates the live session with the result.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="py-2">
-          <RebaseSessionBody targetBranch={targetBranch} result={result} error={error} rebasing={rebasing} />
-          {isOpen && !rebasing && <RebaseRecoveryEditor publicSessionId={publicSessionId} recoveryId={result?.recoveryId} onApplied={setResult} />}
-        </div>
-
-        <DialogFooter>
+    <UnifiedModal
+      open={isOpen}
+      onOpenChange={(open) => (rebasing ? undefined : onOpenChange(open))}
+      title={`Rebase ${branchName} onto ${targetBranch}`}
+      size="lg"
+      dismissable={!rebasing}
+      footer={
+        <>
           <Button type="button" variant="outline" disabled={rebasing} onClick={() => onOpenChange(false)}>
             {finished ? "Close" : "Cancel"}
           </Button>
@@ -148,8 +133,19 @@ export function RebaseSessionDialog({
               Rebase onto {targetBranch}
             </Button>
           ) : null}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          {t("collab.rebaseRewritesHistory")}
+        </p>
+
+        <div className="py-2">
+          <RebaseSessionBody targetBranch={targetBranch} result={result} error={error} rebasing={rebasing} />
+          {isOpen && !rebasing && <RebaseRecoveryEditor publicSessionId={publicSessionId} recoveryId={result?.recoveryId} onApplied={setResult} />}
+        </div>
+      </div>
+    </UnifiedModal>
   )
 }

@@ -12,7 +12,7 @@ import {
   selectProjectWorkbench,
   useProjectWorkbenchStore,
 } from "@/lib/workbenchStore"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { WorkbenchSessionSnapshot } from "@cozea/app-contract/electronApi"
 import type { WorkbenchKeepAliveSession } from "@/features/workbench/workbenchKeepAlive"
 
 const LazyWorkbenchDockviewCanvas = lazy(() =>

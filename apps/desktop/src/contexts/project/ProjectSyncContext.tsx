@@ -24,6 +24,8 @@ import { normalizeWorkspaceLaneId } from "@/lib/workspaceIdentity"
 export function ProjectSyncProvider({
   children,
   projectId,
+  cloudProjectId = null,
+  cloudActivityEnabled = false,
   principalId,
   displayName,
   laneId = null,
@@ -54,7 +56,7 @@ export function ProjectSyncProvider({
     [fallbackWorkspaceId, laneId, projectId, workspaceRevision],
   )
 
-  const canHostRuntime = Boolean(projectId && principalId && fallbackWorkspaceId && runtimeId)
+  const canHostRuntime = Boolean(projectId && fallbackWorkspaceId && runtimeId)
 
   useEffect(() => {
     if (!canHostRuntime || !runtimeId || !fallbackWorkspaceId) {
@@ -63,6 +65,8 @@ export function ProjectSyncProvider({
 
     ensureRuntime({
       projectId,
+      cloudProjectId,
+      cloudActivityEnabled,
       principalId,
       displayName,
       workspaceId: fallbackWorkspaceId,
@@ -86,6 +90,8 @@ export function ProjectSyncProvider({
     laneId,
     lastSyncAt,
     projectId,
+    cloudProjectId,
+    cloudActivityEnabled,
     projectSlug,
     sharedBranch,
     principalId,

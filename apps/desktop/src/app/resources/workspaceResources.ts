@@ -17,7 +17,7 @@ import type {
   ResolveProjectWorkspaceResult,
   RepoIdentity,
 } from '@shared/workspaceTypes';
-import type { ProjectLaneState } from '@shared/electronApiTypes';
+import type { ProjectLaneState } from '@cozea/app-contract/electronApi';
 import {
   buildProjectBranchLaneState,
   readScopedProjectBranchSession,

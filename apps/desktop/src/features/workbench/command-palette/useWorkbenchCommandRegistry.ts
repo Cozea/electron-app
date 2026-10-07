@@ -1,7 +1,7 @@
 import { useMemo } from "react"
-import { useQuery } from "convex/react"
-import { api } from "../../../../../../convex/_generated/api"
-import { useAuth } from "@/contexts/AuthContext"
+import { appToast } from "@/lib/appToast"
+import { useWorkspaceCatalogSnapshot } from "@/features/workspace/useWorkspaceCatalogSnapshot"
+import { discoverLocalProjects } from "@/features/projects/lib/localProjectDiscovery"
 import { useTheme } from "@/contexts/ThemeContext"
 
 import type { KeybindingCommand } from "@cozea/assistant-contracts"
@@ -55,12 +55,9 @@ export function useWorkbenchCommandRegistry(
 ): CommandPaletteCommand[] {
   const navigateTo = useNavigateTo()
   const workbenchActions = useProjectWorkbenchStore((state) => state.actions)
-  const { principalId } = useAuth()
   const { setTheme } = useTheme()
-  const accessibleProjects = useQuery(
-    api.projects.listSummariesForCurrentUser,
-    principalId ? { principalId } : "skip",
-  )
+  const snapshot = useWorkspaceCatalogSnapshot()
+  const accessibleProjects = useMemo(() => discoverLocalProjects(snapshot), [snapshot])
 
   return useMemo(() => {
     const { projectId, laneId, workspaceId } = context
@@ -199,13 +196,13 @@ export function useWorkbenchCommandRegistry(
     ]
 
     const projectCommands: CommandPaletteCommand[] = (accessibleProjects ?? []).map((p) => ({
-      id: `project.open.${p._id}`,
+      id: `project.open.${p.projectId}`,
       title: `Project: ${p.name}`,
-      description: `Open ${p.name} workbench`,
+      description: p.hidden ? `Open hidden project ${p.name}` : `Open ${p.name} workbench`,
       group: "Projects",
       searchTerms: [p.name, p.slug ?? "", "project", "open", "switch"],
       run: () => {
-        void navigateTo({ to: "workbench", projectId: String(p._id) })
+        void navigateTo({ to: "workbench", projectId: p.projectId })
       },
     }))
 
@@ -425,14 +422,9 @@ export function useWorkbenchCommandRegistry(
 }
 
 async function showDevAppPreviewSelectionError(detail: string): Promise<void> {
-  await window.electronAPI.dialog.showMessageBox({
-    type: "error",
-    buttons: ["OK"],
-    defaultId: 0,
-    title: "Could not preview DevApp",
-    message: "Cozea couldn't open that development package.",
-    detail,
-    noLink: true,
+  appToast.error({
+    title: "Cozea couldn't open that development package.",
+    description: detail,
   })
 }
 

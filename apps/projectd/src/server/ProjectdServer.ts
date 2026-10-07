@@ -2,6 +2,7 @@ import { exportCloudRecovery } from "../collaboration/CloudRecoveryExporter"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
+import { isProjectdProjectRemovalRequest, isProjectdWorkspaceCloseRequest, isProjectdWorkspaceRegistration } from "@shared/projectdWorkspaceTypes"
 
 import {
   asBranchName,
@@ -873,9 +874,26 @@ export class ProjectdServer {
           })
         break
       }
+      case "workspaces.removeProject": {
+        if (!isProjectdProjectRemovalRequest(req.params)) { this.sendError(state, req.id, { code: "INVALID_PARAMS", message: "Invalid project removal scope" }); break }
+        void this.workspaceRegistry.removeProject(req.params).then((result) => this.sendMessage(state, { type: "response", id: req.id, success: true, result }))
+          .catch((error) => this.sendError(state, req.id, { code: "INTERNAL_ERROR", message: error.message }))
+        break
+      }
+      case "workspaces.close": {
+        const p = req.params
+        if (!isProjectdWorkspaceCloseRequest(p)) {
+          this.sendError(state, req.id, { code: "INVALID_PARAMS", message: "Invalid workspace close scope" })
+          break
+        }
+        void this.workspaceRegistry.closeWorkspace(p).then((workspace) => {
+          this.sendMessage(state, { type: "response", id: req.id, success: true, result: workspace })
+        }).catch((error) => this.sendError(state, req.id, { code: "INTERNAL_ERROR", message: error.message }))
+        break
+      }
       case "workspaces.register": {
-        const p = req.params as any
-        if (!p?.workspaceId || !p?.projectId || !p?.rootPath) {
+        const p = req.params
+        if (!isProjectdWorkspaceRegistration(p)) {
           this.sendError(state, req.id, {
             code: "INVALID_PARAMS",
             message: "Missing workspace registration fields",
@@ -893,6 +911,9 @@ export class ProjectdServer {
             source: p.source ?? "register",
             storageOwnership: p.storageOwnership,
             managedRootId: p.managedRootId,
+            projectRootRelativePath: p.projectRootRelativePath,
+            workspaceRevision: p.workspaceRevision,
+            markerPolicy: p.markerPolicy,
           })
           .then((ws) => {
             this.sendMessage(state, {

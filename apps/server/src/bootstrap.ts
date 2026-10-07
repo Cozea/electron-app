@@ -1,4 +1,10 @@
 import { isHostUpdateRequest } from "../../../shared/hostUpdateControl.ts";
+import { isHostWorkspaceCloseRequest } from "../../../shared/hostWorkspaceClose.ts";
+import { isHostWorkspaceRemovalRequest } from "../../../shared/hostWorkspaceRemoval.ts";
+import { removeWorkspaceChats } from "./removeWorkspaceChats.ts";
+import { closeWorkspaceChats } from "./closeWorkspaceChats.ts";
+import { attachRendererRpcGateway } from "./t3/rendererRpcGateway.ts";
+import { assertWorkspaceCommandAllowed, assertWorkspaceRequestAllowed, readExcludedWorkspaceRoots } from "./workspaceRemovalGate.ts";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -75,17 +81,35 @@ export async function bootstrapCozeaSubstrateServer(
     );
   }
 
+  const catalogPath = process.env.COZEA_WORKSPACE_CATALOG_PATH?.trim();
+  const authorizeCommand = async (command: unknown) => {
+    if (catalogPath && orchestrationBackend) await assertWorkspaceCommandAllowed(command, readExcludedWorkspaceRoots(catalogPath), () => orchestrationBackend!.getSnapshot());
+  };
+  const authorizeRequest = async (method: string, payload: unknown) => {
+    if (!catalogPath || !orchestrationBackend) return;
+    if (method === "orchestration.dispatchCommand") await authorizeCommand(payload);
+    else await assertWorkspaceRequestAllowed(method, payload, readExcludedWorkspaceRoots(catalogPath), () => orchestrationBackend!.getSnapshot());
+  };
+  let gateway: ReturnType<typeof attachRendererRpcGateway> | null = null;
+  const guardedBackend = orchestrationBackend ? new Proxy(orchestrationBackend, {
+    get(target, property) {
+      if (property === "dispatchCommand") return async (command: unknown) => { await authorizeCommand(command); return target.dispatchCommand(command); };
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) : undefined;
   const handle = createShadowHttpServer({
     rpcChatEnabled: substrateFlags.rpcChat,
     providersEnabled: substrateFlags.providers && orchestrationBackend === undefined,
     primaryEnabled: substrateFlags.primary,
     t3ServerEnabled: orchestrationBackend !== undefined,
-    orchestrationBackend,
+    orchestrationBackend: guardedBackend,
     t3RpcSession:
       t3Handle !== null
         ? {
             baseUrl: t3Handle.process.baseUrl,
-            issueWsTicket: () => t3Handle!.issueWsTicket(),
+            rpcBaseUrl: `http://${host}:${port}`,
+            issueWsTicket: () => gateway ? gateway.issueTicket() : Promise.reject(new Error("Chat gateway is unavailable")),
           }
         : undefined,
     host,
@@ -122,10 +146,38 @@ export async function bootstrapCozeaSubstrateServer(
     void request.then(() => reply(true), () => reply(false));
   };
   process.on("message", onHostUpdate);
+  const onWorkspaceClose = (message: unknown) => {
+    if (!isHostWorkspaceCloseRequest(message)) return;
+    const request = orchestrationBackend ? closeWorkspaceChats(orchestrationBackend, message.roots) : Promise.reject(new Error("Chat server is unavailable"));
+    const reply = (success: boolean, error?: unknown) => {
+      if (!process.connected || !process.send) return;
+      try { process.send({ type: "cozea:workspace-close-result", requestId: message.requestId, success,
+        error: error instanceof Error ? error.message.slice(0, 2000) : undefined }, () => undefined); }
+      catch { /* Parent may have exited. Its saved close remains recoverable. */ }
+    };
+    void request.then(() => reply(true), (error) => reply(false, error));
+  };
+  process.on("message", onWorkspaceClose);
+  const onWorkspaceRemoval = (message: unknown) => {
+    if (!isHostWorkspaceRemovalRequest(message)) return;
+    const request = orchestrationBackend && t3Handle ? removeWorkspaceChats(orchestrationBackend, message.roots, message.operationId, t3Handle.localRemovalDirectory) : Promise.reject(new Error("Chat data removal is unavailable"));
+    const reply = (success: boolean, error?: unknown) => {
+      if (!process.connected || !process.send) return;
+      try { process.send({ type: "cozea:workspace-remove-data-result", requestId: message.requestId, success,
+        error: error instanceof Error ? error.message.slice(0, 2000) : undefined }, () => undefined); } catch { /* Saved native scope survives disconnect. */ }
+    };
+    void request.then(() => reply(true), (error) => reply(false, error));
+  };
+  process.on("message", onWorkspaceRemoval);
+  if (t3Handle) gateway = attachRendererRpcGateway({ server: handle.server, upstreamBaseUrl: t3Handle.process.baseUrl,
+    issueUpstreamTicket: () => t3Handle!.issueWsTicket(), authorizeRequest });
   await handle.start();
   return {
     stop: async () => {
       process.off("message", onHostUpdate);
+      process.off("message", onWorkspaceClose);
+      process.off("message", onWorkspaceRemoval);
+      gateway?.dispose();
       await handle.stop();
       if (t3Handle) {
         await t3Handle.stop();

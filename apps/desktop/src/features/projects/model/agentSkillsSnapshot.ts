@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { AgentSkillsSnapshot } from '@shared/electronApiTypes'
+import type { AgentSkillsSnapshot } from '@cozea/app-contract/electronApi'
 import { createLocalSnapshot } from '@/lib/localSnapshot'
 
 export const agentSkillsSnapshot = createLocalSnapshot<AgentSkillsSnapshot>({

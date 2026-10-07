@@ -7,6 +7,7 @@ import {
   type ServerProvider,
 } from "@cozea/assistant-contracts";
 import { getProviderOptionCurrentValue, resolveSelectableModel } from "@cozea/assistant-shared/model";
+import { useTranslation } from "@/lib/i18n"
 import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
   ArrowRight01Icon as __ArrowRightHugeIcon,
@@ -111,6 +112,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     instanceId?: ProviderInstanceId,
   ) => void;
 }) {
+  const { t } = useTranslation();
   const { onOptionChange, onProviderModelChange, onRequestClose } = props;
   const [activeView, setActiveView] = useState<string>(props.initialView ?? "models");
 
@@ -299,11 +301,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             type="button"
             onClick={() => setActiveView("capabilities")}
             className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.06] hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Back to capabilities"
+            aria-label={t("assistant.backToCapabilities")}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
           </button>
-          <span className="text-center text-[13px] font-medium text-foreground">
+          <span className="text-center text-sm font-medium text-foreground">
             {activeOptionDescriptor.label}
           </span>
         </div>
@@ -325,9 +327,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                 }}
               >
                 <span className="min-w-0">
-                  <span className="block truncate text-[13px] text-foreground">{option.label}</span>
+                  <span className="block truncate text-sm text-foreground">{option.label}</span>
                   {option.description ? (
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="block truncate text-caption text-muted-foreground">
                       {option.description}
                     </span>
                   ) : null}
@@ -350,8 +352,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         className="flex w-full flex-col overflow-hidden text-popover-foreground"
         style={{ maxHeight }}
       >
-        <div className="shrink-0 px-3.5 pb-1.5 pt-2.5 text-[13px] font-medium text-muted-foreground">
-          Select model
+        <div className="shrink-0 px-3.5 pb-1.5 pt-2.5 text-sm font-medium text-muted-foreground">
+          {t("assistant.selectModel")}
         </div>
         <div
           data-model-picker-model-list
@@ -359,8 +361,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           role="listbox"
         >
           {visibleModels.length === 0 ? (
-            <div className="px-3 py-5 text-center text-[13px] text-muted-foreground">
-              No models available.
+            <div className="px-3 py-5 text-center text-sm text-muted-foreground">
+              {t("assistant.noModelsAvailable")}
             </div>
           ) : (
             visibleModels.map((model, index) => {
@@ -382,9 +384,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                     onClick={() => handleModelSelect(model)}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] text-foreground">{modelLabel}</span>
+                      <span className="block truncate text-sm text-foreground">{modelLabel}</span>
                       {model.isDefault || showInstanceLabel ? (
-                        <span className="block truncate text-[11px] text-muted-foreground">
+                        <span className="block truncate text-caption text-muted-foreground">
                           {model.isDefault ? "Recommended" : null}
                           {model.isDefault && showInstanceLabel ? " · " : null}
                           {showInstanceLabel ? model.instanceDisplayName : null}
@@ -464,7 +466,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
             <button
               type="button"
               onClick={() => setActiveView("models")}
-              className="inline-flex max-w-full cursor-pointer items-center justify-center gap-0.5 rounded-lg px-1 text-[13px] font-medium text-blue-500 outline-none transition-colors hover:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-ring"
+              className="inline-flex max-w-full cursor-pointer items-center justify-center gap-0.5 rounded-lg px-1 text-sm font-medium text-blue-500 outline-none transition-colors hover:bg-foreground/[0.05] focus-visible:ring-1 focus-visible:ring-ring"
               aria-label={`Select model. Current model: ${activeModelDisplayLabel}`}
             >
               <span className="truncate">
@@ -472,7 +474,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               </span>
               <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5 shrink-0" />
             </button>
-            <div className="mt-px flex min-w-0 items-center justify-center gap-1 text-[11px] text-muted-foreground">
+            <div className="mt-px flex min-w-0 items-center justify-center gap-1 text-caption text-muted-foreground">
               <button
                 type="button"
                 onClick={() => setActiveView("models")}
@@ -569,7 +571,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
               <button
                 key={descriptor.id}
                 type="button"
-                className="flex h-8 w-full cursor-pointer items-center justify-between rounded-lg px-2.5 text-left text-[11px] outline-none transition-colors hover:bg-foreground/[0.055] focus-visible:bg-foreground/[0.055]"
+                className="flex h-8 w-full cursor-pointer items-center justify-between rounded-lg px-2.5 text-left text-caption outline-none transition-colors hover:bg-foreground/[0.055] focus-visible:bg-foreground/[0.055]"
                 onClick={() => setActiveView(`option:${descriptor.id}`)}
               >
                 <span className="font-medium text-foreground">{descriptor.label}</span>
@@ -583,7 +585,7 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
           {booleanDescriptors.map((descriptor) => {
             const isChecked = getProviderOptionCurrentValue(descriptor) === true;
             return (
-              <div key={descriptor.id} className="flex h-8 items-center justify-between px-2.5 text-[11px]">
+              <div key={descriptor.id} className="flex h-8 items-center justify-between px-2.5 text-caption">
                 <span className="font-medium text-foreground">{descriptor.label}</span>
                 <Switch
                   checked={isChecked}

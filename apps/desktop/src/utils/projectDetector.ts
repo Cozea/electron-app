@@ -5,7 +5,7 @@
  * Used as fallback when metadata isn't stored in Convex.
  */
 
-import type { DevCommandSuggestion } from '@shared/electronApiTypes'
+import type { DevCommandSuggestion } from '@cozea/app-contract/electronApi'
 import { parseProjectDevAppCommand } from '@shared/projectDevAppCommand'
 import { projectAnalysisDesktopClient } from '@/lib/projectAnalysis/projectAnalysisDesktopClient'
 

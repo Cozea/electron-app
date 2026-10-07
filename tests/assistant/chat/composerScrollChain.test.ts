@@ -30,8 +30,8 @@ describe("the composer's scroll chain in a small tile", () => {
   });
 
   it("lets the composer form shrink", () => {
-    expect(surfaceSource).toContain(
-      'className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col"',
+    expect(surfaceSource).toMatch(
+      /className="relative z-30 mx-auto flex w-full min-w-0 max-w-3xl min-h-0 flex-col(?:\s|[\w\[\]:./-])*"/,
     );
   });
 

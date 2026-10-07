@@ -6,7 +6,7 @@ import type {
   DevServerAuxiliaryProcessConfig,
   DevServerStartOptions as SharedDevServerStartOptions,
   DevServerStartResult,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import {
   DevServerService,
   type DevServerAuxiliaryProcessOptions,

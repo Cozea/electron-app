@@ -4,33 +4,17 @@ import os from "node:os"
 import path from "node:path"
 
 import type { ProjectdDatabase } from "../storage/Database"
+import type { ProjectdWorkspaceRecord } from "@shared/projectdWorkspaceTypes"
 
 export function getDefaultWorkspaceCatalogPath(): string {
   if (process.env.COZEA_WORKSPACE_CATALOG_PATH) {
     return process.env.COZEA_WORKSPACE_CATALOG_PATH
   }
   const appSupport = path.join(os.homedir(), "Library/Application Support/Cozea")
-  return path.join(appSupport, "workspace-catalog.sqlite")
+  return path.join(appSupport, "local-workspaces.sqlite")
 }
 
-export interface WorkspaceRecord {
-  workspaceId: string
-  projectId: string
-  rootPath: string
-  projectRootRelativePath: string
-  projectRootPath: string
-  gitRootPath: string | null
-  gitOriginUrl: string | null
-  source: string
-  storageOwnership: "managed" | "attached"
-  managedRootId: string | null
-  markerPolicy: string
-  isActive: boolean
-  workspaceRevision: number
-  createdAt: number
-  updatedAt: number
-  lastOpenedAt: number | null
-}
+export type WorkspaceRecord = ProjectdWorkspaceRecord
 
 export class WorkspaceCatalogImporter {
   readonly db: ProjectdDatabase
@@ -44,7 +28,7 @@ export class WorkspaceCatalogImporter {
   async importIfNecessary(): Promise<{ importedCount: number; alreadyImported: boolean }> {
     // Check if migration already ran
     const checkStmt = this.db.db.prepare(
-      "SELECT 1 FROM _projectd_migrations WHERE name = '001_import_workspace_catalog' LIMIT 1",
+      "SELECT 1 FROM _projectd_migrations WHERE name = '002_import_local_workspaces_catalog' LIMIT 1",
     )
     const alreadyRun = checkStmt.get()
     if (alreadyRun) {
@@ -52,12 +36,15 @@ export class WorkspaceCatalogImporter {
     }
 
     if (!fs.existsSync(this.sourceCatalogPath)) {
-      this.markMigrationApplied("001_import_workspace_catalog")
       return { importedCount: 0, alreadyImported: false }
     }
 
     const imported = this.importFromPath(this.sourceCatalogPath)
-    this.markMigrationApplied("001_import_workspace_catalog")
+    // A daemon may start before Electron has initialized the catalog. Absence
+    // is retryable, including installations with the old 001 marker.
+    if (this.hasWorkspaceTable(this.sourceCatalogPath)) {
+      this.markMigrationApplied("002_import_local_workspaces_catalog")
+    }
     return { importedCount: imported, alreadyImported: false }
   }
 
@@ -66,7 +53,7 @@ export class WorkspaceCatalogImporter {
       return 0
     }
 
-    const sourceDb = new DatabaseSync(catalogPath)
+    const sourceDb = new DatabaseSync(catalogPath, { readOnly: true })
     let imported = 0
 
     try {
@@ -96,14 +83,12 @@ export class WorkspaceCatalogImporter {
           marker_policy,
           is_active,
           workspace_revision,
+          catalog_binding_revision,
           created_at,
           updated_at,
           last_opened_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(workspace_id) DO UPDATE SET
-          updated_at = excluded.updated_at,
-          last_opened_at = excluded.last_opened_at,
-          workspace_revision = MAX(workspaces.workspace_revision, excluded.workspace_revision)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id) DO NOTHING
       `)
 
       const insertWorkbench = this.db.db.prepare(`
@@ -131,6 +116,9 @@ export class WorkspaceCatalogImporter {
         for (const row of rows) {
           const workspaceId = String(row.workspace_id)
           const projectId = String(row.project_id)
+          if (this.db.db.prepare("SELECT 1 FROM project_exclusions WHERE project_id = ?").get(projectId)) continue
+          const excluded = sourceDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'project_exclusions'").get()
+          if (excluded && sourceDb.prepare("SELECT 1 FROM project_exclusions WHERE project_id = ?").get(projectId)) continue
           const rootPath = String(row.root_path)
           const projectRootPath = String(row.project_root_path ?? rootPath)
           const storageOwnership = row.storage_ownership === "managed" ? "managed" : "attached"
@@ -151,6 +139,7 @@ export class WorkspaceCatalogImporter {
             row.managed_root_id ? String(row.managed_root_id) : null,
             String(row.marker_policy ?? "none"),
             isActive ? 1 : 0,
+            Number(row.workspace_revision) || 1,
             Number(row.workspace_revision) || 1,
             Number(row.created_at) || now,
             Number(row.updated_at) || now,
@@ -197,5 +186,12 @@ export class WorkspaceCatalogImporter {
       "INSERT OR IGNORE INTO _projectd_migrations (name, applied_at) VALUES (?, ?)",
     )
     stmt.run(name, Date.now())
+  }
+
+  private hasWorkspaceTable(catalogPath: string): boolean {
+    const source = new DatabaseSync(catalogPath, { readOnly: true })
+    try {
+      return Boolean(source.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='local_workspaces'").get())
+    } finally { source.close() }
   }
 }

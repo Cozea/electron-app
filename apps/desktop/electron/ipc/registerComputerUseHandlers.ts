@@ -1,6 +1,6 @@
 import { shell, type IpcMain } from 'electron'
 import { ComputerUseRuntimeService } from '../services/ComputerUseRuntimeService'
-import type { AppSettings } from '../../../../shared/electronApiTypes'
+import type { AppSettings } from '@cozea/app-contract/electronApi'
 
 export function registerComputerUseHandlers(
   ipcMain: IpcMain,

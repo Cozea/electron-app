@@ -8,7 +8,7 @@ import type {
   AvailableExternalBrowser,
   AvailableExternalBrowserResult,
   ExternalBrowserId,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 
 interface BrowserSpec {
   id: Exclude<ExternalBrowserId, 'system'>

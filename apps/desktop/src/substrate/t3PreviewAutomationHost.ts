@@ -26,7 +26,7 @@ import type {
   ScopedThreadRef,
 } from "@cozea/contracts/t3";
 import type { T3RpcSessionHandle } from "@cozea/client-runtime";
-import type { BrowserSurfaceInventoryEntry } from "@shared/browserSurfaceTypes";
+import type { BrowserSurfaceInventoryEntry } from "@cozea/app-contract/browserSurface";
 
 import {
   readActiveBrowserRecordingTargets,

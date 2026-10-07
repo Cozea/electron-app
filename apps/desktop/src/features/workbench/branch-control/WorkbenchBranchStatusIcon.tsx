@@ -60,7 +60,7 @@ export function resolveBranchIconPresentation(input: {
     }
     return {
       icon: GitPullRequestIcon,
-      colorClassName: "text-emerald-500 dark:text-emerald-400",
+      colorClassName: "text-success",
       label: `Open PR #${number}${titleSuffix}`,
       kind: "pr-open" as const,
     }

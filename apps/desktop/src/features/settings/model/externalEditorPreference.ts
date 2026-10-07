@@ -1,4 +1,4 @@
-import type { AvailableExternalEditor, ExternalEditorId } from '@shared/electronApiTypes'
+import type { AvailableExternalEditor, ExternalEditorId } from '@cozea/app-contract/electronApi'
 
 import { resolveProjectSourcePath } from '@/features/projects/lib/projectSourcePath'
 

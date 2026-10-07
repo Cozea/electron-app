@@ -20,6 +20,8 @@ interface UseProjectChromeHeaderArgs {
   activeBranch?: string | null;
   /** Current route project for the changes/share/inbox strip. */
   projectId: Id<"projects"> | null;
+  /** Stable device-local identity for changes, titles and navigation. */
+  localProjectId?: string | null;
   projectName: string | null;
   /** Local path for Open-in-editor; same source the workbench uses */
   editorProjectPath: string | null;
@@ -42,6 +44,7 @@ export function useProjectChromeHeader({
   sessions,
   activeBranch,
   projectId,
+  localProjectId = projectId,
   projectName,
   editorProjectPath,
   onlinePrincipalIds,
@@ -66,7 +69,7 @@ export function useProjectChromeHeader({
       <WorkbenchHeaderTitle
         projectName={projectName}
         hasActiveLiveSession={hasActiveLiveSession}
-        hasProjectRecord={Boolean(projectId)}
+        hasProjectRecord={Boolean(localProjectId)}
       />
     ) : undefined;
     const headerResolved = headerFromPage ?? defaultWorkbenchHeader;
@@ -88,6 +91,7 @@ export function useProjectChromeHeader({
       contentInsetRight: insetRight,
       projectInviteContext: isSettingsModeRoute ? undefined : {
         projectId,
+        localProjectId,
         projectName,
       },
       editorProjectPath: isSettingsModeRoute ? null : editorProjectPath,
@@ -110,6 +114,7 @@ export function useProjectChromeHeader({
     activeBranch,
     onlinePrincipalIds,
     projectId,
+    localProjectId,
     projectName,
   ]);
 }

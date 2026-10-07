@@ -1,6 +1,6 @@
 # Device Identity
 
-Last reviewed: 2026-09-06
+Last reviewed: 2026-10-01
 
 ## Product model
 
@@ -40,9 +40,11 @@ The collaboration session endpoint requires the device bearer, derives the canon
 
 ## Presentation and avatars
 
-A freshly registered principal has explicit presentation lifecycle state. First-run onboarding asks for a required device display name and an optional avatar; there is no account creation form.
+A local installation has presentation independent of cloud enrollment. First-run onboarding saves a required device display name and optional avatar through main-owned local bootstrap IPC. The shell uses the actual installation key and does not require a cached cloud principal or reachable issuer. An older session can seed presentation only after its identity matches that key. See [offline desktop shell](offline-desktop-shell.md) for storage, availability and qualification boundaries.
 
-Avatar bytes are optimized in the desktop and uploaded through an authenticated Convex action. The server validates the bounded WebP payload, owns the storage write, records the resulting storage object on the authenticated principal, and cleans up superseded objects. A caller cannot claim an arbitrary pre-existing storage object as its avatar.
+Fresh devices enroll only through an explicit cloud connection action. Previously enrolled devices may revalidate in the background after local readiness. Local profile edits currently remain local; shared presentation synchronization is pending the project-system cloud-association phase. The cloud principal still has an explicit independent presentation lifecycle state.
+
+The retained cloud avatar API uploads optimized bytes through an authenticated Convex action. The server validates the bounded WebP payload, owns the storage write, records the resulting storage object on the authenticated principal, and cleans up superseded objects. A caller cannot claim an arbitrary pre-existing storage object as its avatar. Ordinary onboarding/device settings now persist optimized presentation locally and do not invoke this API.
 
 ## Device groups
 
@@ -54,7 +56,7 @@ Removing a member removes project authorization, revokes that principal's wrappe
 
 - A trusted active admin can enroll a replacement device by its new `czd_…` identity.
 - Group recovery creates a bounded one-time recovery credential without cloning a lost device's identity or keys.
-- Resetting local identity globally self-revokes the old principal, increments its signing-key version, deletes local private keys, and creates a fresh `czd_…` identity after reload.
+- Reset with retained matching cloud enrollment presentation first authenticates and globally self-revokes the old principal, increments its signing-key version, deletes local private keys, and creates a fresh `czd_…` identity after reload. Without retained enrollment state it deletes local keys; fresh unenrolled installations have no cloud principal to revoke. Cloud revocation failure preserves the known enrolled local identity. Lost/corrupt enrollment-cache recovery still needs native qualification.
 - The new principal does not inherit the old principal's project/group membership or wrapped room keys.
 - Security-sensitive challenge, enrollment, recovery, and revocation events are recorded without private key material or raw recovery credentials.
 
@@ -81,5 +83,7 @@ Deploy the worker first so JWKS is reachable, then use `bunx convex deploy`. Nev
 ## Convex authorization boundary
 
 Authenticated public Convex functions derive the acting device principal from `ctx.auth`. Server-only gateway functions use the server-secret boundary. Project, organization, DevApp, presence, and collaboration APIs use `principalId` for internal relationships and `identityKey` only where the public cryptographic identity is required. Presentation fields are never authority.
+
+Project list/summary/slug/create endpoints accept an optional historical caller `principalId`, but `requireAuthenticatedCaller` checks it against the verified device and returns the actual caller. Project management handlers apply the same check before using the derived principal for access. This caller check is distinct from a legitimate target member ID; it does not prohibit authorized member-management operations. Behavioral fixtures in `tests/identity/projectCallerAuthority.test.ts` cover mismatch, anonymous access, valid self-scoped actions and ownership on idempotent create.
 
 Regression tests enforce the account-free schema, alias-free transport, direct-principal membership, immutable signing/ECDH binding, server-owned avatar storage, and authenticated endpoint boundary.

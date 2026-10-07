@@ -1,8 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Spinner } from "@/components/ui/spinner"
+import { appToast } from "@/lib/appToast"
 import { cleanConvexError } from "@/lib/convexError"
 import { useNavigateTo, useViewTransitionNavigate } from '@/lib/navigation'
 import { useSearchParams } from '@/lib/router'
-import { useMutation, useQuery } from 'convex/react'
+import { useMutation, useQuery } from '@/lib/cloudQueries'
 import { api } from '../../../../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useProjectTeam } from '@/hooks/useProjectTeam'
@@ -11,9 +13,6 @@ import { SessionRecoveryPanel } from '@/features/settings/ui/SessionRecoveryPane
 import { useTranslation } from '@/lib/i18n'
 import { featureFlags } from '@/lib/featureFlags'
 import { useAccessibleProject } from '@/contexts/project/useAccessibleProject'
-import { confirmProjectDeletion, type ProjectDeleteConfirmOptions } from '@/features/projects/ui/ProjectDeleteDialog'
-import { cleanupDeletedProjectLocally } from '@/features/projects/lib/projectLocalCleanup'
-import { detachDeletedProjectFromUi } from '@/features/projects/lib/detachDeletedProjectFromUi'
 import { formatProjectDeleteError } from '@/features/projects/lib/projectMutationPresentation'
 import { withProjectMutationTimeout } from '@/features/projects/lib/projectMutationTimeout'
 import { PublishedDevAppIcon } from '@/features/devapps/components/PublishedDevAppIcon'
@@ -22,6 +21,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   SettingsGroup,
+  SettingsDangerButton,
   SettingsDangerGroup,
   SettingsRow,
   SettingsRowLabel,
@@ -33,12 +33,12 @@ import {
 } from '@/features/settings/ui/SettingsChrome'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { LocalProjectSettings } from '@/features/settings/ui/LocalProjectSettings'
 
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Alert01Icon as __AlertTriangleHugeIcon,
   Bookmark01Icon as __SaveHugeIcon,
-  Cancel01Icon as __XHugeIcon,
   Delete02Icon as __Trash2HugeIcon,
   Edit01Icon as __EditHugeIcon,
 } from '@hugeicons/core-free-icons'
@@ -52,6 +52,21 @@ const LazyProjectDevAppLogoDialog = lazy(() =>
 /** The project's settings page, at /projects/p/:projectId/settings. */
 
 export function ProjectSettingsPage() {
+  const [searchParams] = useSearchParams()
+  const { localProject, project, catalogReady } = useAccessibleProject()
+  if (localProject && searchParams.get('section') !== 'shared') {
+    return <LocalProjectSettings project={localProject} sharedAvailable={Boolean(project)} />
+  }
+  if (localProject && !project) {
+    return <LocalProjectSettings project={localProject} sharedAvailable={false} />
+  }
+  if (!catalogReady && !project) {
+    return <div className="p-8 text-sm text-muted-foreground">Loading local project…</div>
+  }
+  return <SharedProjectSettingsPage />
+}
+
+function SharedProjectSettingsPage() {
   const navigate = useViewTransitionNavigate()
   const navigateTo = useNavigateTo()
   const [searchParams] = useSearchParams()
@@ -161,22 +176,19 @@ export function ProjectSettingsPage() {
       navigateTo({ to: "projects" })
     } catch (error) {
       const message = cleanConvexError(error, t('settings.error.archiveFailed'))
-      await window.electronAPI.dialog.showMessageBox({
-        type: 'error',
+      appToast.error({
         title: t('settings.error.archiveFailed'),
-        message: t('settings.error.archiveFailed'),
-        detail: message,
+        description: message,
       })
     } finally {
       setIsArchiving(false)
     }
   }, [archiveProject, principalId, navigate, project, t])
 
-  const handleDelete = useCallback(async ({ keepLocalFiles }: ProjectDeleteConfirmOptions) => {
+  const handleDelete = useCallback(async () => {
     if (!project || !principalId) return
 
     setIsDeleting(true)
-    const deletedProjectId = String(project._id)
     try {
       await withProjectMutationTimeout(
         removeProject({
@@ -188,23 +200,14 @@ export function ProjectSettingsPage() {
         'Deleting this project is taking longer than expected. Check your connection and try again.',
       )
 
-      detachDeletedProjectFromUi(deletedProjectId)
-      navigateTo({ to: "projects" }, { replace: true })
-
-      await cleanupDeletedProjectLocally(deletedProjectId, {
-        keepLocalFiles,
-        projectSlug: project.slug,
-      })
     } catch (error) {
       const presentation = formatProjectDeleteError(error)
       const message = presentation.detail
         ? `${presentation.message} ${presentation.detail}`
         : presentation.message
-      await window.electronAPI.dialog.showMessageBox({
-        type: 'error',
-        title: 'Delete Failed',
-        message: 'Failed to delete project',
-        detail: message,
+      appToast.error({
+        title: 'Failed to delete project',
+        description: message,
       })
     } finally {
       setIsDeleting(false)
@@ -216,20 +219,16 @@ export function ProjectSettingsPage() {
   const dangerSectionRef = useRef<HTMLElement | null>(null)
   const projectLoaded = Boolean(project)
   useEffect(() => {
-    if (!projectLoaded) return
-    const target = requestedSection === 'danger' ? dangerSectionRef.current : generalSectionRef.current
-    target?.scrollIntoView({ block: 'start' })
+    // Only a requested section scrolls. General is the top of the page, and
+    // scrolling to it pushed the page title out of view on every open.
+    if (!projectLoaded || requestedSection !== 'danger') return
+    dangerSectionRef.current?.scrollIntoView({ block: 'start' })
   }, [projectLoaded, requestedSection])
-
-  function closeSettings(): void {
-    if (project) navigateTo({ to: 'workbench', projectId: String(project._id) })
-    else navigateTo({ to: 'projects' })
-  }
 
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <div className="loader mr-2" />
+        <Spinner size="xs" className="mr-2" />
         {t('settings.loading')}
       </div>
     )
@@ -248,21 +247,12 @@ export function ProjectSettingsPage() {
       <div
         className="relative flex h-full w-full flex-col overflow-hidden bg-background"
       >
-        <button
-          type="button"
-          onClick={closeSettings}
-          className="absolute right-3 top-3 z-20 inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground/70 transition-colors hover:bg-muted/80 hover:text-foreground"
-          aria-label={t('settings.action.close')}
-        >
-          <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-        </button>
-
         <div className="flex-1 min-h-0">
           <ScrollArea className="scroll-fade-y h-full">
             <div className="w-full min-h-full px-8 sm:px-10 pt-6 pb-12 mx-auto max-w-4xl">
               <div className="mb-6 flex items-start justify-between gap-4">
                 <SettingsPageHeader
-                  title={project.name}
+                  title={`Shared project: ${project.name}`}
                   className="mb-0 min-w-0 flex-1"
                 />
                 <Button
@@ -275,7 +265,7 @@ export function ProjectSettingsPage() {
                   disabled={!canSave}
                 >
                   {isSaving ? (
-                    <div className="loader" />
+                    <Spinner size="xs" />
                   ) : (
                     <HugeiconsIcon icon={__SaveHugeIcon} className="h-3.5 w-3.5" />
                   )}
@@ -287,7 +277,7 @@ export function ProjectSettingsPage() {
                   <SettingsSectionTitle>{t('settings.section.general')}</SettingsSectionTitle>
                   <SettingsGroup>
                     <SettingsRow isFirst>
-                      <SettingsRowLabel title={t('settings.label.projectName')} htmlFor="name" />
+                      <SettingsRowLabel title="Shared project name" description="Changes the name shown to collaborators." htmlFor="name" />
                       <SettingsRowControl>
                         <Input
                           id="name"
@@ -321,7 +311,7 @@ export function ProjectSettingsPage() {
                         htmlFor="slug"
                       />
                       <SettingsRowControl>
-                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none opacity-50 cursor-not-allowed text-right dark:border-none dark:bg-transparent" />
+                        <Input id="slug" value={project.slug || ''} disabled className="h-7 w-[180px] shrink-0 border-0 border-none bg-transparent px-0 text-xs font-normal text-foreground shadow-none opacity-50 cursor-not-allowed text-right dark:bg-transparent" />
                       </SettingsRowControl>
                     </SettingsRow>
                     {saveError ? (
@@ -395,7 +385,7 @@ export function ProjectSettingsPage() {
                               {orgDevApp.name}
                             </p>
                             {orgDevApp.version != null ? (
-                              <span className="shrink-0 rounded-md bg-background/70 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground">
+                              <span className="shrink-0 rounded-md bg-background/70 px-1.5 py-0.5 text-2xs font-medium tabular-nums text-muted-foreground">
                                 V{orgDevApp.version}
                               </span>
                             ) : null}
@@ -431,20 +421,19 @@ export function ProjectSettingsPage() {
                   <SettingsDangerGroup>
                     <SettingsRow isFirst>
                       <SettingsRowLabel
-                        title={t('settings.label.archiveProject')}
-                        description={t('settings.desc.archiveProject')}
+                        title="Archive Shared Project"
+                        description="Changes shared availability for all collaborators."
                       />
                       <SettingsRowControl>
-                        <Button
-                          variant="outline"
-                          className="h-7 text-xs text-orange-500 hover:text-orange-600 bg-background/50 border-destructive/20"
+                        <SettingsDangerButton
+                          tone="reversible"
                           disabled={!principalId || !isManager || project.status === 'archived' || isArchiving}
                           onClick={async () => {
                             const result = await window.electronAPI.dialog.showMessageBox({
                               type: 'warning',
-                              title: t('settings.dialog.archive.title'),
-                              message: `${t('settings.dialog.archive.title')}?`,
-                              detail: t('settings.dialog.archive.desc'),
+                              title: "Archive Shared Project",
+                              message: `Archive the shared project “${project.name}”?`,
+                              detail: "Collaborators see the archived project. Local visibility on this device is independent.",
                               buttons: [t('settings.dialog.archive.action'), t('settings.action.cancel')],
                               defaultId: 0,
                               cancelId: 1,
@@ -456,32 +445,30 @@ export function ProjectSettingsPage() {
                           }}
                         >
                           {project.status === 'archived' ? t('settings.action.archived') : t('settings.action.archive')}
-                        </Button>
+                        </SettingsDangerButton>
                       </SettingsRowControl>
                     </SettingsRow>
                     <SettingsRow>
                       <SettingsRowLabel
-                        title={t('settings.label.deleteProject')}
-                        description={t('settings.desc.deleteProject')}
+                        title="Delete Shared Project"
+                        description="Removes cloud data and collaborator access. The local project stays on this device."
                       />
                       <SettingsRowControl>
-                        <Button
-                          variant="destructive"
+                        <SettingsDangerButton
+                          tone="irreversible"
                           disabled={!principalId || isDeleting}
-                          className="h-7 text-xs"
                           onClick={async () => {
-                            const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
-                              projectId: String(project._id),
-                              projectName: project.name,
+                            const confirmation = await window.electronAPI.dialog.showMessageBox({
+                              type: "warning", title: "Delete Shared Project",
+                              message: `Delete the shared project “${project.name}”?`,
+                              detail: "This removes cloud data and access for all collaborators. Local folders and workbenches stay on this device.",
+                              buttons: ["Cancel", "Delete Shared Project"], defaultId: 0, cancelId: 0,
                             })
-                            if (confirmed) {
-                              void handleDelete({ keepLocalFiles })
-                            }
+                            if (confirmation.response === 1) void handleDelete()
                           }}
                         >
-                          <HugeiconsIcon icon={__Trash2HugeIcon} className="mr-1.5 h-4 w-4" />
-                          {isDeleting ? 'Deleting...' : t('settings.action.delete')}
-                        </Button>
+                          {isDeleting ? 'Deleting...' : 'Delete Shared Project'}
+                        </SettingsDangerButton>
                       </SettingsRowControl>
                     </SettingsRow>
                   </SettingsDangerGroup>

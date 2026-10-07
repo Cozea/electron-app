@@ -4,12 +4,12 @@ import { lazy, Suspense, type ReactNode, useCallback, useEffect, useMemo, useSta
 import { useLocation, useParams } from "@/lib/router";
 import { RetainedPageOutlet } from "@/app/navigation/RetainedPageOutlet";
 import { useNavigateTo, useViewTransitionNavigate } from "@/lib/navigation";
-import { useQuery } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { useCachedQuery } from "@/app/model/queryCache";
+import { useProjectRouteData } from "@/contexts/project/useProjectRouteData";
 import { ProjectSidebar } from "@/features/projects/ui/ProjectSidebar";
 import { AppSidebarShell } from "@/app/shell/sidebar/AppSidebarShell";
+import { RegionErrorBoundary } from "@/components/RegionErrorBoundary";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { UnifiedHeader } from "@/features/projects/layouts/UnifiedHeader";
 import { TerminalEventBridge } from "@/features/terminal/TerminalEventBridge";
@@ -17,7 +17,7 @@ import { usePageContextStore } from "@/features/browser/model/pageContextStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { ProjectSyncProvider } from "@/contexts/project/ProjectSyncContext";
-import { useProjectPresence } from "@/hooks/useProjectPresence";
+import { useProjectPresence, useProjectPresencePublisher } from "@/hooks/useProjectPresence";
 import type { PresenceUser } from "@/hooks/useProjectPresence";
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery";
 import { resolveCollaborationGate } from "@/features/collaboration/collaborationGate";
@@ -43,7 +43,9 @@ import {
   ProjectRouteContext,
   type ProjectRouteSlugResolutionResult,
 } from "@/contexts/project/ProjectRouteContext";
-import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
+import { LOCAL_PROJECT_ID_PREFIX } from "@shared/localProjectTypes";
+import { canonicalLocalProjectRoute } from "@/contexts/project/canonicalLocalProjectRoute";
+import { ProjectRouteChooser } from "@/features/projects/ui/ProjectRouteChooser";
 import { buildBranchSessionLaneId } from "@/features/source-control/model/projectBranchSessionStore";
 import {
   FALLBACK_SHARED_BRANCH,
@@ -55,6 +57,8 @@ import type { WorkspaceResolutionAction } from "@shared/workspaceTypes";
 import { saveLastAppRoute } from "@/lib/settings/settingsReturnRoute";
 import { WorkbenchCommandPaletteHost } from "@/features/workbench/command-palette/WorkbenchCommandPaletteHost";
 import { SettingsSidebar } from "@/features/settings/ui/SettingsSidebar";
+import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjectWorkspaceActions";
+import { LocalProjectRecoveryPanel } from "@/features/projects/ui/LocalProjectRecoveryPanel";
 
 const LazyPresenceAvatarGroup = lazy(() =>
   import("@/components/presence/PresenceAvatarGroup").then((module) => ({
@@ -90,34 +94,22 @@ interface ProjectLayoutLocationState {
  */
 function ProjectPresenceHeaderAddon({
   projectId,
+  localProjectId,
   principalId,
-  isWorkbenchView,
 }: {
   projectId: Id<"projects"> | null;
+  localProjectId: string | null;
   principalId: Id<"devicePrincipals"> | null;
-  isWorkbenchView: boolean;
 }) {
   const navigateTo = useNavigateTo();
-  const presenceActiveFile = usePageContextStore((state) =>
-    isWorkbenchView ? (state.currentPage?.filePath ?? null) : null,
-  );
-  const presenceActiveRoute = usePageContextStore((state) =>
-    isWorkbenchView ? (state.currentPage?.route ?? null) : null,
-  );
-
-  const { otherUsers: presenceUsers } = useProjectPresence({
-    projectId,
-    principalId: principalId,
-    activeFile: presenceActiveFile,
-    activeRoute: presenceActiveRoute,
-  });
+  const { otherUsers: presenceUsers } = useProjectPresence({ projectId, principalId });
 
   const handlePresenceUserClick = useCallback(
     (_presenceUser: PresenceUser) => {
-      if (!projectId) return;
-      navigateTo({ to: "workbench", projectId: String(projectId), changes: true });
+      if (!localProjectId) return;
+      navigateTo({ to: "workbench", projectId: localProjectId, changes: true });
     },
-    [navigateTo, projectId],
+    [navigateTo, localProjectId],
   );
 
   if (presenceUsers.length === 0) {
@@ -139,7 +131,7 @@ export function ProjectLayout({
   children, // NOTE: Router uses Outlet, but we keep children in case used as wrapper
 }: ProjectLayoutProps) {
   const { t } = useTranslation();
-  const { principalId, isConvexAuthReady, user } = useAuth();
+  const { principalId, isConvexAuthReady, localDevice: user } = useAuth();
   // Narrow location subscriptions: subscribing to the whole location object
   // re-renders this layout (and everything under it) on every navigation,
   // including no-op clicks to the current URL.
@@ -162,32 +154,21 @@ export function ProjectLayout({
   const navigateTo = useNavigateTo();
   const { slug: routeSlug, projectId: routeProjectId } = useParams();
 
-  // Get project data (with caching)
-  const freshProjectById = useQuery(
-    api.projects.getAccessibleById,
-    routeProjectId && principalId
-      ? { projectId: routeProjectId as Id<"projects"> }
-      : "skip",
-  );
-  const freshProjectBySlug = useQuery(
-    api.projects.getAccessibleBySlug,
-    !routeProjectId && routeSlug && principalId
-      ? {
-          slug: routeSlug,
-          principalId: principalId,
-        }
-      : "skip",
-  );
-  const freshProject = routeProjectId
-    ? freshProjectById
-    : freshProjectBySlug?.status === "ok"
-      ? freshProjectBySlug.project
-      : null;
-  const project = useCachedQuery(
-    layoutProjectQueryCacheKey(routeProjectId, routeSlug),
-    freshProject,
-  );
-  const projectSlug = project?.slug ?? routeSlug ?? null;
+  const routeData = useProjectRouteData(routeProjectId, routeSlug);
+  const { project, localProject, cloudProjectId, freshProject, slugResolution: freshProjectBySlug } = routeData;
+  const projectSlug = routeData.projectSlug;
+  const routeCandidates = routeData.localSlugAmbiguous ? routeData.localSlugCandidates
+    : freshProjectBySlug?.status === "ambiguous" ? freshProjectBySlug.candidates : null;
+  const needsCanonicalLocalRoute = Boolean(localProject && routeProjectId !== localProject.projectId);
+  const canonicalRouteState = useLocation({
+    select: (location) => needsCanonicalLocalRoute ? location.state : null,
+  });
+  useEffect(() => {
+    if (!needsCanonicalLocalRoute) return;
+    const canonical = canonicalLocalProjectRoute({ href: currentHref, routeProjectId, routeSlug,
+      localProjectId: localProject?.projectId ?? null, state: canonicalRouteState });
+    if (canonical) void navigate(canonical.href, { replace: true, state: canonical.state });
+  }, [needsCanonicalLocalRoute, currentHref, routeProjectId, routeSlug, localProject?.projectId, canonicalRouteState, navigate]);
   const trustedNavigationState = useMemo(
     () =>
       resolveTrustedProjectRouteNavigationState({
@@ -199,34 +180,30 @@ export function ProjectLayout({
         },
         routeProjectId: routeProjectId ?? null,
         routeProjectSlug: routeSlug ?? null,
-        resolvedProjectId: project?._id ? String(project._id) : null,
-        resolvedProjectSlug: project?.slug ?? null,
+        resolvedProjectId: routeData.localProjectId,
+        resolvedProjectSlug: projectSlug,
       }),
     [
       stateProjectId,
       stateProjectSlug,
       stateProjectName,
       statePreferredWorkspaceId,
-      project?._id,
-      project?.slug,
+      routeData.localProjectId,
+      projectSlug,
       routeProjectId,
       routeSlug,
     ],
   );
-  const effectiveProjectName = project?.name ?? trustedNavigationState?.projectName ?? null;
-  const projectBasePath = routeProjectId
-    ? buildProjectPath(routeProjectId)
-    : project?._id
-      ? buildProjectPath(String(project._id))
+  const effectiveProjectName = routeData.projectName ?? trustedNavigationState?.projectName ?? null;
+  const projectBasePath = routeData.localProjectId
+    ? buildProjectPath(routeData.localProjectId)
       : projectSlug
         ? buildLegacyProjectPath(projectSlug)
         : null;
 
-  // Local workspace identity is safe to resolve from the stable route project
-  // id before Convex has returned the project entity. This lets a returning
-  // user reconnect to their local workbench while offline. Cloud authority is
-  // still gated below on the authoritative `project?._id` value.
-  const workspaceProjectId = project?._id ? String(project._id) : routeProjectId ?? null;
+  // Resolve execution ownership from local records before optional cloud metadata.
+  // Shared calls use the separate association and verified cloud readiness.
+  const workspaceProjectId = routeData.executionProjectId;
   const { result: rawWorkspaceResolution, refresh: refreshWorkspace } = useProjectWorkspaceResolution(
     featureFlags.localWorkspaceCatalog ? workspaceProjectId : null,
     projectSlug,
@@ -326,9 +303,9 @@ export function ProjectLayout({
   // shared branch keeps collaborating without one. See resolveCollaborationGate.
   const collaborationSessionsQuery = useSafeConvexQuery(
     api.collaborationSessions.listByProject,
-    project?._id && isConvexAuthReady ? { projectId: project._id } : "skip",
+    cloudProjectId && isConvexAuthReady ? { projectId: cloudProjectId } : "skip",
   );
-  const effectiveProjectId = project?._id ? String(project._id) : workspaceProjectId;
+  const effectiveProjectId = workspaceProjectId;
   const cachedSessions = useMemo(() => {
     if (collaborationSessionsQuery.data !== undefined) return undefined;
     return readCachedProjectSessions(effectiveProjectId);
@@ -344,9 +321,12 @@ export function ProjectLayout({
   // The daemon syncs this folder with the branch's live session while this device
   // is in it; the in-app engine leaves session branches alone.
   const liveSession = useLiveSession({
-    enabled: Boolean(effectiveProjectId),
+    // Separate daemon local/cloud descriptors are completed with shared promotion.
+    // Existing session bindings retain their historical equal-ID ownership.
+    enabled: Boolean(effectiveProjectId && cloudProjectId && effectiveProjectId === String(cloudProjectId)),
     sessions: effectiveSessions,
     projectId: effectiveProjectId,
+    cloudProjectId,
     workspaceId: runtimeWorkspaceId,
     rootPath: activeProjectRootPath,
     principalId: principalId ? String(principalId) : null,
@@ -356,7 +336,7 @@ export function ProjectLayout({
   const collaborationEnabled =
     shouldEnableProjectRuntime &&
     Boolean(runtimeWorkspaceId) &&
-    Boolean(project?._id) &&
+    Boolean(cloudProjectId) &&
     collaborationGate.enabled;
   const documentScopeId = useMemo(() => {
     if (!routeProjectIdentity) {
@@ -385,9 +365,17 @@ export function ProjectLayout({
   // Runtime readiness alone is not enough: it only means a workspace is mounted,
   // which happens well before the device token is re-established on the
   // shell-first bootstrap path. Presence queries the cloud, so it waits for auth.
-  const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime && isConvexAuthReady;
+  const presenceGateOpen = runtimeEffectsReady && shouldEnableProjectRuntime && isConvexAuthReady && liveSession.membership === "active";
+  const presenceActiveFile = usePageContextStore((state) => isWorkbenchView ? state.currentPage?.filePath ?? null : null);
+  const presenceActiveRoute = usePageContextStore((state) => isWorkbenchView ? state.currentPage?.route ?? null : null);
+  useProjectPresencePublisher({
+    projectId: presenceGateOpen ? cloudProjectId : null,
+    principalId: presenceGateOpen ? principalId ?? null : null,
+    activeFile: presenceActiveFile,
+    activeRoute: presenceActiveRoute,
+  });
   const { otherUsers: presenceUsers } = useProjectPresence({
-    projectId: presenceGateOpen ? project?._id ?? null : null,
+    projectId: presenceGateOpen ? cloudProjectId : null,
     principalId: presenceGateOpen ? principalId ?? null : null,
   });
   // Keyed on who is online, not on the presence rows: every navigation sends a
@@ -404,14 +392,15 @@ export function ProjectLayout({
   const presenceHeaderAddon = useMemo(
     () => (
       <ProjectPresenceHeaderAddon
-        projectId={presenceGateOpen ? project?._id ?? null : null}
+        projectId={presenceGateOpen ? cloudProjectId : null}
+        localProjectId={workspaceProjectId}
         principalId={presenceGateOpen ? principalId ?? null : null}
-        isWorkbenchView={isWorkbenchView}
       />
     ),
     [
       presenceGateOpen,
-      project?._id,
+      cloudProjectId,
+      workspaceProjectId,
       principalId,
       isConvexAuthReady,
       shouldEnableProjectRuntime,
@@ -421,8 +410,8 @@ export function ProjectLayout({
   );
 
   const collaborationProjectId = useMemo((): Id<"projects"> | null => {
-    return project?._id ?? null;
-  }, [project?._id]);
+    return cloudProjectId;
+  }, [cloudProjectId]);
 
   useLiveSessionNotices(isSettingsModeRoute ? null : liveSession);
 
@@ -449,6 +438,7 @@ export function ProjectLayout({
     sessions: effectiveSessions,
     activeBranch,
     projectId: collaborationProjectId,
+    localProjectId: workspaceProjectId,
     projectName: effectiveProjectName,
     editorProjectPath: runtimeWorkspaceId ?? null,
     onlinePrincipalIds,
@@ -458,13 +448,15 @@ export function ProjectLayout({
   // the chrome inputs actually changed (chromeHeader is memoized upstream).
   const headerElement = useMemo(
     () => (
-      <UnifiedHeader
-        layoutMode="embedded"
-        leftWindowControlsInset
-        compactHeaderActions
-        className={isBuildsView ? "absolute top-0 left-0 right-0 z-40" : undefined}
-        {...chromeHeader}
-      />
+      <RegionErrorBoundary compact>
+        <UnifiedHeader
+          layoutMode="embedded"
+          leftWindowControlsInset
+          compactHeaderActions
+          className={isBuildsView ? "absolute top-0 left-0 right-0 z-40" : undefined}
+          {...chromeHeader}
+        />
+      </RegionErrorBoundary>
     ),
     [chromeHeader, isBuildsView],
   );
@@ -472,12 +464,13 @@ export function ProjectLayout({
   // The action the repair screen is carrying out, kept until the re-resolve
   // lands so the screen never snaps back to idle while it is still on screen.
   const [pendingRepairAction, setPendingRepairAction] = useState<WorkspaceResolutionAction | null>(null);
+  const { repairProjectWorkspace, relinkProjectWorkspace } = useProjectWorkspaceActions();
 
   const handleRepairAction = useCallback(
     async (action: WorkspaceResolutionAction) => {
       if (!workspaceProjectId) return;
       const projectId = workspaceProjectId;
-      const slug = project?.slug ?? routeSlug ?? projectId;
+      const slug = projectSlug ?? projectId;
       const repoIntegration = resolveProjectRepositoryIntegration(project as never);
       const repoUrl =
         repoIntegration.repoUrl ||
@@ -493,6 +486,15 @@ export function ProjectLayout({
       // Locating starts with the OS folder picker; the work begins once a folder is chosen.
       if (action.kind !== "locate") setPendingRepairAction(action);
       try {
+        if (localProject && (action.kind === "locate" || action.kind === "bind-candidate")) {
+          const workspaceId = workspaceResolution && "workspace" in workspaceResolution
+            ? workspaceResolution.workspace?.workspaceId ?? null : null;
+          const target = { id: localProject.projectId, _id: localProject.cloudProjectId, name: localProject.name, slug: localProject.slug };
+          if (action.kind === "locate") await relinkProjectWorkspace(target, workspaceId);
+          else await repairProjectWorkspace(target, workspaceId, action.folderPath);
+          await refreshWorkspace();
+          return;
+        }
         switch (action.kind) {
           case "locate": {
             const folderPath = await window.desktopBridge?.pickFolder();
@@ -587,7 +589,7 @@ export function ProjectLayout({
         setPendingRepairAction(null);
       }
     },
-    [project, refreshWorkspace, routeSlug, t, workspaceProjectId],
+    [project, projectSlug, refreshWorkspace, t, workspaceProjectId, localProject, workspaceResolution, repairProjectWorkspace, relinkProjectWorkspace],
   );
 
   // The layout re-renders on every navigation because it reads the pathname.
@@ -595,15 +597,17 @@ export function ProjectLayout({
   // palette each track the route they need themselves, so they are held as
   // stable elements and re-render only when their own inputs change; otherwise
   // every page switch re-rendered the whole shell, hidden workbench included.
-  const projectIdForSidebar = project?._id ?? null;
+  const projectIdForSidebar = workspaceProjectId;
   const sidebarElement = useMemo(
     () => (
       <AppSidebarShell>
-        {isSettingsModeRoute ? (
-          <SettingsSidebar user={user} />
-        ) : (
-          <ProjectSidebar user={user} projectId={projectIdForSidebar} />
-        )}
+        <RegionErrorBoundary compact>
+          {isSettingsModeRoute ? (
+            <SettingsSidebar user={user} />
+          ) : (
+            <ProjectSidebar user={user} projectId={projectIdForSidebar} />
+          )}
+        </RegionErrorBoundary>
       </AppSidebarShell>
     ),
     [isSettingsModeRoute, projectIdForSidebar, user],
@@ -613,9 +617,11 @@ export function ProjectLayout({
   const workbenchElement = useMemo(
     () =>
       hasVisitedWorkbench ? (
-        <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
-          <LazyProjectWorkbenchSurface visible={workbenchVisible} />
-        </Suspense>
+        <RegionErrorBoundary>
+          <Suspense fallback={isWorkbenchView ? <SidebarModeFallback /> : null}>
+            <LazyProjectWorkbenchSurface visible={workbenchVisible} />
+          </Suspense>
+        </RegionErrorBoundary>
       ) : null,
     [hasVisitedWorkbench, isWorkbenchView, workbenchVisible],
   );
@@ -677,9 +683,10 @@ export function ProjectLayout({
                 )}
               >
                 {workbenchElement}
-                {featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
+                {routeCandidates ? <ProjectRouteChooser candidates={routeCandidates} /> : isWorkbenchView && featureFlags.localWorkspaceCatalog && workspaceProjectId && workspaceResolution && workspaceResolution.status !== "ready" ? (
+                  <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto p-4">
                   <WorkspaceRepairScreen
-                    result={workspaceResolution}
+                    result={localProject ? { ...workspaceResolution, actions: workspaceResolution.actions.filter((action) => action.kind === "locate" || action.kind === "bind-candidate") } : workspaceResolution}
                     project={{
                       _id: workspaceProjectId,
                       slug: projectSlug,
@@ -688,12 +695,14 @@ export function ProjectLayout({
                     onAction={handleRepairAction}
                     pendingAction={pendingRepairAction}
                   />
+                  <LocalProjectRecoveryPanel projectId={workspaceProjectId} />
+                  </div>
                 ) : (
                   <>
                     {outletElement}
                     {featureFlags.localWorkspaceCatalog && workspaceProjectId && !workspaceResolution ? (
                       <div
-                        className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur-sm"
+                        className="pointer-events-none absolute right-3 top-3 rounded-md bg-background/80 px-2 py-1 text-caption text-muted-foreground backdrop-blur-sm"
                         role="status"
                         aria-live="polite"
                         data-workspace-resolution="refreshing"
@@ -725,6 +734,11 @@ export function ProjectLayout({
   const projectRouteContextValue = useMemo(
     () => ({
       project,
+      localProject,
+      localProjectId: routeData.localProjectId,
+      cloudProjectId,
+      catalogReady: routeData.catalogReady,
+      cloudError: routeData.cloudError,
       projectIdParam: routeProjectId ?? null,
       slugParam: routeSlug ?? null,
       slugResolution: (!routeProjectId ? freshProjectBySlug : undefined) as
@@ -758,6 +772,11 @@ export function ProjectLayout({
       liveSession.session,
       liveSession.sync,
       project,
+      localProject,
+      routeData.localProjectId,
+      routeData.catalogReady,
+      routeData.cloudError,
+      cloudProjectId,
       projectBasePath,
       refreshLaneState,
       routeProjectId,
@@ -776,14 +795,14 @@ export function ProjectLayout({
     }
     return {
       projectId: routeProjectIdentity,
-      projectSlug: project?.slug ?? routeSlug ?? routeProjectIdentity,
+      projectSlug: projectSlug ?? routeProjectIdentity,
       projectName: effectiveProjectName,
       workspace: workspaceResolution.workspace,
       lane: workspaceResolution.lane,
       runtime: workspaceResolution.runtimeIdentity,
       collaborationScopeId: workspaceResolution.collaborationScopeId,
     };
-  }, [effectiveProjectName, project?.slug, routeProjectIdentity, routeSlug, workspaceResolution]);
+  }, [effectiveProjectName, projectSlug, routeProjectIdentity, workspaceResolution]);
 
   // Only block on project loading when we're actually on a project-specific
   // route. Routes like /projects/ (launch page) have no routeProjectId or
@@ -792,7 +811,8 @@ export function ProjectLayout({
   // freshProject === undefined means Convex hasn't responded yet (still loading).
   // freshProject === null means Convex responded: project not found / deleted.
   const projectDefinitelyMissing =
-    isProjectRoute && !project && freshProject === null;
+    isProjectRoute && !localProject && workspaceResolution?.status !== "ready" && routeData.catalogReady &&
+    ((freshProject === null && !project) || Boolean(routeProjectId?.startsWith(LOCAL_PROJECT_ID_PREFIX) && !workspaceProjectId));
 
   // IMPORTANT: never call navigate() during render. Doing so retriggers the
   // router synchronously (render -> navigate -> render) and can pin the main
@@ -801,7 +821,7 @@ export function ProjectLayout({
     if (projectDefinitelyMissing) {
       navigateTo({ to: "projects" }, { replace: true });
     }
-  }, [navigate, projectDefinitelyMissing]);
+  }, [navigateTo, projectDefinitelyMissing]);
 
   if (projectDefinitelyMissing) {
     return null;
@@ -813,7 +833,9 @@ export function ProjectLayout({
         <ProjectSyncProvider
           workspaceId={activeWorkspaceValue ? activeWorkspaceId : null}
           workspaceRevision={activeWorkspaceValue?.workspace.workspaceRevision ?? 1}
-          projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}
+          projectId={shouldEnableProjectRuntime ? workspaceProjectId : null}
+          cloudProjectId={cloudProjectId}
+          cloudActivityEnabled={Boolean(isConvexAuthReady && liveSession.session && liveSession.membership === "active")}
           principalId={shouldEnableProjectRuntime ? principalId ?? null : null}
           displayName={user?.displayName ?? "This device"}
           laneId={activeLane?.id ?? laneState?.activeLaneId ?? laneState?.collabLaneId ?? null}

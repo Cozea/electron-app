@@ -473,10 +473,10 @@ function RunCard({ stamp, tone }: { stamp: string; tone: "started" | "skipped" }
         <span
           className={cn(
             "size-1.5 shrink-0 rounded-full",
-            tone === "started" ? "bg-emerald-500" : "bg-[var(--empty-folder-mark)]",
+            tone === "started" ? "bg-success" : "bg-[var(--empty-folder-mark)]",
           )}
         />
-        <span className="truncate font-mono text-[10px] text-muted-foreground">{stamp}</span>
+        <span className="truncate font-mono text-2xs text-muted-foreground">{stamp}</span>
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="h-1.5 w-full rounded-full bg-[var(--empty-folder-line)]" />

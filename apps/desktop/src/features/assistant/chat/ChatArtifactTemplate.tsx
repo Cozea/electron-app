@@ -1,4 +1,5 @@
 import { createContext, useContext, type ReactNode } from "react";
+import { useTranslation } from '@/lib/i18n'
 import {
   codexArtifactTemplatePresentationLabel,
   type CodexArtifactTemplate,
@@ -20,6 +21,7 @@ export function ChatArtifactTemplateProvider({
 }
 
 export function ChatArtifactTemplateCard({ template }: { template: CodexArtifactTemplate }) {
+  const { t } = useTranslation();
   const onUse = useContext(TemplateContext);
   return (
     <div
@@ -39,7 +41,7 @@ export function ChatArtifactTemplateCard({ template }: { template: CodexArtifact
           className="shrink-0 rounded-md px-2 py-1 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={() => onUse(template)}
         >
-          Use template
+          {t("assistant.useTemplate")}
         </button>
       ) : (
         <span className="text-xs text-muted-foreground">

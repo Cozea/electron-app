@@ -1,6 +1,7 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
+import { appToast } from "@/lib/appToast"
 import {
   Add01Icon as __Add01HugeIcon,
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
@@ -12,8 +13,7 @@ import {
 } from '@hugeicons/core-free-icons'
 
 import * as React from "react";
-import { useConvex, useMutation, useQuery } from "convex/react";
-import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { requireCloudClient, useConvex, useMutation, useQuery } from "@/lib/cloudQueries";
 import { api } from "../../../../../../convex/_generated/api";
 
 import { cleanConvexErrorMessage } from "@/lib/convexError"
@@ -42,14 +42,7 @@ import { useTranslation } from "@/lib/i18n";
 import { featureFlags } from "@/lib/featureFlags";
 import { NavUser } from "@/components/nav-user";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { UnifiedModal } from "@/components/ui/unified-modal";
 import { Progress } from "@/components/ui/progress";
 import { buildProjectPath } from "@/contexts/project/projectRoutes";
 import { buildWorkbenchIntentState } from "@/features/workbench/model/workbenchIntent";
@@ -72,6 +65,7 @@ import {
 import {
   areStringArraysEqual,
   buildOrderedProjects,
+  moveSidebarProject,
   readPersistedProjectSidebarState,
   type PersistedProjectSidebarState,
   writePersistedProjectSidebarState,
@@ -80,9 +74,6 @@ import {
   formatProjectDeleteError,
   formatProjectRenameError,
 } from "../lib/projectMutationPresentation";
-import { cleanupDeletedProjectLocally } from "@/features/projects/lib/projectLocalCleanup";
-import { detachDeletedProjectFromUi } from "@/features/projects/lib/detachDeletedProjectFromUi";
-import { confirmProjectDeletion } from "@/features/projects/ui/ProjectDeleteDialog";
 import { withProjectMutationTimeout } from "@/features/projects/lib/projectMutationTimeout";
 import {
   selectProjectWorkbench,
@@ -95,6 +86,16 @@ import { useProjectWorkspaceActions } from "@/features/workspace/hooks/useProjec
 import { openCommandPalette } from "@/features/workbench/command-palette/commandPaletteBus";
 import { GlideMenu } from "@/components/primitives/GlideMenu";
 import { prewarmDestination } from "@/app/navigation/destinations";
+import { useQueryCache } from "@/app/model/queryCache";
+import { requireLocalProjectsApi } from "@/features/projects/lib/localProjectsApi";
+import { layoutProjectQueryCacheKey } from "@/features/projects/lib/projectSwitchPrefetch";
+import type { Doc } from "../../../../../../convex/_generated/dataModel";
+import { useWorkspaceCatalogSnapshot } from "@/features/workspace/useWorkspaceCatalogSnapshot";
+import {
+  buildLocalSidebarProject,
+  discoverLocalProjects,
+  updateLocalProjectPresentation,
+} from "@/features/projects/lib/localProjectDiscovery";
 
 const LazyProjectRenameDialog = React.lazy(() =>
   import("./ProjectRenameDialog").then((module) => ({
@@ -118,7 +119,7 @@ interface ProjectSidebarProps {
     displayName?: string | null;
     avatarUrl?: string | null;
   } | null;
-  projectId?: Id<"projects"> | null;
+  projectId?: string | null;
   presenceUsers?: unknown[];
   presenceCount?: number;
 }
@@ -155,15 +156,19 @@ export function ProjectSidebar({
     select: (location) => new URLSearchParams(location.search).get("section"),
   });
   const { openProjectCreationMenu } = useProjectCreationMenu();
-  const { principalId } = useAuth();
+  const { principalId, isConvexAuthReady: isConvexReady } = useAuth();
   const convex = useConvex();
   const projectRouteContext = useOptionalProjectRouteContext();
-  const { project: currentProject, projectIdParam } = useAccessibleProject();
+  const { localProjectId, projectIdParam, project: currentSharedProject } = useAccessibleProject();
+  const catalogSnapshot = useWorkspaceCatalogSnapshot();
+  const localProjects = React.useMemo(() => discoverLocalProjects(catalogSnapshot), [catalogSnapshot]);
+  const cachedQueries = useQueryCache((state) => state.cache);
+  const [showHiddenProjects, setShowHiddenProjects] = React.useState(false);
   const projectSyncContext = useOptionalProjectSyncContext();
   const currentProjectId = providedProjectId
     ? String(providedProjectId)
-    : currentProject?._id
-      ? String(currentProject._id)
+    : localProjectId
+      ? localProjectId
       : projectIdParam;
   const { workspaceId: currentWorkspaceId } = useWorkspaceIdentity();
   const persistedSidebarState = React.useMemo(() => readPersistedProjectSidebarState(), []);
@@ -194,9 +199,6 @@ export function ProjectSidebar({
     React.useState<PendingProjectDevAppLogo | null>(null);
   const [projectPendingOrgAttach, setProjectPendingOrgAttach] =
     React.useState<PendingProjectOrgAttach | null>(null);
-  const updateProject = useMutation(api.projects.update);
-  const archiveProject = useMutation(api.projects.archive);
-  const restoreProject = useMutation(api.projects.restore);
   const deleteProject = useMutation(api.projects.deleteProject);
   const attachProjectToOrg = useMutation(api.organizations.attachProject);
   const createAndAttachProjectOrg = useMutation(api.organizations.createAndAttachProject);
@@ -205,19 +207,10 @@ export function ProjectSidebar({
     closeProjectWorkspace,
   } = useProjectWorkspaceActions();
 
-  // Slim projection: the sidebar re-renders on every list push, so it
-  // subscribes only to the fields it renders (no generatedPlan/buildContract).
-  const accessibleProjects = useQuery(
-    api.projects.listSummariesForCurrentUser,
-    principalId
-      ? {
-          principalId: principalId,
-        }
-      : "skip",
-  );
   const publisherStatus = useQuery(
     api.devApps.listPublisherStatus,
-    featureFlags.projectDevApps && principalId ? {} : "skip",
+    featureFlags.projectDevApps && principalId && isConvexReady &&
+      localProjects?.some((project) => project.cloudProjectId) ? {} : "skip",
   );
   const { totalCount: inboxCount } = useIncomingInvites();
   const projectDevAppStateByProjectId = React.useMemo(
@@ -229,7 +222,7 @@ export function ProjectSidebar({
   );
 
   const projectItems = React.useMemo<SidebarProjectItem[]>(() => {
-    const source = accessibleProjects;
+    const source = localProjects;
     if (!source) {
       return [];
     }
@@ -237,22 +230,10 @@ export function ProjectSidebar({
     const nextStableProjectMap = new Map<string, SidebarProjectItem>();
 
     const nextItems = source
-      .filter((project): project is NonNullable<typeof project> => Boolean(project))
       .map((project) => {
-        const nextProjectItem: SidebarProjectItem = {
-          _id: project._id,
-          id: String(project._id),
-          name: project.name,
-          status: project.status,
-          template: project.template ?? null,
-          slug: project.slug,
-          updatedAt: project.updatedAt,
-          createdBy: project.createdBy ?? null,
-          sourceControl: project.sourceControl ?? undefined,
-          gitRepository: project.gitRepository ?? undefined,
-          importedFrom: project.importedFrom ?? null,
-          organizationId: project.organizationId ?? null,
-        };
+        const cached = cachedQueries[layoutProjectQueryCacheKey(project.projectId, null)]?.data as Doc<"projects"> | undefined;
+        const projection = currentSharedProject?._id === project.cloudProjectId ? currentSharedProject : cached;
+        const nextProjectItem = buildLocalSidebarProject(project, projection);
 
         const previousProjectItem = stableProjectItemsRef.current.get(nextProjectItem.id);
         const stableProjectItem =
@@ -266,7 +247,7 @@ export function ProjectSidebar({
 
     stableProjectItemsRef.current = nextStableProjectMap;
     return nextItems;
-  }, [accessibleProjects]);
+  }, [localProjects, currentSharedProject, cachedQueries]);
 
   React.useEffect(() => {
     if (projectItems.length === 0) return;
@@ -279,8 +260,10 @@ export function ProjectSidebar({
   }, [projectItems, projectOrderIds]);
 
   const sortedProjects = React.useMemo(
-    () => buildOrderedProjects(projectItems, projectOrderIds),
-    [projectItems, projectOrderIds],
+    () => buildOrderedProjects(projectItems, projectOrderIds).filter(
+      (project) => showHiddenProjects || !project.hidden,
+    ),
+    [projectItems, projectOrderIds, showHiddenProjects],
   );
 
   React.useEffect(() => {
@@ -288,7 +271,7 @@ export function ProjectSidebar({
     // the projects query is still loading, projectItems is momentarily empty —
     // pruning then wiped (and persisted) the expansion list, which made the
     // sidebar auto-collapse everything on every launch.
-    if (accessibleProjects === undefined) {
+    if (localProjects === undefined) {
       return;
     }
     const nextProjectIdSet = new Set(projectItems.map((project) => project.id));
@@ -298,7 +281,7 @@ export function ProjectSidebar({
       return areStringArraysEqual(current, filtered) ? current : filtered;
     });
 
-  }, [accessibleProjects, projectItems]);
+  }, [localProjects, projectItems]);
 
   React.useEffect(() => {
     if (currentProjectId) {
@@ -317,8 +300,8 @@ export function ProjectSidebar({
   }, [expandedProjectIds, projectOrderIds]);
 
   const currentProjectItem = React.useMemo(
-    () => sortedProjects.find((project) => project.id === currentProjectId) ?? null,
-    [currentProjectId, sortedProjects],
+    () => projectItems.find((project) => project.id === currentProjectId) ?? null,
+    [currentProjectId, projectItems],
   );
   const currentCollabBranch = React.useMemo(
     () => (currentProjectItem ? resolveProjectCollabBranch(currentProjectItem) : null),
@@ -361,23 +344,11 @@ export function ProjectSidebar({
 
   const moveProject = React.useCallback(
     (projectId: string, direction: "up" | "down") => {
-      setProjectOrderIds((current) => {
-        const ensuredOrder = buildOrderedProjects(projectItems, current).map(
-          (project) => project.id,
-        );
-        const index = ensuredOrder.indexOf(projectId);
-        if (index === -1) return ensuredOrder;
-
-        const targetIndex = direction === "up" ? index - 1 : index + 1;
-        if (targetIndex < 0 || targetIndex >= ensuredOrder.length) return ensuredOrder;
-
-        const next = [...ensuredOrder];
-        const [moved] = next.splice(index, 1);
-        next.splice(targetIndex, 0, moved);
-        return next;
-      });
+      setProjectOrderIds((current) => moveSidebarProject(
+        projectItems, current, projectId, direction, showHiddenProjects,
+      ));
     },
-    [projectItems],
+    [projectItems, showHiddenProjects],
   );
 
   const handleReorderProject = React.useCallback(
@@ -540,7 +511,7 @@ export function ProjectSidebar({
     }
   }, [projectSyncContext]);
 
-  const isProjectsLoading = Boolean(principalId) && accessibleProjects === undefined;
+  const isProjectsLoading = localProjects === undefined;
   const currentWorkbenchPath = currentProjectId
     ? `${buildProjectPath(currentProjectId)}/workbench`
     : null;
@@ -634,11 +605,9 @@ export function ProjectSidebar({
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to open project folder.";
 
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Open Folder Failed",
-          message: "Failed to open project folder",
-          detail: message,
+        appToast.error({
+          title: "Failed to open project folder",
+          description: message,
         });
       }
     },
@@ -656,23 +625,19 @@ export function ProjectSidebar({
       // Signed out, the old combined guard dropped the click with no dialog and
       // no log, so Publish looked like it did nothing at all.
       if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
-      if (!principalId) {
+      if (!principalId || !isConvexReady || !convex || !project._id) {
         console.warn("[orgDevApp] Publish blocked: no authenticated Convex user.");
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.needsAccount"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.needsAccount"),
         });
         return;
       }
 
       if (!project.organizationId) {
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.needsOrg"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.needsOrg"),
         });
         return;
       }
@@ -697,11 +662,9 @@ export function ProjectSidebar({
         if (error instanceof DOMException && error.name === "AbortError") return;
         const fallback = t("orgDevApp.publish.failed");
         const detail = cleanConvexErrorMessage(error instanceof Error ? error.message : fallback);
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: fallback,
-          detail,
+        appToast.error({
+          title: fallback,
+          description: detail,
         });
       } finally {
         devAppPublishingRef.current = false;
@@ -709,12 +672,12 @@ export function ProjectSidebar({
         setDevAppPublishing(null);
       }
     },
-    [convex, principalId, t],
+    [convex, principalId, isConvexReady, t],
   );
 
   const continuePublishAfterOrg = React.useCallback(
     async (project: SidebarProjectItem, workspaceId: string, mode: SidebarDevAppPublishMode) => {
-      const existingLogo = projectDevAppStateByProjectId.get(project.id)?.logoDataUrl;
+      const existingLogo = project._id ? projectDevAppStateByProjectId.get(project._id)?.logoDataUrl : undefined;
       if (!canReuseProjectDevAppLogo(mode, existingLogo)) {
         setProjectPendingDevAppLogo({ project, workspaceId, mode });
         return;
@@ -731,23 +694,19 @@ export function ProjectSidebar({
       mode: SidebarDevAppPublishMode,
     ) => {
       if (!featureFlags.projectDevApps || devAppPublishingRef.current) return;
-      if (!principalId) {
+      if (!principalId || !isConvexReady || !project._id) {
         console.warn("[orgDevApp] Publish request blocked: no authenticated Convex user.");
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.needsAccount"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.needsAccount"),
         });
         return;
       }
 
       if (!workspaceId) {
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: mode === "update" ? "DevApp Update Failed" : "DevApp Publish Failed",
-          message: t("orgDevApp.publish.failed"),
-          detail: t("orgDevApp.publish.noFolder"),
+        appToast.error({
+          title: t("orgDevApp.publish.failed"),
+          description: t("orgDevApp.publish.noFolder"),
         });
         return;
       }
@@ -759,7 +718,7 @@ export function ProjectSidebar({
 
       await continuePublishAfterOrg(project, workspaceId, mode);
     },
-    [continuePublishAfterOrg, principalId, t],
+    [continuePublishAfterOrg, principalId, isConvexReady, t],
   );
 
   const handleConfirmProjectDevAppLogo = React.useCallback(
@@ -795,7 +754,7 @@ export function ProjectSidebar({
 
   const handleConfirmRenameProject = React.useCallback(
     async (nextName: string) => {
-      if (!projectPendingRename || !principalId || isRenamingProject) return;
+      if (!projectPendingRename || isRenamingProject) return;
 
       const trimmedName = nextName.trim();
       if (!trimmedName || trimmedName === projectPendingRename.name) return;
@@ -803,11 +762,8 @@ export function ProjectSidebar({
       setIsRenamingProject(true);
       setRenameError(null);
       try {
-        await updateProject({
-          projectId: projectPendingRename._id,
-          principalId: principalId,
-          name: trimmedName,
-        });
+        await updateLocalProjectPresentation(requireLocalProjectsApi(),
+          projectPendingRename.id, { localName: trimmedName });
         setProjectPendingRename(null);
       } catch (error) {
         const presentation = formatProjectRenameError(error);
@@ -820,133 +776,58 @@ export function ProjectSidebar({
         setIsRenamingProject(false);
       }
     },
-    [principalId, isRenamingProject, projectPendingRename, updateProject],
+    [isRenamingProject, projectPendingRename],
   );
 
-  const handleArchiveProject = React.useCallback(
-    async (project: SidebarProjectItem) => {
-      if (!principalId) return;
+  const handleArchiveProject = React.useCallback(async (project: SidebarProjectItem) => {
+    try {
+      await updateLocalProjectPresentation(requireLocalProjectsApi(),
+        project.id, { hidden: true });
+    } catch (error) {
+      appToast.error({ title: "Could not hide project", description: error instanceof Error ? error.message : String(error) });
+    }
+  }, []);
 
-      const result = await window.electronAPI.dialog.showMessageBox({
+  const handleRestoreProject = React.useCallback(async (project: SidebarProjectItem) => {
+    try {
+      await updateLocalProjectPresentation(requireLocalProjectsApi(),
+        project.id, { hidden: false });
+    } catch (error) {
+      appToast.error({ title: "Could not show project", description: error instanceof Error ? error.message : String(error) });
+    }
+  }, []);
+
+  const handleStartDeleteProject = React.useCallback(async (project: SidebarProjectItem) => {
+    if (!principalId || !isConvexReady || !project._id || isDeletingProject) return;
+    setIsDeletingProject(true);
+    try {
+      const sharedProject = await requireCloudClient(convex).query(api.projects.getAccessibleById, {
+        projectId: project._id,
+      });
+      if (!sharedProject) throw new Error("The shared project is unavailable.");
+      const confirmation = await window.electronAPI.dialog.showMessageBox({
         type: "warning",
-        buttons: ["Cancel", "Archive Project"],
+        buttons: ["Cancel", "Delete Shared Project"],
         defaultId: 0,
         cancelId: 0,
-        title: "Archive Project",
-        message: `Archive ${project.name}?`,
-        detail: "The project will be hidden from active views and can be restored later.",
+        title: "Delete Shared Project",
+        message: `Delete the shared project “${sharedProject.name}”?`,
+        detail: "This removes cloud data and access for all collaborators. The local project, folders and workbench stay on this device.",
       });
-
-      if (result.response !== 1) {
-        return;
-      }
-
-      try {
-        await archiveProject({
-          projectId: project._id,
-          principalId: principalId,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to archive project";
-        const cleanMessage = cleanConvexErrorMessage(message);
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Archive Failed",
-          message: "Failed to archive project",
-          detail: cleanMessage,
-        });
-      }
-    },
-    [archiveProject, principalId],
-  );
-
-  const handleRestoreProject = React.useCallback(
-    async (project: SidebarProjectItem) => {
-      if (!principalId) return;
-
-      const result = await window.electronAPI.dialog.showMessageBox({
-        type: "question",
-        buttons: ["Cancel", "Restore Project"],
-        defaultId: 1,
-        cancelId: 0,
-        title: "Restore Project",
-        message: `Restore ${project.name}?`,
-        detail: "The project will return to active views.",
-      });
-
-      if (result.response !== 1) {
-        return;
-      }
-
-      try {
-        await restoreProject({
-          projectId: project._id,
-          principalId: principalId,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to restore project";
-        const cleanMessage = cleanConvexErrorMessage(message);
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Restore Failed",
-          message: "Failed to restore project",
-          detail: cleanMessage,
-        });
-      }
-    },
-    [principalId, restoreProject],
-  );
-
-  const handleStartDeleteProject = React.useCallback(
-    async (project: SidebarProjectItem) => {
-      if (!principalId || isDeletingProject) {
-        return;
-      }
-
-      const projectId = String(project.id ?? project._id);
-      const { confirmed, keepLocalFiles } = await confirmProjectDeletion({
-        projectId,
-        projectName: project.name,
-      });
-
-      if (!confirmed) return;
-
-      setIsDeletingProject(true);
-      const deletedProjectId = projectId;
-      try {
-        await withProjectMutationTimeout(
-          deleteProject({
-            projectId: (project._id ?? project.id) as Id<"projects">,
-            principalId: principalId,
-            confirmName: project.name,
-          }),
-          "Deleting this project is taking longer than expected. Check your connection and try again.",
-        );
-
-        detachDeletedProjectFromUi(deletedProjectId);
-        navigateTo({ to: "projects" }, { replace: true });
-
-        await cleanupDeletedProjectLocally(deletedProjectId, {
-          keepLocalFiles,
-          projectSlug: project.slug,
-        });
-      } catch (error) {
-        const presentation = formatProjectDeleteError(error);
-        const message = presentation.detail
-          ? `${presentation.message} ${presentation.detail}`
-          : presentation.message;
-        await window.electronAPI.dialog.showMessageBox({
-          type: "error",
-          title: "Delete Failed",
-          message: "Failed to delete project",
-          detail: message,
-        });
-      } finally {
-        setIsDeletingProject(false);
-      }
-    },
-    [cleanupDeletedProjectLocally, principalId, deleteProject, isDeletingProject, navigate],
-  );
+      if (confirmation.response !== 1) return;
+      await withProjectMutationTimeout(deleteProject({
+        projectId: sharedProject._id,
+        principalId,
+        confirmName: sharedProject.name,
+      }), "Shared deletion has not been confirmed. Check the shared project before retrying.");
+    } catch (error) {
+      const presentation = formatProjectDeleteError(error);
+      appToast.error({ title: "Shared deletion was not confirmed", description:
+        presentation.detail ? `${presentation.message} ${presentation.detail}` : presentation.message });
+    } finally {
+      setIsDeletingProject(false);
+    }
+  }, [principalId, isConvexReady, convex, deleteProject, isDeletingProject]);
 
   const handleSyncProject = React.useCallback(
     async (project: SidebarProjectItem) => {
@@ -1068,7 +949,7 @@ export function ProjectSidebar({
                   <span className="truncate">{t('nav.inbox')}</span>
                 </button>
                 {inboxCount > 0 ? (
-                  <SidebarMenuBadge className="right-1.5 top-1/2 -translate-y-1/2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground">
+                  <SidebarMenuBadge className="right-1.5 top-1/2 -translate-y-1/2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-primary px-1.5 text-2xs font-medium leading-none text-primary-foreground">
                     {inboxCount > 9 ? "9+" : inboxCount}
                   </SidebarMenuBadge>
                 ) : null}
@@ -1131,7 +1012,7 @@ export function ProjectSidebar({
               })
             ) : isProjectsLoading ? (
               <div className="px-3 py-2 text-sm text-muted-foreground">
-                {t('projects.projectsSyncing')}
+                Loading local projects…
               </div>
             ) : sortedProjects.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground">
@@ -1139,7 +1020,7 @@ export function ProjectSidebar({
               </div>
             ) : (
               sortedProjects.map((project, index) => {
-                const devAppState = projectDevAppStateByProjectId.get(project.id);
+                const devAppState = project._id ? projectDevAppStateByProjectId.get(project._id) : undefined;
                 const isPublishingDevApp = devAppPublishing?.projectId === project.id;
 
                 return (
@@ -1166,7 +1047,7 @@ export function ProjectSidebar({
                           ? "published"
                           : "unpublished",
                       devAppPublishingMode: isPublishingDevApp ? devAppPublishing.mode : null,
-                      canPublishDevApp: featureFlags.projectDevApps && Boolean(principalId),
+                      canPublishDevApp: featureFlags.projectDevApps && isConvexReady && Boolean(principalId && project._id),
                       prefetchedLaneState:
                         project.id === currentProjectId ? displayedCurrentLaneState : undefined,
                       prefetchedActiveLane:
@@ -1194,6 +1075,12 @@ export function ProjectSidebar({
               })
             )}
           </GlideMenu>
+          {!isOnCurrentProjectSettings && projectItems.some((project) => project.hidden) ? (
+            <button type="button" className={cn(SIDEBAR_NAV_ROW_BUTTON_CLASS, "mt-2 text-muted-foreground")}
+              onClick={() => setShowHiddenProjects((current) => !current)}>
+              {showHiddenProjects ? "Hide hidden projects" : "Show hidden projects"}
+            </button>
+          ) : null}
         </SidebarContent>
 
         <SidebarSeparator />
@@ -1241,7 +1128,7 @@ export function ProjectSidebar({
             projectName={projectPendingDevAppLogo.project.name}
             mode={projectPendingDevAppLogo.mode}
             initialLogoDataUrl={
-              projectDevAppStateByProjectId.get(projectPendingDevAppLogo.project.id)?.logoDataUrl
+              projectPendingDevAppLogo.project._id ? projectDevAppStateByProjectId.get(projectPendingDevAppLogo.project._id)?.logoDataUrl : undefined
             }
             onOpenChange={(open) => {
               if (!open) {
@@ -1263,11 +1150,11 @@ export function ProjectSidebar({
               }
             }}
             onAttach={async (organizationId) => {
-              if (!principalId || !projectPendingOrgAttach) return;
+              if (!principalId || !isConvexReady || !projectPendingOrgAttach?.project._id) return;
               const pending = projectPendingOrgAttach;
               await attachProjectToOrg({
                 organizationId,
-                projectId: pending.project._id,
+                projectId: projectPendingOrgAttach.project._id,
               });
               setProjectPendingOrgAttach(null);
               await continuePublishAfterOrg(
@@ -1277,10 +1164,10 @@ export function ProjectSidebar({
               );
             }}
             onCreate={async (name) => {
-              if (!principalId || !projectPendingOrgAttach) return;
+              if (!principalId || !isConvexReady || !projectPendingOrgAttach?.project._id) return;
               const pending = projectPendingOrgAttach;
               const created = await createAndAttachProjectOrg({
-                projectId: pending.project._id,
+                projectId: projectPendingOrgAttach.project._id,
                 name,
               });
               setProjectPendingOrgAttach(null);
@@ -1293,18 +1180,35 @@ export function ProjectSidebar({
           />
         </React.Suspense>
       ) : null}
-      <Dialog open={Boolean(devAppPublishing)} onOpenChange={() => undefined}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {devAppPublishing?.mode === "update"
-                ? t("orgDevApp.publish.updateTitle")
-                : t("orgDevApp.publish.title")}
-            </DialogTitle>
-            <DialogDescription>
-              {devAppPublishing?.projectName ?? "Preparing the project"}
-            </DialogDescription>
-          </DialogHeader>
+      {/* A progress surface: it closes when publishing ends, never on its own. */}
+      <UnifiedModal
+        open={Boolean(devAppPublishing)}
+        onOpenChange={() => undefined}
+        title={
+          devAppPublishing?.mode === "update"
+            ? t("orgDevApp.publish.updateTitle")
+            : t("orgDevApp.publish.title")
+        }
+        size="md"
+        dismissable={false}
+        footer={
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!devAppPublishing || devAppPublishing.stage === "complete" || devAppPublishing.stage === "cancelling"}
+            onClick={() => {
+              setDevAppPublishing((current) => current ? { ...current, stage: "cancelling" } : current);
+              devAppPublishAbortRef.current?.abort();
+            }}
+          >
+            {t("orgDevApp.publish.cancel")}
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {devAppPublishing?.projectName ?? "Preparing the project"}
+          </p>
           <Progress
             value={devAppPublishing ? ({
               building: 20,
@@ -1328,21 +1232,8 @@ export function ProjectSidebar({
               cancelling: t("orgDevApp.publish.cancelling"),
             } as const)[devAppPublishing.stage] : null}
           </p>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!devAppPublishing || devAppPublishing.stage === "complete" || devAppPublishing.stage === "cancelling"}
-              onClick={() => {
-                setDevAppPublishing((current) => current ? { ...current, stage: "cancelling" } : current);
-                devAppPublishAbortRef.current?.abort();
-              }}
-            >
-              {t("orgDevApp.publish.cancel")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </UnifiedModal>
     </>
   );
 }

@@ -60,7 +60,7 @@ export function DevAppStoreRow({
 
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
-          <p className="truncate text-[13px] leading-tight font-medium text-foreground">{app.name}</p>
+          <p className="truncate text-sm leading-tight font-medium text-foreground">{app.name}</p>
           {badge}
         </div>
         <p className="mt-1 truncate text-xs leading-tight text-muted-foreground">

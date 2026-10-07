@@ -13,7 +13,7 @@ import { resolvePathWithinDirectory } from '../pathUtils'
 import { GitChangesBroadcaster } from '../services/GitChangesBroadcaster'
 import { CheckpointWorkerClient } from '../services/CheckpointWorkerClient'
 import { getSharedProjectdClient } from '../projectd/ProjectdClient'
-import type { GitChangesScope } from '../../../../shared/electronApiTypes'
+import type { GitChangesScope } from '@cozea/app-contract/electronApi'
 import { bootstrapSubstrateVcs } from '../substrate/vcs/bootstrap'
 
 function sha256Hex(content: Buffer | Uint8Array): string {

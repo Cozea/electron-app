@@ -1,4 +1,5 @@
 import { LuBookmark as BookmarkIcon } from "react-icons/lu";
+import { useTranslation } from "@/lib/i18n"
 import { memo } from "react";
 
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
   pulsing: boolean;
   onToggleMenu: () => void;
 }) {
+  const { t } = useTranslation();
   if (props.count === 0) return null;
   const count = (
     <ComposerBanner.Count
@@ -58,7 +60,7 @@ export const ComposerStashBadge = memo(function ComposerStashBadge(props: {
         <ComposerBanner.Icon>
           <BookmarkIcon />
         </ComposerBanner.Icon>
-        <ComposerBanner.Content>Stash</ComposerBanner.Content>
+        <ComposerBanner.Content>{t("assistant.stash")}</ComposerBanner.Content>
         <ComposerBanner.Actions>{count}</ComposerBanner.Actions>
       </ComposerBanner.Row>
     </ComposerBanner.Root>

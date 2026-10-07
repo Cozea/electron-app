@@ -5,6 +5,7 @@ import type {
   WorkspaceCatalogSnapshotEntry,
 } from "@shared/workspaceTypes"
 import { invalidateProjectWorkspaceResolution } from "@/app/resources/workspaceResources"
+import { workspaceSnapshotBindingChanged } from "./catalogSnapshotComparison"
 
 /**
  * Renderer mirror of the pushed catalog snapshot: one IPC fetch at first use,
@@ -35,9 +36,13 @@ function applySnapshot(next: WorkspaceCatalogSnapshot): void {
   if (snapshot && next.revision <= snapshot.revision) {
     return
   }
+  const previous = snapshot
   snapshot = next
-  for (const entry of Object.values(next.entries)) {
-    invalidateProjectWorkspaceResolution(entry.projectId)
+  const projectIds = new Set([...Object.keys(previous?.entries ?? {}), ...Object.keys(next.entries)])
+  for (const projectId of projectIds) {
+    if (workspaceSnapshotBindingChanged(previous?.entries[projectId], next.entries[projectId])) {
+      invalidateProjectWorkspaceResolution(projectId)
+    }
   }
   emit()
 }
@@ -92,10 +97,13 @@ export function useWorkspaceSnapshotEntry(
   )
 }
 
-export function useWorkspaceCatalogSnapshot(): WorkspaceCatalogSnapshot | null {
+const subscribeDisabled = () => () => {}
+const getEmptySnapshot = () => null
+
+export function useWorkspaceCatalogSnapshot(enabled = true): WorkspaceCatalogSnapshot | null {
   return useSyncExternalStore(
-    subscribe,
-    () => snapshot,
-    () => null,
+    enabled ? subscribe : subscribeDisabled,
+    enabled ? () => snapshot : getEmptySnapshot,
+    getEmptySnapshot,
   )
 }

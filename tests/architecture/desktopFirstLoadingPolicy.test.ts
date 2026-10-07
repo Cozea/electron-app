@@ -44,11 +44,14 @@ describe('desktop-first loading architecture', () => {
   })
 
   it('resolves local workspace identity from the stable route before cloud project data', () => {
-    const source = read('apps/desktop/src/features/projects/layouts/ProjectLayout.tsx')
-    expect(source).toContain('const workspaceProjectId = project?._id ? String(project._id) : routeProjectId ?? null')
-    expect(source).toContain('featureFlags.localWorkspaceCatalog ? workspaceProjectId : null')
-    expect(source).toContain('Boolean(project?._id) &&\n    collaborationGate.enabled')
-    expect(source).toContain('projectId={shouldEnableProjectRuntime ? project?._id ?? null : null}')
+    const routeData = read('apps/desktop/src/contexts/project/useProjectRouteData.ts')
+    const layout = read('apps/desktop/src/features/projects/layouts/ProjectLayout.tsx')
+    expect(routeData).toContain('resolveLocalProjectRoute(snapshot, enabled ? projectId : null, enabled ? slug : null)')
+    expect(routeData).toContain('const cloudReady = enabled && Boolean(principalId && isConvexAuthReady)')
+    expect(routeData).toContain('const cloudProjectId = local.cloudProjectId ?? project?._id ?? null')
+    expect(layout).toContain('useProjectRouteData(')
+    expect(layout).toContain('featureFlags.localWorkspaceCatalog')
+    expect(layout).toContain('collaborationGate.enabled')
   })
 
   it('uses cached identity for shell paint without granting cached cloud authority', () => {

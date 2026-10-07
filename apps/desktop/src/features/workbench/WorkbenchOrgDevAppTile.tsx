@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import type { DockviewApi, DockviewPanelApi } from "dockview-react"
-import { useQuery } from "convex/react"
+import { useQuery } from "@/lib/cloudQueries"
 
 import { api } from "../../../../../convex/_generated/api"
 import { BrowserSurfaceSlot } from "@/features/browser/BrowserSurfaceSlot"
@@ -21,10 +21,10 @@ import { useTranslation } from "@/lib/i18n"
 import { getDeviceSession } from "@/lib/deviceSession"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { UnifiedModal } from "@/components/ui/unified-modal"
 import { PublishedDevAppIcon } from "@/features/devapps/components/PublishedDevAppIcon"
 import { DevAppCapabilityList } from "@/features/devapps/components/DevAppCapabilityList"
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes"
+import type { BrowserSurfaceDescriptor } from "@cozea/app-contract/browserSurface"
 import type { OrgDevAppRuntimeState } from "@shared/orgDevAppRuntime"
 import type { OrgDevAppEnvironmentStatus } from "@shared/orgDevAppEnvironment"
 import type { OrgDevAppInstallation } from "@shared/orgDevAppInstallation"
@@ -498,12 +498,9 @@ export function WorkbenchOrgDevAppTile({
     <WorkbenchTileChrome
       title={tile.title}
       panelApi={panelApi}
-      containerApi={containerApi}
-      chromeVariant="pill"
       tileType="orgDevApp"
       devAppId={artifact?.publicationId ?? tile.publicationId}
       logoDataUrl={tile.logoDataUrl}
-      hideTitlePill={false}
       actions={
         artifact?.parts.runtime ? (
           <div className="flex items-center gap-1">
@@ -513,7 +510,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => setShowLogs((value) => !value)}
                 >
                   Logs
@@ -523,7 +520,7 @@ export function WorkbenchOrgDevAppTile({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 px-2 text-[11px]"
+                    className="h-7 px-2 text-caption"
                     onClick={() => setShowConfiguration(true)}
                   >
                     Configure
@@ -533,7 +530,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(true)
                     void window.electronAPI.orgDevApp
@@ -562,7 +559,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(false)
                     void window.electronAPI.orgDevApp
@@ -585,7 +582,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(true)
                     void window.electronAPI.orgDevApp
@@ -602,7 +599,7 @@ export function WorkbenchOrgDevAppTile({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-2 text-[11px]"
+                  className="h-7 px-2 text-caption"
                   onClick={() => {
                     setRuntimeStopped(false)
                     setPrepareAttempt((attempt) => attempt + 1)
@@ -617,7 +614,7 @@ export function WorkbenchOrgDevAppTile({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 px-2 text-caption"
                 onClick={() => {
                   void window.electronAPI.orgDevApp
                     .revokePublishedWorker({
@@ -644,7 +641,7 @@ export function WorkbenchOrgDevAppTile({
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-[11px]"
+                className="h-7 px-2 text-caption"
                 onClick={() => {
                   void refreshFolderGrants()
                     .then(() => setShowFolderAccess(true))
@@ -751,16 +748,16 @@ export function WorkbenchOrgDevAppTile({
                 </span>
               </div>
               <div className="flex flex-wrap items-center justify-start gap-1.5">
-                <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                   {hostedRuntime ? "Hosted Container" : "Linux VM"}
                 </span>
                 {servicePermissions?.network ? (
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                     Network
                   </span>
                 ) : null}
                 {runtimeStateScope !== "none" ? (
-                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  <span className="rounded-md bg-muted/60 px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                     {runtimeStateScope === "organization" ? "Org state" : "Device state"}
                   </span>
                 ) : null}
@@ -853,30 +850,69 @@ export function WorkbenchOrgDevAppTile({
           ) : null}
         </div>
       )}
-      <Dialog open={showLogs} onOpenChange={setShowLogs}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Service logs</DialogTitle>
-            <DialogDescription>
-              Output from this DevApp's {hostedRuntime ? "hosted" : "device"} contained runtime.
-            </DialogDescription>
-          </DialogHeader>
+      <UnifiedModal
+        open={showLogs}
+        onOpenChange={setShowLogs}
+        title="Service logs"
+        size="xl"
+        footer={
+          <Button type="button" variant="outline" onClick={() => setShowLogs(false)}>
+            Close
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Output from this DevApp's {hostedRuntime ? "hosted" : "device"} contained runtime.
+          </p>
           <div className="max-h-[60vh] overflow-auto rounded-lg border border-border bg-background p-3">
-            <pre className="whitespace-pre-wrap text-[11px] text-muted-foreground">
+            <pre className="whitespace-pre-wrap text-caption text-muted-foreground">
               {(runtimeState?.logs ?? []).join("\n") || "No service output yet."}
             </pre>
           </div>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={showFolderAccess && allowsDeviceFolders} onOpenChange={setShowFolderAccess}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Local folder access</DialogTitle>
-            <DialogDescription>
-              This contained DevApp sees only folders you explicitly grant. Access is bound to this exact release and
-              expires automatically.
-            </DialogDescription>
-          </DialogHeader>
+        </div>
+      </UnifiedModal>
+      <UnifiedModal
+        open={showFolderAccess && allowsDeviceFolders}
+        onOpenChange={setShowFolderAccess}
+        title="Local folder access"
+        size="lg"
+        footer={
+          <>
+            <Button type="button" variant="ghost" onClick={() => setShowFolderAccess(false)}>
+              Close
+            </Button>
+            {(["read", "readWrite"] as const).map((access) => (
+              <Button
+                key={access}
+                type="button"
+                variant={access === "read" ? "outline" : "default"}
+                onClick={() => {
+                  if (!tile.devAppRef) return
+                  void window.electronAPI.orgDevApp
+                    .grantFolder({ ref: tile.devAppRef, access })
+                    .then(async (result) => {
+                      if (!result.success) throw new Error(result.error)
+                      if (!result.grant) return
+                      await refreshFolderGrants()
+                      await restartAfterFolderChange()
+                    })
+                    .catch((error) =>
+                      setPrepareError(error instanceof Error ? error.message : "Failed to grant folder access."),
+                    )
+                }}
+              >
+                {access === "read" ? "Grant read-only folder" : "Grant read-write folder"}
+              </Button>
+            ))}
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            This contained DevApp sees only folders you explicitly grant. Access is bound to this exact release and
+            expires automatically.
+          </p>
           <div className="flex flex-col gap-3">
             {folderGrants.length === 0 ? (
               <p className="text-xs text-muted-foreground">No local folders are mounted.</p>
@@ -885,7 +921,7 @@ export function WorkbenchOrgDevAppTile({
                 <div key={grant.grantId} className="flex items-center gap-3 rounded-lg border border-border p-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-medium text-foreground">{grant.canonicalHostPath}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
+                    <p className="mt-1 text-caption text-muted-foreground">
                       {grant.access === "readWrite" ? "Read and write" : "Read only"} · {grant.guestPath}
                     </p>
                   </div>
@@ -915,120 +951,93 @@ export function WorkbenchOrgDevAppTile({
                 </div>
               ))
             )}
-            <div className="flex flex-wrap gap-2">
-              {(["read", "readWrite"] as const).map((access) => (
-                <Button
-                  key={access}
-                  type="button"
-                  variant={access === "read" ? "outline" : "default"}
-                  size="sm"
-                  onClick={() => {
-                    if (!tile.devAppRef) return
-                    void window.electronAPI.orgDevApp
-                      .grantFolder({ ref: tile.devAppRef, access })
-                      .then(async (result) => {
-                        if (!result.success) throw new Error(result.error)
-                        if (!result.grant) return
-                        await refreshFolderGrants()
-                        await restartAfterFolderChange()
-                      })
-                      .catch((error) =>
-                        setPrepareError(error instanceof Error ? error.message : "Failed to grant folder access."),
-                      )
-                  }}
-                >
-                  {access === "read" ? "Grant read-only folder" : "Grant read-write folder"}
-                </Button>
-              ))}
-            </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </UnifiedModal>
       {showConfiguration && environmentStatus ? (
-        <Dialog open onOpenChange={(open) => setShowConfiguration(open)}>
-          <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Service configuration</DialogTitle>
-              <DialogDescription>
-                Values are encrypted at rest on this device and passed only to this exact release
-                {hostedRuntime ? " over its authenticated hosted-runtime channel." : " inside its contained VM."}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-4">
-              {environmentStatus.requirements.map((requirement) => (
-                <label key={requirement.name} className="flex flex-col gap-1.5 text-xs">
-                  <span className="flex items-center gap-2">
-                    <span className="font-mono">{requirement.name}</span>
-                    {requirement.required ? (
-                      <span className="text-destructive">Required</span>
-                    ) : (
-                      <span className="text-muted-foreground">Optional</span>
-                    )}
-                    {requirement.configured ? <span className="text-muted-foreground">Configured</span> : null}
-                  </span>
-                  {requirement.description ? (
-                    <span className="text-muted-foreground">{requirement.description}</span>
-                  ) : null}
-                  <Input
-                    type={requirement.secret ? "password" : "text"}
-                    autoComplete="off"
-                    value={environmentValues[requirement.name] ?? ""}
-                    placeholder={requirement.configured ? "Leave blank to keep the saved value" : "Enter a value"}
-                    onChange={(event) =>
-                      setEnvironmentValues((current) => ({
-                        ...current,
-                        [requirement.name]: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-              <div className="flex justify-end gap-2">
-                {environmentStatus.missingRequired.length === 0 ? (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setShowConfiguration(false)}>
-                    Cancel
-                  </Button>
+        <UnifiedModal
+          open
+          onOpenChange={(open) => setShowConfiguration(open)}
+          title="Service configuration"
+          size="lg"
+          footer={
+            <>
+              <Button type="button" variant="ghost" onClick={() => setShowConfiguration(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  if (!artifact) return
+                  const values = Object.fromEntries(
+                    Object.entries(environmentValues).filter(([, value]) => value.length > 0),
+                  )
+                  void window.electronAPI.orgDevApp
+                    .setRuntimeEnvironment({
+                      contentHash: artifact.contentHash,
+                      publicationId: artifact.publicationId,
+                      values,
+                    })
+                    .then(async (result) => {
+                      if (!result.success) {
+                        setPrepareError(result.error)
+                        return
+                      }
+                      setEnvironmentValues({})
+                      setEnvironmentStatus(result.status)
+                      if (result.status.missingRequired.length > 0) return
+                      setShowConfiguration(false)
+                      if (runtimeState?.status === "ready") {
+                        await window.electronAPI.orgDevApp.stopRuntime({
+                          contentHash: artifact.contentHash,
+                          publicationId: artifact.publicationId,
+                        })
+                        setPreparedOrigin(null)
+                      }
+                      setPrepareAttempt((attempt) => attempt + 1)
+                    })
+                }}
+              >
+                Save and restart
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Values are encrypted at rest on this device and passed only to this exact release
+              {hostedRuntime ? " over its authenticated hosted-runtime channel." : " inside its contained VM."}
+            </p>
+            {environmentStatus.requirements.map((requirement) => (
+              <label key={requirement.name} className="flex flex-col gap-1.5 text-xs">
+                <span className="flex items-center gap-2">
+                  <span className="font-mono">{requirement.name}</span>
+                  {requirement.required ? (
+                    <span className="text-destructive">Required</span>
+                  ) : (
+                    <span className="text-muted-foreground">Optional</span>
+                  )}
+                  {requirement.configured ? <span className="text-muted-foreground">Configured</span> : null}
+                </span>
+                {requirement.description ? (
+                  <span className="text-muted-foreground">{requirement.description}</span>
                 ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => {
-                    if (!artifact) return
-                    const values = Object.fromEntries(
-                      Object.entries(environmentValues).filter(([, value]) => value.length > 0),
-                    )
-                    void window.electronAPI.orgDevApp
-                      .setRuntimeEnvironment({
-                        contentHash: artifact.contentHash,
-                        publicationId: artifact.publicationId,
-                        values,
-                      })
-                      .then(async (result) => {
-                        if (!result.success) {
-                          setPrepareError(result.error)
-                          return
-                        }
-                        setEnvironmentValues({})
-                        setEnvironmentStatus(result.status)
-                        if (result.status.missingRequired.length > 0) return
-                        setShowConfiguration(false)
-                        if (runtimeState?.status === "ready") {
-                          await window.electronAPI.orgDevApp.stopRuntime({
-                            contentHash: artifact.contentHash,
-                            publicationId: artifact.publicationId,
-                          })
-                          setPreparedOrigin(null)
-                        }
-                        setPrepareAttempt((attempt) => attempt + 1)
-                      })
-                  }}
-                >
-                  Save and restart
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+                <Input
+                  type={requirement.secret ? "password" : "text"}
+                  autoComplete="off"
+                  value={environmentValues[requirement.name] ?? ""}
+                  placeholder={requirement.configured ? "Leave blank to keep the saved value" : "Enter a value"}
+                  onChange={(event) =>
+                    setEnvironmentValues((current) => ({
+                      ...current,
+                      [requirement.name]: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </UnifiedModal>
       ) : null}
     </WorkbenchTileChrome>
   )

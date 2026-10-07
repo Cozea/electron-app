@@ -7,7 +7,7 @@ import type {
   ScheduledTaskRunReport,
   ScheduledTasksSnapshot,
 } from '../../../../shared/scheduledTasks'
-import type { AppSettings } from '../../../../shared/electronApiTypes'
+import type { AppSettings } from '@cozea/app-contract/electronApi'
 
 interface LazyScheduledTaskService {
   list(): ScheduledTasksSnapshot['tasks']

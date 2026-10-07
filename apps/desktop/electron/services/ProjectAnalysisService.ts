@@ -10,7 +10,7 @@ import type {
   ProjectScannedRoute,
   ProjectStoredFrameworkInfo,
   ReadFileResult,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import { resolvePathWithinDirectory } from '../pathUtils'
 import { listProjectFilesFromIndex } from './ProjectFileIndexService'
 

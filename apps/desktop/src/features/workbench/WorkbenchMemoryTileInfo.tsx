@@ -61,8 +61,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     // A rule between sections rather than more blank space: the gaps inside a
     // section and between sections were close enough that the groups blurred.
     <section className="border-t border-border/60 pt-3 first:border-t-0 first:pt-0">
-      <h3 className="mb-2 text-[10px] uppercase tracking-wide text-muted-foreground">{title}</h3>
-      <div className="space-y-1.5 text-[12px] leading-5 text-foreground/90">{children}</div>
+      <h3 className="mb-2 text-2xs uppercase tracking-wide text-muted-foreground">{title}</h3>
+      <div className="space-y-1.5 text-xs leading-5 text-foreground/90">{children}</div>
     </section>
   )
 }

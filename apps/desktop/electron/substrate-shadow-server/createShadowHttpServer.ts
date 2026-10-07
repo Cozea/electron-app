@@ -41,6 +41,7 @@ export interface CreateShadowHttpServerOptions {
   /** Phase T2 — issue WS tickets for renderer native T3 RPC (localhost only). */
   readonly t3RpcSession?: {
     readonly baseUrl: string;
+    readonly rpcBaseUrl?: string;
     readonly issueWsTicket: () => Promise<string>;
   };
   readonly onListening?: (info: { readonly host: string; readonly port: number }) => void;
@@ -136,6 +137,7 @@ export function createShadowHttpServer(
               JSON.stringify({
                 ok: true,
                 baseUrl: options.t3RpcSession!.baseUrl,
+                ...(options.t3RpcSession!.rpcBaseUrl ? { rpcBaseUrl: options.t3RpcSession!.rpcBaseUrl } : {}),
                 wsTicket,
               }),
             );

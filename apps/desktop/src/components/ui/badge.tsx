@@ -22,11 +22,11 @@ const badgeVariants = cva(
         error:
           "bg-destructive/15 text-destructive dark:bg-destructive/20",
         success:
-          "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+          "bg-success/15 text-success",
         warning:
-          "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+          "bg-warning/15 text-warning",
         info:
-          "bg-sky-500/15 text-sky-700 dark:text-sky-400",
+          "bg-info/15 text-info",
         outline:
           "border-input bg-background text-foreground dark:bg-input/32 [button&,a&]:hover:bg-accent/50 dark:[button&,a&]:hover:bg-input/48",
       },

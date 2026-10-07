@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server"
 import { authenticatedMutation as mutation, authenticatedQuery as query } from "./lib/authenticatedFunctions"
-import { requireAuthenticatedDevice } from "./lib/deviceAuth"
+import { requireAuthenticatedCaller, requireAuthenticatedDevice } from "./lib/deviceAuth"
 import {
   canAccessProject,
   canArchiveProject,
@@ -211,7 +211,7 @@ async function upsertProjectArtifacts(
 
 export const create = mutation({
   args: {
-    principalId: v.id("devicePrincipals"),
+    principalId: v.optional(v.id("devicePrincipals")),
     name: v.string(),
     creationPath: v.union(v.literal("fresh"), v.literal("repo")),
     description: v.optional(v.string()),
@@ -272,10 +272,8 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now()
-    const user = await ctx.db.get(args.principalId)
-    if (!user) {
-      throw new ConvexError("User not found")
-    }
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
+    const principalId = principal._id
 
     const trimmedName = args.name.trim()
     if (!trimmedName) {
@@ -294,7 +292,7 @@ export const create = mutation({
         .collect()
       const existing = tokenDocs.find(
         (doc) =>
-          doc.status !== "deleted" && String(doc.createdBy) === String(args.principalId),
+          doc.status !== "deleted" && doc.createdBy === principalId,
       )
       if (existing) {
         return { projectId: existing._id, slug: existing.slug, resumed: true }
@@ -302,7 +300,7 @@ export const create = mutation({
     }
 
     if (args.organizationId) {
-      if (!(await isOrgMember(ctx, args.organizationId, args.principalId))) {
+      if (!(await isOrgMember(ctx, args.organizationId, principalId))) {
         throw new ConvexError("You are not a member of this organization")
       }
     }
@@ -339,7 +337,7 @@ export const create = mutation({
       status: args.status ?? "draft",
       creationToken: args.creationToken,
       sharedFilesVersion: 0,
-      createdBy: args.principalId,
+      createdBy: principalId,
       createdAt: now,
       updatedAt: now,
       ...(args.organizationId ? { organizationId: args.organizationId } : {}),
@@ -355,10 +353,10 @@ export const create = mutation({
 
     await ctx.db.insert("projectMembers", {
       projectId,
-      principalId: args.principalId,
+      principalId,
       role: "project_manager",
       addedAt: now,
-      addedBy: args.principalId,
+      addedBy: principalId,
     })
 
     return {
@@ -378,10 +376,11 @@ export const get = query({
 
 export const listForCurrentUser = query({
   args: {
-    principalId: v.id("devicePrincipals"),
+    principalId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
-    return listCollaboratorProjectsForUser(ctx, args.principalId)
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
+    return listCollaboratorProjectsForUser(ctx, principal._id)
   },
 })
 
@@ -392,10 +391,11 @@ export const listForCurrentUser = query({
  */
 export const listSummariesForCurrentUser = query({
   args: {
-    principalId: v.id("devicePrincipals"),
+    principalId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
-    const projects = await listCollaboratorProjectsForUser(ctx, args.principalId)
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
+    const projects = await listCollaboratorProjectsForUser(ctx, principal._id)
     return projects.map((project) => ({
       _id: project._id,
       name: project.name,
@@ -433,12 +433,26 @@ export const getAccessibleById = baseQuery({
   },
 })
 
+// Explicit legacy/shared route discovery accepts an untrusted route string.
+// Normalize it at the server boundary rather than branding a renderer local ID.
+export const getAccessibleByRouteKey = baseQuery({
+  args: { projectKey: v.string() },
+  handler: async (ctx, { projectKey }) => {
+    const device = await requireAuthenticatedDevice(ctx)
+    if (projectKey.length > 128 || projectKey.startsWith("lpj_")) return null
+    const projectId = ctx.db.normalizeId("projects", projectKey)
+    if (!projectId || !await canAccessProject(ctx, projectId, device._id)) return null
+    return ctx.db.get(projectId)
+  },
+})
+
 export const getAccessibleBySlug = query({
   args: {
     slug: v.string(),
-    principalId: v.id("devicePrincipals"),
+    principalId: v.optional(v.id("devicePrincipals")),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
     const slug = args.slug.trim()
     if (!slug) {
       return { status: "not_found" as const }
@@ -455,7 +469,7 @@ export const getAccessibleBySlug = query({
           if (project.status === "deleted") {
             return null
           }
-          const membership = await getProjectMembership(ctx, project._id, args.principalId)
+          const membership = await getProjectMembership(ctx, project._id, principal._id)
           if (!membership) {
             return null
           }
@@ -508,12 +522,13 @@ export const update = mutation({
     generatedPlan: v.optional(generatedPlanValidator),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
     const project = await ctx.db.get(args.projectId)
     if (!project || project.status === "deleted") {
       throw new ConvexError("Project not found")
     }
 
-    const canEdit = await canEditProject(ctx, args.projectId, args.principalId)
+    const canEdit = await canEditProject(ctx, args.projectId, principal._id)
     if (!canEdit) {
       throw new ConvexError("You do not have permission to edit this project")
     }
@@ -566,7 +581,8 @@ export const getArtifacts = query({
     principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    const canAccess = await canAccessProject(ctx, args.projectId, args.principalId)
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
+    const canAccess = await canAccessProject(ctx, args.projectId, principal._id)
     if (!canAccess) {
       return null
     }
@@ -607,7 +623,8 @@ export const updateStatus = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    const canEdit = await canEditProject(ctx, args.projectId, args.principalId)
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
+    const canEdit = await canEditProject(ctx, args.projectId, principal._id)
     if (!canEdit) {
       throw new ConvexError("You do not have permission to update this project")
     }
@@ -627,7 +644,8 @@ export const archive = mutation({
     principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    const canArchive = await canArchiveProject(ctx, args.projectId, args.principalId)
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
+    const canArchive = await canArchiveProject(ctx, args.projectId, principal._id)
     if (!canArchive) {
       throw new ConvexError("Only project managers can archive this project")
     }
@@ -647,7 +665,8 @@ export const restore = mutation({
     principalId: v.id("devicePrincipals"),
   },
   handler: async (ctx, args) => {
-    const canArchive = await canArchiveProject(ctx, args.projectId, args.principalId)
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
+    const canArchive = await canArchiveProject(ctx, args.projectId, principal._id)
     if (!canArchive) {
       throw new ConvexError("Only project managers can restore this project")
     }
@@ -668,12 +687,13 @@ export const deleteProject = mutation({
     confirmName: v.string(),
   },
   handler: async (ctx, args) => {
+    const principal = await requireAuthenticatedCaller(ctx, args.principalId)
     const project = await ctx.db.get(args.projectId)
     if (!project || project.status === "deleted") {
       throw new ConvexError("Project not found")
     }
 
-    const canManage = await canManageProject(ctx, args.projectId, args.principalId)
+    const canManage = await canManageProject(ctx, args.projectId, principal._id)
     if (!canManage) {
       throw new ConvexError("Only project managers can delete this project")
     }

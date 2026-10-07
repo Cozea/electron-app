@@ -32,12 +32,13 @@ export interface ProjectdLaunchContext {
   tmpDir: string
   uid: number
   socketPath: string
+  workspaceCatalogPath?: string
   env: Readonly<Record<string, string | undefined>>
 }
 
 export type ProjectdLaunchPlan =
   | { kind: "skip"; reason: string }
-  | { kind: "spawn"; command: string; args: string[]; cwd: string; logPath: string }
+  | { kind: "spawn"; command: string; args: string[]; cwd: string; logPath: string; environment: Readonly<Record<string, string>> }
   | { kind: "launch-agent"; label: string; plistPath: string; plist: string; logDir: string }
 
 export interface ProjectdLauncherEffects {
@@ -50,7 +51,7 @@ export interface ProjectdLauncherEffects {
   mkdir(dirPath: string): void
   launchctl(args: string[]): Promise<{ ok: boolean; output: string }>
   /** Resolves once the process runs; rejects when it cannot start. */
-  spawnDetached(command: string, args: string[], options: { cwd: string; logPath: string }): Promise<void>
+  spawnDetached(command: string, args: string[], options: { cwd: string; logPath: string; environment: Readonly<Record<string, string>> }): Promise<void>
   sleep(ms: number): Promise<void>
   log(message: string): void
 }
@@ -61,6 +62,7 @@ export function planProjectdLaunch(
   context: ProjectdLaunchContext,
   exists: (filePath: string) => boolean,
 ): ProjectdLaunchPlan {
+  const workspaceCatalogPath = context.workspaceCatalogPath ?? path.join(context.homeDir, "Library", "Application Support", "Cozea", "local-workspaces.sqlite")
   if (context.env.COZEA_PROJECTD_AUTOSTART === "0") {
     return { kind: "skip", reason: "COZEA_PROJECTD_AUTOSTART is 0" }
   }
@@ -77,6 +79,7 @@ export function planProjectdLaunch(
       args: [entry],
       cwd: context.repoRoot,
       logPath: path.join(context.tmpDir, "cozea-projectd-dev.log"),
+      environment: { COZEA_WORKSPACE_CATALOG_PATH: workspaceCatalogPath, COZEA_PROJECTD_SOCKET: context.socketPath },
     }
   }
 
@@ -87,6 +90,7 @@ export function planProjectdLaunch(
   const environment: Record<string, string> = {
     ELECTRON_RUN_AS_NODE: "1",
     COZEA_PROJECTD_SOCKET: context.socketPath,
+    COZEA_WORKSPACE_CATALOG_PATH: workspaceCatalogPath,
     // A new app version changes the agent, and reloading it restarts the daemon on the new bundle.
     COZEA_PROJECTD_APP_VERSION: context.appVersion,
   }
@@ -189,7 +193,7 @@ export async function ensureProjectdRunning(
   if (plan.kind === "spawn") {
     if (reachable) return "running"
     try {
-      await effects.spawnDetached(plan.command, plan.args, { cwd: plan.cwd, logPath: plan.logPath })
+      await effects.spawnDetached(plan.command, plan.args, { cwd: plan.cwd, logPath: plan.logPath, environment: plan.environment })
     } catch (error) {
       effects.log(`Could not start cozea-projectd with ${plan.command}: ${errorMessage(error)}`)
       return "failed"

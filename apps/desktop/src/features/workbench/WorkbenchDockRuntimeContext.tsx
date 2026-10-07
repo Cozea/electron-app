@@ -9,7 +9,7 @@ import type {
   WorkbenchSelectionTile as WorkbenchSelectionTileRecord,
 } from "@/lib/workbenchStore"
 import type { WorkbenchSelectionLaunchRequest } from "@/features/workbench/model/workbenchSelectionLaunch"
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { WorkbenchSessionSnapshot } from "@cozea/app-contract/electronApi"
 import type { AssistantHistoryEntry } from "@/features/assistant/history/assistantHistory"
 
 export interface WorkbenchDockPanelParams {

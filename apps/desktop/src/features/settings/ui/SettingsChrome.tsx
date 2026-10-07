@@ -1,5 +1,7 @@
-import { type ReactNode } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 
+import { PageHeader } from "@/components/PageHeader";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /** Header for top of settings pages (large clean title) */
@@ -13,9 +15,7 @@ export function SettingsPageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-6 px-1", className)}>
-      <h1 className="text-settings-title font-bold tracking-tight text-foreground">{title}</h1>
-    </div>
+    <PageHeader title={title} className={cn("mb-6 px-1", className)} />
   );
 }
 
@@ -83,6 +83,30 @@ export function SettingsGroup({ children, className }: { children: ReactNode; cl
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * The one button a danger-zone row uses. `reversible` actions (archive) are
+ * outlined in the destructive colour; `irreversible` ones (delete, reset) are
+ * filled. Each danger row previously styled its own button.
+ */
+export function SettingsDangerButton({
+  tone,
+  className,
+  ...props
+}: Omit<ComponentProps<typeof Button>, "variant" | "size"> & { tone: "reversible" | "irreversible" }) {
+  return (
+    <Button
+      size="sm"
+      variant={tone === "irreversible" ? "destructive" : "outline"}
+      className={cn(
+        "h-7 text-xs",
+        tone === "reversible" && "border-destructive/30 bg-background/50 text-destructive hover:text-destructive",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
@@ -175,7 +199,7 @@ export function SettingsGroupError({ children }: { children: ReactNode }) {
 /** Success line inside group */
 export function SettingsGroupSuccess({ children }: { children: ReactNode }) {
   return (
-    <div className="border-t border-border/40 px-5 py-3 text-xs text-emerald-600 dark:text-emerald-500">
+    <div className="border-t border-border/40 px-5 py-3 text-xs text-success">
       {children}
     </div>
   );
@@ -188,7 +212,7 @@ export function SettingsFooterActions({ children, className }: { children: React
 
 /** Inputs aligned like settings (right, compact, flat borderless) */
 export const settingsInlineInputClass =
-  "h-7 max-w-full border-0 border-none bg-transparent px-0 text-sm font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:border-none dark:bg-transparent";
+  "h-7 max-w-full border-0 border-none bg-transparent px-0 text-sm font-normal text-foreground shadow-none placeholder:text-muted-foreground/60 focus:outline-none focus-visible:border-none focus-visible:ring-0 focus-visible:shadow-none text-right dark:bg-transparent";
 
 export const settingsInlineInputWidth = "w-[280px] max-w-full";
 

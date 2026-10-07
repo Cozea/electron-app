@@ -1,7 +1,7 @@
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import * as Effect from 'effect/Effect'
 
-import type { WorkbenchSessionSnapshot } from '../../../../shared/electronApiTypes'
+import type { WorkbenchSessionSnapshot } from '@cozea/app-contract/electronApi'
 import { WorkbenchSessionManager } from '../services/WorkbenchSessionManager'
 import { WorkbenchPresentationCoordinator } from '../services/WorkbenchPresentationCoordinator'
 import { WorkspaceCatalog } from '../workspaces/WorkspaceCatalog'
@@ -51,7 +51,9 @@ export function registerWorkbenchSessionHandlers(
   }
 
   const publishState = (snapshot: WorkbenchSessionSnapshot) => {
-    deps.getMainWindow()?.webContents.send(
+    const window = deps.getMainWindow()
+    if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return
+    window.webContents.send(
       WORKBENCH_SESSION_STATE_CHANGED_CHANNEL,
       snapshot,
     )

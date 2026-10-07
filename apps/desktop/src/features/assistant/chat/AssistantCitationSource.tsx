@@ -1,11 +1,12 @@
 import type { LegendListRef } from "@legendapp/list/react";
+import { getStoredLanguage, getTranslation } from "@/lib/i18n";
 import type { AssistantCitation, MessageId, ScopedThreadRef } from "@cozea/contracts/t3";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import {
   resolveAssistantCitationRange,
   type AssistantCitationSourceAnchor,
 } from "@/features/assistant/lib/assistantTextSelection";
-import { toastManager } from "@/components/ui/toast";
+import { appToast } from "@/lib/appToast";
 
 const CITATION_PULSE_DURATION_MS = 650;
 // The second pulse settles into a held highlight so late glances still find the quote.
@@ -196,10 +197,9 @@ export function observeAssistantCitationSource({
             activation.dismissed = true;
             clear();
             request.onComplete();
-            toastManager.add({
-              type: "warning",
-              title: "Could not open the cited response",
-              description: "Click the citation to try again.",
+            appToast.warning({
+              title: getTranslation(getStoredLanguage(), "assistant.couldNotOpenTheCitedResponse"),
+              description: getTranslation(getStoredLanguage(), "assistant.clickTheCitationToTryAgain"),
             });
           },
         );
@@ -210,10 +210,9 @@ export function observeAssistantCitationSource({
       activation.scrolled = true;
       request.onComplete();
       if (!range) {
-        toastManager.add({
-          type: "warning",
-          title: "The quoted text has changed",
-          description: "Showing the source response. The saved quote is unchanged.",
+        appToast.warning({
+          title: getTranslation(getStoredLanguage(), "assistant.theQuotedTextHasChanged"),
+          description: getTranslation(getStoredLanguage(), "assistant.showingTheSourceResponseTheSaved"),
         });
       }
     }

@@ -40,7 +40,7 @@ describe("resolveBranchIconPresentation", () => {
     const res = resolveBranchIconPresentation({ pr })
     expect(res.kind).toBe("pr-open")
     expect(res.icon).toBe(GitPullRequestIcon)
-    expect(res.colorClassName).toContain("text-emerald-500")
+    expect(res.colorClassName).toContain("text-success")
     expect(res.label).toBe("Open PR #42: Add awesome feature")
   })
 

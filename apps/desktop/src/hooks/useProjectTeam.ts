@@ -1,4 +1,4 @@
-import { useQuery } from "convex/react"
+import { useQuery } from "@/lib/cloudQueries"
 
 import { api } from "../../../../convex/_generated/api"
 import type { Id } from "../../../../convex/_generated/dataModel"
@@ -10,15 +10,15 @@ import { useAuth } from "@/contexts/AuthContext"
  * ProjectTeamPage, TasksPage, and ProjectSettingsPage each fired their own
  * identical pair of queries.
  */
-export function useProjectTeam(projectId: Id<"projects"> | null | undefined) {
-  const { principalId } = useAuth()
+export function useProjectTeam(projectId: Id<"projects"> | null | undefined, includeRoster = true) {
+  const { principalId, isConvexAuthReady } = useAuth()
   const members = useQuery(
     api.projectMembers.listMembers,
-    projectId && principalId ? { projectId, viewerPrincipalId: principalId } : "skip",
+    includeRoster && projectId && principalId && isConvexAuthReady ? { projectId, viewerPrincipalId: principalId } : "skip",
   )
   const memberRole = useQuery(
     api.projectMembers.getMemberRole,
-    projectId && principalId ? { projectId, principalId: principalId } : "skip",
+    projectId && principalId && isConvexAuthReady ? { projectId, principalId: principalId } : "skip",
   )
   return { members, memberRole, principalId: principalId ?? null }
 }

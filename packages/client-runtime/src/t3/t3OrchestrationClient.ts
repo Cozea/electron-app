@@ -11,6 +11,7 @@ import { T3EffectRpcClient } from "./effectRpcClient";
 
 export interface T3OrchestrationClientOptions {
   readonly baseUrl: string;
+  readonly rpcBaseUrl?: string;
   readonly wsTicket: string;
   readonly client?: T3EffectRpcClient;
   readonly WebSocketImpl?: typeof WebSocket;
@@ -111,7 +112,7 @@ export class T3OrchestrationClient {
       this.ownsClient = false;
     } else {
       this.client = new T3EffectRpcClient({
-        baseUrl: options.baseUrl,
+        baseUrl: options.rpcBaseUrl ?? options.baseUrl,
         wsTicket: options.wsTicket,
         WebSocketImpl: options.WebSocketImpl,
         requestTimeoutMs: options.requestTimeoutMs,

@@ -105,7 +105,7 @@ describe("WorkbenchAssistantTabStatus", () => {
 
     const html = renderToStaticMarkup(<WorkbenchAssistantTabStatus tile={mockTile} />);
     expect(html).toContain('data-slot="assistant-tab-attention"');
-    expect(html).toContain("text-amber-500");
+    expect(html).toContain("text-warning");
     expect(html).toContain("Connection interrupted. Reconnecting");
   });
 

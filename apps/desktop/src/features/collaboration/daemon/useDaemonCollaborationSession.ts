@@ -5,7 +5,8 @@
  */
 
 import { useEffect, useState } from "react"
-import { useConvex, type ConvexReactClient } from "convex/react"
+import type { ConvexReactClient } from "convex/react"
+import { useConvex } from "@/lib/cloudQueries"
 
 import type { ProjectdSessionStatus, ProjectdSessionTicket } from "@cozea/projectd-protocol"
 
@@ -143,7 +144,7 @@ export function useDaemonCollaborationSession(input: {
   const targetKey = target ? JSON.stringify(target) : null
 
   useEffect(() => {
-    if (!targetKey) return
+    if (!targetKey || !convex) return
     const connectTarget = JSON.parse(targetKey) as DaemonSessionTarget
     const deps = createDaemonSessionDeps(convex)
     let cancelled = false
@@ -229,7 +230,7 @@ export function useDaemonCollaborationSession(input: {
   const needingKeyCount = membersNeedingKey.data?.length ?? 0
 
   useEffect(() => {
-    if (!sharingSessionId || needingKeyCount === 0) return
+    if (!sharingSessionId || needingKeyCount === 0 || !convex) return
     shareSessionKeyWithMembers(createDaemonSessionDeps(convex), sharingSessionId).catch(
       (error: unknown) => {
         console.warn("[DaemonSession] Could not share the session key", error)

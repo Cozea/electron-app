@@ -5,6 +5,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime"
 import { WorkspaceCatalog } from "./WorkspaceCatalog.ts"
 import { makeWorkspaceCatalogLayer } from "./WorkspaceCatalogLayer.ts"
 import { migrateFromLegacyRegistry } from "./legacyMigration.ts"
+import * as Effect from "effect/Effect"
+import { reconcileLocalProjectOperations } from "./reconcileLocalProjectOperations.ts"
 
 export type WorkspaceCatalogManagedRuntime = ManagedRuntime.ManagedRuntime<
   WorkspaceCatalog,
@@ -38,6 +40,12 @@ export async function initWorkspaceCatalogRuntime(userData: string): Promise<voi
     } catch (e) {
       console.error("[WorkspaceCatalog] Legacy migration failed (non-fatal):", e)
     }
+    await _runtime.runPromise(Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) =>
+      reconcileLocalProjectOperations({ projects: catalog.projects, lifecycle: catalog.projectLifecycle,
+        onError: (id, error) => console.warn(`[WorkspaceCatalog] Recovery ${id}: ${error}`),
+      }),
+    ))
+    await _runtime.runPromise(Effect.flatMap(Effect.service(WorkspaceCatalog), (catalog) => catalog.projects.compactJournal()))
   } catch (e) {
     _initError = e instanceof Error ? e : new Error(String(e))
     console.error("[WorkspaceCatalog] Runtime initialization failed:", _initError)

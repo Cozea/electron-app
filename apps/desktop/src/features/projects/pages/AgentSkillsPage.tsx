@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { FilterChip } from "@/components/ui/filter-chip"
+import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button";
 import { HeaderBackButton } from "@/components/ui/header-back-button";
 import { Input } from "@/components/ui/input";
@@ -57,7 +58,7 @@ import type {
   AgentSkillsSnapshot,
   AgentSkillSetupPack,
   AgentSkillSetupPackSkill,
-} from "@shared/electronApiTypes";
+} from "@cozea/app-contract/electronApi";
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -335,7 +336,7 @@ function SkillEditor({ initialSkill, busy, onCancel, onSave }: SkillEditorProps)
               value={instructions}
               onChange={(event) => setInstructions(event.target.value)}
               placeholder={"Start by inspecting the project…\n\nWhen complete, verify…"}
-              className="min-h-80 resize-y rounded-none border-0 bg-transparent p-5 font-mono text-[13px] leading-6 shadow-none focus-visible:ring-0"
+              className="min-h-80 resize-y rounded-none border-0 bg-transparent p-5 font-mono text-sm leading-6 shadow-none focus-visible:ring-0"
             />
           </SettingsGroup>
         </section>
@@ -513,10 +514,10 @@ function SkillInspector({
           {changedProviders.length > 0 ? (
             <div
               className={cn(
-                "mt-2 flex items-start gap-2 px-1 text-[11px] leading-5",
+                "mt-2 flex items-start gap-2 px-1 text-caption leading-5",
                 restartChanged.length > 0
-                  ? "text-amber-800 dark:text-amber-300"
-                  : "text-emerald-700 dark:text-emerald-400",
+                  ? "text-warning"
+                  : "text-success",
               )}
             >
               <HugeiconsIcon
@@ -551,7 +552,7 @@ function SkillInspector({
                     aria-pressed={provider === shownProvider}
                     onClick={() => setCopyProvider(provider)}
                     className={cn(
-                      "rounded-md px-2 py-1 text-[11px] transition-colors",
+                      "rounded-md px-2 py-1 text-caption transition-colors",
                       provider === shownProvider
                         ? "bg-background text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground",
@@ -592,7 +593,7 @@ function SkillInspector({
             </button>
             {instructionsOpen ? (
               <div className="border-t border-border/25 px-6 py-5">
-                <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-foreground/90">
+                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-foreground/90">
                   {shownInstructions || "No instructions provided."}
                 </pre>
               </div>
@@ -600,7 +601,7 @@ function SkillInspector({
           </SettingsGroup>
         </section>
 
-        <p className="px-1 text-[11px] text-muted-foreground/75">
+        <p className="px-1 text-caption text-muted-foreground/75">
           {skill.source === "managed"
             ? "My library"
             : skill.source === "catalog"
@@ -682,7 +683,7 @@ function SetupPackBrowser({
             <SettingsSectionTitle>Instructions</SettingsSectionTitle>
             <SettingsGroup>
               <div className="px-6 py-5">
-                <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-foreground/90">
+                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-foreground/90">
                   {selectedSkill.instructions || "No instructions provided."}
                 </pre>
               </div>
@@ -729,7 +730,7 @@ function SetupPackBrowser({
                     <span className="mt-0.5 block truncate text-xs text-muted-foreground/80">
                       {skill.description || "No description"}
                     </span>
-                    <span className="mt-1 block text-[11px] text-muted-foreground/65">
+                    <span className="mt-1 block text-caption text-muted-foreground/65">
                       {providerListLabel(skill.compatibleProviders)}
                     </span>
                   </span>
@@ -752,7 +753,7 @@ function SetupPackBrowser({
 }
 
 export function AgentSkillsPage() {
-  const { user } = useAuth();
+  const { localDevice: user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { data: snapshot, error: loadError } = useAgentSkillsSnapshot();
   const [selectedSkillId, setSelectedSkillId] = React.useState<string | null>(null);
@@ -1029,7 +1030,7 @@ export function AgentSkillsPage() {
             <span>{filter.label}</span>
             <span
               className={cn(
-                "text-[11px] tabular-nums",
+                "text-caption tabular-nums",
                 status === filter.id ? "text-foreground/70" : "text-muted-foreground/60",
               )}
             >
@@ -1241,11 +1242,7 @@ export function AgentSkillsPage() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mx-auto w-full max-w-[960px] shrink-0 space-y-6 px-6 pt-4 pb-2">
-        <header>
-          <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
-            Agent Skills
-          </h1>
-        </header>
+        <PageHeader title="Agent Skills" />
 
         <div className="sticky top-[-1rem] z-20 -mx-6 bg-background/95 px-6 pt-3 pb-2 backdrop-blur-md">
           <SearchInput
@@ -1342,7 +1339,7 @@ export function AgentSkillsPage() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 gap-1 px-2 text-[11px] font-normal text-muted-foreground"
+                          className="h-6 gap-1 px-2 text-caption font-normal text-muted-foreground"
                           disabled={updating}
                           title={updateHint(skill)}
                           aria-label={`Update ${skill.name}`}
@@ -1356,7 +1353,7 @@ export function AgentSkillsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-7 gap-1 px-2 text-[11px]"
+                          className="h-7 gap-1 px-2 text-caption"
                           disabled={installing}
                           title={`Install for ${PROVIDER_LABELS[installFor]} from the ${skill.originLabel ?? "plugin catalog"}`}
                           onClick={() => void handleInstall(skill)}
@@ -1400,7 +1397,7 @@ export function AgentSkillsPage() {
 function EssentialTag() {
   return (
     <span className="flex shrink-0 items-center gap-1.5">
-      <span className="text-[11px] tracking-[0.1em] text-muted-foreground/70 uppercase">
+      <span className="text-caption tracking-[0.1em] text-muted-foreground/70 uppercase">
         Essential
       </span>
       <Tooltip>

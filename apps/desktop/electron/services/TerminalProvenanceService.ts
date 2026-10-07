@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import type { FileChangeAttribution, TerminalKind } from '../../../../shared/electronApiTypes'
+import type { FileChangeAttribution, TerminalKind } from '@cozea/app-contract/electronApi'
 
 const COMMAND_PROVENANCE_WINDOW_MS = 30_000
 const SUBPROCESS_PROVENANCE_WINDOW_MS = 2 * 60_000

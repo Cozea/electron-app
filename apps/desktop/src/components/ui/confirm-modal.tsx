@@ -91,8 +91,10 @@ export function ConfirmModal({
         </>
       }
     >
-      <p className="text-sm text-muted-foreground">{message}</p>
-      {children}
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">{message}</p>
+        {children}
+      </div>
     </UnifiedModal>
   );
 }

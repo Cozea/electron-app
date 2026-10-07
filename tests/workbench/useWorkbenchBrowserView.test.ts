@@ -83,7 +83,7 @@ describe("ported T3 Browser tile", () => {
   it("groups browser and preview utilities into one native overflow menu", () => {
     expect(browserControlsSource).not.toContain('aria-label="Browser menu"');
     expect(browserControlsSource).not.toContain('data-browser-find-button');
-    expect(browserPreviewActionsSource).toContain('aria-label="Browser and preview menu"');
+    expect(browserPreviewActionsSource).toContain('aria-label={t("browser.browserAndPreviewMenu")}');
     expect(browserPreviewActionsSource).toContain("Find in page");
     expect(browserPreviewActionsSource).toContain("Annotate preview");
     expect(browserPreviewActionsSource).toContain("Capture screenshot");

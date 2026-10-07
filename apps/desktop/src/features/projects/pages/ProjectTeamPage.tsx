@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { useMutation, useQuery } from 'convex/react'
+import { Spinner } from "@/components/ui/spinner"
+import { PageHeader } from "@/components/PageHeader"
+import { useMutation, useQuery } from '@/lib/cloudQueries'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { api } from '../../../../../../convex/_generated/api'
 import { cleanConvexError as cleanError } from "@/lib/convexError"
@@ -121,7 +123,7 @@ export function ProjectTeamPage() {
   }
 
   if (project === undefined) {
-    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><div className="loader mr-2" />Loading team…</div>
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Spinner size="xs" className="mr-2" />Loading team…</div>
   }
   if (project === null) {
     return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Project not found.</div>
@@ -130,12 +132,10 @@ export function ProjectTeamPage() {
   return (
     <div className="h-full overflow-y-auto p-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <div>
-          <h1 className="text-lg font-semibold">Project devices</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Every member is one physical Cozea device with its own cryptographic identity.
-          </p>
-        </div>
+        <PageHeader
+          title="Project devices"
+          description="Every member is one physical Cozea device with its own cryptographic identity."
+        />
 
         {error ? <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div> : null}
         {notice ? <div className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{notice}</div> : null}
@@ -199,7 +199,7 @@ export function ProjectTeamPage() {
                             <span className="truncate font-medium">{member.displayName}</span>
                             {self ? <Badge variant="secondary">This device</Badge> : null}
                           </div>
-                          <div className="truncate font-mono text-[11px] text-muted-foreground">{member.identityKey}</div>
+                          <div className="truncate font-mono text-caption text-muted-foreground">{member.identityKey}</div>
                         </div>
                       </div>
                     </TableCell>
@@ -249,12 +249,12 @@ export function ProjectTeamPage() {
                 <div key={enrollment._id} className="flex items-center gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-mono text-xs">{enrollment.targetIdentityKey}</div>
-                    <div className="text-[11px] text-muted-foreground">{enrollment.role.replace(/_/g, ' ')} · expires {formatDate(enrollment.expiresAt)}</div>
+                    <div className="text-caption text-muted-foreground">{enrollment.role.replace(/_/g, ' ')} · expires {formatDate(enrollment.expiresAt)}</div>
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-caption"
                     disabled={busy !== null}
                     onClick={() => void run(`cancel:${enrollment._id}`, async () => {
                       await cancelEnrollment({ enrollmentId: enrollment._id })

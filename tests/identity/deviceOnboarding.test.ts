@@ -27,16 +27,17 @@ describe("device principal onboarding", () => {
   })
 
   it("treats an unconfigured device as onboarding-required", () => {
-    expect(authContext).toContain("!reactiveUser.presentationConfigured")
+    expect(authContext).toContain("!localDevice.presentationConfigured")
     expect(authContext).toContain("needsOnboarding")
     expect(authContext).not.toContain("needsOnboarding: false")
   })
 
   it("requires a user-selected device name and updates presentation only", () => {
     expect(onboarding).toContain("Name this device")
-    expect(onboarding).toContain("updateDevicePresentation")
+    expect(onboarding).toContain("updateLocalDevice")
     expect(onboarding).toContain("displayName: normalizedDeviceName")
-    expect(onboarding).toContain("refreshToken()")
+    expect(onboarding).not.toContain("refreshToken()")
+    expect(onboarding).not.toContain("convex/")
     expect(onboarding).not.toContain("useProjectCreationMenu")
     expect(onboarding).not.toContain("email")
     expect(onboarding).not.toContain("password")

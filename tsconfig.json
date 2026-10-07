@@ -6,6 +6,8 @@
   ],
   "compilerOptions": {
     "paths": {
+      "@cozea/app-contract": ["./packages/app-contract/src/index.ts"],
+      "@cozea/app-contract/*": ["./packages/app-contract/src/*"],
       "@cozea/assistant-contracts": ["./shared/assistant-contracts/index.ts"],
       "@cozea/assistant-contracts/*": ["./shared/assistant-contracts/*"],
       "@cozea/assistant-shared/*": ["./shared/assistant-shared/*"],

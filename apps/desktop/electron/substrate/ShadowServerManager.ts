@@ -1,4 +1,6 @@
 import { requestHostUpdate, type HostUpdateRequest } from "../../../../shared/hostUpdateControl";
+import { requestHostWorkspaceRemoval, type HostWorkspaceRemovalRequest } from "../../../../shared/hostWorkspaceRemoval";
+import { requestHostWorkspaceClose, type HostWorkspaceCloseRequest } from "../../../../shared/hostWorkspaceClose";
 import { fork, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -40,6 +42,7 @@ export interface ShadowServerStatus {
 export interface ShadowServerManagerOptions {
   readonly entryPath: string;
   readonly logDirectory: string;
+  readonly workspaceCatalogPath?: string;
   readonly flags?: SubstrateShadowServerFlags;
   readonly readinessTimeoutMs?: number;
   readonly stopGraceMs?: number;
@@ -62,6 +65,7 @@ function delay(ms: number): Promise<void> {
  * and supports clean stop — without switching product chat UI.
  */
 export class ShadowServerManager {
+  private readonly workspaceCatalogPath: string | undefined;
   private readonly entryPath: string;
   private readonly logDirectory: string;
   private readonly flags: SubstrateShadowServerFlags;
@@ -82,6 +86,7 @@ export class ShadowServerManager {
   private logStream: fs.WriteStream | null = null;
 
   constructor(options: ShadowServerManagerOptions) {
+    this.workspaceCatalogPath = options.workspaceCatalogPath;
     this.entryPath = options.entryPath;
     this.logDirectory = options.logDirectory;
     this.flags = options.flags ?? readSubstrateShadowServerFlags();
@@ -118,6 +123,17 @@ export class ShadowServerManager {
   async controlUpdate(request: HostUpdateRequest): Promise<void> {
     if (!this.child || this.phase !== "ready") throw new Error("The chat server is not ready for an update.");
     await requestHostUpdate(this.child, request, 15_000);
+  }
+
+  async removeWorkspaceChatData(request: HostWorkspaceRemovalRequest): Promise<void> {
+    if (this.phase !== "ready" || !this.child) throw new Error("Reconnect the chat server before removing retained data.")
+    await requestHostWorkspaceRemoval(this.child, request)
+  }
+
+  async closeWorkspaceChats(request: HostWorkspaceCloseRequest): Promise<void> {
+    if (this.phase === "stopped" && !this.child) return;
+    if (!this.child || this.phase !== "ready") throw new Error("The chat server is unavailable for workspace close. Reconnect and retry.");
+    await requestHostWorkspaceClose(this.child, request);
   }
 
   async start(): Promise<ShadowServerStatus> {
@@ -166,6 +182,7 @@ export class ShadowServerManager {
       stdio: ["ignore", "pipe", "pipe", "ipc"],
       env: {
         ...process.env,
+        COZEA_WORKSPACE_CATALOG_PATH: this.workspaceCatalogPath ?? process.env.COZEA_WORKSPACE_CATALOG_PATH,
         COZEA_BACKEND_INSTANCE_ID: this.instanceId,
         COZEA_SUBSTRATE_SHADOW_HOST: this.flags.host,
         COZEA_SUBSTRATE_SHADOW_PORT: String(this.flags.port),

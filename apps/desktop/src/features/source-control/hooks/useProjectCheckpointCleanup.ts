@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react";
-import { useMutation } from "convex/react";
+import { useMutation } from "@/lib/cloudQueries";
 
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
 import { getProjectChangesActivityCacheKey } from "@/features/source-control/model/changesQueryCache";
 import { useGitDirtySnapshot } from "@/features/source-control/hooks/useGitDirtySnapshot";
 import { useQueryCache } from "@/app/model/queryCache";
+import { runCheckpointCleanup } from "@/features/source-control/model/runCheckpointCleanup";
 import {
   shouldClearEphemeralChanges,
   type CheckpointCleanupObservation,
@@ -22,6 +23,7 @@ import {
 export function useProjectCheckpointCleanup(
   projectId: Id<"projects"> | null,
   workspaceId: string | null,
+  cloudActivityEnabled = false,
 ) {
   const clearEphemeralChanges = useMutation(api.activity.clearEphemeralChanges);
   const snapshot = useGitDirtySnapshot(workspaceId);
@@ -36,7 +38,7 @@ export function useProjectCheckpointCleanup(
   }, [projectId, workspaceId]);
 
   useEffect(() => {
-    if (!projectId || !workspaceId || !snapshot) return;
+    if (!workspaceId || !snapshot) return;
 
     const observation: CheckpointCleanupObservation = {
       headCommit: snapshot.headCommit ?? null,
@@ -55,17 +57,17 @@ export function useProjectCheckpointCleanup(
     cleanupInFlightRef.current = true;
     void (async () => {
       try {
-        await Promise.all([
-          clearEphemeralChanges({ projectId }),
-          window.electronAPI.workspaceSync.gitDeleteAllCheckpointRefs({ workspaceId }),
-        ]);
+        await runCheckpointCleanup({ workspaceId, cloudProjectId: projectId, cloudActivityEnabled }, {
+          deleteLocalRefs: (id) => window.electronAPI.workspaceSync.gitDeleteAllCheckpointRefs({ workspaceId: id }),
+          clearSharedActivity: (id) => clearEphemeralChanges({ projectId: id }),
+        });
         lastCleanedHeadCommitRef.current = headCommit;
-        useQueryCache.getState().clear(getProjectChangesActivityCacheKey(projectId));
+        if (projectId && cloudActivityEnabled) useQueryCache.getState().clear(getProjectChangesActivityCacheKey(projectId));
       } catch (error) {
         console.warn("[Changes] Failed to clear ephemeral changes after commit:", error);
       } finally {
         cleanupInFlightRef.current = false;
       }
     })();
-  }, [snapshot, projectId, workspaceId, clearEphemeralChanges]);
+  }, [snapshot, projectId, workspaceId, cloudActivityEnabled, clearEphemeralChanges]);
 }

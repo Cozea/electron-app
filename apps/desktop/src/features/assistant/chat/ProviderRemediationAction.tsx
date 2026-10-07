@@ -1,4 +1,6 @@
 import { useNavigateTo } from "@/lib/navigation"
+import { useTranslation } from "@/lib/i18n"
+import { Spinner } from "@/components/ui/spinner"
 import { CheckmarkCircle02Icon, Copy01Icon } from "@hugeicons/core-free-icons"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useEffect, useRef, useState } from "react"
@@ -7,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard"
 import { ensureNativeApi } from "@/lib/nativeApi"
-import type { AgentToolId } from "@shared/electronApiTypes"
+import type { AgentToolId } from "@cozea/app-contract/electronApi"
 import {
   isProviderRemediationResolved,
   markProviderRemediationResolved,
@@ -137,6 +139,7 @@ export function ProviderRemediationAction(props: {
   /** Called after a successful run so the host can re-probe/retry. */
   onResolved?: () => void
 }) {
+  const { t } = useTranslation()
   const navigateTo = useNavigateTo()
   const remediation = resolveProviderRemediation(
     props.provider,
@@ -186,7 +189,7 @@ export function ProviderRemediationAction(props: {
     }
   }, [props.persistenceKey, remediationKey])
 
-  if (props.provider === "antigravity") return <Button size="sm" variant="outline" onClick={() => navigateTo({ to: "settings", section: "tooling" })}>Set up Antigravity</Button>
+  if (props.provider === "antigravity") return <Button size="sm" variant="outline" onClick={() => navigateTo({ to: "settings", section: "tooling" })}>{t("assistant.setUpAntigravity")}</Button>
 
   if (!remediation) return null
 
@@ -279,7 +282,7 @@ export function ProviderRemediationAction(props: {
               submitCode()
             }
           }}
-          placeholder="Paste code"
+          placeholder={t("assistant.pasteCode")}
           className="h-6 w-32 px-2 text-xs sm:h-6"
           autoFocus
         />
@@ -291,7 +294,7 @@ export function ProviderRemediationAction(props: {
           disabled={!codeDraft.trim()}
           onClick={submitCode}
         >
-          Submit
+          {t("assistant.submit")}
         </Button>
       </span>
     )
@@ -301,7 +304,7 @@ export function ProviderRemediationAction(props: {
     return (
       <div className="w-full max-w-md space-y-2.5 text-left">
         <p className="text-xs leading-5 text-muted-foreground">
-          Open Terminal, paste this command, and complete the sign-in flow.
+          {t("assistant.openTerminalPasteThisCommandAnd")}
         </p>
         <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-background/70 p-1.5 pl-3">
           <code className="min-w-0 flex-1 select-all overflow-x-auto whitespace-nowrap font-mono text-xs text-foreground">
@@ -322,7 +325,7 @@ export function ProviderRemediationAction(props: {
             {isCopied ? "Copied" : "Copy"}
           </Button>
         </div>
-        <p className="text-[11px] leading-4 text-muted-foreground">{remediation.nextStep}</p>
+        <p className="text-caption leading-4 text-muted-foreground">{remediation.nextStep}</p>
         {runState.phase === "failed" ? (
           <p className="text-xs text-destructive" role="alert">
             {runState.error}
@@ -339,8 +342,8 @@ export function ProviderRemediationAction(props: {
           >
             {runState.phase === "running" ? (
               <span className="flex items-center gap-1.5">
-                <span className="loader" />
-                Waiting for browser login…
+                <Spinner size="xs" />
+                {t("assistant.waitingForBrowserLogin")}
               </span>
             ) : runState.phase === "failed" ? (
               "Retry login in Cozea"
@@ -372,8 +375,8 @@ export function ProviderRemediationAction(props: {
       >
         {runState.phase === "running" ? (
           <span className="flex items-center gap-1.5">
-            <span className="loader" />
-            Installing…
+            <Spinner size="xs" />
+            {t("assistant.installing")}
           </span>
         ) : runState.phase === "failed" ? (
           "Retry"

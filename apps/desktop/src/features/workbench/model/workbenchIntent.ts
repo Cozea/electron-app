@@ -16,6 +16,8 @@ import type { WorkbenchTileType } from "@/lib/workbenchTileContract"
 export interface WorkbenchIntent {
   laneId?: string | null
   openTile?: Extract<WorkbenchTileType, "assistantChat" | "devServer" | "terminal">
+  /** Creation/folder opening reuses an existing tile instead of adding another. */
+  ensureTile?: Extract<WorkbenchTileType, "assistantChat" | "devServer" | "terminal">
   focusTileId?: string | null
   openDevAppPreview?: {
     relativePath: string
@@ -38,6 +40,22 @@ export function readWorkbenchIntentFromState(state: unknown): WorkbenchIntent | 
   const intent = (state as WorkbenchIntentNavigationState).workbenchIntent
   if (!intent || typeof intent !== "object") return null
   return intent
+}
+
+interface WorkbenchIntentScope {
+  projectId: string | null
+  workspaceId: string | null
+  targetProjectId: string | null
+  targetWorkspaceId: string | null
+  visible: boolean
+}
+
+/** A retained surface must wait until it owns the navigation's destination. */
+export function canApplyWorkbenchIntentToScope(scope: WorkbenchIntentScope): boolean {
+  if (!scope.visible || !scope.projectId) return false
+  if (scope.targetProjectId && scope.targetProjectId !== scope.projectId) return false
+  if (scope.targetWorkspaceId && scope.targetWorkspaceId !== scope.workspaceId) return false
+  return true
 }
 
 // Intent application must be idempotent across component remounts (StrictMode

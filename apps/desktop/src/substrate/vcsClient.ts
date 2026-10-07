@@ -1,20 +1,11 @@
-export interface SubstrateVcsInvalidateResult {
-  readonly ok: boolean;
-  readonly reason?: "substrate_vcs_disabled" | "invalid_cwd" | "unavailable";
-}
-
-export interface SubstrateVcsCapabilities {
-  readonly enabled: boolean;
-  readonly capabilities: {
-    readonly status: boolean;
-    readonly refs: boolean;
-    readonly worktrees: boolean;
-    readonly checkpoints: boolean;
-    readonly push: boolean;
-    readonly ignore: boolean;
-    readonly init: boolean;
-  };
-}
+export type {
+  SubstrateVcsCapabilities,
+  SubstrateVcsInvalidateResult,
+} from "@cozea/app-contract/desktopBridge";
+import type {
+  SubstrateVcsCapabilities,
+  SubstrateVcsInvalidateResult,
+} from "@cozea/app-contract/desktopBridge";
 
 function readSubstrateVcsBridge():
   | {

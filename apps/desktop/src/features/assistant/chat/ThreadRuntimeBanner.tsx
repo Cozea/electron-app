@@ -1,4 +1,5 @@
 import { memo, useState, type ReactNode } from "react";
+import { useTranslation } from "@/lib/i18n"
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   AlertCircleIcon as __CircleAlertIconHugeIcon,
@@ -27,34 +28,34 @@ function bannerPresentation(state: ThreadRuntimeBannerState, isForceStopAvailabl
         detail: isForceStopAvailable
           ? "The agent is still settling. Force stop is available if it stays stuck."
           : "Waiting for the current run and any active tools to stop.",
-        className: "border-amber-300 bg-[#fffbeb] text-amber-900 dark:border-amber-500/40 dark:bg-[#231b0f] dark:text-amber-200",
+        className: "border-warning/40 bg-background bg-linear-to-b from-warning/10 to-warning/10 text-warning",
         icon: __LoadingIconHugeIcon,
       };
     case "interrupted":
       return {
         title: "Run interrupted",
         detail: "The last run was stopped before it finished.",
-        className: "border-amber-300 bg-[#fffbeb] text-amber-900 dark:border-amber-500/40 dark:bg-[#231b0f] dark:text-amber-200",
+        className: "border-warning/40 bg-background bg-linear-to-b from-warning/10 to-warning/10 text-warning",
         icon: __CircleAlertIconHugeIcon,
       };
     case "stopped":
       return {
         title: "Session stopped",
         detail: "The provider session ended. Send a message to start a fresh run.",
-        className: "border-border bg-[#f4f4f5] text-foreground dark:border-white/[0.12] dark:bg-[#202022] dark:text-foreground",
+        className: "border-border bg-muted text-foreground",
       };
     case "error":
       return {
         title: "Run error",
         detail: "The last run failed before it completed.",
-        className: "border-destructive/30 bg-[#fff1f2] text-destructive dark:border-red-500/40 dark:bg-[#231214] dark:text-red-400",
+        className: "border-destructive/30 bg-background bg-linear-to-b from-destructive/10 to-destructive/10 text-destructive",
         icon: __CircleAlertIconHugeIcon,
       };
     case "connecting":
       return {
         title: "Connecting",
         detail: "Waiting for the provider session to come online.",
-        className: "border-border bg-[#f4f4f5] text-foreground dark:border-white/[0.12] dark:bg-[#202022] dark:text-foreground",
+        className: "border-border bg-muted text-foreground",
         icon: __LoadingIconHugeIcon,
       };
   }
@@ -63,6 +64,7 @@ function bannerPresentation(state: ThreadRuntimeBannerState, isForceStopAvailabl
 export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
   props: ThreadRuntimeBannerProps,
 ) {
+  const { t } = useTranslation();
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
   const presentation = bannerPresentation(props.state, props.isForceStopAvailable);
   const detail = props.detail?.trim() || presentation.detail;
@@ -105,7 +107,7 @@ export const ThreadRuntimeBanner = memo(function ThreadRuntimeBanner(
         <button
           onClick={() => setDismissedKey(currentKey)}
           className="mt-0.5 ml-auto inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-white text-black shadow-sm transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/50"
-          aria-label="Dismiss"
+          aria-label={t("assistant.dismiss")}
         >
           <HugeiconsIcon icon={__XIconHugeIcon} strokeWidth={2.5} className="size-3 text-black stroke-[2.5]" />
         </button>

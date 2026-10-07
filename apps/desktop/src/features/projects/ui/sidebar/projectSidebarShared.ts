@@ -2,7 +2,7 @@ import type { Doc } from "../../../../../../../convex/_generated/dataModel"
 import type {
   ProjectLaneDescriptor,
   ProjectLaneState,
-} from "@shared/electronApiTypes"
+} from "@cozea/app-contract/electronApi"
 
 import type { ProjectOpenGitProjectLike } from "@/features/projects/lib/projectOpenTypes"
 import { isProjectDevAppLogoDataUrl } from "@/features/devapps/projectDevAppLogo"
@@ -59,6 +59,7 @@ export const SIDEBAR_WORKBENCH_ROW_CONTENT_CLASS = "flex min-w-0 flex-1 items-ce
 export interface SidebarProjectItem extends ProjectOpenGitProjectLike {
   id: string
   name: string
+  hidden?: boolean
   status: string
   template?: string | null
   slug: string
@@ -225,6 +226,7 @@ export function areSidebarProjectItemsEqual(
     left.id === right.id &&
     left._id === right._id &&
     left.name === right.name &&
+    left.hidden === right.hidden &&
     left.status === right.status &&
     left.template === right.template &&
     left.slug === right.slug &&

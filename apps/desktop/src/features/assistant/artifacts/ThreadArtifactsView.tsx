@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "@/lib/i18n"
 
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -91,7 +92,7 @@ function ArtifactPreview(props: {
       )}
     >
       <HugeiconsIcon icon={__ImageHugeIcon} className="size-6" aria-hidden="true" />
-      <span className="px-3 text-center text-[11px]">
+      <span className="px-3 text-center text-caption">
         {failed
           ? "Preview unavailable"
           : props.artifact.status === "inProgress"
@@ -111,6 +112,7 @@ export function ThreadArtifactsView({
   onSelectedArtifactChange,
   onBackToChat,
 }: ThreadArtifactsViewProps) {
+  const { t } = useTranslation();
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -130,7 +132,7 @@ export function ThreadArtifactsView({
     return (
       <section
         className="flex h-full min-h-0 flex-col bg-content-surface"
-        aria-label="Artifact detail"
+        aria-label={t("assistant.artifactDetail")}
       >
         <div className="flex min-h-11 items-center gap-2 border-b border-border/60 px-3">
           <Button
@@ -139,21 +141,21 @@ export function ThreadArtifactsView({
             size="icon"
             className="size-7"
             onClick={() => selectArtifact(null)}
-            aria-label="Back to artifacts"
+            aria-label={t("assistant.backToArtifacts")}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
           </Button>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium">{selectedArtifact.title}</p>
             {selectedArtifact.status === "inProgress" ? (
-              <p className="text-[10px] text-muted-foreground">Generating</p>
+              <p className="text-2xs text-muted-foreground">{t("assistant.generating")}</p>
             ) : null}
           </div>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 gap-1.5 px-2 text-[11px]"
+            className="h-7 gap-1.5 px-2 text-caption"
             disabled={!url}
             onClick={() => {
               if (!url) return;
@@ -180,7 +182,7 @@ export function ThreadArtifactsView({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 gap-1.5 px-2 text-[11px]"
+            className="h-7 gap-1.5 px-2 text-caption"
             disabled={!url}
             onClick={() => {
               if (!url) return;
@@ -191,7 +193,7 @@ export function ThreadArtifactsView({
             }}
           >
             <HugeiconsIcon icon={__DownloadHugeIcon} className="size-3.5" />
-            Save
+            {t("assistant.save")}
           </Button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -219,7 +221,7 @@ export function ThreadArtifactsView({
       fadeSize="1.5rem"
       className="h-full min-h-0 bg-content-surface"
       viewportClassName="p-3"
-      aria-label="Thread artifacts"
+      aria-label={t("assistant.threadArtifacts")}
     >
       {onBackToChat ? (
         <div className="mb-3 flex min-h-7 items-center justify-between border-b border-border/40 pb-2">
@@ -227,14 +229,14 @@ export function ThreadArtifactsView({
             type="button"
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-1.5 text-[11px] font-normal text-muted-foreground hover:text-foreground cursor-pointer"
+            className="h-6 gap-1 px-1.5 text-caption font-normal text-muted-foreground hover:text-foreground cursor-pointer"
             onClick={onBackToChat}
           >
             <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3" />
-            Back to Chat
+            {t("assistant.backToChat")}
           </Button>
           {artifacts.length > 0 ? (
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {artifacts.length} {artifacts.length === 1 ? "artifact" : "artifacts"}
             </span>
           ) : null}
@@ -244,9 +246,9 @@ export function ThreadArtifactsView({
       {orderedArtifacts.length === 0 ? (
         <div className="flex h-full min-h-52 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
           <HugeiconsIcon icon={__ImageHugeIcon} className="size-7 opacity-70" aria-hidden="true" />
-          <p className="text-xs font-medium text-foreground/80">No generated images yet</p>
-          <p className="max-w-64 text-[11px] leading-relaxed">
-            Images generated in this chat will collect here while the conversation keeps running.
+          <p className="text-xs font-medium text-foreground/80">{t("assistant.noGeneratedImagesYet")}</p>
+          <p className="max-w-64 text-caption leading-relaxed">
+            {t("assistant.imagesGeneratedInThisChatWill")}
           </p>
         </div>
       ) : (
@@ -276,7 +278,7 @@ export function ThreadArtifactsView({
                   />
                 </div>
                 <div className="min-w-0 px-0.5 pt-2">
-                  <p className="truncate text-[11px] font-medium" title={artifact.title}>
+                  <p className="truncate text-caption font-medium" title={artifact.title}>
                     {artifact.title}
                   </p>
                 </div>

@@ -11,7 +11,7 @@ export interface DeviceAvatarProps {
   principalId?: string | null;
   /** Size and surface classes (e.g. `"size-6"`). Shape is always circular. */
   className?: string;
-  /** Fallback text sizing (e.g. `"text-[10px] font-medium"`). */
+  /** Fallback text sizing (e.g. `"text-2xs font-medium"`). */
   fallbackClassName?: string;
   fallbackLetter?: string;
   /** When true (default) and `principalId` is set, the fallback is the principal's color. Otherwise the neutral heroui gradient. */

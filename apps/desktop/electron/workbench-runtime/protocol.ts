@@ -6,7 +6,7 @@ import type {
   TerminalInfo,
   TerminalOutputEvent,
   TerminalSnapshot,
-} from '../../../../shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 
 export type WorkbenchRuntimeMethod =
   | 'terminal.create'

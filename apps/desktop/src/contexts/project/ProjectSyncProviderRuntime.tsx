@@ -20,6 +20,8 @@ interface ProjectSyncProviderRuntimeProps extends ProjectSyncProviderProps {
 export function ProjectSyncProviderRuntime({
   children,
   projectId,
+  cloudProjectId = null,
+  cloudActivityEnabled = false,
   principalId: _principalId,
   displayName: _displayName,
   laneId: _laneId = null,
@@ -38,7 +40,7 @@ export function ProjectSyncProviderRuntime({
   const [lastSyncAt, setLastSyncAt] = useState<number | null>(initialLastSyncAt ?? null)
   const [progress, setProgress] = useState<SyncProgress>(IDLE_SYNC_PROGRESS)
 
-  useProjectCheckpointCleanup(projectId, workspaceId)
+  useProjectCheckpointCleanup(cloudProjectId, workspaceId, cloudActivityEnabled)
 
   useEffect(() => {
     setLastSyncAt(initialLastSyncAt ?? null)

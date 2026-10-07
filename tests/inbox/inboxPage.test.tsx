@@ -6,7 +6,7 @@ import { InboxPage } from "@/features/inbox/pages/InboxPage";
 let mockIncoming: any = [];
 let mockSessionInvitations: any = [];
 let mockOrganizationInvitations: any = [];
-vi.mock("convex/react", () => ({
+vi.mock("@/lib/cloudQueries", () => ({
   useQuery: (query: any) => {
     switch (getFunctionName(query)) {
       case "collaborationSessions:listIncomingInvitations":
@@ -31,6 +31,7 @@ vi.mock("@/lib/useProjectHeader", () => ({
 
 vi.mock("@/lib/navigation", () => ({
   useViewTransitionNavigate: () => vi.fn(),
+  useNavigateTo: () => vi.fn(),
 }));
 
 const DAY_MS = 24 * 60 * 60 * 1000;

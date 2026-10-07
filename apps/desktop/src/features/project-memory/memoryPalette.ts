@@ -1,4 +1,4 @@
-import type { ProjectMemoryNodeState } from "@shared/electronApiTypes"
+import type { ProjectMemoryNodeState } from "@cozea/app-contract/electronApi"
 
 import { resolveAppliedTheme, type Theme } from "@/lib/theme"
 

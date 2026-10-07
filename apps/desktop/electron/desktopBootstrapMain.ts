@@ -3,12 +3,16 @@ import { ipcMain } from 'electron'
 import type {
   DesktopBootstrapSession,
   DesktopWorkbenchLocator,
-} from '../../../shared/desktopBootstrapTypes'
+  LocalDevicePresentationUpdate,
+} from '@cozea/app-contract/desktopBootstrap'
 import { DesktopBootstrapStore } from './services/DesktopBootstrapStore'
+import { ensureCollabDeviceIdentity } from './collabKeys'
 
-const store = new DesktopBootstrapStore()
+const store = new DesktopBootstrapStore(ensureCollabDeviceIdentity)
 
 ipcMain.handle('desktopBootstrap:getInitialSnapshot', () => store.getInitialSnapshot())
+ipcMain.handle('desktopBootstrap:getLocalDevice', () => store.getLocalDevice())
+ipcMain.handle('desktopBootstrap:updateLocalDevice', (_event, update: LocalDevicePresentationUpdate) => store.updateLocalDevice(update))
 ipcMain.handle('desktopBootstrap:storeSession', async (_event, session: DesktopBootstrapSession) => {
   await store.storeSession(session)
   return { success: true as const }

@@ -1,6 +1,8 @@
 
 
 import { HugeiconsIcon } from '@hugeicons/react'
+import { useTranslation } from "@/lib/i18n"
+import { Spinner } from "@/components/ui/spinner"
 import { AlertCircleIcon as __CircleAlertIconHugeIcon } from '@hugeicons/core-free-icons'
 
 import { PROVIDER_DISPLAY_NAMES, type ServerProvider } from "@cozea/assistant-contracts";
@@ -18,6 +20,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
 }: {
   status: ServerProvider | null;
 }) {
+  const { t } = useTranslation();
   const update = useProviderUpdate(status);
   const updateAvailable = update.updateAvailable;
 
@@ -41,7 +44,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
   const title = updateAvailable ? `${providerLabel} update available` : `${providerLabel} provider status`;
   const isError = status.status === "error";
   const devApp = getDevAppForAssistantProvider(provider);
-  const badgeClass = isError ? "bg-destructive text-white" : "bg-amber-500 text-white";
+  const badgeClass = isError ? "bg-destructive text-white" : "bg-warning text-white";
   const updateFeedback = update.feedback;
 
   return (
@@ -52,7 +55,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
             <DevAppIcon app={devApp} />
           </span>
         ) : (
-          <div className={`flex h-12 w-12 items-center justify-center rounded-full ${isError ? 'bg-destructive/10 text-destructive' : 'bg-amber-500/10 text-amber-600 dark:text-amber-500'}`}>
+          <div className={`flex h-12 w-12 items-center justify-center rounded-full ${isError ? 'bg-destructive/10 text-destructive' : 'bg-warning/10 text-warning '}`}>
             <HugeiconsIcon icon={__CircleAlertIconHugeIcon} className="h-6 w-6" />
           </div>
         )}
@@ -84,7 +87,7 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
             void update.run();
           }}
         >
-          {update.isUpdating ? <div className="loader mr-1.5" /> : null}
+          {update.isUpdating ? <Spinner size="xs" className="mr-1.5" /> : null}
           {update.isUpdating ? `Updating ${providerLabel}…` : `Update ${providerLabel}`}
         </Button>
       ) : null}
@@ -100,8 +103,8 @@ export const ProviderStatusBanner = memo(function ProviderStatusBanner({
           </p>
           {updateFeedback.output ? (
             <details className="relative text-xs text-muted-foreground">
-              <summary className="cursor-pointer select-none">Update details</summary>
-              <pre className="absolute left-0 right-0 top-full z-10 mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-secondary/95 p-2.5 font-mono text-[11px] shadow-lg backdrop-blur-md">
+              <summary className="cursor-pointer select-none">{t("assistant.updateDetails")}</summary>
+              <pre className="absolute left-0 right-0 top-full z-10 mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border/50 bg-secondary/95 p-2.5 font-mono text-caption shadow-lg backdrop-blur-md">
                 {updateFeedback.output}
               </pre>
             </details>

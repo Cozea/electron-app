@@ -20,7 +20,7 @@ import { WorkbenchTileChrome } from "@/features/workbench/WorkbenchTileChrome";
 import { useWorkbenchPanelActivityMode } from "@/features/workbench/useWorkbenchPanelActivityMode";
 import { useProjectWorkbenchStore } from "@/lib/workbenchStore";
 import type { WorkbenchBrowserTile as WorkbenchBrowserTileRecord } from "@/lib/workbenchStore";
-import type { BrowserSurfaceDescriptor } from "@shared/browserSurfaceTypes";
+import type { BrowserSurfaceDescriptor } from "@cozea/app-contract/browserSurface";
 
 interface WorkbenchBrowserTileProps {
   projectId: string;
@@ -62,7 +62,7 @@ function BrowserErrorState({ title, description, url, onReload }: BrowserErrorSt
         {description ? (
           <p className="text-xs text-muted-foreground truncate">{description}</p>
         ) : null}
-        <p className="font-mono text-[11px] text-muted-foreground/70 truncate" title={url}>
+        <p className="font-mono text-caption text-muted-foreground/70 truncate" title={url}>
           {url}
         </p>
         <div className="pt-1">
@@ -162,8 +162,6 @@ export function WorkbenchBrowserTile({
       <WorkbenchTileChrome
         title={tile.title || "Browser"}
         panelApi={panelApi}
-        containerApi={containerApi}
-        hideTitlePill
         tileType="browser"
       >
         <div className="relative h-full min-h-0 overflow-hidden bg-content-surface">

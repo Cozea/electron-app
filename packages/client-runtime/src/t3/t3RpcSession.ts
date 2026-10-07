@@ -14,8 +14,8 @@ export interface T3RpcSessionHandle {
 }
 
 /** One shared T3 WebSocket session for orchestration, config, VCS, and terminals. */
-export function createT3RpcSession(options: T3EffectRpcClientOptions): T3RpcSessionHandle {
-  const client = new T3EffectRpcClient(options);
+export function createT3RpcSession(options: T3EffectRpcClientOptions & { readonly rpcBaseUrl?: string }): T3RpcSessionHandle {
+  const client = new T3EffectRpcClient({ ...options, baseUrl: options.rpcBaseUrl ?? options.baseUrl });
   const orchestration = new T3OrchestrationClient({ ...options, client });
   const serverConfig = new T3ServerConfigClient({ ...options, client });
   const vcs = new T3VcsClient({ client });

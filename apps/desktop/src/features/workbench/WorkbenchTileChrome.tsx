@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import type { DockviewApi, DockviewPanelApi } from "dockview-react"
-import type { ContextMenuItem, ProviderKind } from "@cozea/assistant-contracts"
+import type { DockviewPanelApi } from "dockview-react"
+import type { ProviderKind } from "@cozea/assistant-contracts"
 import { SiOllama } from "react-icons/si"
 
-import { Button } from "@/components/ui/button"
 import { AnchoredAppOverlayPortal } from "@/components/ui/app-overlay-portal"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { ProjectDevAppIcon } from "@/features/devapps/components/ProjectDevAppIcon"
@@ -27,13 +26,10 @@ import {
   getWorkbenchTileDefinition,
 } from "@/features/workbench/model/workbenchTileRegistry"
 import { useElementPointerHover } from "@/hooks/useElementPointerHover"
-import { showDesktopContextMenu } from "@/lib/desktopBridgeClient"
-import { getNativeMenuIcon } from "@/lib/nativeMenuIcons"
-import { useTranslation } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 
 import { HugeiconsIcon } from '@hugeicons/react'
-import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, Cancel01Icon as __XHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, Layout04Icon as __Layout04HugeIcon, ArrowUp01Icon as __ArrowUpHugeIcon, ArrowDown01Icon as __ArrowDownHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, BrainCircuitIcon as __BrainCircuitHugeIcon } from '@hugeicons/core-free-icons'
+import { AddCircleIcon as __AddCircleHugeIcon, ArrowLeftRightIcon as __MessagesHugeIcon, ComputerTerminal01Icon as __ComputerTerminalHugeIcon, DeviceAccessIcon as __PhoneHugeIcon, Globe02Icon as __GlobeHugeIcon, ServerStack02Icon as __DevServerHugeIcon, ArrowUp01Icon as __ArrowUpHugeIcon, ArrowDown01Icon as __ArrowDownHugeIcon, ArrowLeft01Icon as __ArrowLeftHugeIcon, ArrowRight01Icon as __ArrowRightHugeIcon, BrainCircuitIcon as __BrainCircuitHugeIcon } from '@hugeicons/core-free-icons'
 
 const DevServer = (props: any) => <HugeiconsIcon icon={__DevServerHugeIcon} {...props} />
 const Messages = (props: any) => <HugeiconsIcon icon={__MessagesHugeIcon} {...props} />
@@ -42,28 +38,30 @@ const Phone = (props: any) => <HugeiconsIcon icon={__PhoneHugeIcon} {...props} /
 const Globe = (props: any) => <HugeiconsIcon icon={__GlobeHugeIcon} {...props} />
 const AddCircle = (props: any) => <HugeiconsIcon icon={__AddCircleHugeIcon} {...props} />
 const BrainCircuit = (props: any) => <HugeiconsIcon icon={__BrainCircuitHugeIcon} {...props} />
-const WORKBENCH_PILL_APP_ICON_CLASS = "size-5 shrink-0 overflow-hidden rounded-[4.5px]"
 const WORKBENCH_OVERLAY_APP_ICON_CLASS = "size-6 shrink-0 overflow-hidden rounded-[5.3px]"
 
 interface WorkbenchTileChromeProps {
   title: string
   panelApi: DockviewPanelApi
-  containerApi: DockviewApi
-  chromeVariant?: "bar" | "pill"
-  headerMode?: "native" | "embedded"
-  hideTitlePill?: boolean
-  hideWindowActions?: boolean
+  /** Header controls and actions render in the dockview group header, not here. */
+  controls?: ReactNode
+  actions?: ReactNode
   tileType?: RenderableWorkbenchTileType
   devAppId?: string | null
   logoDataUrl?: string | null
   assistantProvider?: string | null
-  titleContent?: ReactNode
-  titlePillClassName?: string
-  controls?: ReactNode
-  actions?: ReactNode
   children: ReactNode
   className?: string
   contentClassName?: string
+}
+
+type SplitDirection = "top" | "bottom" | "left" | "right"
+
+const SPLIT_DIRECTION_BY_KEY: Partial<Record<string, SplitDirection>> = {
+  ArrowUp: "top",
+  ArrowDown: "bottom",
+  ArrowLeft: "left",
+  ArrowRight: "right",
 }
 
 function resolveAssistantProviderIcon(provider: string | null | undefined) {
@@ -100,22 +98,6 @@ function resolveTileDevApp(
   }
 
   return null
-}
-
-function resolveAssistantProviderIconClass(provider: string | null | undefined) {
-  switch (provider) {
-    case "claudeAgent":
-      return "text-[#d97757]"
-    case "cursor":
-      return "text-zinc-600"
-    case "codex":
-      return "text-foreground"
-    case "gemini":
-    case "opencode":
-      return ""
-    default:
-      return "text-muted-foreground"
-  }
 }
 
 function resolveTileFallbackIcon(
@@ -196,37 +178,54 @@ function WorkbenchTileGlyph({
   return TileIcon ? <TileIcon className={fallbackClassName} /> : null
 }
 
+const TILE_CHROME_SELECTOR = "[data-workbench-tile-chrome]"
+
+/**
+ * Which tile a split gesture acts on: the tile holding keyboard focus, or,
+ * when focus sits outside every tile, the one under the pointer.
+ *
+ * Focus can be in the tile body or in its dock group's header (e.g. the
+ * address bar). The two live in different DOM subtrees: dockview renders
+ * always-mounted bodies in an overlay layer, not inside `.dv-groupview`.
+ */
+function isSplitGestureTarget(
+  tileElement: HTMLElement,
+  panelApi: DockviewPanelApi,
+  isHovered: boolean,
+): boolean {
+  const focused = document.activeElement
+  if (!(focused instanceof Element)) return isHovered
+
+  const focusedTile = focused.closest(TILE_CHROME_SELECTOR)
+  if (focusedTile) return focusedTile === tileElement
+
+  const focusedGroup = focused.closest(".dv-groupview")
+  if (focusedGroup) return focusedGroup === panelApi.group.element && panelApi.isVisible
+
+  return isHovered
+}
+
 export function WorkbenchTileChrome({
   title,
   panelApi,
-  containerApi,
-  chromeVariant = "bar",
-  headerMode = "native",
-  hideTitlePill = false,
-  hideWindowActions = false,
+  controls,
+  actions,
   tileType,
   devAppId,
   logoDataUrl,
   assistantProvider,
-  titleContent,
-  titlePillClassName,
-  controls,
-  actions,
   children,
   className,
   contentClassName,
 }: WorkbenchTileChromeProps) {
-  const { t } = useTranslation()
-  const [isMaximized, setIsMaximized] = useState(() => panelApi.isMaximized())
   const [splitOverlayActive, setSplitOverlayActive] = useState(false)
-  const [splitDirection, setSplitDirection] = useState<"top" | "bottom" | "left" | "right" | null>(null)
+  const [splitDirection, setSplitDirection] = useState<SplitDirection | null>(null)
   const [tileElement, setTileElement] = useState<HTMLDivElement | null>(null)
 
   const runtime = useWorkbenchDockRuntime()
   const tileHover = useElementPointerHover<HTMLDivElement>()
   const isHovered = tileHover.isHovered
-  const splitStateRef = useRef({ active: false, direction: null as "top" | "bottom" | "left" | "right" | null })
-  const useNativeHeader = headerMode === "native"
+  const splitStateRef = useRef({ active: false, direction: null as SplitDirection | null })
   const setTileRef = useCallback(
     (node: HTMLDivElement | null) => {
       tileHover.ref(node)
@@ -235,252 +234,82 @@ export function WorkbenchTileChrome({
     [tileHover.ref],
   )
 
-  useRegisterWorkbenchDockHeaderControls(panelApi.id, {
-    controls: useNativeHeader ? controls : null,
-    actions: useNativeHeader ? actions : null,
-  })
+  useRegisterWorkbenchDockHeaderControls(panelApi.id, { controls, actions })
 
-  const tileFallbackIconClassName = cn(
-    "h-5 w-5 shrink-0",
-    tileType === "assistantChat"
-      ? resolveAssistantProviderIconClass(assistantProvider)
-      : "text-muted-foreground",
-  )
-  const pillControlHoverClasses =
-    "text-muted-foreground hover:bg-[var(--sidebar-pill-hover-bg)] hover:text-[var(--sidebar-pill-hover-fg)]"
+  // Hold Cmd+Option and press an arrow to pick a split side; releasing the
+  // modifiers commits it and Escape cancels. Cmd+Option+Arrow is not a macOS text-editing binding
+  // and terminals never receive Cmd keys, so it also works from the composer,
+  // address bar or terminal. Keys typed inside a web page (Browser, Dev Server,
+  // DevApp guests) stay in that page and never reach this listener.
+  const isHoveredRef = useRef(isHovered)
+  isHoveredRef.current = isHovered
 
   useEffect(() => {
-    setIsMaximized(panelApi.isMaximized())
+    if (!tileElement) return
 
-    const disposable = containerApi.onDidMaximizedGroupChange((event) => {
-      if (event.group.id !== panelApi.group.id) return
-      setIsMaximized(event.isMaximized)
-    })
-
-    const groupChangeDisposable = panelApi.onDidGroupChange(() => {
-      setIsMaximized(panelApi.isMaximized())
-    })
-
-    return () => {
-      disposable.dispose()
-      groupChangeDisposable.dispose()
+    const resetSplitState = () => {
+      splitStateRef.current = { active: false, direction: null }
+      setSplitOverlayActive(false)
+      setSplitDirection(null)
     }
-  }, [containerApi, panelApi])
 
-  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // For DOM focus, we only want to act if this tile is hovered
-      if (!isHovered) return
+      if (e.key === "Escape" && splitStateRef.current.active) {
+        e.preventDefault()
+        e.stopPropagation()
+        resetSplitState()
+        return
+      }
+      if (!e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey) return
+      const dir = SPLIT_DIRECTION_BY_KEY[e.key]
+      if (!dir || !isSplitGestureTarget(tileElement, panelApi, isHoveredRef.current)) return
 
-      if (e.altKey && e.shiftKey) {
-        if (!splitStateRef.current.active) {
-          splitStateRef.current.active = true
-          setSplitOverlayActive(true)
-        }
-        let dir = splitStateRef.current.direction
-        if (e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); dir = "top" }
-        if (e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); dir = "bottom" }
-        if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); dir = "left" }
-        if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); dir = "right" }
-
-        if (dir !== splitStateRef.current.direction) {
-          splitStateRef.current.direction = dir
-          setSplitDirection(dir)
-        }
+      e.preventDefault()
+      e.stopPropagation()
+      if (!splitStateRef.current.active) {
+        splitStateRef.current.active = true
+        setSplitOverlayActive(true)
+      }
+      if (dir !== splitStateRef.current.direction) {
+        splitStateRef.current.direction = dir
+        setSplitDirection(dir)
       }
     }
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (!e.altKey || !e.shiftKey) {
-        if (splitStateRef.current.active) {
-          const dir = splitStateRef.current.direction
-          if (dir) {
-            runtime.onSplitTile(panelApi.id, dir)
-          }
-        }
-        splitStateRef.current = { active: false, direction: null }
-        setSplitOverlayActive(false)
-        setSplitDirection(null)
-      }
+      if (!splitStateRef.current.active || (e.metaKey && e.altKey)) return
+      const dir = splitStateRef.current.direction
+      resetSplitState()
+      if (dir) runtime.onSplitTile(panelApi.id, dir)
+    }
+
+    // Losing window focus mid-gesture (Cmd+Tab away) never delivers the keyup.
+    const handleBlur = () => {
+      if (splitStateRef.current.active) resetSplitState()
     }
 
     window.addEventListener("keydown", handleKeyDown, { capture: true })
     window.addEventListener("keyup", handleKeyUp, { capture: true })
+    window.addEventListener("blur", handleBlur)
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown, { capture: true })
       window.removeEventListener("keyup", handleKeyUp, { capture: true })
-
-      // Cleanup if component unmounts while active
-      if (splitStateRef.current.active) {
-        splitStateRef.current = { active: false, direction: null }
-        setSplitOverlayActive(false)
-        setSplitDirection(null)
-      }
+      window.removeEventListener("blur", handleBlur)
+      if (splitStateRef.current.active) resetSplitState()
     }
-  }, [isHovered, panelApi.id, runtime])
+  }, [tileElement, panelApi, runtime])
 
   return (
     <div
       className={cn("flex h-full min-h-0 flex-col overflow-hidden bg-transparent relative", className)}
+      data-workbench-tile-chrome=""
       data-workbench-tile-type={tileType}
       ref={setTileRef}
       onPointerEnter={tileHover.onPointerEnter}
       onPointerLeave={tileHover.onPointerLeave}
       onPointerMove={tileHover.onPointerMove}
     >
-      {!useNativeHeader ? (
-        <div
-          className={cn(
-            "flex h-9 shrink-0 items-center gap-2 text-xs shadow-none",
-            chromeVariant === "pill"
-              ? "bg-transparent px-1.5 pt-0.5"
-              : "border-b border-border/60 bg-content-surface px-2",
-          )}
-          data-workbench-chrome="true"
-        >
-          {!hideTitlePill ? (
-            <div
-              className={cn(
-                "inline-flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md bg-secondary px-2.5",
-                chromeVariant === "pill" ? "max-w-[60%]" : "max-w-[11rem]",
-                titlePillClassName,
-              )}
-            >
-              {titleContent ?? (
-                <>
-                  <WorkbenchTileGlyph
-                    tileType={tileType}
-                    assistantProvider={assistantProvider}
-                    devAppId={devAppId}
-                    logoDataUrl={logoDataUrl}
-                    title={title}
-                    appWrapperClassName={WORKBENCH_PILL_APP_ICON_CLASS}
-                    fallbackClassName={tileFallbackIconClassName}
-                  />
-                  <span className="truncate text-xs text-foreground">{title}</span>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          {controls ? (
-            <div className="min-w-0 flex-1">
-              {controls}
-            </div>
-          ) : (
-            <div className="min-w-0 flex-1" />
-          )}
-
-          {!hideWindowActions ? (
-            <div
-              className={cn(
-                "flex shrink-0 items-center gap-1 transition-colors",
-                chromeVariant === "pill" &&
-                  "rounded-md bg-secondary px-1 shadow-none ring-0",
-              )}
-            >
-              {actions}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
-                  chromeVariant === "pill"
-                    ? pillControlHoverClasses
-                    : "hover:bg-accent",
-                )}
-                onClick={async (event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  const rect = event.currentTarget.getBoundingClientRect()
-                  const position = {
-                    x: Math.round(rect.left + rect.width / 2),
-                    y: Math.round(rect.bottom),
-                  }
-
-                  const items: ContextMenuItem<"maximize" | "restore" | "splitRight" | "splitLeft" | "splitDown" | "splitUp">[] = [
-                    {
-                      id: isMaximized ? "restore" : "maximize",
-                      label: isMaximized ? t('workbench.layout.restore') : t('workbench.layout.maximize'),
-                      icon: getNativeMenuIcon("maximize"),
-                    },
-                    { type: "separator", id: "sep1" as any },
-                    {
-                      id: "splitRight",
-                      label: t('workbench.layout.splitRight'),
-                      icon: getNativeMenuIcon("split-right"),
-                    },
-                    {
-                      id: "splitLeft",
-                      label: t('workbench.layout.splitLeft'),
-                      icon: getNativeMenuIcon("split-right"),
-                    },
-                    { type: "separator", id: "sep2" as any },
-                    {
-                      id: "splitDown",
-                      label: t('workbench.layout.splitDown'),
-                      icon: getNativeMenuIcon("split-down"),
-                    },
-                    {
-                      id: "splitUp",
-                      label: t('workbench.layout.splitUp'),
-                      icon: getNativeMenuIcon("split-down"),
-                    },
-                  ]
-
-                  const action = await showDesktopContextMenu(items, position)
-                  if (!action) return
-
-                  switch (action) {
-                    case "maximize":
-                      panelApi.maximize()
-                      setIsMaximized(true)
-                      break
-                    case "restore":
-                      panelApi.exitMaximized()
-                      setIsMaximized(false)
-                      break
-                    case "splitRight":
-                      runtime.onSplitTile(panelApi.id, "right")
-                      break
-                    case "splitLeft":
-                      runtime.onSplitTile(panelApi.id, "left")
-                      break
-                    case "splitDown":
-                      runtime.onSplitTile(panelApi.id, "bottom")
-                      break
-                    case "splitUp":
-                      runtime.onSplitTile(panelApi.id, "top")
-                      break
-                  }
-                }}
-                aria-label={t('workbench.layout.optionsLabel')}
-              >
-                <HugeiconsIcon icon={__Layout04HugeIcon} className="h-3.5 w-3.5" />
-              </Button>
-
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-7 w-7 rounded-md border-0 shadow-none transition-colors",
-                  chromeVariant === "pill"
-                    ? pillControlHoverClasses
-                    : "hover:bg-accent",
-                )}
-                onClick={() => panelApi.close()}
-                aria-label={t('workbench.layout.closeLabel').replace('{title}', title)}
-              >
-                <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
       <div
         className={cn("min-h-0 flex-1", contentClassName)}
         data-workbench-pane-content="true"

@@ -38,6 +38,7 @@ interface UnifiedHeaderProps {
   hideShare?: boolean;
   projectInviteContext?: {
     projectId: Id<"projects"> | null;
+    localProjectId?: string | null;
     projectName?: string | null;
   } | null;
   /** Local project path for “Open in editor” (shown beside Changes / Share). */
@@ -108,9 +109,10 @@ export function UnifiedHeader({
     groups.push({ id: "presence", placement: "leading", content: preSearchAddon });
   }
   if (projectInviteContext) {
-    if (projectInviteContext.projectId) {
+    const localProjectId = projectInviteContext.localProjectId ?? projectInviteContext.projectId;
+    if (localProjectId) {
       groups.push({ id: "changes",
-        content: <HeaderProjectChangesButton projectId={projectInviteContext.projectId} /> });
+        content: <HeaderProjectChangesButton projectId={localProjectId} cloudProjectId={projectInviteContext.projectId} /> });
     }
     if (editorProjectPath) {
       groups.push({ id: "editor",

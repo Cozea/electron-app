@@ -2,14 +2,8 @@
 
 import React from 'react';
 import Cropper, { type Area, type Point } from 'react-easy-crop';
-import { HugeiconsIcon } from '@hugeicons/react';
-import { Cancel01Icon } from '@hugeicons/core-free-icons';
-import {
-  Modal,
-  ModalContent,
-  ModalTitle,
-} from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
+import { UnifiedModal } from '@/components/ui/unified-modal';
 
 interface Props {
   children: React.ReactNode;
@@ -153,22 +147,37 @@ export function AvatarUploader({
         </span>
       )}
 
-      <Modal
+      <UnifiedModal
         open={open}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             handleClose();
           }
         }}
+        title="Crop photo"
+        size="sm"
+        dismissable={!isPending}
+        footer={
+          <>
+            <Button type="button" variant="ghost" disabled={isPending} onClick={handleClose}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isPending}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Change image
+            </Button>
+            <Button type="button" onClick={handleUpdate} disabled={isPending || !photo.file}>
+              {isPending ? 'Saving…' : 'Save'}
+            </Button>
+          </>
+        }
       >
-        <ModalContent
-          showCloseButton={false}
-          className="p-0 gap-0 overflow-hidden rounded-3xl border border-border/80 bg-card shadow-2xl sm:max-w-sm w-full"
-        >
-          <ModalTitle className="sr-only">Crop avatar</ModalTitle>
-
-          {/* Full-bleed photo & cropper */}
-          <div className="relative aspect-square w-full bg-black overflow-hidden select-none">
+        <div className="space-y-4">
+          <div className="relative aspect-square w-full select-none overflow-hidden rounded-xl bg-black">
             {photo?.url ? (
               <Cropper
                 image={photo.url}
@@ -183,62 +192,30 @@ export function AvatarUploader({
                 }}
               />
             ) : null}
-            <button
-              type="button"
-              onClick={handleClose}
-              className="absolute top-3 right-3 z-20 flex size-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-md transition-colors hover:bg-black/75 cursor-pointer border border-white/10"
-              aria-label="Close"
-              title="Close"
-            >
-              <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
-            </button>
           </div>
 
-          {/* Polaroid footer controls */}
-          <div className="space-y-4 p-5 bg-card">
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-medium text-muted-foreground">Zoom</span>
-              <input
-                type="range"
-                min={1}
-                max={3}
-                step={0.05}
-                value={zoom}
-                onChange={(e) => setZoom(Number(e.target.value))}
-                className="flex-1 accent-primary h-1.5 cursor-pointer rounded-lg bg-muted"
-                disabled={isPending}
-              />
-            </div>
-
-            {error ? (
-              <p className="text-xs text-destructive text-center" role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            <div className="grid grid-cols-2 gap-2.5 pt-1">
-              <Button
-                className="w-full cursor-pointer h-9"
-                variant="outline"
-                type="button"
-                disabled={isPending}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                Change image
-              </Button>
-
-              <Button
-                className="w-full cursor-pointer h-9 font-medium"
-                type="button"
-                onClick={handleUpdate}
-                disabled={isPending || !photo.file}
-              >
-                {isPending ? 'Saving…' : 'Save'}
-              </Button>
-            </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-muted-foreground">Zoom</span>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.05}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="flex-1 accent-primary h-1.5 cursor-pointer rounded-lg bg-muted"
+              disabled={isPending}
+              aria-label="Zoom"
+            />
           </div>
-        </ModalContent>
-      </Modal>
+
+          {error ? (
+            <p className="text-xs text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
+      </UnifiedModal>
     </>
   );
 }

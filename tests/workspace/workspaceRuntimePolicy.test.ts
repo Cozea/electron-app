@@ -69,6 +69,18 @@ function createRuntime(
 }
 
 describe("workspaceRuntimePolicy", () => {
+  it("hosts focused and headless local work even without a cloud principal", () => {
+    const focused = createRuntime("local-focused", { lifecycle: "focused" })
+    const headless = createRuntime("local-terminal", { signals: { hasRunningTerminals: true } })
+    for (const runtime of [focused, headless]) {
+      runtime.config.projectId = "lpj_" + "a".repeat(32)
+      runtime.config.principalId = null
+      runtime.config.cloudProjectId = null
+      runtime.config.collaborationEnabled = false
+    }
+    expect(selectHostedWorkspaceRuntimeRecords([focused, headless])).toEqual([focused, headless])
+    expect(hasImmediateWorkspaceRuntimeHost([headless])).toBe(true)
+  })
   it("always hosts focused and critical background workspaces", () => {
     const selected = selectHostedWorkspaceRuntimeRecords([
       createRuntime("focused", { lifecycle: "focused", createdAt: 10 }),

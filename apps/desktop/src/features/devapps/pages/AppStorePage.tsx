@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useConvex, useQuery } from "convex/react"
+import { Spinner } from "@/components/ui/spinner"
+import { requireCloudClient, useConvex, useQuery } from "@/lib/cloudQueries"
+import { CloudConnectionPrompt } from "@/components/CloudConnectionPrompt"
 import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../../convex/_generated/api"
 import { FilterChip } from "@/components/ui/filter-chip"
+import { PageHeader } from "@/components/PageHeader"
 import { DevAppIcon } from "@/features/devapps/components/DevAppIcon"
 import { DevAppStoreRow } from "@/features/devapps/components/DevAppStoreRow"
 import { STORE_ORGANIZATION_ACCENT_CLASS } from "@/features/devapps/components/devAppStoreAccent"
@@ -147,7 +150,7 @@ export function AppStorePage() {
         publicationId: entry.publicationId,
         version: entry.activeRelease.version,
       })
-      const artifact = await convex.query(api.devApps.getArtifactUrl, { ref })
+      const artifact = await requireCloudClient(convex).query(api.devApps.getArtifactUrl, { ref })
       if (!artifact) throw new Error(t("appStore.install.accessLost"))
       const result = await window.electronAPI.orgDevApp.install({
         downloadUrl: artifact.url,
@@ -298,7 +301,7 @@ export function AppStorePage() {
               variant="secondary"
               data-store-organization-accent
               className={cn(
-                "h-5 shrink-0 rounded-full px-2 text-[10px] font-normal",
+                "h-5 shrink-0 rounded-full px-2 text-2xs font-normal",
                 STORE_ORGANIZATION_ACCENT_CLASS,
               )}
             >
@@ -390,7 +393,7 @@ export function AppStorePage() {
                   <HugeiconsIcon icon={__RefreshHugeIcon} className="size-4" aria-hidden />
                 </span>
                 <span className="t-icon flex items-center justify-center" data-icon="loading">
-                  <div className="loader shrink-0 text-muted-foreground" />
+                  <Spinner size="xs" className="shrink-0 text-muted-foreground" />
                 </span>
               </span>
             </Button>
@@ -488,12 +491,7 @@ export function AppStorePage() {
           </div>
         ) : null}
 
-        <header className="space-y-1">
-          <h1 className="text-[26px] leading-tight font-medium tracking-[-0.03em] text-foreground">
-            {t("appStore.page.title")}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t("appStore.page.subtitle")}</p>
-        </header>
+        <PageHeader title={t("appStore.page.title")} description={t("appStore.page.subtitle")} />
 
         <SearchInput
           value={query}
@@ -527,7 +525,7 @@ export function AppStorePage() {
                       : t("appStore.page.privateDevApps")}
                   </span>
                   {query.trim() && !isActive && matchCounts[tab] > 0 ? (
-                    <span className="text-[10px] tabular-nums text-muted-foreground/70">
+                    <span className="text-2xs tabular-nums text-muted-foreground/70">
                       {matchCounts[tab]}
                     </span>
                   ) : null}
@@ -544,7 +542,7 @@ export function AppStorePage() {
       {rail.length > 0 ? (
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-[13px] font-medium text-foreground">
+            <h2 className="text-sm font-medium text-foreground">
               {t("appStore.section.installed")}
             </h2>
             <Tooltip>
@@ -588,7 +586,7 @@ export function AppStorePage() {
                   <TooltipContent
                     side="top"
                     sideOffset={5}
-                    className="pointer-events-none rounded-md border border-border/50 bg-popover/95 px-1.5 py-0.5 text-[11px] font-medium leading-none text-popover-foreground shadow-sm backdrop-blur-sm"
+                    className="pointer-events-none rounded-md border border-border/50 bg-popover/95 px-1.5 py-0.5 text-caption font-medium leading-none text-popover-foreground shadow-sm backdrop-blur-sm"
                   >
                     {item.name}
                   </TooltipContent>
@@ -599,6 +597,7 @@ export function AppStorePage() {
         </section>
       ) : null}
 
+      {scope === "organization" ? <CloudConnectionPrompt /> : null}
       {orgLoading && scope === "organization" ? (
         <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
           {[0, 1, 2, 3].map((row) => (
@@ -615,7 +614,7 @@ export function AppStorePage() {
 
       {sections.map((section) => (
         <section key={section.id} className="space-y-1">
-          <h2 className="px-2 text-[13px] font-medium text-foreground">
+          <h2 className="px-2 text-sm font-medium text-foreground">
             {t(SECTION_LABEL_KEYS[section.id])}
           </h2>
           <div className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">

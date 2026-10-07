@@ -23,6 +23,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "paths": {
+      "@cozea/app-contract": [
+        "../../packages/app-contract/src/index.ts"
+      ],
+      "@cozea/app-contract/*": [
+        "../../packages/app-contract/src/*"
+      ],
       "@cozea/assistant-contracts": [
         "../../shared/assistant-contracts/index.ts"
       ],
@@ -73,6 +79,7 @@
   "include": [
     "electron/**/*.ts",
     "../../shared/**/*.ts",
-    "../../packages/projectd-protocol/src/**/*.ts"
+    "../../packages/projectd-protocol/src/**/*.ts",
+    "../../packages/app-contract/src/**/*.ts"
   ]
 }

@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useTranslation } from "@/lib/i18n"
+import { Spinner } from "@/components/ui/spinner"
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   ArrowLeft01Icon as __ArrowLeftHugeIcon,
@@ -41,6 +43,7 @@ function currentSurfaceUrl(
 }
 
 export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsProps) {
+  const { t } = useTranslation();
   const runtime = useWorkbenchDockRuntime();
   const actions = useProjectWorkbenchStore((state) => state.actions);
   const tile = useProjectWorkbenchStore((state) => {
@@ -145,7 +148,7 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
       onSubmit={submit}
       className="cozea-workbench-header-controls flex h-full min-w-0 items-center gap-1 px-1"
     >
-      <div className="flex items-center gap-0.5" role="group" aria-label="Navigation">
+      <div className="flex items-center gap-0.5" role="group" aria-label={t("browser.navigation")}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -155,12 +158,12 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
               className={navButtonClass}
               disabled={!state?.canGoBack}
               onClick={state?.canGoBack && preview ? () => callTab(preview.goBack) : NOOP}
-              aria-label="Back"
+              aria-label={t("browser.back")}
             >
               <HugeiconsIcon icon={__ArrowLeftHugeIcon} className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Back</TooltipContent>
+          <TooltipContent>{t("browser.back")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -171,12 +174,12 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
               className={navButtonClass}
               disabled={!state?.canGoForward}
               onClick={state?.canGoForward && preview ? () => callTab(preview.goForward) : NOOP}
-              aria-label="Forward"
+              aria-label={t("browser.forward")}
             >
               <HugeiconsIcon icon={__ArrowRightHugeIcon} className="size-3.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Forward</TooltipContent>
+          <TooltipContent>{t("browser.forward")}</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -194,7 +197,7 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
                   <HugeiconsIcon icon={__RefreshHugeIcon} className="size-3.5" />
                 </span>
                 <span className="t-icon flex items-center justify-center" data-icon="loading">
-                  <div className="loader shrink-0 text-muted-foreground" />
+                  <Spinner size="xs" className="shrink-0 text-muted-foreground" />
                 </span>
               </span>
             </Button>
@@ -233,7 +236,7 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
               inputRef.current?.blur();
             }
           }}
-          placeholder="Search or enter address"
+          placeholder={t("browser.searchOrEnterAddress")}
           spellCheck={false}
           className="h-full min-w-0 flex-1 border-0 bg-transparent px-0 text-xs font-normal shadow-none outline-none focus-visible:ring-0 dark:bg-transparent"
           data-browser-url-input
@@ -247,12 +250,12 @@ export function BrowserNavigationControls({ tileId }: BrowserNavigationControlsP
                 size="icon-xs"
                 className="opacity-0 transition-opacity group-hover/address:opacity-100"
                 onClick={() => void window.electronAPI.shell.openExternal(externalUrl)}
-                aria-label="Open in system browser"
+                aria-label={t("browser.openInSystemBrowser")}
               >
                 <HugeiconsIcon icon={__ExternalLinkHugeIcon} className="size-3.5" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Open in system browser</TooltipContent>
+            <TooltipContent>{t("browser.openInSystemBrowser")}</TooltipContent>
           </Tooltip>
         ) : null}
       </div>

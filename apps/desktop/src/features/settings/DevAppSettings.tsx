@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { useConvex, useQuery } from "convex/react"
+import { requireCloudClient, useConvex, useQuery } from "@/lib/cloudQueries"
 import type { FunctionReturnType } from "convex/server"
 
 import { api } from "../../../../../convex/_generated/api"
@@ -111,7 +111,9 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
   const counts = useMemo(() => {
     const builtinSurfacesCount = builtinApps.filter((a) => a.launcher.group === "Development").length
     const assistantsCount = builtinApps.filter((a) => a.launcher.group === "Assistant").length
-    const installedCount = installations.filter((i) => i.active).length
+    // Built-ins ship with the app, so they count as installed, as the Store's
+    // Installed row counts them; this tab said 0 beside nine enabled apps.
+    const installedCount = builtinApps.length + installations.filter((i) => i.active).length
     const totalCount = builtinApps.length + (orgDevApps?.length ?? installations.length)
 
     return {
@@ -132,7 +134,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
         publicationId: entry.publicationId,
         version: entry.activeRelease.version,
       })
-      const artifact = await convex.query(api.devApps.getArtifactUrl, { ref })
+      const artifact = await requireCloudClient(convex).query(api.devApps.getArtifactUrl, { ref })
       if (!artifact) throw new Error(t("appStore.install.accessLost"))
       const result = await window.electronAPI.orgDevApp.install({
         downloadUrl: artifact.url,
@@ -172,7 +174,6 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
 
   const filteredBuiltins = useMemo(() => {
     return builtinApps.filter((app) => {
-      if (activeTab === "installed") return false
       if (activeTab === "builtin" && app.launcher.group !== "Development") return false
       if (activeTab === "assistants" && app.launcher.group !== "Assistant") return false
       if (query) {
@@ -350,7 +351,7 @@ export function DevAppSettings({ surface = "page", route: _route }: DevAppSettin
                 <span>{tab.label}</span>
                 <span
                   className={cn(
-                    "text-[10px] tabular-nums",
+                    "text-2xs tabular-nums",
                     isActive ? "text-foreground/80 font-semibold" : "text-muted-foreground/70",
                   )}
                 >

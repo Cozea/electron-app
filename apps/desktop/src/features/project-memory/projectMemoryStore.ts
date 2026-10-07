@@ -4,7 +4,7 @@ import type {
   ProjectMemoryGraph,
   ProjectMemoryNodeDetail,
   ProjectMemoryStatus,
-} from "@shared/electronApiTypes"
+} from "@cozea/app-contract/electronApi"
 
 /**
  * Mirror of the graph agents maintain on disk. Keyed by workspace::lane so a

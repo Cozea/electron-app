@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto'
 
 import { autoUpdater } from 'electron-updater'
 import { Effect } from 'effect'
-import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '../../../shared/electronApiTypes'
+import type { AppSettings, GpuAccelerationDiagnostics, PreviewHeaderDiagnostic } from '@cozea/app-contract/electronApi'
 import { getGitRuntimeHealth } from './gitRuntime'
 import { createApplicationMenu } from './menu'
 import { createShutdownCleanup } from './createShutdownCleanup'
@@ -679,12 +679,14 @@ async function ensureSubstrateShadowServerStarted(): Promise<void> {
       createDesktopBackendPool({
         entryPath,
         logsRootDirectory,
+        workspaceCatalogPath: path.join(app.getPath('userData'), 'local-workspaces.sqlite'),
       })
     logSubstrateShadow('starting', {
       host: flags.host,
       port: flags.port,
       entryPath,
       logsRootDirectory,
+      workspaceCatalogPath: path.join(app.getPath('userData'), 'local-workspaces.sqlite'),
       pool: true,
       previewAutomation: true,
     })
@@ -2034,7 +2036,11 @@ app.whenReady().then(() => {
 
   // Register workspace IPC handlers synchronously so they're available as soon
   // as the renderer loads. Internally each handler awaits catalog readiness.
-  registerWorkspaceHandlers(ipcMain, { loadSettings, saveSettings })
+  registerWorkspaceHandlers(ipcMain, { loadSettings, saveSettings, ensureChatRuntimeReady: async () => {
+    if (shadowServerStartInFlight) await shadowServerStartInFlight
+    if (getPrimaryShadowServerManager()?.getStatus().phase === 'ready') return
+    await ensureSubstrateShadowServerStarted()
+  } })
 
   scheduleBootWork(
     'workspace-catalog-initialized',

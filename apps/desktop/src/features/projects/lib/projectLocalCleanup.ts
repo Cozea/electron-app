@@ -1,4 +1,4 @@
-import type { WorkbenchSessionSnapshot } from "@shared/electronApiTypes"
+import type { WorkbenchSessionSnapshot } from "@cozea/app-contract/electronApi"
 
 import { useAssistantComposerDraftStore } from "@/features/assistant/chat/composerDraftStore"
 import { clearPersistedProjectSidebarEntry } from "@/features/projects/ui/sidebar/projectSidebarState"

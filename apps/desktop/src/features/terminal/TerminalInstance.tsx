@@ -5,7 +5,7 @@ import type {
   TerminalInfo,
   TerminalOutputEvent,
   TerminalSnapshot,
-} from '@shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { Unicode11Addon } from '@xterm/addon-unicode11'

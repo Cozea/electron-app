@@ -32,7 +32,7 @@ export const MessageCopyButton = memo(function MessageCopyButton({
           <HugeiconsIcon icon={__CopyIconHugeIcon} className="size-3.5" />
         </span>
         <span className="t-icon flex items-center justify-center" data-icon="copied">
-          <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 text-emerald-500" />
+          <HugeiconsIcon icon={__CheckIconHugeIcon} className="size-3.5 text-success" />
         </span>
       </span>
     </button>

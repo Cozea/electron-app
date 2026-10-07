@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useQuery } from 'convex/react'
+import { useSafeConvexQuery } from '@/hooks/useSafeConvexQuery'
 
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import type { PersonalWorkspaceMembership, User } from '../types/electron'
+import type { LocalDevicePresentation, LocalDevicePresentationUpdate } from '@cozea/app-contract/desktopBootstrap'
 import { convex } from '@/lib/convex'
 import { getDeviceSession, type DeviceSession } from '@/lib/deviceSession'
 import { getInitialDesktopBootstrap } from '@/app/bootstrap/desktopBootstrap'
@@ -16,6 +17,11 @@ export interface DevicePreferences {
 
 export interface AuthContextType {
   user: User | null
+  localDevice: LocalDevicePresentation | null
+  isLocalDeviceReady: boolean
+  localDeviceError: string | null
+  retryLocalDevice: () => Promise<void>
+  updateLocalDevice: (update: Omit<LocalDevicePresentationUpdate, 'identityKey'>) => Promise<void>
   principalId: Id<"devicePrincipals"> | null
   preferences: DevicePreferences | null
   accessToken: string | null
@@ -37,16 +43,18 @@ export const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const bootstrapSession = getInitialDesktopBootstrap()?.session ?? null
 
-  // Cached device presentation can paint the desktop shell immediately, but
-  // cloud authority is re-established from a fresh proof-of-possession token.
+  // Cached cloud presentation supplies no authority. Local readiness is checked
+  // against the installation key independently of any cloud token.
   const [user, setUser] = useState<User | null>(() => bootstrapSession?.user ?? null)
   const [principalId, setPrincipalId] = useState<Id<"devicePrincipals"> | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [personalWorkspace, setPersonalWorkspace] = useState<PersonalWorkspaceMembership | null>(
     () => bootstrapSession?.personalWorkspace ?? null,
   )
-  const [isLoading, setIsLoading] = useState(() => !bootstrapSession)
-  const [isRevalidating, setIsRevalidating] = useState(() => Boolean(bootstrapSession))
+  const [localDevice, setLocalDevice] = useState<LocalDevicePresentation | null>(null)
+  const [localDeviceError, setLocalDeviceError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isRevalidating, setIsRevalidating] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
 
   const applyDeviceSession = useCallback((session: DeviceSession) => {
@@ -61,48 +69,74 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     convex?.setAuth(async () => (await getDeviceSession()).accessToken)
   }, [])
 
-  const bootstrapLocalDeviceSession = useCallback(async (options: { force?: boolean } = {}) => {
-    const session = await getDeviceSession(options)
+  const bootstrapLocalDeviceSession = useCallback(async (options: { force?: boolean; isCurrent?: () => boolean } = {}) => {
+    if (!convex) throw new Error('Cloud features are not configured. Local projects remain available.')
+    const physicalDevice = await window.cozeaBootstrap!.getLocalDevice()
+    const session = await getDeviceSession({ force: options.force })
+    if (session.user.identityKey !== physicalDevice.identityKey) throw new Error('Cloud session differs from this physical device.')
+    if (options.isCurrent && !options.isCurrent()) return
     configureConvexAuth()
     applyDeviceSession(session)
   }, [applyDeviceSession, configureConvexAuth])
 
+  const retryLocalDevice = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      if (!window.cozeaBootstrap) throw new Error('The desktop identity service is unavailable.')
+      const device = await window.cozeaBootstrap.getLocalDevice()
+      setLocalDevice(device)
+      setLocalDeviceError(null)
+    } catch (error) {
+      setLocalDevice(null)
+      setLocalDeviceError(error instanceof Error ? error.message : 'Unable to initialize the local device identity.')
+      throw error
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  const updateLocalDevice = useCallback(async (update: Omit<LocalDevicePresentationUpdate, 'identityKey'>) => {
+    if (!localDevice || !window.cozeaBootstrap) throw new Error('The local device identity is unavailable.')
+    const result = await window.cozeaBootstrap.updateLocalDevice({ ...update, identityKey: localDevice.identityKey })
+    setLocalDevice(result)
+  }, [localDevice])
+
   useEffect(() => {
     let cancelled = false
 
-    if (bootstrapSession) {
-      convex?.clearAuth()
-      setPrincipalId(null)
-      setAccessToken(null)
-      setIsLoading(false)
-      setIsRevalidating(true)
-      void bootstrapLocalDeviceSession({ force: true })
-        .catch((error) => {
+    void (async () => {
+      try {
+        if (!window.cozeaBootstrap) throw new Error('The desktop identity service is unavailable.')
+        const device = await window.cozeaBootstrap.getLocalDevice()
+        if (cancelled) return
+        setLocalDevice(device)
+        setLocalDeviceError(null)
+        setIsLoading(false)
+        // Only a previously enrolled device resumes cloud authentication at launch.
+        // A fresh local installation never enrolls merely to open the shell.
+        if (!bootstrapSession || bootstrapSession.user.identityKey !== device.identityKey) {
+          setUser(null)
+          setPersonalWorkspace(null)
+          if (bootstrapSession) await window.cozeaBootstrap.clearSession().catch(() => {
+            setAuthError('The previous cloud session could not be cleared from secure storage.')
+          })
+          return
+        }
+        if (!convex) return
+        setIsRevalidating(true)
+        try {
+          await bootstrapLocalDeviceSession({ force: true, isCurrent: () => !cancelled })
+        } catch (error) {
           if (cancelled) return
-          convex?.clearAuth()
+          convex.clearAuth()
           setPrincipalId(null)
           setAccessToken(null)
           console.warn('[Auth] Background device-session revalidation failed:', error)
           setAuthError('Cloud authentication is temporarily unavailable. Local workspace state remains available.')
-        })
-        .finally(() => {
-          if (!cancelled) setIsRevalidating(false)
-        })
-      return () => {
-        cancelled = true
-      }
-    }
-
-    void (async () => {
-      try {
-        await bootstrapLocalDeviceSession()
+        }
       } catch (error) {
         if (cancelled) return
-        convex?.clearAuth()
-        setPrincipalId(null)
-        setAccessToken(null)
-        console.error('[Auth] Failed to initialize local device principal:', error)
-        setAuthError('Unable to initialize the local device identity.')
+        setLocalDeviceError(error instanceof Error ? error.message : 'Unable to initialize the local device identity.')
       } finally {
         if (!cancelled) {
           setIsLoading(false)
@@ -117,7 +151,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [bootstrapLocalDeviceSession, bootstrapSession])
 
   const retryDeviceSession = useCallback(async () => {
-    setIsLoading(true)
     setIsRevalidating(true)
     try {
       await bootstrapLocalDeviceSession({ force: true })
@@ -127,10 +160,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPrincipalId(null)
       setAccessToken(null)
       console.error('[Auth] Failed to initialize local device principal:', error)
-      setAuthError('Unable to initialize the local device identity.')
+      setAuthError('Cloud authentication is temporarily unavailable. Local workspace state remains available.')
       throw error
     } finally {
-      setIsLoading(false)
       setIsRevalidating(false)
     }
   }, [bootstrapLocalDeviceSession])
@@ -152,10 +184,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [bootstrapLocalDeviceSession])
 
   const isConvexAuthReady = Boolean(accessToken)
-  const liveProfile = useQuery(
+  const profileQuery = useSafeConvexQuery(
     api.devicePrincipals.getCurrent,
     isConvexAuthReady && principalId ? {} : 'skip',
   )
+  const liveProfile = profileQuery.data
+
+  useEffect(() => {
+    if (profileQuery.status !== 'error') return
+    convex?.clearAuth()
+    setPrincipalId(null)
+    setAccessToken(null)
+    setAuthError('Cloud access could not be verified. Reconnect to use cloud features.')
+  }, [profileQuery.status])
 
   const reactiveUser = useMemo(() => {
     if (!user) return null
@@ -169,11 +210,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, liveProfile])
 
-  const needsOnboarding = Boolean(reactiveUser && !reactiveUser.presentationConfigured)
+  const needsOnboarding = Boolean(localDevice && !localDevice.presentationConfigured)
 
   const value = useMemo<AuthContextType>(
     () => ({
       user: reactiveUser,
+      localDevice,
+      isLocalDeviceReady: Boolean(localDevice),
+      localDeviceError,
+      retryLocalDevice,
+      updateLocalDevice,
       principalId,
       preferences: liveProfile?.preferences ?? null,
       accessToken,
@@ -198,6 +244,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       personalWorkspace,
       refreshToken,
       reactiveUser,
+      localDevice,
+      localDeviceError,
+      retryLocalDevice,
+      updateLocalDevice,
       liveProfile?.preferences,
       isConvexAuthReady,
     ],

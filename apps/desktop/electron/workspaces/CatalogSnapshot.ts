@@ -7,6 +7,7 @@ import type {
   WorkspaceCatalogSnapshot,
   WorkspaceCatalogSnapshotEntry,
 } from "../../../../shared/workspaceTypes.ts"
+import type { LocalProjectDTO } from "../../../../shared/localProjectTypes.ts"
 import { WorkspaceCatalog, type WorkspaceCatalogInterface } from "./WorkspaceCatalog.ts"
 import { waitForWorkspaceCatalogRuntime } from "./WorkspaceCatalogRuntime.ts"
 
@@ -34,6 +35,13 @@ let refreshDirty = false
 const parentWatchers = new Map<string, fs.FSWatcher>()
 const watchedBasenames = new Map<string, Map<string, string>>() // parentDir -> basename -> workspaceId
 const pendingWatcherVerifies = new Map<string, NodeJS.Timeout>()
+const snapshotListeners = new Set<(snapshot: WorkspaceCatalogSnapshot) => void>()
+
+/** Main-process consumers receive the same authoritative push as renderers. */
+export function subscribeCatalogSnapshot(listener: (snapshot: WorkspaceCatalogSnapshot) => void): () => void {
+  snapshotListeners.add(listener)
+  return () => { snapshotListeners.delete(listener) }
+}
 
 async function runCatalog<A>(
   f: (catalog: WorkspaceCatalogInterface) => Effect.Effect<A>,
@@ -45,6 +53,10 @@ async function runCatalog<A>(
 }
 
 function broadcast(snapshot: WorkspaceCatalogSnapshot): void {
+  for (const listener of snapshotListeners) {
+    try { listener(snapshot) }
+    catch (error) { console.error("[CatalogSnapshot] main subscriber failed:", error) }
+  }
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
       window.webContents.send(CATALOG_SNAPSHOT_CHANGED_CHANNEL, snapshot)
@@ -84,14 +96,32 @@ function entriesEqual(
   return canonicalizeForCompare(left) === canonicalizeForCompare(right)
 }
 
+function projectsEqual(
+  left: Record<string, LocalProjectDTO> | undefined,
+  right: Record<string, LocalProjectDTO>,
+): boolean {
+  const canonical = (projects: Record<string, LocalProjectDTO>) => JSON.stringify(
+    Object.keys(projects).sort().map((key) => {
+      const { updatedAt: _updatedAt, sharedObservedAt: _sharedObservedAt, ...project } = projects[key]
+      return [key, project]
+    }),
+  )
+  return canonical(left ?? {}) === canonical(right)
+}
+
 async function rebuildSnapshot(): Promise<WorkspaceCatalogSnapshot> {
-  const entryList = await runCatalog((c) => c.buildSnapshotEntries())
+  const [entryList, projectList] = await Promise.all([
+    runCatalog((c) => c.buildSnapshotEntries()),
+    runCatalog((c) => c.projects.list()),
+  ])
   const entries: Record<string, WorkspaceCatalogSnapshotEntry> = {}
   for (const entry of entryList) {
     entries[entry.projectId] = entry
   }
+  const projects = Object.fromEntries(projectList.map((project) => [project.projectId, project]))
 
-  if (currentSnapshot && entriesEqual(currentSnapshot.entries, entries)) {
+  if (currentSnapshot && entriesEqual(currentSnapshot.entries, entries) &&
+    projectsEqual(currentSnapshot.projects, projects)) {
     return currentSnapshot
   }
 
@@ -100,6 +130,7 @@ async function rebuildSnapshot(): Promise<WorkspaceCatalogSnapshot> {
     revision,
     generatedAt: Date.now(),
     entries,
+    projects,
   }
   syncRootWatchers(entryList)
   broadcast(currentSnapshot)
@@ -151,6 +182,18 @@ export async function getCatalogSnapshot(): Promise<WorkspaceCatalogSnapshot> {
   if (currentSnapshot) {
     return currentSnapshot
   }
+  return refreshNow()
+}
+
+/** Lifecycle replies must follow a rebuild started after their catalog commit. */
+export async function flushCatalogSnapshotAfterMutation(): Promise<WorkspaceCatalogSnapshot> {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+  // A rebuild already running can contain the pre-mutation SELECT. Its trailing
+  // rebuild (or this new one) starts after the caller's durable mutation.
+  if (refreshInFlight) await refreshInFlight
   return refreshNow()
 }
 

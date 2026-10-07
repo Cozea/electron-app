@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { GitChangesSnapshot, GitChangesScope } from '@shared/electronApiTypes'
+import type { GitChangesSnapshot, GitChangesScope } from '@cozea/app-contract/electronApi'
 
 interface StoreGitChangesScopeState {
   snapshot: GitChangesSnapshot | null

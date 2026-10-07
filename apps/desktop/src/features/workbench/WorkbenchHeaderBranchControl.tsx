@@ -1,4 +1,5 @@
 import { useCallback, type ReactNode } from "react"
+import { Spinner } from "@/components/ui/spinner"
 
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -111,7 +112,7 @@ export function WorkbenchHeaderBranchControl({
             onClick={handleOpenNativeBranchMenu}
           >
             {showActionSpinner ? (
-              <div className="loader text-muted-foreground" />
+              <Spinner size="xs" className="text-muted-foreground" />
             ) : iconPosition === "leading" ? (
               branchIcon
             ) : null}

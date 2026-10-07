@@ -2,7 +2,7 @@ import type {
   BrowserSurfaceDescriptor,
   CozeaBrowserSurfaceState,
   PreparedBrowserSurface,
-} from "@shared/browserSurfaceTypes";
+} from "@cozea/app-contract/browserSurface";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 
@@ -353,7 +353,7 @@ export function HostedBrowserWebview({ descriptor }: { descriptor: BrowserSurfac
             />
             {activeDrag ? (
               <div
-                className="pointer-events-none absolute z-40 -translate-x-1/2 rounded-md border border-border/80 bg-background/95 px-2 py-1 text-[11px] font-medium tabular-nums text-foreground shadow-md backdrop-blur-sm"
+                className="pointer-events-none absolute z-40 -translate-x-1/2 rounded-md border border-border/80 bg-background/95 px-2 py-1 text-caption font-medium tabular-nums text-foreground shadow-md backdrop-blur-sm"
                 style={{
                   left: layout.viewportX + layout.viewportWidth / 2,
                   top: layout.viewportY + 10,

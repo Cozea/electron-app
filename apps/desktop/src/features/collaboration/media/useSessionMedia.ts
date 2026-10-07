@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useMutation } from "convex/react"
+import { useMutation } from "@/lib/cloudQueries"
 import { useSafeConvexQuery } from "@/hooks/useSafeConvexQuery"
 import { api } from "../../../../../../convex/_generated/api"
 import type { Doc, Id } from "../../../../../../convex/_generated/dataModel"

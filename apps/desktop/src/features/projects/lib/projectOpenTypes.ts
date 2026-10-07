@@ -25,7 +25,8 @@ export interface ProjectOpenSourceControlLike {
 }
 
 export interface ProjectOpenGitProjectLike {
-  _id: Id<"projects">;
+  /** Genuine optional shared association; local execution uses the catalog ID. */
+  _id: Id<"projects"> | null;
   name?: string | null;
   slug: string;
   createdBy?: Id<"devicePrincipals"> | string | null;

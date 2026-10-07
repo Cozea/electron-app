@@ -4,7 +4,7 @@ import { BROWSER_SURFACE_IPC } from "../../../../shared/browserSurfaceIpc";
 import type {
   BrowserFindInPageOptions,
   BrowserSurfaceDescriptor,
-} from "../../../../shared/browserSurfaceTypes";
+} from "@cozea/app-contract/browserSurface";
 import type {
   DesktopPreviewAnnotationTheme,
   DesktopPreviewColorScheme,

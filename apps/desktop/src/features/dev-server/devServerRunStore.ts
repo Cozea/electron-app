@@ -26,7 +26,7 @@ import type {
   DevServerProcessState,
   DevServerProcessStateEvent,
   PreviewFailureReason,
-} from '@shared/electronApiTypes'
+} from '@cozea/app-contract/electronApi'
 
 export type DevServerStatus = 'idle' | 'starting' | 'ready' | 'unhealthy' | 'error' | 'stopped'
 

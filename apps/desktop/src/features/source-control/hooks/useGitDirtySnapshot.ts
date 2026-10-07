@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import type { GitDirtyStateSnapshot } from '@shared/electronApiTypes'
+import type { GitDirtyStateSnapshot } from '@cozea/app-contract/electronApi'
 
 type SnapshotListener = (snapshot: GitDirtyStateSnapshot | null) => void
 

@@ -1,3 +1,4 @@
+import { Spinner } from '@/components/ui/spinner'
 import {
   useEffect,
   useMemo,
@@ -6,7 +7,7 @@ import {
 import {
   useMutation,
   useQuery,
-} from 'convex/react';
+} from '@/lib/cloudQueries';
 import type {
   Id,
 } from '../../../../../../convex/_generated/dataModel';
@@ -64,7 +65,7 @@ import {
 
 import type {
   ProjectScannedRoute,
-} from '@shared/electronApiTypes';
+} from '@cozea/app-contract/electronApi';
 import {
   ScrollArea,
 } from '@/components/ui/scroll-area';
@@ -74,9 +75,6 @@ import {
 import {
   useTranslation,
 } from '@/lib/i18n';
-import {
-  useNavigateTo,
-} from '@/lib/navigation';
 import {
   cn,
 } from '@/lib/utils';
@@ -100,15 +98,7 @@ import {
 } from '@/components/ui/button';
 
 
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { UnifiedModal, UnifiedModalField } from '@/components/ui/unified-modal';
 import {
   Empty,
   EmptyContent,
@@ -126,9 +116,8 @@ import {
 import {
   Textarea,
 } from '@/components/ui/textarea';
-import {
-  AppOverlayPortal,
-} from '@/components/ui/app-overlay-portal';
+import { PageHeader } from '@/components/PageHeader';
+import { useProjectHeader } from '@/lib/useProjectHeader';
 import {
   resolveAvailableTaskContextKind,
   selectDefaultTaskContext,
@@ -155,8 +144,7 @@ const ListTodo = asHugeIcon(__ListTodoHugeIcon)
 
 
 interface TasksPageProps {
-  presentation?: 'modal' | 'embedded'
-  onRequestClose?: (() => void) | null
+  presentation?: 'page' | 'embedded'
 }
 
 const HEADER_STATUS_ORDER: BoardStatus[] = ['planned', 'active', 'done']
@@ -179,20 +167,20 @@ const STATUS_META: Record<
   planned: {
     ariaLabelKey: 'tasks.status.backlog',
     icon: ListTodo,
-    iconClassName: 'text-amber-700 dark:text-amber-900',
-    surfaceClassName: 'bg-amber-200 dark:bg-amber-300',
+    iconClassName: 'text-warning ',
+    surfaceClassName: 'bg-warning ',
   },
   active: {
     ariaLabelKey: 'tasks.status.inProgress',
     icon: Clock3,
-    iconClassName: 'text-sky-700 dark:text-sky-900',
-    surfaceClassName: 'bg-sky-200 dark:bg-sky-300',
+    iconClassName: 'text-info ',
+    surfaceClassName: 'bg-info ',
   },
   done: {
     ariaLabelKey: 'tasks.status.done',
     icon: CheckCircle2,
-    iconClassName: 'text-emerald-700 dark:text-emerald-900',
-    surfaceClassName: 'bg-emerald-200 dark:bg-emerald-300',
+    iconClassName: 'text-success ',
+    surfaceClassName: 'bg-success ',
   },
 }
 
@@ -200,12 +188,10 @@ const STATUS_META: Record<
 
 
 export function TasksPage({
-  presentation = 'modal',
-  onRequestClose = null,
+  presentation = 'page',
 }: TasksPageProps = {}) {
   const { t } = useTranslation()
   const isEmbedded = presentation === 'embedded'
-  const navigateTo = useNavigateTo()
   const { project } = useAccessibleProject()
   const { principalId } = useAuth()
   // Plan pages live in the artifacts table (split off the project doc);
@@ -651,28 +637,25 @@ export function TasksPage({
     return { groupCounts, flatItems }
   }, [statusSections, collapsedGroups])
 
-  function closeTasksModal(): void {
-    if (isEmbedded) {
-      onRequestClose?.()
-      return
-    }
-    navigateTo(projectId ? { to: 'workbench', projectId } : { to: 'projects' }, { replace: true })
-  }
-
-  useEffect(() => {
-    if (isEmbedded) return
-    if (isCreateDialogOpen) return
-
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      closeTasksModal()
-    }
-
-    window.addEventListener('keydown', handleEscape)
-    return () => {
-      window.removeEventListener('keydown', handleEscape)
-    }
-  }, [isCreateDialogOpen, isEmbedded, projectPagesPath])
+  // Page actions live in the top bar, as on every other page. The embedded
+  // board sits inside the workbench and must not take the top bar over.
+  useProjectHeader(null, null, {
+    disabled: isEmbedded,
+    rightAddon: (
+      <Button
+        size="sm"
+        className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
+        disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
+        onClick={() => {
+          resetDraft()
+          setIsCreateDialogOpen(true)
+        }}
+      >
+        <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
+        {isCreatingTask ? t('tasks.empty.btnAdding') : t('tasks.empty.btn')}
+      </Button>
+    ),
+  })
 
   function resetDraft(): void {
     setDraftTitle('')
@@ -809,51 +792,18 @@ export function TasksPage({
   if (project === undefined) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <div className="loader mr-2" />
+        <Spinner size="xs" className="mr-2" />
         {t('tasks.loading')}
       </div>
     )
   }
 
   const shell = (
-    <div
-      role={isEmbedded ? undefined : 'dialog'}
-      aria-modal={isEmbedded ? undefined : true}
-      aria-label={isEmbedded ? undefined : t('tasks.header.title')}
-      className={cn(
-        'flex h-full w-full flex-col overflow-hidden bg-background',
-        !isEmbedded &&
-          'max-w-2xl rounded-[32px] border border-border/70 shadow-[0_32px_90px_rgba(15,23,42,0.28)]',
-      )}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <div className={cn("relative", isEmbedded ? "px-4 py-3" : "px-6 pt-5 pb-3")}>
+    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
+      <div className={cn("relative", isEmbedded ? "px-4 py-3" : "mx-auto w-full max-w-5xl px-5 pt-4 pb-3")}>
         {!isEmbedded ? (
           <>
-            <div className="flex items-center justify-end gap-4">
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  size="sm"
-                  className="h-7 gap-1.5 rounded-full px-2.5 text-xs"
-                  disabled={!principalId || isCreatingTask || isSyncingLocalTasks || project === null}
-                  onClick={() => {
-                    resetDraft()
-                    setIsCreateDialogOpen(true)
-                  }}
-                >
-                  <HugeiconsIcon icon={__PlusHugeIcon} className="h-3.5 w-3.5" />
-                  {isCreatingTask ? t('tasks.empty.btnAdding') : t('tasks.empty.btn')}
-                </Button>
-                <button
-                  type="button"
-                  onClick={closeTasksModal}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-secondary/60 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-                  aria-label={t('tasks.action.close')}
-                >
-                  <HugeiconsIcon icon={__XHugeIcon} className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
+            <PageHeader title={t('tasks.header.title')} />
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
               {statusStats.map(({ status, count }) => {
@@ -1040,22 +990,9 @@ export function TasksPage({
 
   return (
     <>
-      {!isEmbedded ? (
-        <AppOverlayPortal>
-          <div
-            className="fixed inset-0 z-[var(--cozea-layer-dialog)] bg-black/45 backdrop-blur-[2px]"
-            onClick={closeTasksModal}
-            aria-hidden="true"
-          />
-          <div className="fixed inset-0 z-[var(--cozea-layer-dialog)] flex items-start justify-center p-4 pt-14 sm:p-6 sm:pt-16">
-            {shell}
-          </div>
-        </AppOverlayPortal>
-      ) : (
-        shell
-      )}
+      {shell}
 
-      <Dialog
+      <UnifiedModal
         open={isCreateDialogOpen}
         onOpenChange={(open) => {
           setIsCreateDialogOpen(open)
@@ -1063,45 +1000,56 @@ export function TasksPage({
             resetDraft()
           }
         }}
-      >
-        <DialogContent className="sm:max-w-[860px]" showCloseButton={false}>
-          <DialogClose asChild>
-            <button
+        title={t('tasks.create.title')}
+        size="2xl"
+        dismissable={!isCreatingTask}
+        footer={
+          <>
+            <Button
               type="button"
-              className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent/70 text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/85 dark:bg-sidebar-accent/80 dark:hover:bg-sidebar-accent"
-              aria-label={t('tasks.action.close')}
+              variant="outline"
+              disabled={isCreatingTask}
+              onClick={() => {
+                setIsCreateDialogOpen(false)
+                resetDraft()
+              }}
             >
-              <HugeiconsIcon icon={__XHugeIcon} className="h-4 w-4" />
-            </button>
-          </DialogClose>
-          <DialogHeader>
-            <DialogTitle>{t('tasks.create.title')}</DialogTitle>
-            <DialogDescription>
-              {t('tasks.create.desc')}
-            </DialogDescription>
-          </DialogHeader>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                void handleCreateTask()
+              }}
+              disabled={draftTitle.trim().length === 0 || isCreatingTask || !selectedDraftContext}
+            >
+              {isCreatingTask ? 'Adding...' : 'Add Task'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">{t('tasks.create.desc')}</p>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]">
             <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="task-title">{t('tasks.label.title')}</Label>
-                <Input
-                  id="task-title"
-                  value={draftTitle}
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  placeholder={t('tasks.placeholder.title')}
-                />
-              </div>
+              <UnifiedModalField
+                id="task-title"
+                label={t('tasks.label.title')}
+                value={draftTitle}
+                onChange={setDraftTitle}
+                autoFocus
+              />
 
-              <div className="space-y-2">
-                <Label htmlFor="task-description">{t('tasks.label.desc')}</Label>
-                <Textarea
-                  id="task-description"
-                  value={draftDescription}
-                  onChange={(event) => setDraftDescription(event.target.value)}
-                  placeholder={t('tasks.placeholder.desc')}
-                />
-              </div>
+              {/* The modal field is single-line; a description needs rows, so
+                  it follows the same rule by hand: its title is the placeholder. */}
+              <Textarea
+                id="task-description"
+                value={draftDescription}
+                onChange={(event) => setDraftDescription(event.target.value)}
+                placeholder={t('tasks.label.desc')}
+                aria-label={t('tasks.label.desc')}
+              />
 
               <div className="space-y-2">
                 <Label htmlFor="task-deadline">{t('tasks.label.deadline')}</Label>
@@ -1126,7 +1074,7 @@ export function TasksPage({
                   />
 
                   {hasDraftClaimantSearch ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur dark:shadow-[0_22px_48px_rgba(0,0,0,0.36)]">
+                    <div className="mt-2 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5">
                       <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                         {claimantCandidatesLoading ? (
                           <div className="px-3 py-3 text-sm text-muted-foreground">
@@ -1190,7 +1138,7 @@ export function TasksPage({
                             avatarUrl={claimant.avatarUrl ?? null}
                             useColor={false}
                             className="h-5 w-5"
-                            fallbackClassName="text-[10px]"
+                            fallbackClassName="text-2xs"
                           />
                           <span
                             className="max-w-[160px] truncate text-xs font-medium text-foreground"
@@ -1226,68 +1174,70 @@ export function TasksPage({
 
                 <div className="space-y-2">
                   <div className="relative">
-                    <Input
-                      className="pr-24"
-                      value={draftContextSearch}
-                      onChange={(event) => setDraftContextSearch(event.target.value)}
-                      placeholder={
-                        draftContextKind === 'page'
-                          ? t('tasks.placeholder.searchPreviews')
-                          : t('tasks.placeholder.searchFiles')
-                      }
-                    />
-                    <div className="absolute right-1 top-1/2 -translate-y-1/2">
-                      <div className="relative inline-flex rounded-full bg-secondary p-1">
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            'pointer-events-none absolute left-1 top-1 h-7 w-7 rounded-full bg-black transition-transform duration-200 ease-out',
-                            draftContextKind === 'page' ? 'translate-x-0' : 'translate-x-7',
-                          )}
-                        />
-                      <button
-                        type="button"
-                        className={cn(
-                          'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                    <div className="relative">
+                      <Input
+                        className="pr-24"
+                        value={draftContextSearch}
+                        onChange={(event) => setDraftContextSearch(event.target.value)}
+                        placeholder={
                           draftContextKind === 'page'
-                            ? 'text-white'
-                            : 'text-muted-foreground hover:text-foreground',
-                        )}
-                        onClick={() => {
-                          setDraftContextKind('page')
-                          setDraftContextSearch('')
-                        }}
-                        aria-label={t('tasks.action.choosePreview')}
-                        title={t('tasks.action.choosePreview')}
-                      >
-                        <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className={cn(
-                          'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
-                          draftContextKind === 'file'
-                            ? 'text-white'
-                            : 'text-muted-foreground hover:text-foreground',
-                        )}
-                        onClick={() => {
-                          setDraftContextKind('file')
-                          setDraftContextSearch('')
-                        }}
-                        aria-label={t('tasks.action.chooseFile')}
-                        title={t('tasks.action.chooseFile')}
-                      >
-                        <HugeiconsIcon icon={__FileTextHugeIcon} className="h-3.5 w-3.5" />
-                      </button>
+                            ? t('tasks.placeholder.searchPreviews')
+                            : t('tasks.placeholder.searchFiles')
+                        }
+                      />
+                      <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                        <div className="relative inline-flex rounded-full bg-secondary p-1">
+                          <span
+                            aria-hidden="true"
+                            className={cn(
+                              'pointer-events-none absolute left-1 top-1 h-7 w-7 rounded-full bg-black transition-transform duration-200 ease-out',
+                              draftContextKind === 'page' ? 'translate-x-0' : 'translate-x-7',
+                            )}
+                          />
+                        <button
+                          type="button"
+                          className={cn(
+                            'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                            draftContextKind === 'page'
+                              ? 'text-white'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                          onClick={() => {
+                            setDraftContextKind('page')
+                            setDraftContextSearch('')
+                          }}
+                          aria-label={t('tasks.action.choosePreview')}
+                          title={t('tasks.action.choosePreview')}
+                        >
+                          <HugeiconsIcon icon={__AppWindowHugeIcon} className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          className={cn(
+                            'relative z-10 inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors duration-200',
+                            draftContextKind === 'file'
+                              ? 'text-white'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                          onClick={() => {
+                            setDraftContextKind('file')
+                            setDraftContextSearch('')
+                          }}
+                          aria-label={t('tasks.action.chooseFile')}
+                          title={t('tasks.action.chooseFile')}
+                        >
+                          <HugeiconsIcon icon={__FileTextHugeIcon} className="h-3.5 w-3.5" />
+                        </button>
+                        </div>
                       </div>
                     </div>
 
                     {hasDraftContextSearch ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-20 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur dark:shadow-[0_22px_48px_rgba(0,0,0,0.36)]">
+                      <div className="mt-2 overflow-hidden rounded-[20px] bg-secondary/95 p-1.5">
                         <div className="app-scrollbar max-h-56 space-y-1 overflow-y-auto">
                           {isVisibleContextLoading ? (
                             <div className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
-                              <div className="loader" />
+                              <Spinner size="xs" />
                               {t('tasks.loadingContext')}
                             </div>
                           ) : visibleContextOptions.length === 0 ? (
@@ -1411,20 +1361,8 @@ export function TasksPage({
               </div>
             </div>
           </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              onClick={() => {
-                void handleCreateTask()
-              }}
-              disabled={draftTitle.trim().length === 0 || isCreatingTask || !selectedDraftContext}
-            >
-              {isCreatingTask ? 'Adding...' : 'Add Task'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </UnifiedModal>
     </>
   )
 }

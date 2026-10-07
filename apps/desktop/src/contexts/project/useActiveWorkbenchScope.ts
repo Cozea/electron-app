@@ -1,6 +1,9 @@
 import { useOptionalProjectRouteContext } from "@/contexts/project/ProjectRouteContext"
 import { useAccessibleProject } from "@/contexts/project/useAccessibleProject"
 import { useWorkspaceIdentity } from "@/contexts/workspace/useWorkspaceIdentity"
+import { useActiveWorkspaceOrNull } from "@/contexts/workspace/ActiveWorkspaceContext"
+import type { ProjectLaneDescriptor, ProjectLaneState } from "@cozea/app-contract/electronApi"
+import type { WorkspaceLaneDTO } from "@shared/workspaceTypes"
 import { DEFAULT_WORKBENCH_LANE_ID, buildWorkbenchScopeKey } from "@/lib/workbenchScopeKey"
 
 export interface ActiveWorkbenchScope {
@@ -19,6 +22,32 @@ export interface ActiveWorkbenchScope {
   laneResolutionPending: boolean
 }
 
+export function resolveActiveWorkbenchScope(input: {
+  projectId: string | null
+  workspaceId: string | null
+  laneState: ProjectLaneState | null
+  activeLane: ProjectLaneDescriptor | null
+  catalogLane: Pick<WorkspaceLaneDTO, "projectId" | "workspaceId" | "laneId" | "gitRootPath"> | null
+  workspaceGitRootPath: string | null | undefined
+}): ActiveWorkbenchScope {
+  // A verified non-Git folder has a concrete catalog lane but no Git branch
+  // state to load. Git workspaces must still wait for their branch identity.
+  const nonGitLane = input.catalogLane?.projectId === input.projectId &&
+    input.catalogLane.workspaceId === input.workspaceId &&
+    input.workspaceGitRootPath === null && input.catalogLane.gitRootPath === null
+    ? input.catalogLane : null
+  const laneId = input.activeLane?.id ?? input.laneState?.activeLaneId ??
+    input.laneState?.collabLaneId ?? nonGitLane?.laneId ?? DEFAULT_WORKBENCH_LANE_ID
+  const workspaceId = input.activeLane?.workspaceId ?? input.workspaceId
+  return {
+    projectId: input.projectId,
+    laneId,
+    workspaceId,
+    scopeKey: input.projectId ? buildWorkbenchScopeKey(input.projectId, laneId, workspaceId) : null,
+    laneResolutionPending: Boolean(workspaceId) && !input.activeLane && !input.laneState && !nonGitLane,
+  }
+}
+
 /**
  * Which workbench the user is actually looking at.
  *
@@ -31,25 +60,20 @@ export interface ActiveWorkbenchScope {
  */
 export function useActiveWorkbenchScope(): ActiveWorkbenchScope {
   const routeContext = useOptionalProjectRouteContext()
-  const { project, projectIdParam } = useAccessibleProject()
+  const { localProjectId, projectIdParam } = useAccessibleProject()
   const { workspaceId } = useWorkspaceIdentity()
+  const activeWorkspace = useActiveWorkspaceOrNull()
 
-  const projectId = project?._id ? String(project._id) : (projectIdParam ?? null)
+  const projectId = localProjectId ?? projectIdParam ?? null
   const laneState = routeContext?.laneState ?? null
   const activeLane = routeContext?.activeLane ?? null
 
-  const laneId =
-    activeLane?.id ??
-    laneState?.activeLaneId ??
-    laneState?.collabLaneId ??
-    DEFAULT_WORKBENCH_LANE_ID
-  const laneWorkspaceId = activeLane?.workspaceId ?? workspaceId
-
-  return {
+  return resolveActiveWorkbenchScope({
     projectId,
-    laneId,
-    workspaceId: laneWorkspaceId,
-    scopeKey: projectId ? buildWorkbenchScopeKey(projectId, laneId, laneWorkspaceId) : null,
-    laneResolutionPending: Boolean(laneWorkspaceId) && !activeLane && !laneState,
-  }
+    workspaceId,
+    activeLane,
+    laneState,
+    catalogLane: activeWorkspace?.lane ?? null,
+    workspaceGitRootPath: activeWorkspace?.workspace.gitRootPath,
+  })
 }

@@ -1,4 +1,4 @@
-import type { CozeaBrowserSurfaceState } from "@shared/browserSurfaceTypes";
+import type { CozeaBrowserSurfaceState } from "@cozea/app-contract/browserSurface";
 import { create } from "zustand";
 
 interface BrowserSurfaceStateStore {

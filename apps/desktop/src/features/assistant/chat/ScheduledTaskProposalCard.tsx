@@ -1,4 +1,5 @@
 import { HugeiconsIcon } from "@hugeicons/react"
+import { useTranslation } from "@/lib/i18n"
 import { Clock01Icon as __ClockHugeIcon } from "@hugeicons/core-free-icons"
 
 import { memo, useMemo } from "react"
@@ -74,6 +75,7 @@ export const ScheduledTaskProposalCard = memo(function ScheduledTaskProposalCard
   workspaceRoot?: string | null
   isStreaming?: boolean
 }) {
+  const { t } = useTranslation()
   const navigateTo = useNavigateTo()
   const proposals = useMemo(
     // A block only half written is not an offer yet.
@@ -104,9 +106,9 @@ export const ScheduledTaskProposalCard = memo(function ScheduledTaskProposalCard
                 <Badge
                   variant="outline"
                   size="sm"
-                  className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-500"
+                  className="border-warning/40 bg-warning/10 text-warning"
                 >
-                  Computer use
+                  {t("assistant.computerUse")}
                 </Badge>
               ) : null}
             </div>
@@ -135,7 +137,7 @@ export const ScheduledTaskProposalCard = memo(function ScheduledTaskProposalCard
               })
             }}
           >
-            Review and schedule
+            {t("assistant.reviewAndSchedule")}
           </Button>
         </div>
       ))}

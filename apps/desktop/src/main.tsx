@@ -24,7 +24,7 @@ import {
   applyDesktopBootstrapRoute,
   initializeDesktopBootstrap,
 } from './app/bootstrap/desktopBootstrap'
-import type { DesktopBootstrapSnapshot } from '@shared/desktopBootstrapTypes'
+import type { DesktopBootstrapSnapshot } from '@cozea/app-contract/desktopBootstrap'
 import { ProductionNavigationRuntimeApp } from './app/navigation/ProductionNavigationRuntimeApp'
 
 const RENDERER_BOOTSTRAP_ROUTE_QUERY_KEY = 'cozeaRoute'

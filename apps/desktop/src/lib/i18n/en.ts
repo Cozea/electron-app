@@ -101,6 +101,7 @@ const en = {
   "settings.account.localDeviceControls": "Local device controls",
   "settings.account.deleteAccount": "Delete account",
   "settings.account.resetDeviceIdentity": "Reset device identity",
+  "settings.account.resetAction": "Reset",
   "settings.account.deleteAccountDesc":
     "Permanently delete your account and all data",
   "settings.account.resetDeviceDesc":
@@ -116,7 +117,6 @@ const en = {
   "settings.account.resetConfirmLabel":
     'Type "RESET" to confirm',
   "settings.account.deleteConfirmPlaceholder": "delete my account",
-  "settings.account.resetConfirmPlaceholder": "RESET",
 
   // ── Settings: Appearance ────────────────────────────────────────────
   "settings.appearance.theme": "Theme",
@@ -184,7 +184,7 @@ const en = {
   "settings.organizations.error": "That organization action failed.",
 
   // ── Settings: Tooling ───────────────────────────────────────────────
-  "settings.tooling.title": "Tooling and Framework Support",
+  "settings.tooling.title": "Local environment",
   "settings.tooling.description":
     "This page reflects what your current Cozea instance can execute on this device.",
   "settings.tooling.gitRuntime": "Git Runtime",
@@ -378,7 +378,6 @@ const en = {
   "workbench.layout.splitDown": "Split Down",
   "workbench.layout.splitUp": "Split Up",
   "workbench.layout.optionsLabel": "Layout options",
-  "workbench.layout.closeLabel": "Close {title}",
   "workbench.surface.loading": "Loading…",
   "workbench.surface.loadingWorkbench": "Loading workbench…",
   "workbench.surface.closeChanges": "Close changes",
@@ -417,9 +416,7 @@ const en = {
   "tasks.create.title": "Add Task",
   "tasks.create.desc": "Create a task with a deadline, objectives, an optional assignee, and a linked file or preview.",
   "tasks.label.title": "Title",
-  "tasks.placeholder.title": "Ship billing settings",
   "tasks.label.desc": "Description",
-  "tasks.placeholder.desc": "Short context for this task",
   "tasks.label.deadline": "Deadline",
   "tasks.label.assignee": "Assignee",
   "tasks.placeholder.searchPeople": "Search people...",
@@ -517,7 +514,6 @@ const en = {
   "settings.error.archiveFailed": "Failed to archive project",
   "settings.error.projectNotFound": "Project not found",
   "settings.loading": "Loading project settings…",
-  "settings.action.close": "Close settings",
   "settings.action.save": "Save Changes",
   "settings.action.saving": "Saving...",
   "settings.action.archive": "Archive",
@@ -655,9 +651,13 @@ const en = {
   "errorScreen.description": "An unexpected error occurred in this view. You can try again, or reload the app.",
   "errorScreen.tryAgain": "Try again",
   "errorScreen.reload": "Reload app",
+  "errorScreen.details": "Details",
 
   // ── Workbench panels / header ───────────────────────────────────────
   "workbench.panel.close": "Close panel",
+  "workbench.panel.closeRunningTerminal.title": "Close terminal with a running process?",
+  "workbench.panel.closeRunningTerminal.message": "Closing the tile stops whatever is running in it.",
+  "workbench.panel.closeRunningTerminal.confirm": "Close and Stop",
   "workbench.branch.currentBranch": "Current branch",
   "workbench.memory.state.new": "New",
   "workbench.memory.state.changed": "Changed",
@@ -735,9 +735,7 @@ const en = {
   "workbench.devserver.processes.automatic": "Detected automatically",
   "workbench.devserver.processes.default": "Default",
   "workbench.devserver.processes.name": "Name",
-  "workbench.devserver.processes.namePlaceholder": "Backend",
   "workbench.devserver.processes.command": "Command",
-  "workbench.devserver.processes.commandPlaceholder": "bun run dev",
   "workbench.devserver.processes.remove": "Remove process",
   "workbench.devserver.processes.toggleDetails": "Show or hide process details",
   "workbench.devserver.processes.untitled": "Untitled process",
