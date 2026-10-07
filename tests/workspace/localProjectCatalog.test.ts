@@ -73,14 +73,15 @@ describe("durable local project authority", () => {
       filename, transformResultNames: (name) => name.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()),
     })))) as Runtime
     await runtime.runPromise(runMigrations({ toMigrationInclusive: 3 }))
+    await catalog((c) => c.upsertProjectsCache("legacy_shared_id", { name: "Known name", slug: "known-name" }))
+    await catalog((c) => c.upsertProjectsCache("cached_without_folder", { name: "Needs attachment", slug: "unbound" }))
+    await runtime.runPromise(runMigrations())
     const folder = path.join(root, "original-source")
     await fs.mkdir(folder)
     await fs.writeFile(path.join(folder, "keep.txt"), "original")
     const before = await fs.stat(folder)
     const binding = await catalog((c) => c.attachExistingFolder({ projectId: "legacy_shared_id", folderPath: folder }))
     expect(binding.success).toBe(true)
-    await catalog((c) => c.upsertProjectsCache("legacy_shared_id", { name: "Known name", slug: "known-name" }))
-    await catalog((c) => c.upsertProjectsCache("cached_without_folder", { name: "Needs attachment", slug: "unbound" }))
     const workspaceBefore = await catalog((c) => c.listForProject("legacy_shared_id"))
     await runtime.dispose()
 

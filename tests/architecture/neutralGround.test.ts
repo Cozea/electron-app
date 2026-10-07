@@ -58,6 +58,16 @@ const PINNED_FEATURE_IMPORTS: readonly PinnedFeatureImport[] = [
     because: "Same runtime, same reason.",
   },
   {
+    file: "apps/desktop/src/contexts/project/useProjectRouteData.ts",
+    specifier: "@/features/projects/lib/projectSwitchPrefetch",
+    because: "Reuses the route-key cache used by project switching; that cache key must be identical to avoid cross-project stale data.",
+  },
+  {
+    file: "apps/desktop/src/contexts/project/useProjectRouteData.ts",
+    specifier: "@/features/workspace/useWorkspaceCatalogSnapshot",
+    because: "The route resolver consumes the local catalog snapshot as execution identity while cloud documents remain optional.",
+  },
+  {
     file: "apps/desktop/src/lib/sidebarActivity.ts",
     specifier: "@/features/dev-server/devServerRunStore",
     because: "Type-only. Terminal and workbench publish into this engine; only the status type comes back.",

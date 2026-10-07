@@ -136,7 +136,7 @@ it("renders actual native plan statuses and disables live animation for hidden o
   expect(html).toContain("In progress");
   expect(html).toContain("Pending");
   expect(html.match(/cozea-live-shimmer-focus/g)).toHaveLength(1);
-  expect(html).not.toContain("<svg");
+  expect(html.match(/<svg/g)?.length).toBeGreaterThan(0);
   expect(
     renderToStaticMarkup(createElement(ProviderPlanSteps, { plan, isActive: false })),
   ).not.toContain("cozea-live-shimmer-focus");

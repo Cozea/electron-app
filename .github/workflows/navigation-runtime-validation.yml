@@ -57,6 +57,9 @@ jobs:
           bun x "$pm" --dir vendor/t3code --filter t3 run build:bundle > build/navigation-validation/vendor-build.log 2>&1 || { tail -100 build/navigation-validation/vendor-build.log; exit 1; }
           test -s vendor/t3code/apps/server/dist/bin.mjs
           tail -15 build/navigation-validation/vendor-build.log
+      - name: Prepare matching T3 runtime for Electron
+        if: always() && steps.vendor_bundle.outcome == 'success'
+        run: bun run prepare:t3-runtime
       - name: Navigation unit tests
         if: always() && steps.dependencies.outcome == 'success'
         run: |

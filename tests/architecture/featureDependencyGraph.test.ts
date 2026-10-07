@@ -58,6 +58,38 @@ const PINNED_CYCLES: readonly PinnedCycle[] = [
     verdict:
       "Accepted. The project shell shares chrome with the settings sidebar in both directions; the project settings page is a route of its own now, reached through the router rather than imported. Peers that collaborate, not a capability reaching for ambient state.",
   },
+  {
+    pair: ["projects", "tour"],
+    thinEdge: "projects -> tour",
+    reaches: ["productTourStore"],
+    verdict: "Accepted. Project creation starts and owns the product-tour state, while the tour consumes project discovery. The shared tour state can move to neutral ground if this coupling grows.",
+  },
+  {
+    pair: ["projects", "workbench"],
+    thinEdge: "projects -> workbench",
+    reaches: [
+      "WorkbenchHeaderEditorControl", "WorkbenchHeaderTitle", "WorkbenchKeepAliveHost",
+      "assistant/workbenchAssistantShared", "command-palette/WorkbenchCommandPaletteHost",
+      "command-palette/commandPaletteBus", "hooks/useProjectLaneState",
+      "hooks/useProjectWorkbenchSearchParamSync", "hooks/useWorkbenchSessionLifecycle",
+      "model/lastWorkbenchRoute", "model/reconcileWorkbenchRevision", "model/tileActivityStore",
+      "model/workbenchIntent", "model/workbenchLayoutPersistence", "model/workbenchTileRegistry",
+      "useAssistantRuntimeSync", "workbenchKeepAlive",
+    ],
+    verdict: "Accepted. Projects owns the route and lifecycle around the workbench; the workbench's assistant controller reaches back only for local project API access. The edge spans project shell composition and cleanup, so lifting it would obscure ownership rather than remove ambient state.",
+  },
+  {
+    pair: ["projects", "workspace"],
+    thinEdge: "projects -> workspace",
+    reaches: ["WorkspaceRepairScreen", "hooks/useProjectWorkspaceActions", "useProjectWorkspaceResolution", "useWorkspaceCatalogSnapshot"],
+    verdict: "Accepted. Project routes and settings compose workspace resolution and repair UI; workspace actions reach the project catalog API. Both are lifecycle peers around a project workspace.",
+  },
+  {
+    pair: ["workbench", "workspace"],
+    thinEdge: "workspace -> workbench",
+    reaches: ["hooks/useProjectLaneState"],
+    verdict: "Accepted. Workspace actions clear lane selection after changing workspace ownership; the reverse workbench-to-workspace edge reads the workspace catalog. Both operate on the same project/workspace lifecycle.",
+  },
 ];
 
 function listSourceFiles(directory: string): string[] {
