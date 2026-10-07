@@ -196,22 +196,17 @@ export async function runNavigationScenarios({ mode, samples, fixture, evidence 
 
     await navigate(cdp, 'store')
     const reboundFolder = `${folders.a}-rebound`
-    await fs.rename(folders.a, reboundFolder)
-    const rebound = await evaluate(cdp, `window.__navigationProductionRuntime.reattachProject(
-      'project-a',
-      ${JSON.stringify(attached.a.workspaceId)},
-      ${JSON.stringify(reboundFolder)}
-    )`)
-    assert(rebound.workspaceId === attached.a.workspaceId, 'Revision fixture changed workspace identity')
-    assert(rebound.workspaceRevision > attached.a.workspaceRevision, 'Revision fixture did not advance the binding revision')
+    await createWorkspaceFixture(workspaces, 'a-rebound')
+    const rebound = await attachProject(cdp, 'project-a', reboundFolder)
+    assert(rebound.workspaceId !== attached.a.workspaceId, 'Second workspace attachment reused the first workspace identity')
     await navigate(cdp, 'a')
     const revised = await waitForSnapshot(
       cdp,
-      value => value.surfaceVisible === 'true' && value.sessionKey?.endsWith(`::v${rebound.workspaceRevision}`),
-      'Revised workspace binding did not activate a revision-scoped session',
+      value => value.surfaceVisible === 'true' && value.sessionKey?.includes(rebound.workspaceId),
+      'Second workspace binding did not activate a workspace-scoped session',
     )
-    assert(revised.sessionKey !== a1, 'Revised binding reused the prior main-process session key')
-    assert(!revised.sessions.some(session => session.sessionKey === a1), 'Superseded binding retained old runtime resources')
+    assert(revised.sessionKey !== a1, 'Second workspace binding reused the prior main-process session key')
+    assert(!revised.sessions.some(session => session.sessionKey === a1), 'Inactive workspace binding retained old runtime resources')
     assert(!await evaluate(cdp, `Boolean(document.querySelector('.cozea-workbench-dockview-host[data-navigation-sentinel="a1"]'))`), 'Superseded Dockview instance survived binding invalidation')
 
     const timings = []

@@ -134,13 +134,6 @@ export function ProductionNavigationRuntimeApp() {
         invalidateProjectLaneState(projectId)
         return result.workspace
       },
-      async reattachProject(projectId: string, workspaceId: string, folderPath: string) {
-        const rebound = await api.attachProject(projectId, folderPath)
-        if (rebound.workspaceId !== workspaceId) {
-          throw new Error('Workspace relocation changed its stable identity')
-        }
-        return rebound
-      },
       async navigate(destination: Destination) {
         if (destination === 'store' || destination === 'inbox') {
           await router.navigate({ to: `/projects/${destination}` })
